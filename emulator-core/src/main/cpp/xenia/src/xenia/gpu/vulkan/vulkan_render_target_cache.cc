@@ -2815,6 +2815,16 @@ bool VulkanRenderTargetCache::Resolve(
   if (!resolve_info.coordinate_info.width_div_8 || !resolve_info.height_div_8) {
     return true;
   }
+  // Transfers that Update() queued for a draw that failed before its render
+  // pass have already given EDRAM ownership to their destinations - perform
+  // them before this resolve reads or clears those render targets (otherwise
+  // it copies stale data, and the next Update() copies the old data over a
+  // clear). A successful draw always empties the queue.
+  const bool flushed_pending_transfers =
+      GetPath() == Path::kHostRenderTargets && HasPendingDrawPassTransfers();
+  if (flushed_pending_transfers) {
+    FlushPendingDrawPassTransfers();
+  }
   // For the per-resolve GPU timestamps (VkResolveTime).
   last_resolve_key_ =
       (resolve_info.IsClearingDepth() || resolve_info.IsClearingColor()
@@ -2885,8 +2895,10 @@ bool VulkanRenderTargetCache::Resolve(
           copy_native ? 1 : draw_resolution_scale_y(), copy_shader_constants,
           copy_group_count_x, copy_group_count_y);
       assert_true(copy_group_count_x && copy_group_count_y);
-      // Try the on-tile resolve before dumping the owning render targets.
-      if (cvars::vulkan_in_pass_resolve &&
+      // Try the on-tile resolve before dumping the owning render targets - not
+      // after a transfer flush, which left a transfer pass open instead of the
+      // guest pass.
+      if (cvars::vulkan_in_pass_resolve && !flushed_pending_transfers &&
           copy_shader != draw_util::ResolveCopyShaderIndex::kUnknown) {
         copied = TryInPassResolveCopy(
             resolve_info, copy_shader_constants, copy_shader, dump_base,
