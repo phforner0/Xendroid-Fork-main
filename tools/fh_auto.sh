@@ -92,6 +92,14 @@ if [ "$LAUNCH" = 1 ]; then
   wait_log 'pressstart\.wmv' 150 || fail "title screen not reached"
   say "title screen"
   sleep 3
+  # Power state check: the title screen is a fixed, light GPU load (~2.5-4.5
+  # ms per frame cool to warm on the POCO F7). A launch once ran the GPU ~2.5x
+  # slower from here on (8.8 ms) with no thermal throttling reported.
+  tg=$(grep 'VkFrameSync' $LOG | tail -1 | sed -n 's/.*gpu exec avg=\([0-9.]*\)ms.*/\1/p')
+  say "title screen GPU ${tg:-?} ms/frame"
+  if [ -n "$tg" ] && awk "BEGIN { exit !($tg > 6.5) }"; then
+    say "WARNING: GPU slow at the title screen - power state suspect, results not comparable"
+  fi
   n=0
   while ! has 'profileschema|forza_tone\.wmv'; do
     n=$((n + 1)); [ $n -gt 8 ] && fail "Start not accepted"
