@@ -16,6 +16,9 @@ gf_re = re.compile(
     r"GpuFrame: (\d+) frames, interval avg=" + num + r"ms max=" + num +
     r"ms \| per frame: exec=" + num + r"ms draws=" + num + r" draw=" + num +
     r"ms swap=" + num + r"ms stall=" + num + r"ms")
+# Newer builds append how long the command processor sat in unmet
+# PM4_WAIT_REG_MEM waits.
+wrm_re = re.compile(r"wait_reg_mem unmet=" + num + r" waited=" + num + r"ms")
 
 rows = []
 for d in sorted(ROOT.glob(prefix + "-*"), key=lambda p: int(p.name.split("-")[1])):
@@ -23,6 +26,7 @@ for d in sorted(ROOT.glob(prefix + "-*"), key=lambda p: int(p.name.split("-")[1]
     log = (d / "xe.log").read_text(encoding="utf-8", errors="replace").splitlines()
     vk = [m for l in log if (m := vk_re.search(l))][-window:]
     gf = [m for l in log if (m := gf_re.search(l))][-window:]
+    wrm = [m for l in log if "GpuFrame" in l and (m := wrm_re.search(l))][-window:]
 
     def mean(ms, idx):
         vals = [float(m.group(idx)) for m in ms]
@@ -44,13 +48,15 @@ for d in sorted(ROOT.glob(prefix + "-*"), key=lambda p: int(p.name.split("-")[1]
         "cp_draw_ms": mean(gf, 6),
         "cp_stall_ms": mean(gf, 8),
         "guest_interval_ms": mean(gf, 2),
+        "wrm_unmet": mean(wrm, 1),
+        "wrm_waited_ms": mean(wrm, 2),
         "vk_samples": len(vk), "gf_samples": len(gf),
     })
 
 cols = ["arm", "fps", "p95_ms", "gpu_ms_per_frame", "gpu_gap_ms_per_frame",
         "rp_begins", "resolves", "resolve_clears", "in_guest_pass", "replay_ms",
         "cp_exec_ms", "cp_draw_ms", "cp_stall_ms", "guest_interval_ms",
-        "vk_samples", "gf_samples"]
+        "wrm_unmet", "wrm_waited_ms", "vk_samples", "gf_samples"]
 print("\t".join(cols))
 for r in rows:
     print("\t".join(f"{r[c]:.2f}" if isinstance(r[c], float) else str(r[c]) for c in cols))
