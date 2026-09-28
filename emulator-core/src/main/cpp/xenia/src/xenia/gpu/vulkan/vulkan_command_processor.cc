@@ -2444,6 +2444,26 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
           fence.polls / f, fence.slow_polls / f, fence.poll_ns / f / 1e6,
           fence.waits / f, fence.wait_ns / f / 1e6,
           ui::vulkan::VulkanGPUCompletionTimeline::bounded_collection());
+      // What ended the render passes (PassEndReason) - barrier kinds when
+      // pending barriers did, otherwise the work that needed the pass ended.
+      {
+        auto ends = [&](PassEndReason reason) {
+          return s.pass_ends[size_t(reason)] / f;
+        };
+        XELOGI(
+            "VkPassEnd: per frame: render_targets={:.1f} resolve={:.1f} "
+            "textures={:.1f} shared_memory={:.1f} primitives={:.1f} "
+            "query={:.1f} submission={:.1f} other={:.1f} | barriers: "
+            "buffer={:.1f} image={:.1f} both={:.1f}",
+            ends(PassEndReason::kRenderTargets),
+            ends(PassEndReason::kResolve), ends(PassEndReason::kTextures),
+            ends(PassEndReason::kSharedMemory),
+            ends(PassEndReason::kPrimitiveProcessor),
+            ends(PassEndReason::kQuery), ends(PassEndReason::kSubmission),
+            ends(PassEndReason::kOther), ends(PassEndReason::kBufferBarriers),
+            ends(PassEndReason::kImageBarriers),
+            ends(PassEndReason::kBufferAndImageBarriers));
+      }
       // Per-render-pass-bucket GPU time (key: WxH, bit31 = ownership transfer).
       if (!pass_bucket_stats_.empty()) {
         for (const auto& kv : pass_bucket_stats_) {
@@ -3278,6 +3298,19 @@ bool VulkanCommandProcessor::SubmitBarriers(bool force_end_render_pass) {
     }
     return false;
   }
+  if (in_render_pass_ && cvars::log_gpu_frame_time_breakdown) {
+    // The barriers are what ends the pass here (VkPassEnd).
+    const bool buffer_barriers =
+        !pending_barriers_buffer_memory_barriers_.empty();
+    const bool image_barriers = !pending_barriers_image_memory_barriers_.empty();
+    PassEndReasonScope pass_end_reason_scope(
+        *this, buffer_barriers
+                   ? (image_barriers ? PassEndReason::kBufferAndImageBarriers
+                                     : PassEndReason::kBufferBarriers)
+                   : (image_barriers ? PassEndReason::kImageBarriers
+                                     : pass_end_reason_));
+    EndRenderPass();
+  }
   EndRenderPass();
   for (auto it = pending_barriers_.cbegin(); it != pending_barriers_.cend();
        ++it) {
@@ -3420,7 +3453,11 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
   // End current render pass/rendering if active, via EndRenderPass so any open
   // occlusion query segment is closed first. A query begun inside the pass must
   // be ended before the pass is. Also closes the fork's pass timestamp.
-  EndRenderPass();
+  {
+    PassEndReasonScope pass_end_reason_scope(*this,
+                                             PassEndReason::kRenderTargets);
+    EndRenderPass();
+  }
 
   current_render_pass_ = use_dynamic_rendering ? VK_NULL_HANDLE : render_pass;
   current_framebuffer_ = framebuffer;
@@ -3528,7 +3565,11 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
   // End current render pass/rendering if active, via EndRenderPass so any open
   // occlusion query segment is closed first. A query begun inside the pass must
   // be ended before the pass is. Also closes the fork's pass timestamp.
-  EndRenderPass();
+  {
+    PassEndReasonScope pass_end_reason_scope(*this,
+                                             PassEndReason::kRenderTargets);
+    EndRenderPass();
+  }
 
   current_render_pass_ = use_dynamic_rendering ? VK_NULL_HANDLE : render_pass;
   current_framebuffer_ = framebuffer;
@@ -3616,6 +3657,9 @@ void VulkanCommandProcessor::EndRenderPass() {
   assert_true(submission_open_);
   if (!in_render_pass_) {
     return;
+  }
+  if (cvars::log_gpu_frame_time_breakdown) {
+    ++vk_frame_sync_stats_.pass_ends[size_t(pass_end_reason_)];
   }
   // Close native Vulkan occlusion queries before ending the pass. FSI counter
   // segments don't use vkCmdBeginQuery / vkCmdEndQuery and can stay logically
@@ -4163,8 +4207,12 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     }
 
     // Process primitives.
-    if (!primitive_processor_->Process(primitive_processing_result)) {
-      return false;
+    {
+      PassEndReasonScope pass_end_reason_scope(
+          *this, PassEndReason::kPrimitiveProcessor);
+      if (!primitive_processor_->Process(primitive_processing_result)) {
+        return false;
+      }
     }
     if (!primitive_processing_result.host_draw_vertex_count) {
       // Nothing to draw.
@@ -4443,10 +4491,14 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   }
 
   // Set up the render targets - this may perform dispatches and draws.
-  if (!render_target_cache_->Update(is_rasterization_done,
-                                    normalized_depth_control,
-                                    normalized_color_mask, *vertex_shader)) {
-    return false;
+  {
+    PassEndReasonScope pass_end_reason_scope(*this,
+                                             PassEndReason::kRenderTargets);
+    if (!render_target_cache_->Update(is_rasterization_done,
+                                      normalized_depth_control,
+                                      normalized_color_mask, *vertex_shader)) {
+      return false;
+    }
   }
 
   // Create the pipeline (for this, need the render pass from the render target
@@ -4528,7 +4580,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       (pixel_shader != nullptr && stage_bindings_ready[1]
            ? pixel_shader->GetUsedTextureMaskAfterTranslation()
            : 0);
-  texture_cache_->RequestTextures(used_texture_mask);
+  {
+    PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kTextures);
+    texture_cache_->RequestTextures(used_texture_mask);
+  }
 
   // Update the graphics pipeline, and if the new graphics pipeline has a
   // different layout, invalidate incompatible descriptor sets before updating
@@ -4852,6 +4907,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     }
 
     if (vfetch_current_queued) {
+      PassEndReasonScope pass_end_reason_scope(*this,
+                                               PassEndReason::kSharedMemory);
       // Pre-acquire the critical region so we're not repeatedly re-acquiring
       // it in RequestRange - SharedMemory tracks dirty pages and only uploads
       // what actually changed, making redundant calls cheap under a hoisted
@@ -5156,6 +5213,7 @@ bool VulkanCommandProcessor::IssueCopy() {
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
+  PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kResolve);
 
   if (!BeginSubmission(true)) {
     return false;
@@ -5916,6 +5974,7 @@ CommandProcessor::QueryOpenResult VulkanCommandProcessor::OpenZPDQuery(
       if (in_render_pass_) {
         saved_render_pass = current_render_pass_;
         saved_framebuffer = current_framebuffer_;
+        PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kQuery);
         EndRenderPass();
       }
       if (!EndSubmission(false)) {
@@ -5975,7 +6034,11 @@ CommandProcessor::QueryOpenResult VulkanCommandProcessor::OpenZPDQuery(
         VkRenderPass saved_render_pass = current_render_pass_;
         const VulkanRenderTargetCache::Framebuffer* saved_framebuffer =
             current_framebuffer_;
-        EndRenderPass();
+        {
+          PassEndReasonScope pass_end_reason_scope(*this,
+                                                   PassEndReason::kQuery);
+          EndRenderPass();
+        }
         zpd_host_query_pool_->ClearFSICounter(deferred_command_buffer_,
                                               zpd_active_query_index_);
 
@@ -6170,7 +6233,10 @@ bool VulkanCommandProcessor::AwaitQueryResolve(ReportHandle report_handle,
       }
       pipeline_cache_->AwaitPipelineCompletion();
     }
-    EndRenderPass();
+    {
+      PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kQuery);
+      EndRenderPass();
+    }
     if (!EndSubmission(false)) {
       return false;
     }
@@ -6696,6 +6762,7 @@ bool VulkanCommandProcessor::CanEndSubmissionImmediately() const {
 }
 
 bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
+  PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kSubmission);
   ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
   const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
   const VkDevice device = vulkan_device->device();

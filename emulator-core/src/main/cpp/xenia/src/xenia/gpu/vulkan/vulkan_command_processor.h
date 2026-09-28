@@ -308,6 +308,46 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // scope. Submission must be open.
   void EndRenderPass();
 
+  // What ends render passes, counted with log_gpu_frame_time_breakdown
+  // (VkPassEnd lines): the work in progress (a PassEndReasonScope), or the
+  // kind of the pending barriers that SubmitBarriers had to end the pass for.
+  enum class PassEndReason : uint32_t {
+    kOther,
+    // Entering another framebuffer, render target ownership transfers.
+    kRenderTargets,
+    kResolve,
+    // Texture loads.
+    kTextures,
+    // Shared memory uploads.
+    kSharedMemory,
+    kPrimitiveProcessor,
+    kQuery,
+    kSubmission,
+    kBufferBarriers,
+    kImageBarriers,
+    kBufferAndImageBarriers,
+    kCount,
+  };
+  class PassEndReasonScope {
+   public:
+    PassEndReasonScope(VulkanCommandProcessor& command_processor,
+                       PassEndReason reason)
+        : command_processor_(command_processor),
+          previous_reason_(command_processor.pass_end_reason_) {
+      command_processor.pass_end_reason_ = reason;
+    }
+    ~PassEndReasonScope() {
+      command_processor_.pass_end_reason_ = previous_reason_;
+    }
+    PassEndReasonScope(const PassEndReasonScope&) = delete;
+    PassEndReasonScope& operator=(const PassEndReasonScope&) = delete;
+
+   private:
+    VulkanCommandProcessor& command_processor_;
+    PassEndReason previous_reason_;
+  };
+  PassEndReason pass_end_reason_ = PassEndReason::kOther;
+
   VkDescriptorSetLayout GetSingleTransientDescriptorLayout(
       SingleTransientDescriptorLayout transient_descriptor_layout) const {
     return descriptor_set_layouts_single_transient_[size_t(
@@ -735,6 +775,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
     // the guest render pass (vulkan_resolve_clear_in_guest_pass).
     uint64_t resolve_clears = 0;
     uint64_t resolve_clears_in_guest_pass = 0;
+    // Render passes ended, by PassEndReason.
+    uint64_t pass_ends[size_t(PassEndReason::kCount)] = {};
     uint64_t last_report_ns = 0;
   };
   VkFrameSyncStats vk_frame_sync_stats_;
