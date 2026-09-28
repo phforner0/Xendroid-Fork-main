@@ -36,6 +36,7 @@
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/spirv_fsi_system_constants.h"
 #include "xenia/gpu/spirv_shader_translator.h"
+#include "xenia/gpu/texture_info.h"
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
 #include "xenia/gpu/vulkan/vulkan_render_target_cache.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
@@ -67,12 +68,15 @@ DEFINE_bool(
 DEFINE_bool(
     log_gpu_frame_time_breakdown_passes, true,
     "With log_gpu_frame_time_breakdown, also time every render pass and every "
-    "resolve on the GPU (VkPassTime lines, resolve_ms). Each of those "
-    "BOTTOM_OF_PIPE timestamps is a wait-for-idle on Turnip - hundreds per "
-    "frame - so they distort what they measure (Forza Horizon on Adreno 825: "
-    "7.3 fps instrumented vs 12.7 fps plain). Disable to keep only the "
-    "per-submission GPU busy/gap timestamps and the CPU-side GpuFrame stats, "
-    "which are cheap enough to tell a GPU-bound frame from a CPU-bound one.",
+    "resolve on the GPU (VkPassTime lines, resolve_ms; VkResolveTime per "
+    "resolve kind and size, split at the end of the copy into copy and "
+    "clear), and texture loads and the setup command buffer (shared memory "
+    "uploads) outside passes (VkMiscTime). Each of those BOTTOM_OF_PIPE "
+    "timestamps is a wait-for-idle on Turnip - hundreds per frame - so they "
+    "distort what they measure (Forza Horizon on Adreno 825: 7.3 fps "
+    "instrumented vs 12.7 fps plain). Disable to keep only the per-submission "
+    "GPU busy/gap timestamps and the CPU-side GpuFrame stats, which are cheap "
+    "enough to tell a GPU-bound frame from a CPU-bound one.",
     "GPU");
 
 DEFINE_int32(
@@ -192,9 +196,12 @@ void PollDebugPropertyOverride(const char* property, const char* cvar_name,
 
 // On-device A/B switches that need no title restart (the per-game config is
 // only applied at launch), e.g. `adb shell setprop
-// debug.xendroid.resolve_clear_in_guest_pass 0|1`; an empty value leaves the
-// cvar as configured. Polled every 30 guest frames from the command processor
-// thread, which is the only reader of these cvars.
+// debug.xendroid.resolve_clear_in_guest_pass 0|1`. An empty value stops the
+// override, but the last forced value stays until the title is relaunched,
+// and a property left set (they last until reboot) overrides every later
+// launch 30 frames in - tools/fh_auto.sh clears them before launching.
+// Polled every 30 guest frames from the command processor thread, which is
+// the only reader of these cvars.
 void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
 #if defined(__ANDROID__)
   static uint32_t frames_since_poll = 0;
@@ -236,7 +243,8 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
     for (const auto& mode : kModes) {
       if (!std::strcmp(readback_value, mode.first)) {
         if (command_processor.GetReadbackResolveMode() != mode.second) {
-          command_processor.SetReadbackResolveMode(mode.second);
+          // A session override - never written to the per-game config.
+          command_processor.SetReadbackResolveMode(mode.second, false);
           XELOGI("debug.xendroid.readback_resolve: readback_resolve = {}",
                  mode.first);
         }
@@ -1663,7 +1671,8 @@ bool VulkanCommandProcessor::SetupContext() {
         VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
     resolve_ts_pool_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
     resolve_ts_pool_info.queryCount = kResolveTimestampPairsPerSubmission *
-                                      kResolveTimestampRingSubmissions * 2;
+                                      kResolveTimestampRingSubmissions *
+                                      kResolveTimestampsPerResolve;
     if (dfn.vkCreateQueryPool(device, &resolve_ts_pool_info, nullptr,
                               &resolve_timestamp_pool_) == VK_SUCCESS) {
       if (!ui::vulkan::util::CreateDedicatedAllocationBuffer(
@@ -2340,17 +2349,59 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
       return a.second.draws > b.second.draws;
     });
     uint32_t total_draws = 0;
+    // Pixel shader texture bindings by sign class and draws by alpha
+    // handling, per pass size.
+    std::map<uint32_t, std::array<uint64_t, 5>> texture_signs_by_pass;
+    std::map<uint32_t, std::array<uint64_t, 4>> alpha_modes_by_pass;
     for (const auto& use : uses) {
       total_draws += use.second.draws;
+      std::array<uint64_t, 5>& pass_signs =
+          texture_signs_by_pass[std::get<2>(use.first)];
+      std::array<uint64_t, 4>& pass_alpha_modes =
+          alpha_modes_by_pass[std::get<2>(use.first)];
+      pass_signs[4] += use.second.draws;
+      for (uint32_t i = 0; i < 4; ++i) {
+        pass_signs[i] += use.second.texture_signs[i];
+        pass_alpha_modes[i] += use.second.alpha_modes[i];
+      }
     }
     XELOGI("PipeUse frame {}: {} shader pairs/pass sizes, {} draws",
            bin_trace_.frame_number, uses.size(), total_draws);
     for (size_t i = 0; i < std::min(uses.size(), size_t(60)); ++i) {
       const auto& key = uses[i].first;
-      XELOGI("PipeUse: VS {:016X} PS {:016X} pass {}x{} draws={} verts={}",
-             std::get<0>(key), std::get<1>(key), std::get<2>(key) >> 16,
-             std::get<2>(key) & 0xFFFF, uses[i].second.draws,
-             uses[i].second.vertices);
+      const uint32_t* signs = uses[i].second.texture_signs;
+      XELOGI(
+          "PipeUse: VS {:016X} PS {:016X} pass {}x{} draws={} verts={} "
+          "tex={}/{}/{}/{}",
+          std::get<0>(key), std::get<1>(key), std::get<2>(key) >> 16,
+          std::get<2>(key) & 0xFFFF, uses[i].second.draws,
+          uses[i].second.vertices, signs[0], signs[1], signs[2], signs[3]);
+    }
+    // Whether gamma textures are common decides between converting gamma in
+    // a uniform branch (spirv_texture_sign_branch) and per-draw variants.
+    for (const auto& pass : texture_signs_by_pass) {
+      const std::array<uint64_t, 5>& signs = pass.second;
+      const uint64_t textures = signs[0] + signs[1] + signs[2] + signs[3];
+      const double percent = textures ? 100.0 / double(textures) : 0.0;
+      XELOGI(
+          "TexSigns frame {}: pass {}x{} draws={} textures={} unsigned={:.1f}% "
+          "signed={:.1f}% biased={:.1f}% gamma={:.1f}%",
+          bin_trace_.frame_number, pass.first >> 16, pass.first & 0xFFFF,
+          signs[4], textures, signs[0] * percent, signs[1] * percent,
+          signs[2] * percent, signs[3] * percent);
+    }
+    // Whether draws with the alpha test but without alpha to coverage are
+    // common decides on an alpha-test-only pixel shader variant.
+    for (const auto& pass : alpha_modes_by_pass) {
+      const std::array<uint64_t, 4>& modes = pass.second;
+      const uint64_t draws = modes[0] + modes[1] + modes[2] + modes[3];
+      const double percent = draws ? 100.0 / double(draws) : 0.0;
+      XELOGI(
+          "AlphaModes frame {}: pass {}x{} ps_draws={} no_alpha={:.1f}% "
+          "test_only={:.1f}% coverage={:.1f}% other={:.1f}%",
+          bin_trace_.frame_number, pass.first >> 16, pass.first & 0xFFFF,
+          draws, modes[0] * percent, modes[1] * percent, modes[2] * percent,
+          modes[3] * percent);
     }
     pipeline_use_.clear();
   }
@@ -2411,10 +2462,34 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
           fence.polls / f, fence.slow_polls / f, fence.poll_ns / f / 1e6,
           fence.waits / f, fence.wait_ns / f / 1e6,
           ui::vulkan::VulkanGPUCompletionTimeline::bounded_collection());
+      // What ended the render passes (PassEndReason) - barrier kinds when
+      // pending barriers did, otherwise the work that needed the pass ended.
+      {
+        auto ends = [&](PassEndReason reason) {
+          return s.pass_ends[size_t(reason)] / f;
+        };
+        XELOGI(
+            "VkPassEnd: per frame: render_targets={:.1f} resolve={:.1f} "
+            "textures={:.1f} shared_memory={:.1f} primitives={:.1f} "
+            "query={:.1f} submission={:.1f} other={:.1f} | barriers: "
+            "buffer={:.1f} image={:.1f} both={:.1f}",
+            ends(PassEndReason::kRenderTargets),
+            ends(PassEndReason::kResolve), ends(PassEndReason::kTextures),
+            ends(PassEndReason::kSharedMemory),
+            ends(PassEndReason::kPrimitiveProcessor),
+            ends(PassEndReason::kQuery), ends(PassEndReason::kSubmission),
+            ends(PassEndReason::kOther), ends(PassEndReason::kBufferBarriers),
+            ends(PassEndReason::kImageBarriers),
+            ends(PassEndReason::kBufferAndImageBarriers));
+      }
       // Per-render-pass-bucket GPU time (key: WxH, bit31 = ownership transfer).
       if (!pass_bucket_stats_.empty()) {
         for (const auto& kv : pass_bucket_stats_) {
           const uint32_t key = kv.first;
+          if (key & kMiscTimestampKeyBit) {
+            // Work outside passes and resolves, logged below.
+            continue;
+          }
           const bool transfer = (key & 0x80000000u) != 0;
           XELOGI(
               "VkPassTime: {}{}x{} : {:.2f}ms/fr ({:.1f}pass {:.0f}draw/fr, "
@@ -2426,6 +2501,44 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                   : 0.0,
               kv.second.max_scissor_w, kv.second.max_scissor_h,
               kv.second.max_viewport_w, kv.second.max_viewport_h);
+        }
+        // GPU work outside passes and resolves (MiscTimestampKind), such as
+        // texture loads by format, size (texels, rounded up to a power of 2)
+        // and source (gpu - written by a resolve, cpu - by the guest CPU).
+        for (const auto& kv : pass_bucket_stats_) {
+          const uint32_t key = kv.first;
+          if (!(key & kMiscTimestampKeyBit)) {
+            continue;
+          }
+          std::string label;
+          switch (MiscTimestampKind((key >> 24) & 0x3F)) {
+            case MiscTimestampKind::kTextureLoad:
+              label = fmt::format(
+                  "texload {} 2^{}tx {}{}{}",
+                  FormatInfo::GetName(xenos::TextureFormat((key >> 16) & 0x3F)),
+                  (key >> 8) & 0x1F,
+                  (key & kMiscTimestampTextureGpuWritten) ? "gpu" : "cpu",
+                  (key & kMiscTimestampTextureBase) ? "" : " mips-only",
+                  (key & (kMiscTimestampTextureBase |
+                          kMiscTimestampTextureMips)) ==
+                          (kMiscTimestampTextureBase |
+                           kMiscTimestampTextureMips)
+                      ? "+mips"
+                      : "");
+              break;
+            case MiscTimestampKind::kSetupCommands:
+              label = "setup (shared memory uploads)";
+              break;
+            default:
+              label = fmt::format("misc {:08X}", key);
+              break;
+          }
+          XELOGI("VkMiscTime: {} : {:.2f}ms/fr ({:.1f}/fr, {:.3f}ms ea)",
+                 label, kv.second.ns / f / 1e6, kv.second.passes / f,
+                 kv.second.passes ? kv.second.ns /
+                                        static_cast<double>(kv.second.passes) /
+                                        1e6
+                                  : 0.0);
         }
         pass_bucket_stats_.clear();
       }
@@ -2443,14 +2556,15 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                                : "none";
         XELOGI(
             "VkResolveTime: copy={}{}{} {}x{} : {:.2f}ms/fr ({:.1f}/fr, "
-            "{:.3f}ms ea, max {:.3f})",
+            "{:.3f}ms ea, max {:.3f}) | copy {:.2f}ms/fr clear {:.2f}ms/fr",
             kind, (key & (1u << 31)) ? "+clear" : "",
             (key & (1u << 28)) ? " direct" : "", ((key >> 11) & 0x7FF) * 8,
             (key & 0x7FF) * 8, kv.second.ns / f / 1e6, kv.second.count / f,
             kv.second.count
                 ? kv.second.ns / static_cast<double>(kv.second.count) / 1e6
                 : 0.0,
-            kv.second.max_ns / 1e6);
+            kv.second.max_ns / 1e6, kv.second.copy_ns / f / 1e6,
+            kv.second.clear_ns / f / 1e6);
       }
       resolve_bucket_stats_.clear();
       s = VkFrameSyncStats();
@@ -3202,6 +3316,19 @@ bool VulkanCommandProcessor::SubmitBarriers(bool force_end_render_pass) {
     }
     return false;
   }
+  if (in_render_pass_ && cvars::log_gpu_frame_time_breakdown) {
+    // The barriers are what ends the pass here (VkPassEnd).
+    const bool buffer_barriers =
+        !pending_barriers_buffer_memory_barriers_.empty();
+    const bool image_barriers = !pending_barriers_image_memory_barriers_.empty();
+    PassEndReasonScope pass_end_reason_scope(
+        *this, buffer_barriers
+                   ? (image_barriers ? PassEndReason::kBufferAndImageBarriers
+                                     : PassEndReason::kBufferBarriers)
+                   : (image_barriers ? PassEndReason::kImageBarriers
+                                     : pass_end_reason_));
+    EndRenderPass();
+  }
   EndRenderPass();
   for (auto it = pending_barriers_.cbegin(); it != pending_barriers_.cend();
        ++it) {
@@ -3289,6 +3416,34 @@ void VulkanCommandProcessor::ClosePassTimestamp() {
   pass_ts_open_pair_ = UINT32_MAX;
 }
 
+bool VulkanCommandProcessor::OpenMiscTimestamp(uint32_t key) {
+  // One open pair at a time in the ring - never while a pass is being timed.
+  if (!pass_timestamp_mapping_ || in_render_pass_ ||
+      pass_ts_open_pair_ != UINT32_MAX) {
+    return false;
+  }
+  OpenPassTimestamp(key | kMiscTimestampKeyBit);
+  return pass_ts_open_pair_ != UINT32_MAX;
+}
+
+void VulkanCommandProcessor::CloseMiscTimestamp() {
+  if (pass_ts_open_pair_ == UINT32_MAX || in_render_pass_ ||
+      !(pass_ts_keys_[pass_ts_open_pair_] & kMiscTimestampKeyBit)) {
+    return;
+  }
+  ClosePassTimestamp();
+}
+
+void VulkanCommandProcessor::MarkResolveCopyEnd() {
+  if (resolve_ts_open_ == UINT32_MAX || resolve_ts_copy_end_written_) {
+    return;
+  }
+  deferred_command_buffer_.CmdVkWriteTimestamp(
+      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, resolve_timestamp_pool_,
+      resolve_ts_open_ * kResolveTimestampsPerResolve + 1);
+  resolve_ts_copy_end_written_ = true;
+}
+
 void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
     VkRenderPass render_pass,
     const VulkanRenderTargetCache::Framebuffer* framebuffer) {
@@ -3316,7 +3471,11 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
   // End current render pass/rendering if active, via EndRenderPass so any open
   // occlusion query segment is closed first. A query begun inside the pass must
   // be ended before the pass is. Also closes the fork's pass timestamp.
-  EndRenderPass();
+  {
+    PassEndReasonScope pass_end_reason_scope(*this,
+                                             PassEndReason::kRenderTargets);
+    EndRenderPass();
+  }
 
   current_render_pass_ = use_dynamic_rendering ? VK_NULL_HANDLE : render_pass;
   current_framebuffer_ = framebuffer;
@@ -3424,7 +3583,11 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
   // End current render pass/rendering if active, via EndRenderPass so any open
   // occlusion query segment is closed first. A query begun inside the pass must
   // be ended before the pass is. Also closes the fork's pass timestamp.
-  EndRenderPass();
+  {
+    PassEndReasonScope pass_end_reason_scope(*this,
+                                             PassEndReason::kRenderTargets);
+    EndRenderPass();
+  }
 
   current_render_pass_ = use_dynamic_rendering ? VK_NULL_HANDLE : render_pass;
   current_framebuffer_ = framebuffer;
@@ -3512,6 +3675,9 @@ void VulkanCommandProcessor::EndRenderPass() {
   assert_true(submission_open_);
   if (!in_render_pass_) {
     return;
+  }
+  if (cvars::log_gpu_frame_time_breakdown) {
+    ++vk_frame_sync_stats_.pass_ends[size_t(pass_end_reason_)];
   }
   // Close native Vulkan occlusion queries before ending the pass. FSI counter
   // segments don't use vkCmdBeginQuery / vkCmdEndQuery and can stay logically
@@ -4059,8 +4225,12 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     }
 
     // Process primitives.
-    if (!primitive_processor_->Process(primitive_processing_result)) {
-      return false;
+    {
+      PassEndReasonScope pass_end_reason_scope(
+          *this, PassEndReason::kPrimitiveProcessor);
+      if (!primitive_processor_->Process(primitive_processing_result)) {
+        return false;
+      }
     }
     if (!primitive_processing_result.host_draw_vertex_count) {
       // Nothing to draw.
@@ -4339,10 +4509,14 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   }
 
   // Set up the render targets - this may perform dispatches and draws.
-  if (!render_target_cache_->Update(is_rasterization_done,
-                                    normalized_depth_control,
-                                    normalized_color_mask, *vertex_shader)) {
-    return false;
+  {
+    PassEndReasonScope pass_end_reason_scope(*this,
+                                             PassEndReason::kRenderTargets);
+    if (!render_target_cache_->Update(is_rasterization_done,
+                                      normalized_depth_control,
+                                      normalized_color_mask, *vertex_shader)) {
+      return false;
+    }
   }
 
   // Create the pipeline (for this, need the render pass from the render target
@@ -4424,7 +4598,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       (pixel_shader != nullptr && stage_bindings_ready[1]
            ? pixel_shader->GetUsedTextureMaskAfterTranslation()
            : 0);
-  texture_cache_->RequestTextures(used_texture_mask);
+  {
+    PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kTextures);
+    texture_cache_->RequestTextures(used_texture_mask);
+  }
 
   // Update the graphics pipeline, and if the new graphics pipeline has a
   // different layout, invalidate incompatible descriptor sets before updating
@@ -4748,6 +4925,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     }
 
     if (vfetch_current_queued) {
+      PassEndReasonScope pass_end_reason_scope(*this,
+                                               PassEndReason::kSharedMemory);
       // Pre-acquire the critical region so we're not repeatedly re-acquiring
       // it in RequestRange - SharedMemory tracks dirty pages and only uploads
       // what actually changed, making redundant calls cheap under a hoisted
@@ -4864,6 +5043,36 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
             uint32_t(current_framebuffer_->host_extent.height))];
     ++use.draws;
     use.vertices += primitive_processing_result.host_draw_vertex_count;
+    uint32_t textures_remaining =
+        pixel_shader && stage_bindings_ready[1]
+            ? pixel_shader->GetUsedTextureMaskAfterTranslation()
+            : 0;
+    uint32_t texture_index;
+    while (xe::bit_scan_forward(textures_remaining, &texture_index)) {
+      textures_remaining &= ~(UINT32_C(1) << texture_index);
+      uint32_t signs =
+          texture_cache_->GetActiveTextureSwizzledSigns(texture_index);
+      uint32_t sign_class = 0;
+      for (uint32_t i = 0; i < 4; ++i) {
+        sign_class = std::max(sign_class, (signs >> (i * 2)) & 3);
+      }
+      ++use.texture_signs[sign_class];
+    }
+    if (pixel_shader) {
+      auto color_control = regs.Get<reg::RB_COLORCONTROL>();
+      uint32_t alpha_mode = 3;
+      if (pixel_shader_modification.pixel.depth_stencil_mode ==
+          SpirvShaderTranslator::Modification::DepthStencilMode::
+              kNoAlphaTests) {
+        alpha_mode = 0;
+      } else if (color_control.alpha_to_mask_enable) {
+        alpha_mode = 2;
+      } else if (color_control.alpha_test_enable &&
+                 color_control.alpha_func != xenos::CompareFunction::kAlways) {
+        alpha_mode = 1;
+      }
+      ++use.alpha_modes[alpha_mode];
+    }
   }
   submission_in_progress_.last_render_pass_key =
       render_target_cache_->last_update_render_pass_key().key;
@@ -5037,6 +5246,7 @@ bool VulkanCommandProcessor::IssueCopy() {
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
+  PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kResolve);
 
   if (!BeginSubmission(true)) {
     return false;
@@ -5063,7 +5273,9 @@ bool VulkanCommandProcessor::IssueCopy() {
           resolve_ts_count_;
       deferred_command_buffer_.CmdVkWriteTimestamp(
           VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, resolve_timestamp_pool_,
-          resolve_ts_pair * 2);
+          resolve_ts_pair * kResolveTimestampsPerResolve);
+      resolve_ts_open_ = resolve_ts_pair;
+      resolve_ts_copy_end_written_ = false;
     } else {
       ++vk_frame_sync_stats_.resolve_ts_dropped;
     }
@@ -5076,11 +5288,14 @@ bool VulkanCommandProcessor::IssueCopy() {
       *memory_, *shared_memory_, *texture_cache_, written_address,
       written_length, &copy_dest_info, &is_scaled);
   if (resolve_ts_pair != UINT32_MAX) {
-    // Always close an opened pair - a WAIT_BIT results copy over a written
-    // begin with no end would hang the GPU.
+    // Always write all three of an opened resolve - a WAIT_BIT results copy
+    // over an unwritten query would hang the GPU. Without a copy end marked
+    // by the render target cache, the whole resolve counts as the copy.
+    MarkResolveCopyEnd();
+    resolve_ts_open_ = UINT32_MAX;
     deferred_command_buffer_.CmdVkWriteTimestamp(
         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, resolve_timestamp_pool_,
-        resolve_ts_pair * 2 + 1);
+        resolve_ts_pair * kResolveTimestampsPerResolve + 2);
     resolve_ts_keys_[resolve_ts_pair] = render_target_cache_->last_resolve_key();
     ++resolve_ts_count_;
   }
@@ -5171,8 +5386,24 @@ bool VulkanCommandProcessor::IssueCopy() {
         // Cached completed-submission value - no blocking poll (vkGetFenceStatus
         // stalls on Turnip). Staleness is bounded by frames-in-flight.
         do_read = GetCompletedSubmission() >= last_write;
+        if (!do_read &&
+            ui::vulkan::VulkanGPUCompletionTimeline::bounded_collection() &&
+            last_write < GetCurrentSubmission() &&
+            frame_current_ - uma_readback_last_read_frame_[resolve_key] >=
+                kMaxFramesInFlight) {
+          // With bounded fence collection (debug.xendroid.fence_collect), the
+          // completed submission only reaches the frame throttle target, which
+          // a destination resolved every frame is always newer than - without
+          // this, guest RAM would keep its first readback for good. Wait for
+          // the newest write once it has gone that many frames unread.
+          CheckSubmissionCompletionAndDeviceLoss(last_write);
+          do_read = GetCompletedSubmission() >= last_write;
+        }
       }
       if (do_read) {
+        if (ui::vulkan::VulkanGPUCompletionTimeline::bounded_collection()) {
+          uma_readback_last_read_frame_[resolve_key] = frame_current_;
+        }
         InsertDebugMarker("Resolve Readback (uma): 0x%08X, %u bytes",
                           written_address, written_length);
         shared_memory_->ReadHostMapped(
@@ -5776,6 +6007,7 @@ CommandProcessor::QueryOpenResult VulkanCommandProcessor::OpenZPDQuery(
       if (in_render_pass_) {
         saved_render_pass = current_render_pass_;
         saved_framebuffer = current_framebuffer_;
+        PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kQuery);
         EndRenderPass();
       }
       if (!EndSubmission(false)) {
@@ -5835,7 +6067,11 @@ CommandProcessor::QueryOpenResult VulkanCommandProcessor::OpenZPDQuery(
         VkRenderPass saved_render_pass = current_render_pass_;
         const VulkanRenderTargetCache::Framebuffer* saved_framebuffer =
             current_framebuffer_;
-        EndRenderPass();
+        {
+          PassEndReasonScope pass_end_reason_scope(*this,
+                                                   PassEndReason::kQuery);
+          EndRenderPass();
+        }
         zpd_host_query_pool_->ClearFSICounter(deferred_command_buffer_,
                                               zpd_active_query_index_);
 
@@ -6030,7 +6266,10 @@ bool VulkanCommandProcessor::AwaitQueryResolve(ReportHandle report_handle,
       }
       pipeline_cache_->AwaitPipelineCompletion();
     }
-    EndRenderPass();
+    {
+      PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kQuery);
+      EndRenderPass();
+    }
     if (!EndSubmission(false)) {
       return false;
     }
@@ -6178,11 +6417,12 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
           GetVulkanDevice()->functions().vkInvalidateMappedMemoryRanges(
               GetVulkanDevice()->device(), 1, &resolve_invalidate_range);
           for (uint32_t i = 0; i < record.resolve_pair_count; ++i) {
-            const uint64_t r0 =
-                resolve_timestamp_mapping_[(record.resolve_slot_base + i) * 2];
-            const uint64_t r1 =
-                resolve_timestamp_mapping_[(record.resolve_slot_base + i) * 2 +
-                                           1];
+            const uint64_t* r =
+                resolve_timestamp_mapping_ + (record.resolve_slot_base + i) *
+                                                 kResolveTimestampsPerResolve;
+            const uint64_t r0 = r[0];
+            const uint64_t r_copy_end = r[1];
+            const uint64_t r1 = r[2];
             if (r1 > r0) {
               const uint64_t resolve_ns = uint64_t((r1 - r0) * period_ns);
               vk_frame_sync_stats_.resolve_gpu_ns += resolve_ns;
@@ -6195,6 +6435,10 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
               bucket.ns += resolve_ns;
               bucket.max_ns = std::max(bucket.max_ns, resolve_ns);
               ++bucket.count;
+              if (r_copy_end >= r0 && r1 >= r_copy_end) {
+                bucket.copy_ns += uint64_t((r_copy_end - r0) * period_ns);
+                bucket.clear_ns += uint64_t((r1 - r_copy_end) * period_ns);
+              }
             }
           }
         }
@@ -6551,6 +6795,7 @@ bool VulkanCommandProcessor::CanEndSubmissionImmediately() const {
 }
 
 bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
+  PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kSubmission);
   ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
   const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
   const VkDevice device = vulkan_device->device();
@@ -6710,8 +6955,9 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
         dfn.vkCmdResetQueryPool(
             command_buffer.buffer, resolve_timestamp_pool_,
             uint32_t(GetCurrentSubmission() % kResolveTimestampRingSubmissions) *
-                kResolveTimestampPairsPerSubmission * 2,
-            kResolveTimestampPairsPerSubmission * 2);
+                kResolveTimestampPairsPerSubmission *
+                kResolveTimestampsPerResolve,
+            kResolveTimestampPairsPerSubmission * kResolveTimestampsPerResolve);
       }
       if (pass_timestamp_mapping_) {
         dfn.vkCmdResetQueryPool(
@@ -6730,7 +6976,40 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
     // (throttled) and flushes the shader/pipeline storage files.
     pipeline_cache_->EndSubmission();
     if (!deferred_setup_command_buffer_.empty()) {
+      // VkMiscTime for the setup command buffer (hoisted shared memory
+      // uploads), in the pass ring reset above. Skipped if a region is still
+      // open, as it would share its slot.
+      uint32_t setup_ts_pair = UINT32_MAX;
+      if (pass_timestamp_mapping_ && fs_timestamp_slot != UINT32_MAX &&
+          pass_ts_open_pair_ == UINT32_MAX) {
+        if (pass_ts_submission_ != GetCurrentSubmission()) {
+          pass_ts_submission_ = GetCurrentSubmission();
+          pass_ts_count_ = 0;
+        }
+        if (pass_ts_count_ < kPassTimestampPairsPerSubmission) {
+          setup_ts_pair =
+              uint32_t(pass_ts_submission_ % kPassTimestampRingSubmissions) *
+                  kPassTimestampPairsPerSubmission +
+              pass_ts_count_;
+          pass_ts_keys_[setup_ts_pair] =
+              MakeMiscTimestampKey(MiscTimestampKind::kSetupCommands, 0);
+          pass_ts_draws_[setup_ts_pair] = 0;
+          pass_ts_scissor_[setup_ts_pair] = 0;
+          pass_ts_viewport_[setup_ts_pair] = 0;
+          dfn.vkCmdWriteTimestamp(command_buffer.buffer,
+                                  VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                  pass_timestamp_pool_, setup_ts_pair * 2);
+        } else {
+          ++pass_ts_dropped_;
+        }
+      }
       deferred_setup_command_buffer_.Execute(command_buffer.buffer);
+      if (setup_ts_pair != UINT32_MAX) {
+        dfn.vkCmdWriteTimestamp(command_buffer.buffer,
+                                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                pass_timestamp_pool_, setup_ts_pair * 2 + 1);
+        ++pass_ts_count_;
+      }
       VkMemoryBarrier setup_barrier;
       setup_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
       setup_barrier.pNext = nullptr;
@@ -6768,10 +7047,12 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
             uint32_t(GetCurrentSubmission() % kResolveTimestampRingSubmissions) *
             kResolveTimestampPairsPerSubmission;
         dfn.vkCmdCopyQueryPoolResults(
-            command_buffer.buffer, resolve_timestamp_pool_, resolve_ts_base * 2,
-            resolve_ts_count_ * 2, resolve_timestamp_buffer_,
-            resolve_ts_base * 2 * sizeof(uint64_t), sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+            command_buffer.buffer, resolve_timestamp_pool_,
+            resolve_ts_base * kResolveTimestampsPerResolve,
+            resolve_ts_count_ * kResolveTimestampsPerResolve,
+            resolve_timestamp_buffer_,
+            resolve_ts_base * kResolveTimestampsPerResolve * sizeof(uint64_t),
+            sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
       }
       if (pass_timestamp_mapping_ &&
           pass_ts_submission_ == GetCurrentSubmission() && pass_ts_count_) {

@@ -9,6 +9,9 @@ Diagnóstico iniciado em 2026-09-27.
 - [AB3: formato HDR, esperas e gargalos](ab3-results.md), com dados em
   [ab3-report.json](ab3-report.json).
 - [Propostas de otimização após o AB3](ab3-optimization-ideas.md).
+- [AB4: custo da GPU por passe e experimentos de shader](ab4-results.md).
+- [Plano de desenvolvimento e otimização](plano-proximos-passos.md).
+- [Sessão na nuvem de 2026-09-28: bugs, opções novas e fila de A/B](cloud-2026-09-28-results.md).
 
 O Git mantém os documentos Markdown e os relatórios `*-report.json` na raiz
 desta pasta. Capturas por rodada, screenshots, logs, APKs, caches de shaders e

@@ -19,6 +19,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/string_buffer.h"
+#include "xenia/base/threading.h"
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/spirv_compatibility.h"
 #include "xenia/gpu/spirv_shader.h"
@@ -73,6 +74,57 @@ DEFINE_int32(
     "rounding after exp/log/sqrt/rsq/rcp; 4 - texture fetches ignore the "
     "signed/biased/gamma component signs (WRONG COLORS, measurement only); 8 - "
     "allow floating-point contraction (fused multiply-add).",
+    "GPU");
+
+DEFINE_int32(
+    spirv_ps_relaxed_math, 0,
+    "Skip parts of the Xenos math emulation in pixel shaders that cost GPU "
+    "time. Bit mask, read when shaders are translated (startup): 1 - no "
+    "Shader Model 3 '0 * anything = 0' in multiplications (titles relying on "
+    "0 * infinity or 0 * NaN giving 0 may show black or white pixels, and "
+    "zero products keep their IEEE sign); 2 - no rounding to the 21 mantissa "
+    "bits of the Xenos after exp, log, sqrt, rsq and rcp; 8 - allow fused "
+    "multiply-add (results may differ in the last bits between shaders, so "
+    "multipass effects repeating a calculation may not match exactly; no "
+    "change in the code Turnip generates). 11 (all) measured -6% GPU time in "
+    "the Forza Horizon main pass on Adreno 825 with no visible difference. "
+    "The same bits as spirv_ps_math_experiment, without its texture sign bit "
+    "(4).",
+    "GPU");
+
+DEFINE_int32(
+    spirv_vs_math_experiment, 0,
+    "Diagnostics - measures how much GPU time the emulation of Xenos math "
+    "costs in vertex shaders. Bit mask like spirv_ps_relaxed_math (1, 2, 8), "
+    "vertex shaders only, read when shaders are translated (startup). Only "
+    "for measurement: vertex positions computed by different shaders may "
+    "stop matching exactly between passes (depth fighting).",
+    "GPU");
+
+DEFINE_bool(
+    spirv_fast_precision_rounding, false,
+    "Round results of exp, log, sqrt, rsq and rcp to the 21 mantissa bits of "
+    "the Xenos with an add of half the kept unit in the last place and a "
+    "mask, instead of computing both roundings and selecting (5 instead of 12 "
+    "Adreno instructions each, -6% pixel shader instructions on the Forza "
+    "Horizon shaders). Same results for every input, including infinity, NaN "
+    "and the finite values that must not round up to infinity; read when "
+    "shaders are translated (startup).",
+    "GPU");
+
+DEFINE_bool(
+    spirv_texture_sign_branch, false,
+    "Convert gamma texture components to linear only inside a branch on "
+    "whether any component of the fetch is gamma (a uniform condition), "
+    "marked DontFlatten, with selects for the cheap signed and biased "
+    "components, instead of a switch per component. Mesa lowers such a "
+    "switch to ifs that it flattens, so the piecewise linear gamma conversion "
+    "runs for every component of every texture fetch and is discarded unless "
+    "the texture is gamma (texture sign handling took ~12% of the Forza "
+    "Horizon main pass on Adreno 825). The branch costs a few instructions "
+    "per fetch, so this pays off unless most fetched textures are gamma (see "
+    "the TexSigns lines of pm4_bin_trace). Same results; read when shaders "
+    "are translated (startup).",
     "GPU");
 
 DEFINE_bool(
@@ -347,9 +399,17 @@ void SpirvShaderTranslator::StartTranslation() {
   // TODO(Triang3l): Logger.
   builder_ = std::make_unique<SpirvBuilder>(
       features_.spirv_version, (kSpirvMagicToolId << 16) | 1, nullptr);
+  // Texture signs are only skipped by the pixel shader experiment.
+  math_relaxations_ =
+      is_pixel_shader()
+          ? (uint32_t(cvars::spirv_ps_relaxed_math) &
+             ~uint32_t(kMathRelaxationTextureSigns)) |
+                uint32_t(cvars::spirv_ps_math_experiment)
+          : uint32_t(cvars::spirv_vs_math_experiment) &
+                ~uint32_t(kMathRelaxationTextureSigns);
   builder_->SetAllowContraction(
       features_.allow_float_contraction ||
-      (is_pixel_shader() && (cvars::spirv_ps_math_experiment & 8)));
+      (math_relaxations_ & kMathRelaxationContraction));
 
   builder_->addCapability(IsSpirvTessEvalShader() ? spv::CapabilityTessellation
                                                   : spv::CapabilityShader);
@@ -1200,8 +1260,18 @@ void SpirvShaderTranslator::PostTranslation() {
     return;
   }
   SpirvShader* spirv_shader = dynamic_cast<SpirvShader*>(&translation.shader());
-  if (spirv_shader && !spirv_shader->bindings_setup_entered_.test_and_set(
-                          std::memory_order_relaxed)) {
+  if (!spirv_shader) {
+    return;
+  }
+  if (spirv_shader->bindings_setup_entered_.test_and_set(
+          std::memory_order_relaxed)) {
+    // The first valid modification of the shader gathers the bindings, maybe
+    // on another creation thread right now - don't publish this translation
+    // (is_translated) before they're complete.
+    while (!spirv_shader->bindings_ready()) {
+      xe::threading::MaybeYield();
+    }
+  } else {
     spirv_shader->texture_bindings_.clear();
     spirv_shader->texture_bindings_.reserve(texture_bindings_.size());
     for (const TextureBinding& translator_binding : texture_bindings_) {

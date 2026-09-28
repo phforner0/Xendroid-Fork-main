@@ -61,6 +61,19 @@ gpu_cooling() {
   dumpsys thermalservice | grep -A 60 'Current cooling devices from HAL' |
     sed -n 's/.*mValue=\([0-9]*\), mType=[0-9]*, mName=gpu}.*/\1/p' | head -1
 }
+# KGSL power state ("?" where sysfs is not readable): current and maximum
+# clock (Hz), the power level limits (0 = fastest) and force_clk_on, which
+# reads 1 while the KGSL power control is forced on (the adrenotools turbo of
+# adrenotools_force_max_clocks). Also logged with the app stopped before a
+# launch, to see whether a forced state outlives the app.
+gpu_clock() {
+  s=""
+  for f in gpuclk max_gpuclk thermal_pwrlevel max_pwrlevel min_pwrlevel \
+           force_clk_on devfreq/governor; do
+    s="$s ${f#devfreq/}=$(cat /sys/class/kgsl/kgsl-3d0/$f 2>/dev/null || echo ?)"
+  done
+  echo "${s# }"
+}
 
 : > $OUT
 say "start launch=$LAUNCH prop=$PROP values='$VALUES' arm=${ARM}s"
@@ -78,8 +91,15 @@ if [ -n "$COOL" ] && [ "$LAUNCH" = 1 ]; then
 fi
 
 if [ "$LAUNCH" = 1 ]; then
+  # debug.xendroid.* overrides last until reboot and win over the per-game
+  # config 30 frames into the game - clear any left by earlier runs.
+  for p in $(getprop | sed -n 's/^\[\(debug\.xendroid\.[^]]*\)\]: \[..*\]$/\1/p'); do
+    say "clearing stale $p=$(getprop $p)"
+    setprop $p ""
+  done
   am force-stop $PKG
   sleep 1
+  say "GPU power with the app stopped: $(gpu_clock)"
   rm -f $LOG
   # Env PASSES=true: per-render-pass GPU timestamps (VkPassTime lines; they
   # serialize the passes, so absolute times grow).
@@ -96,7 +116,7 @@ if [ "$LAUNCH" = 1 ]; then
   # ms per frame cool to warm on the POCO F7). A launch once ran the GPU ~2.5x
   # slower from here on (8.8 ms) with no thermal throttling reported.
   tg=$(grep 'VkFrameSync' $LOG | tail -1 | sed -n 's/.*gpu exec avg=\([0-9.]*\)ms.*/\1/p')
-  say "title screen GPU ${tg:-?} ms/frame"
+  say "title screen GPU ${tg:-?} ms/frame, $(gpu_clock)"
   if [ -n "$tg" ] && awk "BEGIN { exit !($tg > 6.5) }"; then
     say "WARNING: GPU slow at the title screen - power state suspect, results not comparable"
   fi
@@ -148,7 +168,7 @@ if [ "$PROP" = sustain ]; then
     sleep $ARM
     line=$(grep 'GpuFrame' $LOG | tail -1)
     iv=$(echo "$line" | sed -n 's/.*interval avg=\([0-9.]*\)ms.*/\1/p')
-    say "sample interval_ms=$iv gpu_temp=$(gpu_temp) gpu_cooling=$(gpu_cooling)"
+    say "sample interval_ms=$iv gpu_temp=$(gpu_temp) gpu_cooling=$(gpu_cooling) $(gpu_clock)"
   done
   say "FH_AUTO_DONE"
   exit 0
@@ -165,5 +185,9 @@ for v in $VALUES; do
   # Per-thread CPU over the arm's last seconds (guest busy-wait, GPU Commands).
   [ -n "$EMU" ] && top -H -b -n 1 -d 3 -p $EMU -o TID,%CPU,CMD -s 2 2>/dev/null |
     head -16 > /data/local/tmp/fh_arm_${i}_top.txt
+  say "arm $i end: $(gpu_clock)"
 done
+# Don't leave the override set for later launches (the running game keeps the
+# last arm's value).
+setprop $PROP ""
 say "FH_AUTO_DONE"

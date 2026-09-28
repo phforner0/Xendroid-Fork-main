@@ -451,7 +451,8 @@ void CommandProcessor::InvalidateGpuMemory() {}
 
 void CommandProcessor::ClearReadbackBuffers() {}
 
-void CommandProcessor::SetReadbackResolveMode(ReadbackResolveMode mode) {
+void CommandProcessor::SetReadbackResolveMode(ReadbackResolveMode mode,
+                                              bool persist) {
   if (cached_readback_resolve_mode_ == mode) {
     return;
   }
@@ -476,7 +477,7 @@ void CommandProcessor::SetReadbackResolveMode(ReadbackResolveMode mode) {
 
   // Save to per-game config if a title is loaded
   uint32_t title_id = kernel_state_ ? kernel_state_->title_id() : 0;
-  if (title_id != 0) {
+  if (persist && title_id != 0) {
     toml::table config_table = config::LoadGameConfig(title_id);
 
     if (!config_table.contains("GPU")) {

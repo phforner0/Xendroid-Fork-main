@@ -20,7 +20,10 @@
 #
 # -Config adds per-game config lines on relaunch, '\n' separated (printf
 #   escapes; \042 is a double quote). With -RestartArms it is appended after
-#   every arm's lines.
+#   every arm's lines. A relaunch REPLACES config/4D5309C9.config.toml, so pass
+#   the settings the arms share (e.g. render_target_7e3_as_r11g11b10 and the
+#   spin park lines) here, and clears debug.xendroid.* properties left set by
+#   earlier runs (they would override the config after 30 frames).
 # -Passes also logs per-render-pass, per-resolve and other GPU work times
 #   (VkPassTime, VkResolveTime, VkMiscTime); the timestamps serialize passes,
 #   so compare relatively.
@@ -81,7 +84,7 @@ if ($RestartArms.Count) {
     "=== arm $i ($label) ==="
     Invoke-Driver 1 debug.xendroid.arm "$i" $cfg |
       Tee-Object -FilePath (Join-Path $out "driver-status-arm$i.txt") |
-      Where-Object { $_ -match 'title screen GPU|WARNING|scene stable|FAIL' }
+      Where-Object { $_ -match 'GPU power|title screen GPU|WARNING|scene stable|FAIL' }
     $armLog = Join-Path $out "arm$i-$label-xe.log"
     & $Adb -s $Serial pull $xeLog $armLog | Out-Null
     Show-Top (Join-Path $out "top-arm$i.txt")

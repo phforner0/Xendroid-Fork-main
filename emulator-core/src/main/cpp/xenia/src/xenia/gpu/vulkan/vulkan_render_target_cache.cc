@@ -1643,6 +1643,10 @@ void VulkanRenderTargetCache::ClearCache() {
   }
   render_passes_.clear();
 
+  // Queued in-pass transfers point to render targets that the common
+  // ClearCache may delete (a source that just lost its EDRAM range).
+  ClearPendingDrawPassTransfers();
+
   RenderTargetCache::ClearCache();
 }
 
@@ -2798,6 +2802,7 @@ bool VulkanRenderTargetCache::Resolve(
   if (written_scaled_out) {
     *written_scaled_out = false;
   }
+  last_resolve_key_ = 0;
 
   bool draw_resolution_scaled = IsDrawResolutionScaled();
 
@@ -2810,10 +2815,19 @@ bool VulkanRenderTargetCache::Resolve(
     return false;
   }
 
-  last_resolve_key_ = 0;
   // Nothing to copy/clear.
   if (!resolve_info.coordinate_info.width_div_8 || !resolve_info.height_div_8) {
     return true;
+  }
+  // Transfers that Update() queued for a draw that failed before its render
+  // pass have already given EDRAM ownership to their destinations - perform
+  // them before this resolve reads or clears those render targets (otherwise
+  // it copies stale data, and the next Update() copies the old data over a
+  // clear). A successful draw always empties the queue.
+  const bool flushed_pending_transfers =
+      GetPath() == Path::kHostRenderTargets && HasPendingDrawPassTransfers();
+  if (flushed_pending_transfers) {
+    FlushPendingDrawPassTransfers();
   }
   // For the per-resolve GPU timestamps (VkResolveTime).
   last_resolve_key_ =
@@ -2885,8 +2899,10 @@ bool VulkanRenderTargetCache::Resolve(
           copy_native ? 1 : draw_resolution_scale_y(), copy_shader_constants,
           copy_group_count_x, copy_group_count_y);
       assert_true(copy_group_count_x && copy_group_count_y);
-      // Try the on-tile resolve before dumping the owning render targets.
-      if (cvars::vulkan_in_pass_resolve &&
+      // Try the on-tile resolve before dumping the owning render targets - not
+      // after a transfer flush, which left a transfer pass open instead of the
+      // guest pass.
+      if (cvars::vulkan_in_pass_resolve && !flushed_pending_transfers &&
           copy_shader != draw_util::ResolveCopyShaderIndex::kUnknown) {
         copied = TryInPassResolveCopy(
             resolve_info, copy_shader_constants, copy_shader, dump_base,
@@ -3199,6 +3215,9 @@ bool VulkanRenderTargetCache::Resolve(
   if (direct_host_used) {
     last_resolve_key_ |= 1u << 28;
   }
+
+  // Splits the resolve's GPU time into the copy and the clear (VkResolveTime).
+  command_processor_.MarkResolveCopyEnd();
 
   // Clearing.
   bool cleared = false;
@@ -4011,10 +4030,11 @@ void VulkanRenderTargetCache::GetLastUpdateRenderingAttachments(
   for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
     VkRenderingAttachmentInfo& color_attachment = color_attachments[i];
     std::memset(&color_attachment, 0, sizeof(VkRenderingAttachmentInfo));
+    // Unused slots below the last used one are passed too (with a null view).
+    color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     if (!(key.depth_and_color_used & (1 << (1 + i)))) {
       continue;
     }
-    color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     color_attachment_count = i + 1;
     if (!rts[1 + i]) {
       continue;

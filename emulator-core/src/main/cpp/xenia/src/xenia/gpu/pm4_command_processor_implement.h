@@ -921,10 +921,22 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
         is_memory ? "mem" : "reg", poll_reg_addr, ref, mask);
   }
   assert_true(is_memory || poll_reg_addr < RegisterFile::kRegisterCount);
-  const volatile uint32_t& value_ref =
-      is_memory ? *reinterpret_cast<uint32_t*>(memory_->TranslatePhysical(
-                      poll_reg_addr & ~uint32_t(0x3)))
-                : register_file_->values[poll_reg_addr];
+  // The index comes from the guest and the assert is compiled out: like
+  // WriteRegister, treat a nonexistent register as such (reading 0) instead
+  // of reading past the register file.
+  static const uint32_t kNonexistentRegisterValue = 0;
+  const uint32_t* value_ptr;
+  if (is_memory) {
+    value_ptr = reinterpret_cast<uint32_t*>(
+        memory_->TranslatePhysical(poll_reg_addr & ~uint32_t(0x3)));
+  } else if (poll_reg_addr < RegisterFile::kRegisterCount) {
+    value_ptr = &register_file_->values[poll_reg_addr];
+  } else {
+    XELOGW("PM4_WAIT_REG_MEM: register index out of bounds: {}",
+           poll_reg_addr);
+    value_ptr = &kNonexistentRegisterValue;
+  }
+  const volatile uint32_t& value_ref = *value_ptr;
 
   bool matched = false;
   // Sleep before the next re-check with wait_reg_mem_backoff.
@@ -936,9 +948,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
   uint32_t first_value = 0;
   uint64_t log_begin_ns = 0;
   bool first_check = true;
+  uint32_t value;
 
   do {
-    uint32_t value = value_ref;
+    value = value_ref;
     if (is_memory) {
       trace_writer_.WriteMemoryRead(CpuToGpu(poll_reg_addr & ~uint32_t(0x3)),
                                     sizeof(uint32_t));
@@ -1016,7 +1029,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
         "WaitRegMem: {} {:08X} func={} ref={:08X} mask={:08X} interval={} "
         "first={:08X} final={:08X} waited={}us | rptr={} wptr={}",
         is_memory ? "mem" : "reg", poll_reg_addr, wait_info & 0x7, ref, mask,
-        wait, first_value, uint32_t(value_ref),
+        wait, first_value, value,
         (COMMAND_PROCESSOR::FrameStatsNow() - log_begin_ns) / 1000,
         read_ptr_index_, write_ptr_index_.load(std::memory_order_relaxed));
   }
@@ -1072,7 +1085,12 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_REG_TO_MEM(
   uint32_t reg_val;
 
   assert_true(reg_addr < RegisterFile::kRegisterCount);
-  reg_val = register_file_->values[reg_addr];
+  if (reg_addr < RegisterFile::kRegisterCount) {
+    reg_val = register_file_->values[reg_addr];
+  } else {
+    XELOGW("PM4_REG_TO_MEM: register index out of bounds: {}", reg_addr);
+    reg_val = 0;
+  }
 
   auto endianness = static_cast<xenos::Endian>(mem_addr & 0x3);
   mem_addr &= ~0x3;
@@ -1137,7 +1155,13 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_COND_WRITE(
   } else {
     // Register.
     assert_true(poll_reg_addr < RegisterFile::kRegisterCount);
-    value = register_file_->values[poll_reg_addr];
+    if (poll_reg_addr < RegisterFile::kRegisterCount) {
+      value = register_file_->values[poll_reg_addr];
+    } else {
+      XELOGW("PM4_COND_WRITE: register index out of bounds: {}",
+             poll_reg_addr);
+      value = 0;
+    }
   }
   bool matched = MatchValueAndRef(value & mask, ref, wait_info);
 

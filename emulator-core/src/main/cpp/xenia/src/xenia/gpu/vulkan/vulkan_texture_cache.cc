@@ -601,10 +601,12 @@ void VulkanTextureCache::TransitionTextureForGuestShader(
     VkImageLayout old_layout;
     GetTextureUsageMasks(old_usage, src_stage_mask, src_access_mask,
                          old_layout);
+    // Not skipped when equal - after a store the usage often stays the same.
     command_processor_.PushImageMemoryBarrier(
         texture.image(), ui::vulkan::util::InitializeSubresourceRange(),
         src_stage_mask, dst_stage_mask, src_access_mask, dst_access_mask,
-        old_layout, new_layout);
+        old_layout, new_layout, VK_QUEUE_FAMILY_IGNORED,
+        VK_QUEUE_FAMILY_IGNORED, false);
   }
 }
 
@@ -1453,6 +1455,10 @@ VkImageView VulkanTextureCache::GetResolveDestStorageView(
 void VulkanTextureCache::MarkResolveDestWritten(uint32_t base,
                                                 uint64_t frame) {
   if (VulkanTexture* texture = FindResolveDestTexture(base)) {
+    // The store keeps the image in use by this submission - without this, a
+    // texture only written in-pass while sampled through other keys ages out
+    // of the LRU and is destroyed with stores into it still in flight.
+    texture->MarkAsUsed();
     texture->SetResolveDestWrittenFrame(frame);
     // The fragment's imageStore is only ordered before later sampled reads by
     // the barrier the next bind emits for this flag.
@@ -2032,6 +2038,33 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   }
   vulkan_shared_memory.Use(VulkanSharedMemory::Usage::kRead);
 
+  // GPU time of the load (VkMiscTime) by format, size and whether the source
+  // was written by the GPU (a resolve) rather than the CPU. The load is
+  // recorded outside render passes anyway; end the pass before the region.
+  bool load_timed = false;
+  if (command_processor_.misc_timestamps_enabled()) {
+    uint64_t texels =
+        uint64_t(width) * height * std::max(depth_or_array_size, UINT32_C(1));
+    uint32_t texels_log2 = 0;
+    while (texels_log2 < 31 && (uint64_t(1) << texels_log2) < texels) {
+      ++texels_log2;
+    }
+    uint32_t flags = (load_base ? VulkanCommandProcessor::kMiscTimestampTextureBase
+                                : 0) |
+                     (load_mips ? VulkanCommandProcessor::kMiscTimestampTextureMips
+                                : 0);
+    if (load_base && vulkan_shared_memory.IsRangeGpuWritten(
+                         texture_key.base_page << 12,
+                         vulkan_texture.GetGuestBaseSize())) {
+      flags |= VulkanCommandProcessor::kMiscTimestampTextureGpuWritten;
+    }
+    command_processor_.SubmitBarriers(true);
+    load_timed = command_processor_.OpenMiscTimestamp(
+        VulkanCommandProcessor::MakeMiscTimestampKey(
+            VulkanCommandProcessor::MiscTimestampKind::kTextureLoad,
+            (uint32_t(guest_format) << 16) | (texels_log2 << 8) | flags));
+  }
+
   // Submit the copy buffer population commands.
 
   DeferredCommandBuffer& command_buffer =
@@ -2358,6 +2391,9 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
     }
   }
 
+  if (load_timed) {
+    command_processor_.CloseMiscTimestamp();
+  }
   command_processor_.PopDebugMarker();
   return true;
 }

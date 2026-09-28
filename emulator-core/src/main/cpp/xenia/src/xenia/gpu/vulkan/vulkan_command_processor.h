@@ -193,6 +193,34 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   bool submission_open() const { return submission_open_; }
   bool in_render_pass() const { return in_render_pass_; }
+  // GPU timing of work outside render passes and resolves
+  // (log_gpu_frame_time_breakdown_passes), in the per-pass timestamp ring and
+  // logged as VkMiscTime lines. A region must not begin a render pass;
+  // OpenMiscTimestamp fails inside one.
+  enum class MiscTimestampKind : uint32_t {
+    // Texture load: guest format in bits 16:21, ceil(log2(texels)) in bits
+    // 8:12, and the kMiscTimestampTexture* flags.
+    kTextureLoad = 1,
+    // The setup command buffer (hoisted shared memory uploads).
+    kSetupCommands = 2,
+  };
+  static constexpr uint32_t kMiscTimestampKeyBit = UINT32_C(1) << 30;
+  static constexpr uint32_t kMiscTimestampTextureGpuWritten = UINT32_C(1) << 7;
+  static constexpr uint32_t kMiscTimestampTextureBase = UINT32_C(1) << 6;
+  static constexpr uint32_t kMiscTimestampTextureMips = UINT32_C(1) << 5;
+  static constexpr uint32_t MakeMiscTimestampKey(MiscTimestampKind kind,
+                                                 uint32_t payload) {
+    return kMiscTimestampKeyBit | (uint32_t(kind) << 24) |
+           (payload & 0xFFFFFF);
+  }
+  bool misc_timestamps_enabled() const {
+    return pass_timestamp_mapping_ != nullptr;
+  }
+  bool OpenMiscTimestamp(uint32_t key);
+  void CloseMiscTimestamp();
+  // Called by the render target cache between the copy and the clear of a
+  // resolve, splitting its VkResolveTime into the two.
+  void MarkResolveCopyEnd();
   // debug.xendroid.pm4_bin_trace sequence note from the render target cache.
   void BinTraceNoteIfActive(const char* tag, uint32_t a, uint32_t b) {
     if (bin_trace_.frames_left) {
@@ -204,6 +232,14 @@ class VulkanCommandProcessor final : public CommandProcessor {
   struct PipelineUse {
     uint32_t draws = 0;
     uint64_t vertices = 0;
+    // Pixel shader texture bindings summed over the draws, by the component
+    // signs of each texture: all unsigned, any signed, any biased, any gamma
+    // (a texture counts in the last of these that applies).
+    uint32_t texture_signs[4] = {};
+    // Draws with a pixel shader by alpha handling: specialized without alpha
+    // operations (kNoAlphaTests), alpha test only, alpha to coverage, and
+    // generic for other reasons (no color 0 write, depth modifiers).
+    uint32_t alpha_modes[4] = {};
   };
   std::map<std::tuple<uint64_t, uint64_t, uint32_t>, PipelineUse>
       pipeline_use_;
@@ -275,6 +311,46 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // including adding pipeline barriers that are not a part of the render pass
   // scope. Submission must be open.
   void EndRenderPass();
+
+  // What ends render passes, counted with log_gpu_frame_time_breakdown
+  // (VkPassEnd lines): the work in progress (a PassEndReasonScope), or the
+  // kind of the pending barriers that SubmitBarriers had to end the pass for.
+  enum class PassEndReason : uint32_t {
+    kOther,
+    // Entering another framebuffer, render target ownership transfers.
+    kRenderTargets,
+    kResolve,
+    // Texture loads.
+    kTextures,
+    // Shared memory uploads.
+    kSharedMemory,
+    kPrimitiveProcessor,
+    kQuery,
+    kSubmission,
+    kBufferBarriers,
+    kImageBarriers,
+    kBufferAndImageBarriers,
+    kCount,
+  };
+  class PassEndReasonScope {
+   public:
+    PassEndReasonScope(VulkanCommandProcessor& command_processor,
+                       PassEndReason reason)
+        : command_processor_(command_processor),
+          previous_reason_(command_processor.pass_end_reason_) {
+      command_processor.pass_end_reason_ = reason;
+    }
+    ~PassEndReasonScope() {
+      command_processor_.pass_end_reason_ = previous_reason_;
+    }
+    PassEndReasonScope(const PassEndReasonScope&) = delete;
+    PassEndReasonScope& operator=(const PassEndReasonScope&) = delete;
+
+   private:
+    VulkanCommandProcessor& command_processor_;
+    PassEndReason previous_reason_;
+  };
+  PassEndReason pass_end_reason_ = PassEndReason::kOther;
 
   VkDescriptorSetLayout GetSingleTransientDescriptorLayout(
       SingleTransientDescriptorLayout transient_descriptor_layout) const {
@@ -703,6 +779,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
     // the guest render pass (vulkan_resolve_clear_in_guest_pass).
     uint64_t resolve_clears = 0;
     uint64_t resolve_clears_in_guest_pass = 0;
+    // Render passes ended, by PassEndReason.
+    uint64_t pass_ends[size_t(PassEndReason::kCount)] = {};
     uint64_t last_report_ns = 0;
   };
   VkFrameSyncStats vk_frame_sync_stats_;
@@ -740,8 +818,11 @@ class VulkanCommandProcessor final : public CommandProcessor {
   uint64_t frame_timestamp_prev_end_ = 0;
   // GPU timestamps bracketing each resolve region, ring-buffered per
   // submission like the per-submission pair above (same no-host-query rule).
+  // Three per resolve: begin, end of the copy (MarkResolveCopyEnd, or the end
+  // if it wasn't reached) and end.
   static constexpr uint32_t kResolveTimestampPairsPerSubmission = 128;
   static constexpr uint32_t kResolveTimestampRingSubmissions = 32;
+  static constexpr uint32_t kResolveTimestampsPerResolve = 3;
   VkQueryPool resolve_timestamp_pool_ = VK_NULL_HANDLE;
   VkBuffer resolve_timestamp_buffer_ = VK_NULL_HANDLE;
   VkDeviceMemory resolve_timestamp_buffer_memory_ = VK_NULL_HANDLE;
@@ -749,6 +830,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
   uint64_t* resolve_timestamp_mapping_ = nullptr;
   uint64_t resolve_ts_submission_ = 0;
   uint32_t resolve_ts_count_ = 0;
+  // The resolve being recorded, and whether its copy end is written.
+  uint32_t resolve_ts_open_ = UINT32_MAX;
+  bool resolve_ts_copy_end_written_ = false;
   // Kind and size of the resolve of each timestamp pair, and the GPU time per
   // key accumulated since the last report (VkResolveTime lines).
   std::array<uint32_t, size_t(kResolveTimestampPairsPerSubmission) *
@@ -758,12 +842,16 @@ class VulkanCommandProcessor final : public CommandProcessor {
     uint64_t ns = 0;
     uint64_t max_ns = 0;
     uint64_t count = 0;
+    // Split of ns at MarkResolveCopyEnd.
+    uint64_t copy_ns = 0;
+    uint64_t clear_ns = 0;
   };
   std::map<uint32_t, ResolveBucketStat> resolve_bucket_stats_;
   // GPU timestamps bracketing each render pass, bucketed CPU-side by
   // framebuffer extent (bit 31 = ownership-transfer pass). Same ring/readback
   // pattern; timestamps written OUTSIDE the pass (before begin / after end).
-  static constexpr uint32_t kPassTimestampPairsPerSubmission = 96;
+  // Also holds the VkMiscTime regions (keys with kMiscTimestampKeyBit).
+  static constexpr uint32_t kPassTimestampPairsPerSubmission = 192;
   static constexpr uint32_t kPassTimestampRingSubmissions = 32;
   VkQueryPool pass_timestamp_pool_ = VK_NULL_HANDLE;
   VkBuffer pass_timestamp_buffer_ = VK_NULL_HANDLE;
@@ -1302,6 +1390,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // readback_resolve=uma: last submission that resolved each destination key,
   // so the direct host read only happens once that submission has retired.
   std::unordered_map<uint64_t, uint64_t> uma_readback_last_write_;
+  // Guest frame of each destination's last uma readback, for the bounded
+  // fence collection staleness cap.
+  std::unordered_map<uint64_t, uint64_t> uma_readback_last_read_frame_;
   // Per-backend trampoline from the memory read callback into the shared
   // MarkResolvePagesRead.
   static void ResolveReadCallbackThunk(void* context, uint32_t physical_address,

@@ -338,9 +338,12 @@ static void SpinWaitParkThunk(void* raw_context) {
   static constexpr int64_t kGapNs = 1000000;  // >1 ms since a poll -> new wait
   static constexpr int64_t kParkAfterNs = 50000;
   static constexpr int64_t kParkTimeoutNs = 500000;
-  thread_local int64_t episode_start_ns = 0;
-  thread_local int64_t last_ns = 0;
-  thread_local uint32_t last_generation = 0;
+  // The wait state of this guest thread (zeroed with its backend context).
+  auto* backend_context = reinterpret_cast<A64BackendContext*>(
+      static_cast<uint8_t*>(raw_context) - sizeof(A64BackendContext));
+  int64_t& episode_start_ns = backend_context->spin_park_episode_start_ns;
+  int64_t& last_ns = backend_context->spin_park_last_ns;
+  uint32_t& last_generation = backend_context->spin_park_last_generation;
   auto* context = static_cast<ppc::PPCContext*>(raw_context);
   auto* yield_handler = xe::cpu::backend::spin_backoff_yield_handler;
   const int32_t mode = cvars::spin_park_mode;
