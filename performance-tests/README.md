@@ -2,7 +2,23 @@
 
 Diagnóstico iniciado em 2026-09-27.
 
-- Código local: cópia extraída em `Desktop/Xendroid-Fork-main` (sem `.git`).
+## Relatórios consolidados
+
+- [AB2: especialização alfa e clears](ab2-results.md), com dados em
+  [ab2-report.json](ab2-report.json).
+- [AB3: formato HDR, esperas e gargalos](ab3-results.md), com dados em
+  [ab3-report.json](ab3-report.json).
+- [Propostas de otimização após o AB3](ab3-optimization-ideas.md).
+
+O Git mantém os documentos Markdown e os relatórios `*-report.json` na raiz
+desta pasta. Capturas por rodada, screenshots, logs, APKs, caches de shaders e
+backups de configurações ficam apenas no ambiente local e são ignorados. Os
+scripts reutilizáveis de coleta e análise ficam em `tools/`.
+
+## Contexto do diagnóstico inicial
+
+- Código local no início: cópia extraída em `Desktop/Xendroid-Fork-main`, antes
+  da criação do repositório Git.
 - Aparelho confirmado por ADB: POCO F7 / 25053PC47G, SM8735, Android 16/API 36.
 - RAM reportada pelo kernel: 11.502.936 KiB (aparelho de 12 GB).
 - Pacote em análise: `xendroid.compose.fork`.
@@ -56,4 +72,6 @@ As temperaturas variaram entre rodadas. A bateria chegou a 47,3 °C no final de
 O emulador foi encerrado para resfriamento antes do teste do driver de sistema.
 As proteções térmicas do aparelho foram mantidas.
 
-Os testes ainda estão em andamento; nenhum perfil novo foi declarado vencedor.
+Essas medições pertencem à etapa inicial de ajustes de configuração. As
+conclusões dos testes posteriores de mudanças no código estão nos relatórios
+AB2 e AB3 vinculados acima.
