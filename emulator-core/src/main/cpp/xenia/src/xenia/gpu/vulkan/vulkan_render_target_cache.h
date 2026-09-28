@@ -143,6 +143,11 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
                uint32_t& written_length_out,
                reg::RB_COPY_DEST_INFO* copy_dest_info_out = nullptr,
                bool* written_scaled_out = nullptr);
+  // Kind and size of the last Resolve, for per-resolve GPU timing: bit 31 -
+  // clears, bit 30 - copies depth, bit 29 - copies, bit 28 - copied with the
+  // direct host path, bits 11:21 - width / 8, bits 0:10 - height / 8. 0 if
+  // there was nothing to do.
+  uint32_t last_resolve_key() const { return last_resolve_key_; }
 
   bool Update(bool is_rasterization_done,
               reg::RB_DEPTHCONTROL normalized_depth_control,
@@ -1122,6 +1127,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   bool gamma_render_target_as_unorm16_ = false;
   // render_target_7e3_as_r11g11b10, if the format is usable.
   bool color_7e3_as_r11g11b10_ = false;
+  // See last_resolve_key().
+  uint32_t last_resolve_key_ = 0;
 
   bool depth_unorm24_vulkan_format_supported_ = false;
   bool depth_float24_round_ = false;

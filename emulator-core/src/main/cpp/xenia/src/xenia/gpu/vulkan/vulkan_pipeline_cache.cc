@@ -108,6 +108,16 @@ DEFINE_bool(
     "pipelines.",
     "Vulkan");
 
+DEFINE_string(
+    vulkan_pipeline_ir_dump, "",
+    "Diagnostics with vulkan_pipeline_statistics: also save the driver's "
+    "internal representations (such as the final GPU assembly) of matching "
+    "guest pipelines as text files in shader_ir next to the Vulkan pipeline "
+    "cache. A comma-separated list of pixel shader hashes (hex) and/or "
+    "min_fs=N for every pipeline whose fragment shader has at least N "
+    "instructions. Takes effect for pipelines created afterwards.",
+    "Vulkan");
+
 DECLARE_bool(vulkan_dynamic_rendering);
 DECLARE_bool(spirv_disable_rounding_mode_rte);
 DECLARE_bool(precise_interpolation);
@@ -115,6 +125,179 @@ DECLARE_bool(precise_interpolation);
 namespace xe {
 namespace gpu {
 namespace vulkan {
+
+namespace {
+bool MatchesPipelineIrDumpFilter(uint64_t ps_hash, int64_t fs_instructions) {
+  const std::string& filter = cvars::vulkan_pipeline_ir_dump;
+  size_t begin = 0;
+  while (begin < filter.size()) {
+    size_t end = filter.find_first_of(",; ", begin);
+    if (end == std::string::npos) {
+      end = filter.size();
+    }
+    const std::string token = filter.substr(begin, end - begin);
+    begin = end + 1;
+    if (token.empty()) {
+      continue;
+    }
+    if (token.rfind("min_fs=", 0) == 0) {
+      if (fs_instructions >= std::strtoll(token.c_str() + 7, nullptr, 10)) {
+        return true;
+      }
+    } else if (std::strtoull(token.c_str(), nullptr, 16) == ps_hash) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// vulkan_pipeline_ir_dump: every text representation of every executable of
+// the pipeline into one file.
+void DumpPipelineInternalRepresentations(
+    const ui::vulkan::VulkanDevice& vulkan_device, VkPipeline pipeline,
+    const std::vector<VkPipelineExecutablePropertiesKHR>& executables,
+    const std::filesystem::path& directory, uint64_t vs_hash, uint64_t ps_hash,
+    uint64_t ps_modification) {
+  auto get_representations =
+      vulkan_device.vkGetPipelineExecutableInternalRepresentationsKHR();
+  if (!get_representations || directory.empty()) {
+    return;
+  }
+  std::error_code error_code;
+  std::filesystem::create_directories(directory, error_code);
+  const std::filesystem::path path =
+      directory / fmt::format("{:016X}_{:016X}_{:016X}.txt", vs_hash, ps_hash,
+                              ps_modification);
+  FILE* file = xe::filesystem::OpenFile(path, "wb");
+  if (!file) {
+    return;
+  }
+  const VkDevice device = vulkan_device.device();
+  for (uint32_t i = 0; i < uint32_t(executables.size()); ++i) {
+    VkPipelineExecutableInfoKHR executable_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR};
+    executable_info.pipeline = pipeline;
+    executable_info.executableIndex = i;
+    uint32_t count = 0;
+    if (get_representations(device, &executable_info, &count, nullptr) !=
+            VK_SUCCESS ||
+        !count) {
+      continue;
+    }
+    std::vector<VkPipelineExecutableInternalRepresentationKHR> representations(
+        count,
+        {VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INTERNAL_REPRESENTATION_KHR});
+    // The first call returns the data sizes, the second one the data.
+    if (get_representations(device, &executable_info, &count,
+                            representations.data()) < VK_SUCCESS) {
+      continue;
+    }
+    std::vector<std::vector<char>> data(count);
+    for (uint32_t j = 0; j < count; ++j) {
+      data[j].resize(representations[j].dataSize + 1, '\0');
+      representations[j].pData = data[j].data();
+    }
+    if (get_representations(device, &executable_info, &count,
+                            representations.data()) < VK_SUCCESS) {
+      continue;
+    }
+    for (uint32_t j = 0; j < count; ++j) {
+      const VkPipelineExecutableInternalRepresentationKHR& representation =
+          representations[j];
+      std::fprintf(file, "==== %s: %s (%s)\n", executables[i].name,
+                   representation.name, representation.description);
+      if (representation.isText) {
+        std::fputs(data[j].data(), file);
+        std::fputc('\n', file);
+      }
+    }
+  }
+  std::fclose(file);
+  XELOGI("PipeIR: VS {:016X} PS {:016X} mod {:016X} -> {}", vs_hash, ps_hash,
+         ps_modification, xe::path_to_utf8(path));
+}
+
+// vulkan_pipeline_statistics: one PipeStats line per executable (shader stage)
+// with every statistic the driver reports, keyed by the guest shader hashes
+// and the pixel shader modification so it can be matched with the draw usage
+// that the pm4_bin_trace frame trace logs (PipeUse lines).
+void LogPipelineStatistics(const ui::vulkan::VulkanDevice& vulkan_device,
+                           VkPipeline pipeline, uint64_t vs_hash,
+                           uint64_t ps_hash, uint64_t ps_modification,
+                           const std::filesystem::path& ir_dump_directory) {
+  const VkDevice device = vulkan_device.device();
+  auto get_properties = vulkan_device.vkGetPipelineExecutablePropertiesKHR();
+  auto get_statistics = vulkan_device.vkGetPipelineExecutableStatisticsKHR();
+  VkPipelineInfoKHR pipeline_info = {VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR};
+  pipeline_info.pipeline = pipeline;
+  uint32_t executable_count = 0;
+  if (get_properties(device, &pipeline_info, &executable_count, nullptr) !=
+          VK_SUCCESS ||
+      !executable_count) {
+    return;
+  }
+  std::vector<VkPipelineExecutablePropertiesKHR> executables(
+      executable_count, {VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_PROPERTIES_KHR});
+  if (get_properties(device, &pipeline_info, &executable_count,
+                     executables.data()) != VK_SUCCESS) {
+    return;
+  }
+  int64_t fs_instructions = -1;
+  for (uint32_t i = 0; i < executable_count; ++i) {
+    VkPipelineExecutableInfoKHR executable_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR};
+    executable_info.pipeline = pipeline;
+    executable_info.executableIndex = i;
+    uint32_t statistic_count = 0;
+    if (get_statistics(device, &executable_info, &statistic_count, nullptr) !=
+        VK_SUCCESS) {
+      continue;
+    }
+    std::vector<VkPipelineExecutableStatisticKHR> statistics(
+        statistic_count, {VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR});
+    if (get_statistics(device, &executable_info, &statistic_count,
+                       statistics.data()) != VK_SUCCESS) {
+      continue;
+    }
+    std::string line;
+    for (const VkPipelineExecutableStatisticKHR& statistic : statistics) {
+      switch (statistic.format) {
+        case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR:
+          line += fmt::format(" | {}={}", statistic.name, statistic.value.b32);
+          break;
+        case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_INT64_KHR:
+          line += fmt::format(" | {}={}", statistic.name, statistic.value.i64);
+          if (!std::strcmp(executables[i].name, "FS") &&
+              !std::strcmp(statistic.name, "Instruction Count")) {
+            fs_instructions = statistic.value.i64;
+          }
+          break;
+        case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR:
+          line += fmt::format(" | {}={}", statistic.name, statistic.value.u64);
+          if (!std::strcmp(executables[i].name, "FS") &&
+              !std::strcmp(statistic.name, "Instruction Count")) {
+            fs_instructions = int64_t(statistic.value.u64);
+          }
+          break;
+        case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_FLOAT64_KHR:
+          line += fmt::format(" | {}={:.2f}", statistic.name,
+                              statistic.value.f64);
+          break;
+        default:
+          break;
+      }
+    }
+    XELOGI("PipeStats: VS {:016X} PS {:016X} mod {:016X} {}{}", vs_hash,
+           ps_hash, ps_modification, executables[i].name, line);
+  }
+  if (!ir_dump_directory.empty() &&
+      MatchesPipelineIrDumpFilter(ps_hash, fs_instructions)) {
+    DumpPipelineInternalRepresentations(vulkan_device, pipeline, executables,
+                                        ir_dump_directory, vs_hash, ps_hash,
+                                        ps_modification);
+  }
+}
+}  // namespace
 
 VulkanPipelineCache::VulkanPipelineCache(
     VulkanCommandProcessor& command_processor,
@@ -2717,11 +2900,23 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
     }
   }
 
+  // vulkan_pipeline_statistics and vulkan_pipeline_ir_dump diagnostics.
+  const bool capture_statistics =
+      vulkan_device->extensions().ext_KHR_pipeline_executable_properties &&
+      !creating_placeholder;
+  const bool capture_ir = capture_statistics &&
+                          !cvars::vulkan_pipeline_ir_dump.empty() &&
+                          !vk_pipeline_cache_path_.empty();
+
   VkGraphicsPipelineCreateInfo pipeline_create_info;
   pipeline_create_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
   pipeline_create_info.pNext =
       use_dynamic_rendering ? &pipeline_rendering_create_info : nullptr;
-  pipeline_create_info.flags = 0;
+  pipeline_create_info.flags =
+      (capture_statistics ? VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR
+                          : 0) |
+      (capture_ir ? VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR
+                  : 0);
   pipeline_create_info.stageCount = shader_stage_count;
   pipeline_create_info.pStages = shader_stages.data();
   pipeline_create_info.pVertexInputState = &vertex_input_state;
@@ -2755,11 +2950,26 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
     pso_create_start = std::chrono::steady_clock::now();
   }
   VkPipeline pipeline;
+  // A driver cache hit may come without the internal representations.
   VkResult result = dfn.vkCreateGraphicsPipelines(
-      device, vk_pipeline_cache_, 1, &pipeline_create_info, nullptr, &pipeline);
+      device, capture_ir ? VK_NULL_HANDLE : vk_pipeline_cache_, 1,
+      &pipeline_create_info, nullptr, &pipeline);
   if (result == VK_SUCCESS) {
     // Mark the persistent VkPipelineCache dirty so EndSubmission re-saves it.
     vk_pipeline_cache_dirty_.store(true, std::memory_order_relaxed);
+    if (capture_statistics) {
+      LogPipelineStatistics(
+          *vulkan_device, pipeline,
+          creation_arguments.vertex_shader->shader().ucode_data_hash(),
+          creation_arguments.pixel_shader
+              ? creation_arguments.pixel_shader->shader().ucode_data_hash()
+              : 0,
+          creation_arguments.pixel_shader
+              ? creation_arguments.pixel_shader->modification()
+              : 0,
+          capture_ir ? vk_pipeline_cache_path_.parent_path() / "shader_ir"
+                     : std::filesystem::path());
+    }
     if (profile) {
       // Driver SPIR-V->ISA compile + link time.
       XELOGI(

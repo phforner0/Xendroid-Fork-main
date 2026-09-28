@@ -20,6 +20,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -198,6 +199,14 @@ class VulkanCommandProcessor final : public CommandProcessor {
       BinTraceNote(tag, a, b);
     }
   }
+  // Draws per <vertex shader hash, pixel shader hash, pass WxH> during
+  // pm4_bin_trace frames, logged as PipeUse lines at the swap.
+  struct PipelineUse {
+    uint32_t draws = 0;
+    uint64_t vertices = 0;
+  };
+  std::map<std::tuple<uint64_t, uint64_t, uint32_t>, PipelineUse>
+      pipeline_use_;
   uint64_t GetCurrentSubmission() const {
     return completion_timeline_.GetUpcomingSubmission();
   }
@@ -731,7 +740,7 @@ class VulkanCommandProcessor final : public CommandProcessor {
   uint64_t frame_timestamp_prev_end_ = 0;
   // GPU timestamps bracketing each resolve region, ring-buffered per
   // submission like the per-submission pair above (same no-host-query rule).
-  static constexpr uint32_t kResolveTimestampPairsPerSubmission = 48;
+  static constexpr uint32_t kResolveTimestampPairsPerSubmission = 128;
   static constexpr uint32_t kResolveTimestampRingSubmissions = 32;
   VkQueryPool resolve_timestamp_pool_ = VK_NULL_HANDLE;
   VkBuffer resolve_timestamp_buffer_ = VK_NULL_HANDLE;
@@ -740,6 +749,17 @@ class VulkanCommandProcessor final : public CommandProcessor {
   uint64_t* resolve_timestamp_mapping_ = nullptr;
   uint64_t resolve_ts_submission_ = 0;
   uint32_t resolve_ts_count_ = 0;
+  // Kind and size of the resolve of each timestamp pair, and the GPU time per
+  // key accumulated since the last report (VkResolveTime lines).
+  std::array<uint32_t, size_t(kResolveTimestampPairsPerSubmission) *
+                           kResolveTimestampRingSubmissions>
+      resolve_ts_keys_{};
+  struct ResolveBucketStat {
+    uint64_t ns = 0;
+    uint64_t max_ns = 0;
+    uint64_t count = 0;
+  };
+  std::map<uint32_t, ResolveBucketStat> resolve_bucket_stats_;
   // GPU timestamps bracketing each render pass, bucketed CPU-side by
   // framebuffer extent (bit 31 = ownership-transfer pass). Same ring/readback
   // pattern; timestamps written OUTSIDE the pass (before begin / after end).

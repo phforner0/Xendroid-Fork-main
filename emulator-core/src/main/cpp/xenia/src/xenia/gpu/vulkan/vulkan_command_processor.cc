@@ -14,6 +14,7 @@
 #include <atomic>
 #include <cstdarg>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 
 #if defined(__ANDROID__)
@@ -209,6 +210,19 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.spirv_specialize_no_alpha",
                             "spirv_specialize_no_alpha",
                             cvars::spirv_specialize_no_alpha);
+  // Draws per mid-frame submission (0 = one submission per frame), read per
+  // draw.
+  char submit_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.submit_draws", submit_value) > 0 &&
+      submit_value[0] >= '0' && submit_value[0] <= '9') {
+    const int32_t draws = std::atoi(submit_value);
+    if (cvars::vulkan_mid_frame_submission_draws != draws) {
+      cvars::vulkan_mid_frame_submission_draws = draws;
+      XELOGI(
+          "debug.xendroid.submit_draws: vulkan_mid_frame_submission_draws = {}",
+          draws);
+    }
+  }
   // none | uma | fast | all, read per resolve.
   char readback_value[PROP_VALUE_MAX] = {};
   if (__system_property_get("debug.xendroid.readback_resolve",
@@ -228,6 +242,18 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
         }
         break;
       }
+    }
+  }
+  // Bounded fence collection (all Vulkan completion timelines), read per poll.
+  char fence_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.fence_collect", fence_value) > 0 &&
+      (fence_value[0] == '0' || fence_value[0] == '1')) {
+    const bool bounded = fence_value[0] == '1';
+    if (ui::vulkan::VulkanGPUCompletionTimeline::bounded_collection() !=
+        bounded) {
+      ui::vulkan::VulkanGPUCompletionTimeline::SetBoundedCollection(bounded);
+      XELOGI("debug.xendroid.fence_collect: bounded fence collection = {}",
+             bounded);
     }
   }
 #endif
@@ -2305,6 +2331,30 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
 
   PollDebugPropertyOverrides(*this);
 
+  if (!pipeline_use_.empty()) {
+    // Most-used shader pairs of the traced frame, to rank against PipeStats.
+    std::vector<std::pair<std::tuple<uint64_t, uint64_t, uint32_t>,
+                          PipelineUse>>
+        uses(pipeline_use_.begin(), pipeline_use_.end());
+    std::sort(uses.begin(), uses.end(), [](const auto& a, const auto& b) {
+      return a.second.draws > b.second.draws;
+    });
+    uint32_t total_draws = 0;
+    for (const auto& use : uses) {
+      total_draws += use.second.draws;
+    }
+    XELOGI("PipeUse frame {}: {} shader pairs/pass sizes, {} draws",
+           bin_trace_.frame_number, uses.size(), total_draws);
+    for (size_t i = 0; i < std::min(uses.size(), size_t(60)); ++i) {
+      const auto& key = uses[i].first;
+      XELOGI("PipeUse: VS {:016X} PS {:016X} pass {}x{} draws={} verts={}",
+             std::get<0>(key), std::get<1>(key), std::get<2>(key) >> 16,
+             std::get<2>(key) & 0xFFFF, uses[i].second.draws,
+             uses[i].second.vertices);
+    }
+    pipeline_use_.clear();
+  }
+
   if (render_target_cache_) {
     render_target_cache_->LogResolveDetailsOnFrameEnd();
   }
@@ -2351,6 +2401,16 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
           s.render_pass_begins / f, s.primary_buffer_splits / f,
           s.replay_ns / f / 1e6, s.resolve_clears / f,
           s.resolve_clears_in_guest_pass / f);
+      // Driver fence polls and waits of the submission timeline (a poll of a
+      // pending fence blocks on Turnip/kgsl, see fence_collect).
+      const ui::vulkan::VulkanGPUCompletionTimeline::DriverWaitStats fence =
+          completion_timeline_.TakeDriverWaitStats();
+      XELOGI(
+          "VkFences: per frame: polls={:.1f} slow={:.1f} poll={:.2f}ms "
+          "waits={:.1f} wait={:.2f}ms | bounded={}",
+          fence.polls / f, fence.slow_polls / f, fence.poll_ns / f / 1e6,
+          fence.waits / f, fence.wait_ns / f / 1e6,
+          ui::vulkan::VulkanGPUCompletionTimeline::bounded_collection());
       // Per-render-pass-bucket GPU time (key: WxH, bit31 = ownership transfer).
       if (!pass_bucket_stats_.empty()) {
         for (const auto& kv : pass_bucket_stats_) {
@@ -2374,6 +2434,25 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                pass_ts_dropped_);
         pass_ts_dropped_ = 0;
       }
+      // Per-resolve GPU time by kind and size (see
+      // VulkanRenderTargetCache::last_resolve_key).
+      for (const auto& kv : resolve_bucket_stats_) {
+        const uint32_t key = kv.first;
+        const char* kind = (key & (1u << 29))
+                               ? ((key & (1u << 30)) ? "depth" : "color")
+                               : "none";
+        XELOGI(
+            "VkResolveTime: copy={}{}{} {}x{} : {:.2f}ms/fr ({:.1f}/fr, "
+            "{:.3f}ms ea, max {:.3f})",
+            kind, (key & (1u << 31)) ? "+clear" : "",
+            (key & (1u << 28)) ? " direct" : "", ((key >> 11) & 0x7FF) * 8,
+            (key & 0x7FF) * 8, kv.second.ns / f / 1e6, kv.second.count / f,
+            kv.second.count
+                ? kv.second.ns / static_cast<double>(kv.second.count) / 1e6
+                : 0.0,
+            kv.second.max_ns / 1e6);
+      }
+      resolve_bucket_stats_.clear();
       s = VkFrameSyncStats();
       s.last_report_ns = now;
     }
@@ -4776,6 +4855,16 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   submission_in_progress_.last_vs_hash = vertex_shader->ucode_data_hash();
   submission_in_progress_.last_ps_hash =
       pixel_shader ? pixel_shader->ucode_data_hash() : 0;
+  // pm4_bin_trace frames: draw usage per shader pair and pass size (PipeUse).
+  if (XE_UNLIKELY(bin_trace_.frames_left) && current_framebuffer_) {
+    PipelineUse& use = pipeline_use_[std::make_tuple(
+        submission_in_progress_.last_vs_hash,
+        submission_in_progress_.last_ps_hash,
+        (uint32_t(current_framebuffer_->host_extent.width) << 16) |
+            uint32_t(current_framebuffer_->host_extent.height))];
+    ++use.draws;
+    use.vertices += primitive_processing_result.host_draw_vertex_count;
+  }
   submission_in_progress_.last_render_pass_key =
       render_target_cache_->last_update_render_pass_key().key;
 
@@ -4992,6 +5081,7 @@ bool VulkanCommandProcessor::IssueCopy() {
     deferred_command_buffer_.CmdVkWriteTimestamp(
         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, resolve_timestamp_pool_,
         resolve_ts_pair * 2 + 1);
+    resolve_ts_keys_[resolve_ts_pair] = render_target_cache_->last_resolve_key();
     ++resolve_ts_count_;
   }
   if (!resolve_succeeded) {
@@ -6099,6 +6189,12 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
               vk_frame_sync_stats_.resolve_gpu_max_ns = std::max(
                   vk_frame_sync_stats_.resolve_gpu_max_ns, resolve_ns);
               vk_frame_sync_stats_.resolve_gpu_samples++;
+              ResolveBucketStat& bucket =
+                  resolve_bucket_stats_[resolve_ts_keys_[record.resolve_slot_base +
+                                                         i]];
+              bucket.ns += resolve_ns;
+              bucket.max_ns = std::max(bucket.max_ns, resolve_ns);
+              ++bucket.count;
             }
           }
         }

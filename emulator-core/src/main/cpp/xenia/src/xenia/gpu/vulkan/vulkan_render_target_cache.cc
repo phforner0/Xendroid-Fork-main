@@ -2810,10 +2810,22 @@ bool VulkanRenderTargetCache::Resolve(
     return false;
   }
 
+  last_resolve_key_ = 0;
   // Nothing to copy/clear.
   if (!resolve_info.coordinate_info.width_div_8 || !resolve_info.height_div_8) {
     return true;
   }
+  // For the per-resolve GPU timestamps (VkResolveTime).
+  last_resolve_key_ =
+      (resolve_info.IsClearingDepth() || resolve_info.IsClearingColor()
+           ? (1u << 31)
+           : 0u) |
+      (resolve_info.copy_dest_extent_length ? (1u << 29) : 0u) |
+      (resolve_info.copy_dest_extent_length && resolve_info.IsCopyingDepth()
+           ? (1u << 30)
+           : 0u) |
+      ((uint32_t(resolve_info.coordinate_info.width_div_8) & 0x7FF) << 11) |
+      (uint32_t(resolve_info.height_div_8) & 0x7FF);
   command_processor_.BinTraceNoteIfActive(
       resolve_info.IsClearingDepth() || resolve_info.IsClearingColor() ? "RC"
                                                                         : "R",
@@ -3182,6 +3194,10 @@ bool VulkanRenderTargetCache::Resolve(
     command_processor_.PopDebugMarker();
   } else {
     copied = true;
+  }
+
+  if (direct_host_used) {
+    last_resolve_key_ |= 1u << 28;
   }
 
   // Clearing.

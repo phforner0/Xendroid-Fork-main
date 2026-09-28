@@ -29,6 +29,14 @@ DEFINE_int32(
     "driver-specific large-binding misbehavior.",
     "Vulkan");
 
+DEFINE_bool(
+    vulkan_pipeline_statistics, false,
+    "Diagnostics: enable VK_KHR_pipeline_executable_properties when the "
+    "driver has it and log the driver's statistics (instruction counts, "
+    "registers, occupancy...) of every guest graphics pipeline as it is "
+    "created (PipeStats lines). Takes effect at startup.",
+    "Vulkan");
+
 namespace xe {
 namespace ui {
 namespace vulkan {
@@ -259,6 +267,11 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
     if (get_physical_device_properties2_supported) {
       XE_UI_VULKAN_STRUCT_EXTENSION(EXT_external_memory_host)
     }
+    // #270. Only for the pipeline statistics diagnostics.
+    if (get_physical_device_properties2_supported &&
+        cvars::vulkan_pipeline_statistics) {
+      XE_UI_VULKAN_STRUCT_EXTENSION(KHR_pipeline_executable_properties)
+    }
   }
 
 #undef XE_UI_VULKAN_STRUCT_EXTENSION
@@ -413,6 +426,10 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
   VkPhysicalDeviceExternalMemoryHostPropertiesEXT
       properties_EXT_external_memory_host = {
           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT};
+  VulkanFeatures<
+      VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR,
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR>
+      features_KHR_pipeline_executable_properties;
 
   if (get_physical_device_properties2_supported) {
     if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 1, 0)) {
@@ -505,8 +522,21 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       properties_EXT_external_memory_host.pNext = properties_2.pNext;
       properties_2.pNext = &properties_EXT_external_memory_host;
     }
+    if (device->extensions_.ext_KHR_pipeline_executable_properties) {
+      features_KHR_pipeline_executable_properties.Link(supported_features_2,
+                                                       device_create_info);
+    }
     ifn.vkGetPhysicalDeviceProperties2(physical_device, &properties_2);
     ifn.vkGetPhysicalDeviceFeatures2(physical_device, &supported_features_2);
+    if (device->extensions_.ext_KHR_pipeline_executable_properties) {
+      features_KHR_pipeline_executable_properties.enabled
+          .pipelineExecutableInfo = features_KHR_pipeline_executable_properties
+                                        .supported.pipelineExecutableInfo;
+      if (!features_KHR_pipeline_executable_properties.supported
+               .pipelineExecutableInfo) {
+        device->extensions_.ext_KHR_pipeline_executable_properties = false;
+      }
+    }
     // Mirror supported deviceFault into the enabled struct so the driver
     // collects fault info during normal execution. Disable the extension flag
     // if the feature wasn't actually supported - vkGetDeviceFaultInfoEXT is
@@ -1187,6 +1217,29 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
     if (!device->vkGetDeviceFaultInfoEXT_) {
       device->extensions_.ext_EXT_device_fault = false;
     }
+  }
+
+  // Optional pipeline statistics queries - failing to load is not fatal.
+  if (device->extensions_.ext_KHR_pipeline_executable_properties) {
+    device->vkGetPipelineExecutablePropertiesKHR_ =
+        PFN_vkGetPipelineExecutablePropertiesKHR(ifn.vkGetDeviceProcAddr(
+            device->device_, "vkGetPipelineExecutablePropertiesKHR"));
+    device->vkGetPipelineExecutableStatisticsKHR_ =
+        PFN_vkGetPipelineExecutableStatisticsKHR(ifn.vkGetDeviceProcAddr(
+            device->device_, "vkGetPipelineExecutableStatisticsKHR"));
+    device->vkGetPipelineExecutableInternalRepresentationsKHR_ =
+        PFN_vkGetPipelineExecutableInternalRepresentationsKHR(
+            ifn.vkGetDeviceProcAddr(
+                device->device_,
+                "vkGetPipelineExecutableInternalRepresentationsKHR"));
+    if (!device->vkGetPipelineExecutablePropertiesKHR_ ||
+        !device->vkGetPipelineExecutableStatisticsKHR_) {
+      device->extensions_.ext_KHR_pipeline_executable_properties = false;
+    }
+    XELOGI("Vulkan pipeline statistics {}",
+           device->extensions_.ext_KHR_pipeline_executable_properties
+               ? "enabled"
+               : "unavailable");
   }
 
   // Optional host-pointer import function - failing to load disables zero-copy.

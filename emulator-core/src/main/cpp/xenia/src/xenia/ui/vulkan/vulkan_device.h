@@ -280,9 +280,28 @@ class VulkanDevice {
     // VK_EXT_external_memory_host (#179). Imports guest RAM as device memory so
     // the shared-memory buffer can alias guest RAM directly (zero-copy).
     bool ext_EXT_external_memory_host = false;
+
+    // VK_KHR_pipeline_executable_properties (#270), only requested with the
+    // vulkan_pipeline_statistics diagnostics.
+    bool ext_KHR_pipeline_executable_properties = false;
   };
 
   const Extensions& extensions() const { return extensions_; }
+
+  // VK_KHR_pipeline_executable_properties entry points, or null if not enabled.
+  PFN_vkGetPipelineExecutablePropertiesKHR
+  vkGetPipelineExecutablePropertiesKHR() const {
+    return vkGetPipelineExecutablePropertiesKHR_;
+  }
+  PFN_vkGetPipelineExecutableStatisticsKHR
+  vkGetPipelineExecutableStatisticsKHR() const {
+    return vkGetPipelineExecutableStatisticsKHR_;
+  }
+  // May be null even with the extension enabled.
+  PFN_vkGetPipelineExecutableInternalRepresentationsKHR
+  vkGetPipelineExecutableInternalRepresentationsKHR() const {
+    return vkGetPipelineExecutableInternalRepresentationsKHR_;
+  }
 
   // VK_EXT_external_memory_host entry point, or null if not enabled.
   PFN_vkGetMemoryHostPointerPropertiesEXT vkGetMemoryHostPointerPropertiesEXT()
@@ -458,6 +477,14 @@ class VulkanDevice {
   // is enabled. Null otherwise.
   PFN_vkGetMemoryHostPointerPropertiesEXT vkGetMemoryHostPointerPropertiesEXT_ =
       nullptr;
+  // VK_KHR_pipeline_executable_properties function pointers, loaded only if
+  // the extension is enabled. Null otherwise.
+  PFN_vkGetPipelineExecutablePropertiesKHR
+      vkGetPipelineExecutablePropertiesKHR_ = nullptr;
+  PFN_vkGetPipelineExecutableStatisticsKHR
+      vkGetPipelineExecutableStatisticsKHR_ = nullptr;
+  PFN_vkGetPipelineExecutableInternalRepresentationsKHR
+      vkGetPipelineExecutableInternalRepresentationsKHR_ = nullptr;
   // Set when LogFaultInfo() has already logged - prevents repeat logging from
   // multiple device-loss observers.
   std::atomic_flag fault_info_logged_ = ATOMIC_FLAG_INIT;
