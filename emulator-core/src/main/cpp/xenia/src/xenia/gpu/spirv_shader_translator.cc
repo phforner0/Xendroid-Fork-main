@@ -101,6 +101,17 @@ DEFINE_int32(
     "GPU");
 
 DEFINE_bool(
+    spirv_fast_precision_rounding, false,
+    "Round results of exp, log, sqrt, rsq and rcp to the 21 mantissa bits of "
+    "the Xenos with an add of half the kept unit in the last place and a "
+    "mask, instead of computing both roundings and selecting (5 instead of 12 "
+    "Adreno instructions each, -6% pixel shader instructions on the Forza "
+    "Horizon shaders). Same results for every input, including infinity, NaN "
+    "and the finite values that must not round up to infinity; read when "
+    "shaders are translated (startup).",
+    "GPU");
+
+DEFINE_bool(
     spirv_texture_sign_branch, false,
     "Convert gamma texture components to linear only inside a branch on "
     "whether any component of the fetch is gamma (a uniform condition), "
