@@ -166,8 +166,10 @@ class CommandProcessor {
     return cached_readback_resolve_mode_;
   }
 
-  // Set readback resolve mode (updates both cvar and cached value)
-  void SetReadbackResolveMode(ReadbackResolveMode mode);
+  // Set readback resolve mode (updates both cvar and cached value). With
+  // persist, also saved to the per-game config of the running title (a user
+  // choice); run-time debug overrides pass false.
+  void SetReadbackResolveMode(ReadbackResolveMode mode, bool persist = true);
 
   // Get cached ZPD mode (avoids string parsing every frame).
   ZPDMode GetZPDMode() const { return cached_zpd_mode_; }

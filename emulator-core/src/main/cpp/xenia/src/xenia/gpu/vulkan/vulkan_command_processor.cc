@@ -236,7 +236,8 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
     for (const auto& mode : kModes) {
       if (!std::strcmp(readback_value, mode.first)) {
         if (command_processor.GetReadbackResolveMode() != mode.second) {
-          command_processor.SetReadbackResolveMode(mode.second);
+          // A session override - never written to the per-game config.
+          command_processor.SetReadbackResolveMode(mode.second, false);
           XELOGI("debug.xendroid.readback_resolve: readback_resolve = {}",
                  mode.first);
         }
