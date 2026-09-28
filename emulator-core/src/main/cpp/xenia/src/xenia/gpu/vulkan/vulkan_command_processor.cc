@@ -36,6 +36,7 @@
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/spirv_fsi_system_constants.h"
 #include "xenia/gpu/spirv_shader_translator.h"
+#include "xenia/gpu/texture_info.h"
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
 #include "xenia/gpu/vulkan/vulkan_render_target_cache.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
@@ -67,12 +68,15 @@ DEFINE_bool(
 DEFINE_bool(
     log_gpu_frame_time_breakdown_passes, true,
     "With log_gpu_frame_time_breakdown, also time every render pass and every "
-    "resolve on the GPU (VkPassTime lines, resolve_ms). Each of those "
-    "BOTTOM_OF_PIPE timestamps is a wait-for-idle on Turnip - hundreds per "
-    "frame - so they distort what they measure (Forza Horizon on Adreno 825: "
-    "7.3 fps instrumented vs 12.7 fps plain). Disable to keep only the "
-    "per-submission GPU busy/gap timestamps and the CPU-side GpuFrame stats, "
-    "which are cheap enough to tell a GPU-bound frame from a CPU-bound one.",
+    "resolve on the GPU (VkPassTime lines, resolve_ms; VkResolveTime per "
+    "resolve kind and size, split at the end of the copy into copy and "
+    "clear), and texture loads and the setup command buffer (shared memory "
+    "uploads) outside passes (VkMiscTime). Each of those BOTTOM_OF_PIPE "
+    "timestamps is a wait-for-idle on Turnip - hundreds per frame - so they "
+    "distort what they measure (Forza Horizon on Adreno 825: 7.3 fps "
+    "instrumented vs 12.7 fps plain). Disable to keep only the per-submission "
+    "GPU busy/gap timestamps and the CPU-side GpuFrame stats, which are cheap "
+    "enough to tell a GPU-bound frame from a CPU-bound one.",
     "GPU");
 
 DEFINE_int32(
@@ -1664,7 +1668,8 @@ bool VulkanCommandProcessor::SetupContext() {
         VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
     resolve_ts_pool_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
     resolve_ts_pool_info.queryCount = kResolveTimestampPairsPerSubmission *
-                                      kResolveTimestampRingSubmissions * 2;
+                                      kResolveTimestampRingSubmissions *
+                                      kResolveTimestampsPerResolve;
     if (dfn.vkCreateQueryPool(device, &resolve_ts_pool_info, nullptr,
                               &resolve_timestamp_pool_) == VK_SUCCESS) {
       if (!ui::vulkan::util::CreateDedicatedAllocationBuffer(
@@ -2440,6 +2445,10 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
       if (!pass_bucket_stats_.empty()) {
         for (const auto& kv : pass_bucket_stats_) {
           const uint32_t key = kv.first;
+          if (key & kMiscTimestampKeyBit) {
+            // Work outside passes and resolves, logged below.
+            continue;
+          }
           const bool transfer = (key & 0x80000000u) != 0;
           XELOGI(
               "VkPassTime: {}{}x{} : {:.2f}ms/fr ({:.1f}pass {:.0f}draw/fr, "
@@ -2451,6 +2460,44 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                   : 0.0,
               kv.second.max_scissor_w, kv.second.max_scissor_h,
               kv.second.max_viewport_w, kv.second.max_viewport_h);
+        }
+        // GPU work outside passes and resolves (MiscTimestampKind), such as
+        // texture loads by format, size (texels, rounded up to a power of 2)
+        // and source (gpu - written by a resolve, cpu - by the guest CPU).
+        for (const auto& kv : pass_bucket_stats_) {
+          const uint32_t key = kv.first;
+          if (!(key & kMiscTimestampKeyBit)) {
+            continue;
+          }
+          std::string label;
+          switch (MiscTimestampKind((key >> 24) & 0x3F)) {
+            case MiscTimestampKind::kTextureLoad:
+              label = fmt::format(
+                  "texload {} 2^{}tx {}{}{}",
+                  FormatInfo::GetName(xenos::TextureFormat((key >> 16) & 0x3F)),
+                  (key >> 8) & 0x1F,
+                  (key & kMiscTimestampTextureGpuWritten) ? "gpu" : "cpu",
+                  (key & kMiscTimestampTextureBase) ? "" : " mips-only",
+                  (key & (kMiscTimestampTextureBase |
+                          kMiscTimestampTextureMips)) ==
+                          (kMiscTimestampTextureBase |
+                           kMiscTimestampTextureMips)
+                      ? "+mips"
+                      : "");
+              break;
+            case MiscTimestampKind::kSetupCommands:
+              label = "setup (shared memory uploads)";
+              break;
+            default:
+              label = fmt::format("misc {:08X}", key);
+              break;
+          }
+          XELOGI("VkMiscTime: {} : {:.2f}ms/fr ({:.1f}/fr, {:.3f}ms ea)",
+                 label, kv.second.ns / f / 1e6, kv.second.passes / f,
+                 kv.second.passes ? kv.second.ns /
+                                        static_cast<double>(kv.second.passes) /
+                                        1e6
+                                  : 0.0);
         }
         pass_bucket_stats_.clear();
       }
@@ -2468,14 +2515,15 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                                : "none";
         XELOGI(
             "VkResolveTime: copy={}{}{} {}x{} : {:.2f}ms/fr ({:.1f}/fr, "
-            "{:.3f}ms ea, max {:.3f})",
+            "{:.3f}ms ea, max {:.3f}) | copy {:.2f}ms/fr clear {:.2f}ms/fr",
             kind, (key & (1u << 31)) ? "+clear" : "",
             (key & (1u << 28)) ? " direct" : "", ((key >> 11) & 0x7FF) * 8,
             (key & 0x7FF) * 8, kv.second.ns / f / 1e6, kv.second.count / f,
             kv.second.count
                 ? kv.second.ns / static_cast<double>(kv.second.count) / 1e6
                 : 0.0,
-            kv.second.max_ns / 1e6);
+            kv.second.max_ns / 1e6, kv.second.copy_ns / f / 1e6,
+            kv.second.clear_ns / f / 1e6);
       }
       resolve_bucket_stats_.clear();
       s = VkFrameSyncStats();
@@ -3312,6 +3360,34 @@ void VulkanCommandProcessor::ClosePassTimestamp() {
       std::min(pass_open_viewport_h_, 0xFFFFu);
   ++pass_ts_count_;
   pass_ts_open_pair_ = UINT32_MAX;
+}
+
+bool VulkanCommandProcessor::OpenMiscTimestamp(uint32_t key) {
+  // One open pair at a time in the ring - never while a pass is being timed.
+  if (!pass_timestamp_mapping_ || in_render_pass_ ||
+      pass_ts_open_pair_ != UINT32_MAX) {
+    return false;
+  }
+  OpenPassTimestamp(key | kMiscTimestampKeyBit);
+  return pass_ts_open_pair_ != UINT32_MAX;
+}
+
+void VulkanCommandProcessor::CloseMiscTimestamp() {
+  if (pass_ts_open_pair_ == UINT32_MAX || in_render_pass_ ||
+      !(pass_ts_keys_[pass_ts_open_pair_] & kMiscTimestampKeyBit)) {
+    return;
+  }
+  ClosePassTimestamp();
+}
+
+void VulkanCommandProcessor::MarkResolveCopyEnd() {
+  if (resolve_ts_open_ == UINT32_MAX || resolve_ts_copy_end_written_) {
+    return;
+  }
+  deferred_command_buffer_.CmdVkWriteTimestamp(
+      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, resolve_timestamp_pool_,
+      resolve_ts_open_ * kResolveTimestampsPerResolve + 1);
+  resolve_ts_copy_end_written_ = true;
 }
 
 void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
@@ -5103,7 +5179,9 @@ bool VulkanCommandProcessor::IssueCopy() {
           resolve_ts_count_;
       deferred_command_buffer_.CmdVkWriteTimestamp(
           VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, resolve_timestamp_pool_,
-          resolve_ts_pair * 2);
+          resolve_ts_pair * kResolveTimestampsPerResolve);
+      resolve_ts_open_ = resolve_ts_pair;
+      resolve_ts_copy_end_written_ = false;
     } else {
       ++vk_frame_sync_stats_.resolve_ts_dropped;
     }
@@ -5116,11 +5194,14 @@ bool VulkanCommandProcessor::IssueCopy() {
       *memory_, *shared_memory_, *texture_cache_, written_address,
       written_length, &copy_dest_info, &is_scaled);
   if (resolve_ts_pair != UINT32_MAX) {
-    // Always close an opened pair - a WAIT_BIT results copy over a written
-    // begin with no end would hang the GPU.
+    // Always write all three of an opened resolve - a WAIT_BIT results copy
+    // over an unwritten query would hang the GPU. Without a copy end marked
+    // by the render target cache, the whole resolve counts as the copy.
+    MarkResolveCopyEnd();
+    resolve_ts_open_ = UINT32_MAX;
     deferred_command_buffer_.CmdVkWriteTimestamp(
         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, resolve_timestamp_pool_,
-        resolve_ts_pair * 2 + 1);
+        resolve_ts_pair * kResolveTimestampsPerResolve + 2);
     resolve_ts_keys_[resolve_ts_pair] = render_target_cache_->last_resolve_key();
     ++resolve_ts_count_;
   }
@@ -6218,11 +6299,12 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
           GetVulkanDevice()->functions().vkInvalidateMappedMemoryRanges(
               GetVulkanDevice()->device(), 1, &resolve_invalidate_range);
           for (uint32_t i = 0; i < record.resolve_pair_count; ++i) {
-            const uint64_t r0 =
-                resolve_timestamp_mapping_[(record.resolve_slot_base + i) * 2];
-            const uint64_t r1 =
-                resolve_timestamp_mapping_[(record.resolve_slot_base + i) * 2 +
-                                           1];
+            const uint64_t* r =
+                resolve_timestamp_mapping_ + (record.resolve_slot_base + i) *
+                                                 kResolveTimestampsPerResolve;
+            const uint64_t r0 = r[0];
+            const uint64_t r_copy_end = r[1];
+            const uint64_t r1 = r[2];
             if (r1 > r0) {
               const uint64_t resolve_ns = uint64_t((r1 - r0) * period_ns);
               vk_frame_sync_stats_.resolve_gpu_ns += resolve_ns;
@@ -6235,6 +6317,10 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
               bucket.ns += resolve_ns;
               bucket.max_ns = std::max(bucket.max_ns, resolve_ns);
               ++bucket.count;
+              if (r_copy_end >= r0 && r1 >= r_copy_end) {
+                bucket.copy_ns += uint64_t((r_copy_end - r0) * period_ns);
+                bucket.clear_ns += uint64_t((r1 - r_copy_end) * period_ns);
+              }
             }
           }
         }
@@ -6750,8 +6836,9 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
         dfn.vkCmdResetQueryPool(
             command_buffer.buffer, resolve_timestamp_pool_,
             uint32_t(GetCurrentSubmission() % kResolveTimestampRingSubmissions) *
-                kResolveTimestampPairsPerSubmission * 2,
-            kResolveTimestampPairsPerSubmission * 2);
+                kResolveTimestampPairsPerSubmission *
+                kResolveTimestampsPerResolve,
+            kResolveTimestampPairsPerSubmission * kResolveTimestampsPerResolve);
       }
       if (pass_timestamp_mapping_) {
         dfn.vkCmdResetQueryPool(
@@ -6770,7 +6857,40 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
     // (throttled) and flushes the shader/pipeline storage files.
     pipeline_cache_->EndSubmission();
     if (!deferred_setup_command_buffer_.empty()) {
+      // VkMiscTime for the setup command buffer (hoisted shared memory
+      // uploads), in the pass ring reset above. Skipped if a region is still
+      // open, as it would share its slot.
+      uint32_t setup_ts_pair = UINT32_MAX;
+      if (pass_timestamp_mapping_ && fs_timestamp_slot != UINT32_MAX &&
+          pass_ts_open_pair_ == UINT32_MAX) {
+        if (pass_ts_submission_ != GetCurrentSubmission()) {
+          pass_ts_submission_ = GetCurrentSubmission();
+          pass_ts_count_ = 0;
+        }
+        if (pass_ts_count_ < kPassTimestampPairsPerSubmission) {
+          setup_ts_pair =
+              uint32_t(pass_ts_submission_ % kPassTimestampRingSubmissions) *
+                  kPassTimestampPairsPerSubmission +
+              pass_ts_count_;
+          pass_ts_keys_[setup_ts_pair] =
+              MakeMiscTimestampKey(MiscTimestampKind::kSetupCommands, 0);
+          pass_ts_draws_[setup_ts_pair] = 0;
+          pass_ts_scissor_[setup_ts_pair] = 0;
+          pass_ts_viewport_[setup_ts_pair] = 0;
+          dfn.vkCmdWriteTimestamp(command_buffer.buffer,
+                                  VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                  pass_timestamp_pool_, setup_ts_pair * 2);
+        } else {
+          ++pass_ts_dropped_;
+        }
+      }
       deferred_setup_command_buffer_.Execute(command_buffer.buffer);
+      if (setup_ts_pair != UINT32_MAX) {
+        dfn.vkCmdWriteTimestamp(command_buffer.buffer,
+                                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                pass_timestamp_pool_, setup_ts_pair * 2 + 1);
+        ++pass_ts_count_;
+      }
       VkMemoryBarrier setup_barrier;
       setup_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
       setup_barrier.pNext = nullptr;
@@ -6808,10 +6928,12 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
             uint32_t(GetCurrentSubmission() % kResolveTimestampRingSubmissions) *
             kResolveTimestampPairsPerSubmission;
         dfn.vkCmdCopyQueryPoolResults(
-            command_buffer.buffer, resolve_timestamp_pool_, resolve_ts_base * 2,
-            resolve_ts_count_ * 2, resolve_timestamp_buffer_,
-            resolve_ts_base * 2 * sizeof(uint64_t), sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+            command_buffer.buffer, resolve_timestamp_pool_,
+            resolve_ts_base * kResolveTimestampsPerResolve,
+            resolve_ts_count_ * kResolveTimestampsPerResolve,
+            resolve_timestamp_buffer_,
+            resolve_ts_base * kResolveTimestampsPerResolve * sizeof(uint64_t),
+            sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
       }
       if (pass_timestamp_mapping_ &&
           pass_ts_submission_ == GetCurrentSubmission() && pass_ts_count_) {

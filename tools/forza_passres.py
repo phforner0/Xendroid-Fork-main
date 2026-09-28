@@ -28,6 +28,8 @@ pass_re = re.compile(r"VkPassTime: (xfer )?(\d+)x(\d+) : " + num +
                      r"ms/fr \(" + num + r"pass " + num + r"draw/fr")
 res_re = re.compile(r"VkResolveTime: copy=(\w+)(\+clear)?( direct)? (\d+)x(\d+)"
                     r" : " + num + r"ms/fr \(" + num + r"/fr")
+# Split of each resolve kind at the end of its copy (newer builds).
+split_re = re.compile(r"\| copy " + num + r"ms/fr clear " + num + r"ms/fr")
 misc_re = re.compile(r"VkMiscTime: (.+?) : " + num + r"ms/fr \(" + num + r"/fr")
 
 
@@ -39,7 +41,7 @@ def parse(path):
         if (m := sync_re.search(line)):
             cur = {"gpu": float(m.group(2)) * float(m.group(4)),
                    "resolves": float(m.group(3)), "rp": float(m.group(5)),
-                   "pass": {}, "res": {}, "misc": {}}
+                   "pass": {}, "res": {}, "misc": {}, "split": {}}
             reports.append(cur)
         elif cur is None:
             continue
@@ -50,6 +52,9 @@ def parse(path):
             key = (f"{m.group(1)}{m.group(2) or ''}{m.group(3) or ''} "
                    f"{m.group(4)}x{m.group(5)}")
             cur["res"][key] = float(m.group(6))
+            if (sm := split_re.search(line)):
+                cur["split"][f"{key} copy"] = float(sm.group(1))
+                cur["split"][f"{key} clear"] = float(sm.group(2))
         elif (m := misc_re.search(line)):
             cur["misc"][m.group(1).strip()] = float(m.group(2))
     reports = reports[-last_n:]
@@ -61,7 +66,7 @@ def parse(path):
            "gpu": sum(r["gpu"] for r in reports) / n,
            "resolves": sum(r["resolves"] for r in reports) / n,
            "rp": sum(r["rp"] for r in reports) / n}
-    for kind in ("pass", "res", "misc"):
+    for kind in ("pass", "res", "misc", "split"):
         agg = collections.defaultdict(float)
         for r in reports:
             for k, v in r[kind].items():
@@ -96,7 +101,8 @@ for label in labels:
           f"{mean(runs, 'rp'):7.0f}")
 
 for kind, title in (("pass", "render passes"), ("res", "resolves"),
-                    ("misc", "other GPU work")):
+                    ("split", "resolves split at the end of the copy"),
+                    ("misc", "GPU work outside passes and resolves")):
     keys = collections.Counter()
     for runs in groups.values():
         for r in runs:

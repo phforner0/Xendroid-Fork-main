@@ -3200,6 +3200,9 @@ bool VulkanRenderTargetCache::Resolve(
     last_resolve_key_ |= 1u << 28;
   }
 
+  // Splits the resolve's GPU time into the copy and the clear (VkResolveTime).
+  command_processor_.MarkResolveCopyEnd();
+
   // Clearing.
   bool cleared = false;
   bool clear_depth = resolve_info.IsClearingDepth();
