@@ -84,7 +84,7 @@ if ($RestartArms.Count) {
     "=== arm $i ($label) ==="
     Invoke-Driver 1 debug.xendroid.arm "$i" $cfg |
       Tee-Object -FilePath (Join-Path $out "driver-status-arm$i.txt") |
-      Where-Object { $_ -match 'title screen GPU|WARNING|scene stable|FAIL' }
+      Where-Object { $_ -match 'GPU power|title screen GPU|WARNING|scene stable|FAIL' }
     $armLog = Join-Path $out "arm$i-$label-xe.log"
     & $Adb -s $Serial pull $xeLog $armLog | Out-Null
     Show-Top (Join-Path $out "top-arm$i.txt")
