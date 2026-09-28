@@ -5292,8 +5292,24 @@ bool VulkanCommandProcessor::IssueCopy() {
         // Cached completed-submission value - no blocking poll (vkGetFenceStatus
         // stalls on Turnip). Staleness is bounded by frames-in-flight.
         do_read = GetCompletedSubmission() >= last_write;
+        if (!do_read &&
+            ui::vulkan::VulkanGPUCompletionTimeline::bounded_collection() &&
+            last_write < GetCurrentSubmission() &&
+            frame_current_ - uma_readback_last_read_frame_[resolve_key] >=
+                kMaxFramesInFlight) {
+          // With bounded fence collection (debug.xendroid.fence_collect), the
+          // completed submission only reaches the frame throttle target, which
+          // a destination resolved every frame is always newer than - without
+          // this, guest RAM would keep its first readback for good. Wait for
+          // the newest write once it has gone that many frames unread.
+          CheckSubmissionCompletionAndDeviceLoss(last_write);
+          do_read = GetCompletedSubmission() >= last_write;
+        }
       }
       if (do_read) {
+        if (ui::vulkan::VulkanGPUCompletionTimeline::bounded_collection()) {
+          uma_readback_last_read_frame_[resolve_key] = frame_current_;
+        }
         InsertDebugMarker("Resolve Readback (uma): 0x%08X, %u bytes",
                           written_address, written_length);
         shared_memory_->ReadHostMapped(

@@ -1344,6 +1344,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // readback_resolve=uma: last submission that resolved each destination key,
   // so the direct host read only happens once that submission has retired.
   std::unordered_map<uint64_t, uint64_t> uma_readback_last_write_;
+  // Guest frame of each destination's last uma readback, for the bounded
+  // fence collection staleness cap.
+  std::unordered_map<uint64_t, uint64_t> uma_readback_last_read_frame_;
   // Per-backend trampoline from the memory read callback into the shared
   // MarkResolvePagesRead.
   static void ResolveReadCallbackThunk(void* context, uint32_t physical_address,
