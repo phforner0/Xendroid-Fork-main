@@ -487,6 +487,18 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
     // We also skip predicated swaps, as they are never valid (probably?).
     if (packet & 1) {
       bool any_pass = (bin_select_ & bin_mask_) != 0;
+      if (XE_UNLIKELY(bin_trace_.frames_left)) {
+        const bool executed = any_pass && opcode != PM4_XE_SWAP;
+        COMMAND_PROCESSOR::BinTracePacket(opcode, true, executed);
+        if (!executed) {
+          if (opcode == PM4_DRAW_INDX || opcode == PM4_DRAW_INDX_2) {
+            COMMAND_PROCESSOR::BinTraceDraw(true, false);
+          } else if (opcode == PM4_INDIRECT_BUFFER ||
+                     opcode == PM4_INDIRECT_BUFFER_PFD) {
+            COMMAND_PROCESSOR::BinTraceIndirectBuffer(0, 0, true, false);
+          }
+        }
+      }
       if (!any_pass || opcode == PM4_XE_SWAP) {
         // Keep visibility into dropped synchronization packets (a fence
         // predicated to a never-passing bin executes NEVER in a single-pass
@@ -508,6 +520,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
         trace_writer_.WritePacketEnd();
         return true;
       }
+    }
+
+    if (XE_UNLIKELY(bin_trace_.frames_left)) {
+      COMMAND_PROCESSOR::BinTraceOpcode(opcode);
     }
 
     bool result = false;
@@ -608,6 +624,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
                                                value);
         }
         bin_mask_ = (bin_mask_ & 0xFFFFFFFF00000000ull) | value;
+        if (XE_UNLIKELY(bin_trace_.frames_left)) {
+          COMMAND_PROCESSOR::BinTraceSetBin(
+              false, COMMAND_PROCESSOR::GuestReadPtrOffset(-8));
+        }
         result = true;
       } break;
       case PM4_SET_BIN_MASK_HI: {
@@ -618,6 +638,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
         }
         bin_mask_ =
             (bin_mask_ & 0xFFFFFFFFull) | (static_cast<uint64_t>(value) << 32);
+        if (XE_UNLIKELY(bin_trace_.frames_left)) {
+          COMMAND_PROCESSOR::BinTraceSetBin(
+              false, COMMAND_PROCESSOR::GuestReadPtrOffset(-8));
+        }
         result = true;
       } break;
       case PM4_SET_BIN_SELECT_LO: {
@@ -627,6 +651,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
                                                value);
         }
         bin_select_ = (bin_select_ & 0xFFFFFFFF00000000ull) | value;
+        if (XE_UNLIKELY(bin_trace_.frames_left)) {
+          COMMAND_PROCESSOR::BinTraceSetBin(
+              true, COMMAND_PROCESSOR::GuestReadPtrOffset(-8));
+        }
         result = true;
       } break;
       case PM4_SET_BIN_SELECT_HI: {
@@ -637,6 +665,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
         }
         bin_select_ = (bin_select_ & 0xFFFFFFFFull) |
                       (static_cast<uint64_t>(value) << 32);
+        if (XE_UNLIKELY(bin_trace_.frames_left)) {
+          COMMAND_PROCESSOR::BinTraceSetBin(
+              true, COMMAND_PROCESSOR::GuestReadPtrOffset(-8));
+        }
         result = true;
       } break;
       case PM4_SET_BIN_MASK: {
@@ -649,6 +681,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
                                                uint32_t(val_lo));
         }
         bin_mask_ = (val_hi << 32) | val_lo;
+        if (XE_UNLIKELY(bin_trace_.frames_left)) {
+          COMMAND_PROCESSOR::BinTraceSetBin(
+              false, COMMAND_PROCESSOR::GuestReadPtrOffset(-12));
+        }
         result = true;
       } break;
       case PM4_SET_BIN_SELECT: {
@@ -661,6 +697,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
                                                uint32_t(val_lo));
         }
         bin_select_ = (val_hi << 32) | val_lo;
+        if (XE_UNLIKELY(bin_trace_.frames_left)) {
+          COMMAND_PROCESSOR::BinTraceSetBin(
+              true, COMMAND_PROCESSOR::GuestReadPtrOffset(-12));
+        }
         result = true;
       } break;
       case PM4_CONTEXT_UPDATE: {
@@ -812,6 +852,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_XE_SWAP(uint32_t packet,
   COMMAND_PROCESSOR::IssueSwap(frontbuffer_ptr, frontbuffer_width,
                                frontbuffer_height);
   COMMAND_PROCESSOR::FrameStatsEndSwap(fs_swap_begin);
+  COMMAND_PROCESSOR::BinTraceEndFrame();
 
   // Advance the present-frame counter shown in the log prefix.
   logging::IncrementFrameNumber();
@@ -833,6 +874,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_INDIRECT_BUFFER(
   if (COMMAND_PROCESSOR::debug_markers_enabled()) {
     COMMAND_PROCESSOR::InsertDebugMarker("PM4_INDIRECT_BUFFER: 0x%08X (%u)",
                                          list_ptr, list_length);
+  }
+  if (XE_UNLIKELY(bin_trace_.frames_left)) {
+    COMMAND_PROCESSOR::BinTraceIndirectBuffer(GpuToCpu(list_ptr), list_length,
+                                              (packet & 1) != 0, true);
   }
 
   COMMAND_PROCESSOR::ExecuteIndirectBuffer(GpuToCpu(list_ptr), list_length);
@@ -1191,6 +1236,9 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_EXT(
   COMMAND_PROCESSOR::WriteEventInitiator(event_type);
   auto endianness = static_cast<xenos::Endian>(address & 0x3);
   address &= ~0x3;
+  if (XE_UNLIKELY(bin_trace_.frames_left)) {
+    COMMAND_PROCESSOR::BinTraceExtents(address);
+  }
 
   // Let us hope we can fake this.
   // This callback tells the driver the xy coordinates affected by a previous
@@ -1206,6 +1254,19 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_EXT(
       byte_swap<unsigned short>(0),  // min z
       byte_swap<unsigned short>(1),  // max z
   };
+  // debug.xendroid.fake_extents experiment (see BinTrace): pretend every draw
+  // covers only one 256-row band, or nothing.
+  if (XE_UNLIKELY(bin_trace_.fake_extents_mode)) {
+    const uint32_t mode = bin_trace_.fake_extents_mode;
+    uint16_t min_y = uint16_t(((mode - 1) * 256) >> 3);
+    uint16_t max_y = uint16_t((((mode - 1) * 256 + 255)) >> 3);
+    if (mode >= 4) {
+      min_y = uint16_t(xenos::kTexture2DCubeMaxWidthHeight >> 3);
+      max_y = 0;
+    }
+    extents[2] = byte_swap<unsigned short>(min_y);
+    extents[3] = byte_swap<unsigned short>(max_y);
+  }
   assert_true(endianness == xenos::Endian::k8in16);
 
   uint16_t* destination = (uint16_t*)memory_->TranslatePhysical(address);
@@ -1424,6 +1485,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
   // Skip to the next command, for example, if there are immediate indexes that
   // we don't support yet.
   reader_.AdvanceRead(count_remaining * sizeof(uint32_t));
+
+  if (XE_UNLIKELY(bin_trace_.frames_left)) {
+    COMMAND_PROCESSOR::BinTraceDraw((packet & 1) != 0, true);
+  }
 
   if (draw_succeeded) {
     auto viz_query = register_file_->Get<reg::PA_SC_VIZ_QUERY>();

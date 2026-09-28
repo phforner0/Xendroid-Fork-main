@@ -1,0 +1,8 @@
+﻿	Temperature{mValue=54.2, mType=0, mName=CPU0, mStatus=0}
+	Temperature{mValue=54.2, mType=0, mName=CPU1, mStatus=0}
+	Temperature{mValue=56.9, mType=0, mName=CPU2, mStatus=0}
+	Temperature{mValue=56.5, mType=0, mName=CPU3, mStatus=0}
+	Temperature{mValue=53.4, mType=0, mName=CPU4, mStatus=0}
+	Temperature{mValue=55.0, mType=0, mName=CPU5, mStatus=0}
+	Temperature{mValue=55.0, mType=0, mName=CPU6, mStatus=0}
+	Temperature{mValue=58.5, mType=0, mName=CPU7, mStatus=0}

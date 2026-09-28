@@ -194,7 +194,7 @@ void PollDebugPropertyOverride(const char* property, const char* cvar_name,
 // debug.xendroid.resolve_clear_in_guest_pass 0|1`; an empty value leaves the
 // cvar as configured. Polled every 30 guest frames from the command processor
 // thread, which is the only reader of these cvars.
-void PollDebugPropertyOverrides() {
+void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
 #if defined(__ANDROID__)
   static uint32_t frames_since_poll = 0;
   if (++frames_since_poll < 30) {
@@ -209,6 +209,27 @@ void PollDebugPropertyOverrides() {
   PollDebugPropertyOverride("debug.xendroid.spirv_specialize_no_alpha",
                             "spirv_specialize_no_alpha",
                             cvars::spirv_specialize_no_alpha);
+  // none | uma | fast | all, read per resolve.
+  char readback_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.readback_resolve",
+                            readback_value) > 0) {
+    static const std::pair<const char*, ReadbackResolveMode> kModes[] = {
+        {"none", ReadbackResolveMode::kDisabled},
+        {"uma", ReadbackResolveMode::kUma},
+        {"fast", ReadbackResolveMode::kFast},
+        {"all", ReadbackResolveMode::kAll},
+    };
+    for (const auto& mode : kModes) {
+      if (!std::strcmp(readback_value, mode.first)) {
+        if (command_processor.GetReadbackResolveMode() != mode.second) {
+          command_processor.SetReadbackResolveMode(mode.second);
+          XELOGI("debug.xendroid.readback_resolve: readback_resolve = {}",
+                 mode.first);
+        }
+        break;
+      }
+    }
+  }
 #endif
 }
 
@@ -2282,7 +2303,7 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
   // stats (the game's real frame rate, independent of the host present path).
   xe::RecordGuestPresent();
 
-  PollDebugPropertyOverrides();
+  PollDebugPropertyOverrides(*this);
 
   if (render_target_cache_) {
     render_target_cache_->LogResolveDetailsOnFrameEnd();
@@ -3221,6 +3242,8 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
   current_render_pass_ = use_dynamic_rendering ? VK_NULL_HANDLE : render_pass;
   current_framebuffer_ = framebuffer;
   ++vk_frame_sync_stats_.render_pass_begins;
+  BinTraceNoteIfActive("P", framebuffer->host_extent.width,
+                       framebuffer->host_extent.height);
   // Identify each pass bucket once by the guest render targets behind it.
   if (cvars::log_gpu_frame_time_breakdown) {
     const uint32_t bucket = (uint32_t(framebuffer->host_extent.width) << 16) |
@@ -3327,6 +3350,9 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
   current_render_pass_ = use_dynamic_rendering ? VK_NULL_HANDLE : render_pass;
   current_framebuffer_ = framebuffer;
   ++vk_frame_sync_stats_.render_pass_begins;
+  BinTraceNoteIfActive(transfer_dest_is_depth ? "XD" : "XC",
+                       framebuffer->host_extent.width,
+                       framebuffer->host_extent.height);
   // Bit 31 tags EDRAM ownership-transfer passes.
   OpenPassTimestamp(0x80000000u |
                     (uint32_t(framebuffer->host_extent.width) << 16) |

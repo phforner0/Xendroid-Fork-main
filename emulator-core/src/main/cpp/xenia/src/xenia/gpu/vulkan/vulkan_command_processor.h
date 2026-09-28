@@ -192,6 +192,12 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   bool submission_open() const { return submission_open_; }
   bool in_render_pass() const { return in_render_pass_; }
+  // debug.xendroid.pm4_bin_trace sequence note from the render target cache.
+  void BinTraceNoteIfActive(const char* tag, uint32_t a, uint32_t b) {
+    if (bin_trace_.frames_left) {
+      BinTraceNote(tag, a, b);
+    }
+  }
   uint64_t GetCurrentSubmission() const {
     return completion_timeline_.GetUpcomingSubmission();
   }

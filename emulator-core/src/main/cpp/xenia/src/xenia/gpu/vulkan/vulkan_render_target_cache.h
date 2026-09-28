@@ -1120,6 +1120,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
                          bool native_layout);
 
   bool gamma_render_target_as_unorm16_ = false;
+  // render_target_7e3_as_r11g11b10, if the format is usable.
+  bool color_7e3_as_r11g11b10_ = false;
 
   bool depth_unorm24_vulkan_format_supported_ = false;
   bool depth_float24_round_ = false;

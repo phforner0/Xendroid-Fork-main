@@ -1,0 +1,40 @@
+﻿Threads: 71 total,   4 running,  67 sleeping,   0 stopped,   0 zombie
+  Mem:    11233M total,    11145M used,       87M free,        1M buffers
+ Swap:    12287M total,     3352M used,     8935M free,     3319M cached
+800%cpu 345%user   0%nice 128%sys 283%idle   0%iow  45%irq   0%sirq   0%host
+  TID[%CPU]CPU NAME
+27427  100   7 xendroid.compose.fork.opt:emu
+27433 82.7   3 xendroid.compose.fork.opt:emu
+27414 55.1   5 xendroid.compose.fork.opt:emu
+27428 48.2   2 xendroid.compose.fork.opt:emu
+27432 24.1   4 xendroid.compose.fork.opt:emu
+27416 20.6   4 xendroid.compose.fork.opt:emu
+27431 17.2   4 xendroid.compose.fork.opt:emu
+27430 13.7   4 xendroid.compose.fork.opt:emu
+27411 10.3   4 xendroid.compose.fork.opt:emu
+27417  6.8   4 xendroid.compose.fork.opt:emu
+27491  3.4   5 xendroid.compose.fork.opt:emu
+27426  3.4   4 xendroid.compose.fork.opt:emu
+27408  3.4   6 xendroid.compose.fork.opt:emu
+27406  3.4   4 xendroid.compose.fork.opt:emu
+27677  0.0   5 xendroid.compose.fork.opt:emu
+27495  0.0   7 xendroid.compose.fork.opt:emu
+27494  0.0   6 xendroid.compose.fork.opt:emu
+27473  0.0   4 xendroid.compose.fork.opt:emu
+27470  0.0   2 xendroid.compose.fork.opt:emu
+27452  0.0   5 xendroid.compose.fork.opt:emu
+27451  0.0   4 xendroid.compose.fork.opt:emu
+27450  0.0   3 xendroid.compose.fork.opt:emu
+27443  0.0   1 xendroid.compose.fork.opt:emu
+27425  0.0   3 xendroid.compose.fork.opt:emu
+27418  0.0   6 xendroid.compose.fork.opt:emu
+27415  0.0   5 xendroid.compose.fork.opt:emu
+27413  0.0   6 xendroid.compose.fork.opt:emu
+27410  0.0   6 xendroid.compose.fork.opt:emu
+27404  0.0   5 xendroid.compose.fork.opt:emu
+27400  0.0   2 xendroid.compose.fork.opt:emu
+27398  0.0   5 xendroid.compose.fork.opt:emu
+27370  0.0   4 xendroid.compose.fork.opt:emu
+27369  0.0   0 xendroid.compose.fork.opt:emu
+27368  0.0   4 xendroid.compose.fork.opt:emu
+27364  0.0   2 xendroid.compose.fork.opt:emu

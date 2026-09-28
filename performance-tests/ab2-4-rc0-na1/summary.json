@@ -1,0 +1,16 @@
+{
+  "label": "ab2-4-rc0-na1",
+  "package": "xendroid.compose.fork.opt",
+  "surface": "3e0e586 SurfaceView[xendroid.compose.fork.opt/xendroid.compose.EmulatorHostActivity](BLAST)#92453",
+  "measurement_elapsed_s": 45.24833420000505,
+  "presented_frames": 966,
+  "presented_fps": 21.349628995674998,
+  "presented_frame_ms_median": 41.62823,
+  "presented_frame_ms_p95": 58.279427,
+  "presented_frame_ms_p99": 58.27948,
+  "presented_frame_ms_max": 74.930678,
+  "native_samples": 44,
+  "caveat": "Compare the same scene and thermal conditions; native logging adds overhead.",
+  "guest_fps_from_logged_intervals": 21.35519256149566,
+  "guest_worst_logged_frame_ms": 84.6
+}

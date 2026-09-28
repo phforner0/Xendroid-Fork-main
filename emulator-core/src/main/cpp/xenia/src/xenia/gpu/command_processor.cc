@@ -11,8 +11,13 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <mutex>
 #include <set>
+
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>
+#endif
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/byte_stream.h"
@@ -589,6 +594,258 @@ void CommandProcessor::FrameStatsEndSwap(uint64_t begin_ns) {
     s.last_swap_ns = keep_swap;
     s.last_report_ns = now;
   }
+}
+
+namespace {
+void BinTraceCount(std::vector<std::pair<uint64_t, uint32_t>>& counts,
+                   uint64_t key) {
+  for (auto& entry : counts) {
+    if (entry.first == key) {
+      ++entry.second;
+      return;
+    }
+  }
+  if (counts.size() < 16) {
+    counts.emplace_back(key, 1);
+  }
+}
+}  // namespace
+
+void CommandProcessor::BinTracePoll() {
+#if defined(__ANDROID__)
+  auto& t = bin_trace_;
+  if (++t.frames_since_poll < 30) {
+    return;
+  }
+  t.frames_since_poll = 0;
+  char value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.fake_extents", value) > 0) {
+    const uint32_t mode = uint32_t(std::min(std::max(std::atoi(value), 0), 4));
+    if (mode != t.fake_extents_mode) {
+      t.fake_extents_mode = mode;
+      XELOGI("BinTrace: fake screen extents mode {}", mode);
+    }
+  }
+  if (__system_property_get("debug.xendroid.pm4_bin_trace", value) <= 0) {
+    return;
+  }
+  const int32_t frames = std::atoi(value);
+  if (frames == t.last_property_value) {
+    return;
+  }
+  t.last_property_value = frames;
+  if (frames > 0) {
+    t.frames_left = uint32_t(std::min(frames, 16));
+    t.frame_number = 0;
+    XELOGI("BinTrace: tracing the next {} frames", t.frames_left);
+  }
+#endif
+}
+
+void CommandProcessor::BinTraceOpcode(uint32_t opcode) {
+  auto& t = bin_trace_;
+  const char* note = nullptr;
+  switch (opcode) {
+    case PM4_INTERRUPT:
+      ++t.interrupts;
+      note = "I";
+      break;
+    case PM4_WAIT_REG_MEM:
+      ++t.wait_reg_mems;
+      note = "W";
+      break;
+    case PM4_EVENT_WRITE_EXT:
+      // Run-length: only the first of a run of screen extent reports.
+      if (t.frame_number == 0 && !t.sequence.empty() &&
+          t.sequence.back() == 'E') {
+        return;
+      }
+      note = "E";
+      break;
+    default:
+      return;
+  }
+  if (t.frame_number == 0 && t.sequence.size() < 6000) {
+    t.sequence += fmt::format(" [{}d] {}", t.draws_since_select, note);
+  }
+}
+
+void CommandProcessor::BinTraceSetBin(bool is_select,
+                                      uint32_t packet_guest_address) {
+  auto& t = bin_trace_;
+  if (is_select) {
+    ++t.bin_select_writes;
+    if (t.sequence.size() < 6000) {
+      t.sequence += fmt::format(" [{}d] sel={:X}", t.draws_since_select,
+                                bin_select_);
+    }
+    t.draws_since_select = 0;
+  } else {
+    ++t.bin_mask_writes;
+    if (t.mask_writes.size() < 65536) {
+      t.mask_writes.emplace_back(packet_guest_address, bin_select_, bin_mask_);
+    }
+  }
+}
+
+void CommandProcessor::BinTracePacket(uint32_t opcode, bool predicated,
+                                      bool executed) {
+  auto& t = bin_trace_;
+  if (predicated) {
+    ++t.packets_predicated;
+    if (!executed) {
+      ++t.packets_predicated_skipped;
+    }
+  }
+}
+
+void CommandProcessor::BinTraceDraw(bool predicated, bool executed) {
+  auto& t = bin_trace_;
+  if (predicated) {
+    ++t.draws_predicated;
+    if (!executed) {
+      ++t.draws_predicated_skipped;
+      return;
+    }
+    BinTraceCount(t.draws_by_mask, bin_mask_);
+  }
+  ++t.draws;
+  ++t.draws_since_select;
+  BinTraceCount(t.draws_by_select, bin_select_);
+}
+
+void CommandProcessor::BinTraceIndirectBuffer(uint32_t address,
+                                              uint32_t dwords, bool predicated,
+                                              bool executed) {
+  auto& t = bin_trace_;
+  if (predicated) {
+    ++t.indirect_buffers_predicated;
+    if (!executed) {
+      ++t.indirect_buffers_predicated_skipped;
+      return;
+    }
+  }
+  ++t.indirect_buffers;
+  t.indirect_buffer_dwords += dwords;
+  if (t.indirect_buffer_ranges.size() < 4096) {
+    t.indirect_buffer_ranges.emplace_back(address, address + dwords * 4);
+  }
+}
+
+void CommandProcessor::BinTraceExtents(uint32_t address) {
+  auto& t = bin_trace_;
+  if (t.extent_addresses.size() < 16384) {
+    t.extent_addresses.push_back(address);
+  }
+}
+
+void CommandProcessor::BinTraceNote(const char* tag, uint32_t a, uint32_t b) {
+  auto& t = bin_trace_;
+  if (t.frame_number == 0 && t.sequence.size() < 6000) {
+    t.sequence += fmt::format(" [{}d] {}{}x{}", t.draws_since_select, tag, a, b);
+  }
+}
+
+void CommandProcessor::BinTraceEndFrame() {
+  auto& t = bin_trace_;
+  if (!t.frames_left) {
+    BinTracePoll();
+    return;
+  }
+  // Screen extent destinations inside command buffers executed this frame
+  // would mean the GPU patches its own command stream.
+  uint32_t extents_in_ibs = 0;
+  uint32_t extent_min = UINT32_MAX, extent_max = 0;
+  std::set<uint32_t> extent_unique;
+  for (uint32_t address : t.extent_addresses) {
+    const uint32_t physical = address & 0x1FFFFFFF;
+    extent_unique.insert(physical);
+    extent_min = std::min(extent_min, physical);
+    extent_max = std::max(extent_max, physical);
+    for (const auto& range : t.indirect_buffer_ranges) {
+      if (physical >= (range.first & 0x1FFFFFFF) &&
+          physical < (range.second & 0x1FFFFFFF)) {
+        ++extents_in_ibs;
+        break;
+      }
+    }
+  }
+  std::string by_select, by_mask;
+  for (const auto& entry : t.draws_by_select) {
+    by_select += fmt::format(" {:X}:{}", entry.first, entry.second);
+  }
+  for (const auto& entry : t.draws_by_mask) {
+    by_mask += fmt::format(" {:X}:{}", entry.first, entry.second);
+  }
+  XELOGI(
+      "BinTrace frame {}: draws={} predicated={} (skipped {}) | packets "
+      "predicated={} skipped={} | IBs={} ({} dwords) predicated={} skipped={} "
+      "| bin writes: select={} mask={} | extents={} unique={} in_IBs={} "
+      "range={:08X}-{:08X}",
+      t.frame_number, t.draws, t.draws_predicated, t.draws_predicated_skipped,
+      t.packets_predicated, t.packets_predicated_skipped, t.indirect_buffers,
+      t.indirect_buffer_dwords, t.indirect_buffers_predicated,
+      t.indirect_buffers_predicated_skipped, t.bin_select_writes,
+      t.bin_mask_writes, t.extent_addresses.size(), extent_unique.size(),
+      extents_in_ibs, extent_unique.empty() ? 0 : extent_min, extent_max);
+  XELOGI("BinTrace frame {}: executed draws by bin select:{}", t.frame_number,
+         by_select);
+  XELOGI("BinTrace frame {}: executed predicated draws by bin mask:{}",
+         t.frame_number, by_mask);
+  // Same SET_BIN_MASK packet executed under several bin selects means the
+  // command list is replayed per tile; a different value per tile means the
+  // masks get rewritten between tiles (from the screen extents).
+  {
+    std::unordered_map<uint32_t, std::vector<std::pair<uint64_t, uint64_t>>>
+        masks_by_address;
+    for (const auto& write : t.mask_writes) {
+      masks_by_address[std::get<0>(write)].emplace_back(std::get<1>(write),
+                                                        std::get<2>(write));
+    }
+    uint32_t multi_select = 0, tile_dependent = 0;
+    std::string examples;
+    for (const auto& entry : masks_by_address) {
+      bool several_selects = false, different = false;
+      for (const auto& value : entry.second) {
+        if (value.first != entry.second.front().first) {
+          several_selects = true;
+        }
+        if (value.second != entry.second.front().second) {
+          different = true;
+        }
+      }
+      multi_select += uint32_t(several_selects);
+      if (several_selects && different) {
+        ++tile_dependent;
+        if (tile_dependent <= 6) {
+          examples += fmt::format(" {:08X}:", entry.first);
+          for (const auto& value : entry.second) {
+            examples += fmt::format(" {:X}->{:X}", value.first, value.second);
+          }
+        }
+      }
+    }
+    XELOGI(
+        "BinTrace frame {}: mask packets={} addresses={} replayed under "
+        "several selects={} with per-select values={} | interrupts={} "
+        "wait_reg_mem={} | fake extents mode {} | examples:{}",
+        t.frame_number, t.mask_writes.size(), masks_by_address.size(),
+        multi_select, tile_dependent, t.interrupts, t.wait_reg_mems,
+        t.fake_extents_mode, examples);
+  }
+  XELOGI("BinTrace frame {}: sequence:{} [{}d]", t.frame_number, t.sequence,
+         t.draws_since_select);
+  const uint32_t frames_left = t.frames_left - 1;
+  const uint32_t frame_number = t.frame_number + 1;
+  const int32_t last_property_value = t.last_property_value;
+  const uint32_t fake_extents_mode = t.fake_extents_mode;
+  const uint32_t frames_since_poll = t.frames_since_poll;
+  t = BinTrace();
+  t.frames_left = frames_left;
+  t.frame_number = frame_number;
+  t.last_property_value = last_property_value;
+  t.fake_extents_mode = fake_extents_mode;
+  t.frames_since_poll = frames_since_poll;
 }
 
 void CommandProcessor::ThrottlePresentation() {

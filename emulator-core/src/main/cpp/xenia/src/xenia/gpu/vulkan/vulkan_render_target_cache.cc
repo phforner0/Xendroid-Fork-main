@@ -81,14 +81,15 @@ DEFINE_bool(
     "Vulkan");
 
 DEFINE_bool(
-    vulkan_resolve_clear_in_guest_pass, true,
+    vulkan_resolve_clear_in_guest_pass, false,
     "Perform the clear part of an EDRAM resolve inside the last guest render "
     "pass when the cleared depth/color targets are its attachments, instead of "
     "opening a separate single-attachment pass per cleared target (and then "
-    "reopening the guest pass for the next draw). Removes up to two render "
-    "passes per resolve-with-clear, which on tile-based GPUs each cost a "
-    "flush and a pipeline drain. Disable to restore the per-target clear "
-    "passes.",
+    "reopening the guest pass for the next draw). OFF by default: measured on "
+    "Forza Horizon / Adreno 825 (Turnip, sysmem) it took ~95% of the resolve "
+    "clears but only cut render pass begins from ~219 to ~209 per frame and "
+    "GPU time by ~0.5-1%, within noise for fps - the draw after a resolve "
+    "usually breaks the pass anyway (barriers for the resolved data).",
     "Vulkan");
 
 DEFINE_bool(
@@ -113,6 +114,18 @@ DEFINE_bool(
     "render-pass break and a DRAM round-trip on the resolve path. Ineligible "
     "cases (gamma, unsupported formats, multi-sample selects) fall back to the "
     "EDRAM dump path. Disable to always use the EDRAM dump path.",
+    "Vulkan");
+
+DEFINE_bool(
+    render_target_7e3_as_r11g11b10, false,
+    "Store the guest k_2_10_10_10_FLOAT (7e3) color render target as "
+    "B10G11R11_UFLOAT (32 bpp) on the host instead of R16G16B16A16_SFLOAT "
+    "(64 bpp), halving the color bandwidth of HDR scene passes (with 4x MSAA "
+    "that is 16 instead of 32 bytes per pixel). Lossy: the 2-bit alpha is "
+    "dropped (reads back as 1.0, so destination-alpha blending and resolves "
+    "of the alpha channel break) and the mantissa shrinks from the guest's 7 "
+    "bits to 6 (red, green) and 5 (blue), which can band dark gradients. Only "
+    "for titles verified not to use 7e3 alpha. Takes effect at startup.",
     "Vulkan");
 
 DEFINE_bool(
@@ -1049,6 +1062,25 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
         cvars::gamma_render_target_as_unorm16 &&
         (gamma_unorm16_properties.optimalTilingFeatures &
          kGammaUnorm16Features) == kGammaUnorm16Features;
+
+    // 7e3 as the 32bpp B10G11R11_UFLOAT - same requirements as the gamma
+    // format above. As a float color attachment format, its sample counts are
+    // the device's framebufferColorSampleCounts, like for the 64bpp default.
+    color_7e3_as_r11g11b10_ = false;
+    if (cvars::render_target_7e3_as_r11g11b10) {
+      VkFormatProperties r11g11b10_properties;
+      ifn.vkGetPhysicalDeviceFormatProperties(physical_device,
+                                              VK_FORMAT_B10G11R11_UFLOAT_PACK32,
+                                              &r11g11b10_properties);
+      const bool r11g11b10_supported =
+          (r11g11b10_properties.optimalTilingFeatures &
+           kGammaUnorm16Features) == kGammaUnorm16Features;
+      color_7e3_as_r11g11b10_ = r11g11b10_supported;
+      XELOGI(
+          "VulkanRenderTargetCache: 7e3 render targets as B10G11R11_UFLOAT {}",
+          r11g11b10_supported ? "enabled"
+                              : "requested, but the format is unsupported");
+    }
 
     depth_float24_round_ = cvars::depth_float24_round;
     // In-PS conversion requires per-sample shading under MSAA for intersections
@@ -2782,6 +2814,11 @@ bool VulkanRenderTargetCache::Resolve(
   if (!resolve_info.coordinate_info.width_div_8 || !resolve_info.height_div_8) {
     return true;
   }
+  command_processor_.BinTraceNoteIfActive(
+      resolve_info.IsClearingDepth() || resolve_info.IsClearingColor() ? "RC"
+                                                                        : "R",
+      uint32_t(resolve_info.coordinate_info.width_div_8) * 8,
+      uint32_t(resolve_info.height_div_8) * 8);
 
   const ui::vulkan::VulkanDevice* const vulkan_device =
       command_processor_.GetVulkanDevice();
@@ -4150,6 +4187,8 @@ VkFormat VulkanRenderTargetCache::GetColorVulkanFormat(
     case xenos::ColorRenderTargetFormat::k_2_10_10_10_AS_10_10_10_10:
       return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
     case xenos::ColorRenderTargetFormat::k_2_10_10_10_FLOAT:
+      return color_7e3_as_r11g11b10_ ? VK_FORMAT_B10G11R11_UFLOAT_PACK32
+                                     : VK_FORMAT_R16G16B16A16_SFLOAT;
     case xenos::ColorRenderTargetFormat::k_2_10_10_10_FLOAT_AS_16_16_16_16:
       return VK_FORMAT_R16G16B16A16_SFLOAT;
     case xenos::ColorRenderTargetFormat::k_16_16:
@@ -7642,12 +7681,12 @@ bool VulkanRenderTargetCache::TryResolveClearInGuestPass(
     const Transfer::Rectangle& clear_rectangle) {
   // The general path opens a single-attachment pass per cleared target just
   // to record a vkCmdClearAttachments, and the next draw then opens the guest
-  // pass again - with predicated tiling or render-to-texture chains that is up
-  // to three passes per resolve (Forza Horizon: ~80 of ~220 passes a frame).
-  // When the cleared targets are attachments of the last guest pass, clear them
-  // inside that pass instead and leave it open for the following draws.
-  // Ownership transfers into the cleared range (a different target owned
-  // tiles of it) still need the general path.
+  // pass again. When the cleared targets are attachments of the last guest
+  // pass, clear them inside that pass instead and leave it open for the
+  // following draws. (Forza Horizon: ~80 resolve clears a frame qualify, but
+  // the next draw usually ends the pass for its own barriers, so it saves only
+  // ~10 of ~220 pass begins.) Ownership transfers into the cleared range (a
+  // different target owned tiles of it) still need the general path.
   if (!clear_transfers_[0].empty() || !clear_transfers_[1].empty() ||
       HasPendingDrawPassTransfers() || !last_update_framebuffer_ ||
       last_update_render_pass_ == VK_NULL_HANDLE ||

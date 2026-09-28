@@ -18,6 +18,7 @@
 #include <mutex>
 #include <queue>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -283,6 +284,56 @@ class CommandProcessor {
   uint64_t FrameStatsBegin();
   void FrameStatsEndDraw(uint64_t begin_ns);
   void FrameStatsEndSwap(uint64_t begin_ns);
+
+  // Predicated tiling diagnostics: `adb shell setprop debug.xendroid.
+  // pm4_bin_trace N` logs how the next N guest frames use bin select / bin
+  // mask predication, screen extent events and indirect buffers (set a
+  // different N to trigger again). Worker thread only; a single branch per
+  // hooked packet when idle.
+  struct BinTrace {
+    uint32_t frames_left = 0;
+    uint32_t frame_number = 0;
+    int32_t last_property_value = -1;
+    uint32_t frames_since_poll = 0;
+    // debug.xendroid.fake_extents experiment: 0 - the usual full-screen
+    // screen extents, 1..3 - report every draw as covering only the rows of
+    // band 1..3 (256 each), 4 - an empty extent.
+    uint32_t fake_extents_mode = 0;
+    uint32_t interrupts = 0;
+    uint32_t wait_reg_mems = 0;
+    // <packet address, bin select, mask> for masks set this frame.
+    std::vector<std::tuple<uint32_t, uint64_t, uint64_t>> mask_writes;
+    uint32_t draws = 0;
+    uint32_t draws_predicated = 0;
+    uint32_t draws_predicated_skipped = 0;
+    uint32_t draws_since_select = 0;
+    uint32_t packets_predicated = 0;
+    uint32_t packets_predicated_skipped = 0;
+    uint32_t indirect_buffers = 0;
+    uint32_t indirect_buffers_predicated = 0;
+    uint32_t indirect_buffers_predicated_skipped = 0;
+    uint64_t indirect_buffer_dwords = 0;
+    uint32_t bin_mask_writes = 0;
+    uint32_t bin_select_writes = 0;
+    std::vector<uint32_t> extent_addresses;
+    std::vector<std::pair<uint32_t, uint32_t>> indirect_buffer_ranges;
+    // <bin select, executed draws> and <bin mask, executed predicated draws>.
+    std::vector<std::pair<uint64_t, uint32_t>> draws_by_select;
+    std::vector<std::pair<uint64_t, uint32_t>> draws_by_mask;
+    std::string sequence;
+  };
+  BinTrace bin_trace_;
+  void BinTracePoll();
+  void BinTraceOpcode(uint32_t opcode);
+  void BinTraceSetBin(bool is_select, uint32_t packet_guest_address);
+  void BinTracePacket(uint32_t opcode, bool predicated, bool executed);
+  void BinTraceDraw(bool predicated, bool executed);
+  void BinTraceIndirectBuffer(uint32_t address, uint32_t dwords,
+                              bool predicated, bool executed);
+  void BinTraceExtents(uint32_t address);
+  // Appends "<tag><a>x<b>" to the first traced frame's sequence.
+  void BinTraceNote(const char* tag, uint32_t a, uint32_t b);
+  void BinTraceEndFrame();
 
   // Constants for the shared resolve-downscale compute shader (used by the
   // D3D12 and Vulkan backends to downscale a scaled resolve back to 1x).
