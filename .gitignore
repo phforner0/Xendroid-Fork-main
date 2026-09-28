@@ -179,3 +179,24 @@ build/
 # The unanchored rule above kept them out of the repository, which breaks every
 # fresh clone at CMake configure (gen_android_spirv.py not found).
 !emulator-core/src/main/cpp/xenia/tools/build/
+
+# Local compiler/interpreter caches and signing material.
+.kotlin/
+__pycache__/
+.pytest_cache/
+*.keystore
+
+# Downloaded toolchains belong outside the source tree. Keep these anchored:
+# vendored archives and build inputs under third_party may be required.
+/OpenJDK*.tar.gz
+/commandlinetools-*.zip
+/glslang-tools_*.deb
+/spirv-tools_*.deb
+/*.apk
+
+# Benchmark captures are device-local: APKs, screenshots, shader/game caches,
+# logs, configuration backups and per-run measurements. Version only the
+# root-level analysis documents and consolidated A/B reports.
+/performance-tests/*
+!/performance-tests/*.md
+!/performance-tests/*-report.json

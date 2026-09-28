@@ -1,9 +1,0 @@
-# Candidato A/B: driver Vulkan do sistema, com os demais ajustes originais.
-# Descritores uniformes dinamicos precisam ficar desativados no driver Qualcomm.
-[GPU]
-log_gpu_frame_time_breakdown = false
-
-[Vulkan]
-vulkan_lib_path = ""
-vulkan_dynamic_constant_buffers = false
-adrenotools_force_max_clocks = false

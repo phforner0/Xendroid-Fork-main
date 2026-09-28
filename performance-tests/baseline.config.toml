@@ -1,3 +1,0 @@
-# Mantem as configuracoes originais; desliga apenas a instrumentacao temporaria.
-[GPU]
-log_gpu_frame_time_breakdown = false

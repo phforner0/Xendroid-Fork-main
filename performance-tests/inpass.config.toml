@@ -1,7 +1,0 @@
-# Candidato A/B: perfil sysmem original com resolve dentro do render pass.
-[GPU]
-log_gpu_frame_time_breakdown = false
-
-[Vulkan]
-turnip_debug = "sysmem"
-vulkan_in_pass_resolve = true
