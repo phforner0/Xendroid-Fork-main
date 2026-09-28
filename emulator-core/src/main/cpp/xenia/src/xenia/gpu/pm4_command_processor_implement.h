@@ -936,9 +936,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
   uint32_t first_value = 0;
   uint64_t log_begin_ns = 0;
   bool first_check = true;
+  uint32_t value;
 
   do {
-    uint32_t value = value_ref;
+    value = value_ref;
     if (is_memory) {
       trace_writer_.WriteMemoryRead(CpuToGpu(poll_reg_addr & ~uint32_t(0x3)),
                                     sizeof(uint32_t));
@@ -1016,7 +1017,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
         "WaitRegMem: {} {:08X} func={} ref={:08X} mask={:08X} interval={} "
         "first={:08X} final={:08X} waited={}us | rptr={} wptr={}",
         is_memory ? "mem" : "reg", poll_reg_addr, wait_info & 0x7, ref, mask,
-        wait, first_value, uint32_t(value_ref),
+        wait, first_value, value,
         (COMMAND_PROCESSOR::FrameStatsNow() - log_begin_ns) / 1000,
         read_ptr_index_, write_ptr_index_.load(std::memory_order_relaxed));
   }
