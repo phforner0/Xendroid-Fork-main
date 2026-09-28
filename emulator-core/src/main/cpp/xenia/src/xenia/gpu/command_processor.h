@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "xenia/base/guest_gpu_progress.h"
 #include "xenia/base/math.h"
 #include "xenia/base/ring_buffer.h"
 #include "xenia/gpu/register_file.h"
@@ -273,6 +274,9 @@ class CommandProcessor {
     uint64_t swap_ns = 0;
     uint64_t exec_ns = 0;      // ExecutePrimaryBuffer total
     uint64_t stall_ns = 0;     // worker idle, waiting for ring writes
+    // PM4_WAIT_REG_MEM found unmet on the first check, and the time until met.
+    uint64_t wait_reg_mem_unmet = 0;
+    uint64_t wait_reg_mem_ns = 0;
     uint64_t interval_ns = 0;  // sum of swap-to-swap intervals
     uint64_t interval_max_ns = 0;
     uint64_t last_swap_ns = 0;
@@ -283,6 +287,7 @@ class CommandProcessor {
   // Returns 0 (and skips the clock read) when the breakdown is disabled.
   uint64_t FrameStatsBegin();
   void FrameStatsEndDraw(uint64_t begin_ns);
+  void FrameStatsEndWaitRegMem(uint64_t begin_ns);
   void FrameStatsEndSwap(uint64_t begin_ns);
 
   // Predicated tiling diagnostics: `adb shell setprop debug.xendroid.
@@ -323,6 +328,9 @@ class CommandProcessor {
     std::string sequence;
   };
   BinTrace bin_trace_;
+  // debug.xendroid.wrm_log: unmet PM4_WAIT_REG_MEM waits still to be logged.
+  uint32_t wrm_log_left_ = 0;
+  int32_t wrm_log_last_property_ = -1;
   void BinTracePoll();
   void BinTraceOpcode(uint32_t opcode);
   void BinTraceSetBin(bool is_select, uint32_t packet_guest_address);

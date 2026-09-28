@@ -10,11 +10,14 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <string>
 
 #include "xenia/cpu/backend/a64/a64_sequences.h"
 
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
+#include "xenia/base/guest_gpu_progress.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/threading.h"
@@ -52,6 +55,28 @@ DEFINE_bool(a64_park_spin_backoff, true,
             "the cooperative guest scheduler, where host-blocking a fiber could "
             "stall its producer.",
             "CPU");
+
+DEFINE_string(
+    spin_park_guest_functions, "",
+    "Comma-separated guest start addresses (hex) of functions whose collapsed "
+    "spin-backoff is one step of a wait for the GPU, such as the Direct3D "
+    "wait step of Forza Horizon (829F04A8), which polls the GPU progress "
+    "counter and applies the title's own hang timeout. Under the cooperative "
+    "guest scheduler such a wait otherwise burns a whole host core. Only these "
+    "functions are affected by spin_park_mode: parking every spin-backoff "
+    "also hits the title's short lock and job-queue spins and slowed Forza "
+    "Horizon from 24 to 2 FPS.",
+    "CPU");
+
+DEFINE_int32(
+    spin_park_mode, 0,
+    "For the spin_park_guest_functions waits: 0 - spin as usual; 1 - once a "
+    "wait has lasted 50 us, offer the CPU to another ready fiber, or sleep "
+    "until the command processor publishes progress (fence, memory or read "
+    "pointer writes), at most 500 us, then let the guest re-check; 2 - only "
+    "measure the waits (SpinPark log lines). Read at run time "
+    "(debug.xendroid.spin_park on Android).",
+    "CPU");
 
 DEFINE_bool(
     log_spin_wait_histogram, false,
@@ -234,6 +259,144 @@ static void SpinBackoffParkThunk(void* /*ppc_context*/) {
   xe::threading::NanoSleep(kParkNs);
 }
 
+namespace {
+bool IsSpinParkGuestFunction(uint32_t guest_address) {
+  const std::string& list = cvars::spin_park_guest_functions;
+  if (!guest_address || list.empty()) {
+    return false;
+  }
+  size_t begin = 0;
+  while (begin < list.size()) {
+    size_t end = list.find_first_of(",; ", begin);
+    if (end == std::string::npos) {
+      end = list.size();
+    }
+    if (end > begin &&
+        std::strtoul(list.substr(begin, end - begin).c_str(), nullptr, 16) ==
+            guest_address) {
+      return true;
+    }
+    begin = end + 1;
+  }
+  return false;
+}
+
+int64_t SpinParkNowNs() {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+// Wait episodes of the spin_park_guest_functions waits, logged every ~2 s.
+struct SpinParkStats {
+  std::atomic<uint64_t> episodes{0};
+  std::atomic<uint64_t> episode_ns{0};
+  std::atomic<uint64_t> parks{0};
+  std::atomic<uint64_t> park_ns{0};
+  std::atomic<uint64_t> park_wakes{0};
+  std::atomic<uint64_t> yields{0};
+  std::atomic<int64_t> last_log_ns{0};
+};
+SpinParkStats spin_park_stats;
+
+void SpinParkMaybeLog(int64_t now_ns) {
+  SpinParkStats& s = spin_park_stats;
+  int64_t last = s.last_log_ns.load(std::memory_order_relaxed);
+  if (!last) {
+    s.last_log_ns.compare_exchange_strong(last, now_ns);
+    return;
+  }
+  if (now_ns - last < 2000000000 ||
+      !s.last_log_ns.compare_exchange_strong(last, now_ns)) {
+    return;
+  }
+  const double seconds = double(now_ns - last) * 1e-9;
+  const uint64_t episodes = s.episodes.exchange(0);
+  const uint64_t episode_ns = s.episode_ns.exchange(0);
+  const uint64_t parks = s.parks.exchange(0);
+  const uint64_t park_ns = s.park_ns.exchange(0);
+  const uint64_t park_wakes = s.park_wakes.exchange(0);
+  const uint64_t yields = s.yields.exchange(0);
+  XELOGI(
+      "SpinPark: mode {} | waits/s={:.1f} avg={:.3f}ms waiting={:.1f}% | "
+      "parks/s={:.0f} parked={:.1f}% woken_by_progress={:.0f}% yields/s={:.0f}",
+      cvars::spin_park_mode, episodes / seconds,
+      episodes ? episode_ns / 1e6 / double(episodes) : 0.0,
+      episode_ns / 1e7 / seconds, parks / seconds, park_ns / 1e7 / seconds,
+      parks ? 100.0 * double(park_wakes) / double(parks) : 0.0,
+      yields / seconds);
+}
+}  // namespace
+
+// Helper for OPCODE_SPIN_BACKOFF in spin_park_guest_functions (the step of a
+// guest wait for the GPU), called once per poll of the wait. Mode 1 parks a
+// wait that has already lasted kParkAfterNs: another ready fiber gets the
+// CPU, otherwise the thread sleeps until the command processor publishes
+// progress, at most kParkTimeoutNs, and returns so the guest re-checks its
+// condition and keeps applying its own timeouts.
+static void SpinWaitParkThunk(void* raw_context) {
+  static constexpr int64_t kGapNs = 1000000;  // >1 ms since a poll -> new wait
+  static constexpr int64_t kParkAfterNs = 50000;
+  static constexpr int64_t kParkTimeoutNs = 500000;
+  thread_local int64_t episode_start_ns = 0;
+  thread_local int64_t last_ns = 0;
+  thread_local uint32_t last_generation = 0;
+  auto* context = static_cast<ppc::PPCContext*>(raw_context);
+  auto* yield_handler = xe::cpu::backend::spin_backoff_yield_handler;
+  const int32_t mode = cvars::spin_park_mode;
+  if (mode <= 0 || !yield_handler) {
+    if (yield_handler && context->preempt_requested) {
+      yield_handler(raw_context);
+    }
+    return;
+  }
+  int64_t now_ns = SpinParkNowNs();
+  if (now_ns - last_ns > kGapNs) {
+    if (last_ns) {
+      spin_park_stats.episodes.fetch_add(1, std::memory_order_relaxed);
+      spin_park_stats.episode_ns.fetch_add(uint64_t(last_ns - episode_start_ns),
+                                           std::memory_order_relaxed);
+    }
+    episode_start_ns = now_ns;
+    last_generation =
+        guest_gpu_progress_generation.load(std::memory_order_seq_cst);
+    SpinParkMaybeLog(now_ns);
+  }
+  last_ns = now_ns;
+  if (context->preempt_requested) {
+    yield_handler(raw_context);
+    last_ns = SpinParkNowNs();
+    return;
+  }
+  if (mode != 1 || now_ns - episode_start_ns < kParkAfterNs) {
+    return;
+  }
+  // Progress published since the previous poll: let the guest re-check first,
+  // so a wake that happened between its check and this call is not slept over.
+  const uint32_t generation =
+      guest_gpu_progress_generation.load(std::memory_order_seq_cst);
+  if (generation != last_generation) {
+    last_generation = generation;
+    return;
+  }
+  if (yield_handler(raw_context)) {
+    spin_park_stats.yields.fetch_add(1, std::memory_order_relaxed);
+    last_ns = SpinParkNowNs();
+    return;
+  }
+  WaitGuestGpuProgress(generation, kParkTimeoutNs);
+  last_generation =
+      guest_gpu_progress_generation.load(std::memory_order_seq_cst);
+  const int64_t after_ns = SpinParkNowNs();
+  spin_park_stats.parks.fetch_add(1, std::memory_order_relaxed);
+  spin_park_stats.park_ns.fetch_add(uint64_t(after_ns - now_ns),
+                                    std::memory_order_relaxed);
+  if (last_generation != generation) {
+    spin_park_stats.park_wakes.fetch_add(1, std::memory_order_relaxed);
+  }
+  last_ns = after_ns;
+}
+
 // ============================================================================
 // OPCODE_SPIN_BACKOFF
 // ============================================================================
@@ -263,6 +426,13 @@ struct SPIN_BACKOFF
       // frame) plus a thread_local lookup. Gate it on the scheduler's own
       // give-way flag so the common case is two instructions.
       if (cvars::guest_scheduler) {
+        if (IsSpinParkGuestFunction(e.current_guest_function())) {
+          // A known wait for the GPU: the helper checks spin_park_mode at run
+          // time (and the give-way flag itself), so it can be switched without
+          // retranslating anything.
+          e.CallNativeSafe(reinterpret_cast<void*>(&SpinWaitParkThunk));
+          return;
+        }
         static_assert(offsetof(ppc::PPCContext, preempt_requested) < 4096);
         auto& skip = e.NewCachedLabel();
         e.ldrb(e.w16, Xbyak_aarch64::ptr(

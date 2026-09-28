@@ -19,6 +19,10 @@
 #include <sys/system_properties.h>
 #endif
 
+#include "xenia/base/cvar.h"
+
+DECLARE_int32(spin_park_mode);
+
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
@@ -564,6 +568,14 @@ void CommandProcessor::FrameStatsEndDraw(uint64_t begin_ns) {
   frame_time_stats_.draw_ns += FrameStatsNow() - begin_ns;
 }
 
+void CommandProcessor::FrameStatsEndWaitRegMem(uint64_t begin_ns) {
+  if (!begin_ns) {
+    return;
+  }
+  frame_time_stats_.wait_reg_mem_unmet++;
+  frame_time_stats_.wait_reg_mem_ns += FrameStatsNow() - begin_ns;
+}
+
 void CommandProcessor::FrameStatsEndSwap(uint64_t begin_ns) {
   if (!begin_ns) {
     return;
@@ -585,10 +597,11 @@ void CommandProcessor::FrameStatsEndSwap(uint64_t begin_ns) {
     XELOGI(
         "GpuFrame: {} frames, interval avg={:.1f}ms max={:.1f}ms | per frame: "
         "exec={:.1f}ms draws={:.0f} draw={:.1f}ms swap={:.1f}ms "
-        "stall={:.1f}ms",
+        "stall={:.1f}ms | wait_reg_mem unmet={:.1f} waited={:.1f}ms",
         s.frames, s.interval_ns / f / 1e6, s.interval_max_ns / 1e6,
         s.exec_ns / f / 1e6, s.draws / f, s.draw_ns / f / 1e6,
-        s.swap_ns / f / 1e6, s.stall_ns / f / 1e6);
+        s.swap_ns / f / 1e6, s.stall_ns / f / 1e6, s.wait_reg_mem_unmet / f,
+        s.wait_reg_mem_ns / f / 1e6);
     const uint64_t keep_swap = s.last_swap_ns;
     s = FrameTimeStats();
     s.last_swap_ns = keep_swap;
@@ -619,6 +632,36 @@ void CommandProcessor::BinTracePoll() {
   }
   t.frames_since_poll = 0;
   char value[PROP_VALUE_MAX] = {};
+  // Read by the spin_park_guest_functions wait helper at run time.
+  if (__system_property_get("debug.xendroid.spin_park", value) > 0 &&
+      value[0] >= '0' && value[0] <= '2') {
+    const int32_t mode = value[0] - '0';
+    if (cvars::spin_park_mode != mode) {
+      cvars::spin_park_mode = mode;
+      XELOGI("debug.xendroid.spin_park: spin_park_mode = {}", mode);
+    }
+  }
+  // debug.xendroid.wrm_log N: log the next N PM4_WAIT_REG_MEM waits that were
+  // not met on the first check (a new value re-arms it).
+  if (__system_property_get("debug.xendroid.wrm_log", value) > 0) {
+    const int32_t count = std::atoi(value);
+    if (count != wrm_log_last_property_) {
+      wrm_log_last_property_ = count;
+      wrm_log_left_ = uint32_t(std::min(std::max(count, 0), 256));
+      if (wrm_log_left_) {
+        XELOGI("WaitRegMem: logging the next {} unmet waits", wrm_log_left_);
+      }
+    }
+  }
+  if (__system_property_get("debug.xendroid.wait_reg_mem_backoff", value) > 0 &&
+      (value[0] == '0' || value[0] == '1')) {
+    const bool enabled = value[0] == '1';
+    if (cvars::wait_reg_mem_backoff != enabled) {
+      cvars::wait_reg_mem_backoff = enabled;
+      XELOGI("debug.xendroid.wait_reg_mem_backoff: wait_reg_mem_backoff = {}",
+             enabled);
+    }
+  }
   if (__system_property_get("debug.xendroid.fake_extents", value) > 0) {
     const uint32_t mode = uint32_t(std::min(std::max(std::atoi(value), 0), 4));
     if (mode != t.fake_extents_mode) {
@@ -979,6 +1022,7 @@ void CommandProcessor::WorkerThreadMain() {
     if (read_ptr_writeback_ptr_) {
       xe::store_and_swap<uint32_t>(
           memory_->TranslatePhysical(read_ptr_writeback_ptr_), read_ptr_index_);
+      NotifyGuestGpuProgress();
     }
 
     // FIXME: We're supposed to process the WAIT_UNTIL register at this point,
@@ -1191,6 +1235,7 @@ void CommandProcessor::HandleSpecialRegisterWrite(uint32_t index,
                rare_install ? "  <== RARE INSTALL" : "");
       }
       xe::store_and_swap<uint32_t>(memory_->TranslatePhysical(mem_addr), value);
+      NotifyGuestGpuProgress();
     }
   } else {
     switch (index) {

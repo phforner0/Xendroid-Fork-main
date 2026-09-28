@@ -122,7 +122,7 @@ static void PreemptCurrentFiber(void* /*raw_context*/) {
 // behind the caller on this same thread, which only a yield can let run. A
 // plain voluntary yield, not a quantum end, so a preempted-at-head fiber
 // keeps its slice semantics.
-static void SpinBackoffYieldFiber(void* /*raw_context*/) {
+static bool SpinBackoffYieldFiber(void* /*raw_context*/) {
   XThread* self = XThread::GetCurrentFiberThread();
   if (!self) {
     // Guest code on a non-fiber thread (interpreter, early init).
@@ -131,9 +131,9 @@ static void SpinBackoffYieldFiber(void* /*raw_context*/) {
       __asm__ __volatile__("isb sy" ::: "memory");
 #endif
     }
-    return;
+    return false;
   }
-  self->kernel_state()->guest_scheduler()->YieldCurrentThread(false);
+  return self->kernel_state()->guest_scheduler()->YieldCurrentThread(false);
 }
 
 // Raw host ticks per us for the watchdog's deadline math, 0 if unusable.

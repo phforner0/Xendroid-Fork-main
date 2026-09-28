@@ -927,6 +927,15 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
                 : register_file_->values[poll_reg_addr];
 
   bool matched = false;
+  // Sleep before the next re-check with wait_reg_mem_backoff.
+  uint64_t backoff_us = 50;
+  // Time spent with the condition unmet, for the GpuFrame stats.
+  uint64_t unmet_begin_ns = 0;
+  // debug.xendroid.wrm_log: the value seen on the first check.
+  const bool log_unmet = XE_UNLIKELY(wrm_log_left_ != 0);
+  uint32_t first_value = 0;
+  uint64_t log_begin_ns = 0;
+  bool first_check = true;
 
   do {
     uint32_t value = value_ref;
@@ -953,20 +962,38 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
     matched = MatchValueAndRef(value & mask, ref, wait_info);
 
     if (!matched) {
+      if (!unmet_begin_ns) {
+        unmet_begin_ns = COMMAND_PROCESSOR::FrameStatsBegin();
+      }
+      if (log_unmet && first_check) {
+        first_value = value;
+        log_begin_ns = COMMAND_PROCESSOR::FrameStatsNow();
+      }
+      first_check = false;
       // Wait using the duration specified by the guest.
       if (wait >= 0x100) {
         PrepareForWait();
         if (cvars::guest_display_refresh_cap) {
           // Fixed rate vblank mode - sleep since counter updates at 50/60Hz
+          const uint64_t guest_interval_us = uint64_t(wait / 0x100) * 1000;
+          if (cvars::wait_reg_mem_backoff && backoff_us < guest_interval_us) {
+            // Most of these waits are met by the guest CPU long before the
+            // guest's poll interval runs out - re-check early and often,
+            // then settle on the guest interval for genuinely long waits
+            // (vblank counters).
+            xe::threading::NanoSleep(backoff_us * 1000);
+            backoff_us *= 2;
+          } else {
 #if XE_PLATFORM_WIN32
-          // Accurate timing: 90% sleep, 10% spin
-          const uint64_t wait_ms = wait / 0x100;
-          const uint64_t sleep_ns =
-              static_cast<uint64_t>(wait_ms * 1000000 * 0.90);
-          xe::threading::NanoSleep(sleep_ns);
+            // Accurate timing: 90% sleep, 10% spin
+            const uint64_t wait_ms = wait / 0x100;
+            const uint64_t sleep_ns =
+                static_cast<uint64_t>(wait_ms * 1000000 * 0.90);
+            xe::threading::NanoSleep(sleep_ns);
 #else
-          xe::threading::Sleep(std::chrono::milliseconds(wait / 0x100));
+            xe::threading::Sleep(std::chrono::milliseconds(wait / 0x100));
 #endif
+          }
         }
         // Unlimited vblank mode (guest_display_refresh_cap=false) - spin since
         // counter updates rapidly
@@ -980,6 +1007,19 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
     }
   } while (!matched);
 
+  if (unmet_begin_ns) {
+    COMMAND_PROCESSOR::FrameStatsEndWaitRegMem(unmet_begin_ns);
+  }
+  if (log_unmet && log_begin_ns && wrm_log_left_) {
+    --wrm_log_left_;
+    XELOGI(
+        "WaitRegMem: {} {:08X} func={} ref={:08X} mask={:08X} interval={} "
+        "first={:08X} final={:08X} waited={}us | rptr={} wptr={}",
+        is_memory ? "mem" : "reg", poll_reg_addr, wait_info & 0x7, ref, mask,
+        wait, first_value, uint32_t(value_ref),
+        (COMMAND_PROCESSOR::FrameStatsNow() - log_begin_ns) / 1000,
+        read_ptr_index_, write_ptr_index_.load(std::memory_order_relaxed));
+  }
   return true;
 }
 XE_NOINLINE
@@ -1062,6 +1102,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_MEM_WRITE(
     trace_writer_.WriteMemoryWrite(CpuToGpu(addr), 4);
     write_addr += 4;
   }
+  NotifyGuestGpuProgress();
 
   return true;
 }
@@ -1160,6 +1201,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE(
     }
     xe::store(write_destination, data_value);
     trace_writer_.WriteMemoryWrite(CpuToGpu(address), 4);
+    NotifyGuestGpuProgress();
   } else {
     // Unknown form.
     assert_always();
@@ -1217,6 +1259,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_SHD(
   }
   xe::store(write_destination, data_value);
   trace_writer_.WriteMemoryWrite(CpuToGpu(address), 4);
+  NotifyGuestGpuProgress();
   return true;
 }
 

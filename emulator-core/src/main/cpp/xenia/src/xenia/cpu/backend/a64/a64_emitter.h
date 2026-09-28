@@ -108,6 +108,8 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
 
   FunctionDebugInfo* debug_info() const { return debug_info_; }
   size_t stack_size() const { return stack_size_; }
+  // Guest start address of the function being emitted.
+  uint32_t current_guest_function() const { return current_guest_function_; }
 
   void MarkSourceOffset(const hir::Instr* i);
 

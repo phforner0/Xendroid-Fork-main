@@ -196,8 +196,9 @@ extern void (*preempt_yield_handler)(void* raw_context);
 // Registered by the cooperative scheduler when it starts, null otherwise. A
 // collapsed guest spin-backoff calls it instead of burning its dispatch CPU:
 // the producer the spin waits on may be a fiber queued behind the caller on
-// the same dispatch thread, which only a fiber yield can let run.
-extern void (*spin_backoff_yield_handler)(void* raw_context);
+// the same dispatch thread, which only a fiber yield can let run. Returns
+// whether another fiber ran (false: nothing else was runnable).
+extern bool (*spin_backoff_yield_handler)(void* raw_context);
 
 }  // namespace backend
 }  // namespace cpu
