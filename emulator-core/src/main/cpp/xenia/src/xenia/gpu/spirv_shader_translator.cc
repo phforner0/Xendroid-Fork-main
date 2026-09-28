@@ -19,6 +19,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/string_buffer.h"
+#include "xenia/base/threading.h"
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/spirv_compatibility.h"
 #include "xenia/gpu/spirv_shader.h"
@@ -1259,8 +1260,18 @@ void SpirvShaderTranslator::PostTranslation() {
     return;
   }
   SpirvShader* spirv_shader = dynamic_cast<SpirvShader*>(&translation.shader());
-  if (spirv_shader && !spirv_shader->bindings_setup_entered_.test_and_set(
-                          std::memory_order_relaxed)) {
+  if (!spirv_shader) {
+    return;
+  }
+  if (spirv_shader->bindings_setup_entered_.test_and_set(
+          std::memory_order_relaxed)) {
+    // The first valid modification of the shader gathers the bindings, maybe
+    // on another creation thread right now - don't publish this translation
+    // (is_translated) before they're complete.
+    while (!spirv_shader->bindings_ready()) {
+      xe::threading::MaybeYield();
+    }
+  } else {
     spirv_shader->texture_bindings_.clear();
     spirv_shader->texture_bindings_.reserve(texture_bindings_.size());
     for (const TextureBinding& translator_binding : texture_bindings_) {
