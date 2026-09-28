@@ -75,6 +75,31 @@ DEFINE_int32(
     "allow floating-point contraction (fused multiply-add).",
     "GPU");
 
+DEFINE_int32(
+    spirv_ps_relaxed_math, 0,
+    "Skip parts of the Xenos math emulation in pixel shaders that cost GPU "
+    "time. Bit mask, read when shaders are translated (startup): 1 - no "
+    "Shader Model 3 '0 * anything = 0' in multiplications (titles relying on "
+    "0 * infinity or 0 * NaN giving 0 may show black or white pixels, and "
+    "zero products keep their IEEE sign); 2 - no rounding to the 21 mantissa "
+    "bits of the Xenos after exp, log, sqrt, rsq and rcp; 8 - allow fused "
+    "multiply-add (results may differ in the last bits between shaders, so "
+    "multipass effects repeating a calculation may not match exactly; no "
+    "change in the code Turnip generates). 11 (all) measured -6% GPU time in "
+    "the Forza Horizon main pass on Adreno 825 with no visible difference. "
+    "The same bits as spirv_ps_math_experiment, without its texture sign bit "
+    "(4).",
+    "GPU");
+
+DEFINE_int32(
+    spirv_vs_math_experiment, 0,
+    "Diagnostics - measures how much GPU time the emulation of Xenos math "
+    "costs in vertex shaders. Bit mask like spirv_ps_relaxed_math (1, 2, 8), "
+    "vertex shaders only, read when shaders are translated (startup). Only "
+    "for measurement: vertex positions computed by different shaders may "
+    "stop matching exactly between passes (depth fighting).",
+    "GPU");
+
 DEFINE_bool(
     spirv_texture_sign_branch, false,
     "Convert gamma texture components to linear only inside a branch on "
@@ -362,9 +387,17 @@ void SpirvShaderTranslator::StartTranslation() {
   // TODO(Triang3l): Logger.
   builder_ = std::make_unique<SpirvBuilder>(
       features_.spirv_version, (kSpirvMagicToolId << 16) | 1, nullptr);
+  // Texture signs are only skipped by the pixel shader experiment.
+  math_relaxations_ =
+      is_pixel_shader()
+          ? (uint32_t(cvars::spirv_ps_relaxed_math) &
+             ~uint32_t(kMathRelaxationTextureSigns)) |
+                uint32_t(cvars::spirv_ps_math_experiment)
+          : uint32_t(cvars::spirv_vs_math_experiment) &
+                ~uint32_t(kMathRelaxationTextureSigns);
   builder_->SetAllowContraction(
       features_.allow_float_contraction ||
-      (is_pixel_shader() && (cvars::spirv_ps_math_experiment & 8)));
+      (math_relaxations_ & kMathRelaxationContraction));
 
   builder_->addCapability(IsSpirvTessEvalShader() ? spv::CapabilityTessellation
                                                   : spv::CapabilityShader);

@@ -21,7 +21,6 @@
 #include "xenia/gpu/spirv_compatibility.h"
 
 DECLARE_bool(texture_integer_num_format);
-DECLARE_int32(spirv_ps_math_experiment);
 DECLARE_bool(spirv_texture_sign_branch);
 
 namespace xe {
@@ -2328,7 +2327,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
         // to gamma-correct.
         spv::Id const_float_2 = builder_->makeFloatConstant(2.0f);
         spv::Id const_float_minus_1 = builder_->makeFloatConstant(-1.0f);
-        if (is_pixel_shader() && (cvars::spirv_ps_math_experiment & 4)) {
+        if (math_relaxations_ & kMathRelaxationTextureSigns) {
           // Measurement only (wrong colors): every component taken as the
           // unsigned sample, no bias or gamma.
           if (features_.image_view_format_swizzle) {

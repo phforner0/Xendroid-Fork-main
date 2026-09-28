@@ -549,6 +549,18 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // Piecewise-linear gamma conversions for k_8_8_8_8_GAMMA values stored as
   // linear UNORM16. Values may be scalars or vectors of up to 3 components.
   // Unless pre_saturated is true, inputs are clamped to [0, 1] (NaN to 0).
+  // Bits of spirv_ps_relaxed_math and the math experiment options.
+  enum MathRelaxation : uint32_t {
+    // No Shader Model 3 "0 * anything = 0" in multiplications.
+    kMathRelaxationMultiplyZero = 1,
+    // No rounding to 21 mantissa bits after exp, log, sqrt, rsq and rcp.
+    kMathRelaxationPrecision = 2,
+    // Texture fetches ignore the component signs (experiment, wrong colors).
+    kMathRelaxationTextureSigns = 4,
+    // Floating-point contraction (fused multiply-add) allowed.
+    kMathRelaxationContraction = 8,
+  };
+
   static spv::Id PWLGammaToLinear(SpirvBuilder* builder_, spv::Id value,
                                   bool pre_saturated,
                                   spv::Id ext_inst_glsl_std_450);
@@ -960,6 +972,11 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // Is currently writing the empty depth-only pixel shader, such as for depth
   // and stencil testing with fragment shader interlock.
   bool is_depth_only_fragment_shader_ = false;
+
+  // Xenos math emulation skipped in the shader being translated
+  // (MathRelaxation bits from spirv_ps_relaxed_math, spirv_ps_math_experiment
+  // and spirv_vs_math_experiment), set in StartTranslation.
+  uint32_t math_relaxations_ = 0;
 
   std::unique_ptr<SpirvBuilder> builder_;
 
