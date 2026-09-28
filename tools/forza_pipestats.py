@@ -17,6 +17,11 @@ stats_re = re.compile(r"PipeStats: VS ([0-9A-F]{16}) PS ([0-9A-F]{16}) mod "
                       r"([0-9A-F]{16}) (\w+)((?: \| [^|]+)+)$")
 use_re = re.compile(r"PipeUse: VS ([0-9A-F]{16}) PS ([0-9A-F]{16}) pass "
                     r"(\d+)x(\d+) draws=(\d+) verts=(\d+)")
+# Pixel shader texture bindings by component signs, per pass size (newer
+# builds): unsigned / signed / biased / gamma.
+signs_re = re.compile(r"TexSigns frame \d+: pass (\d+)x(\d+) draws=\d+ "
+                      r"textures=(\d+) unsigned=([\d.]+)% signed=([\d.]+)% "
+                      r"biased=([\d.]+)% gamma=([\d.]+)%")
 
 # (vs, ps) -> stage -> list of {stat: value} (one per pixel shader variant).
 stats = collections.defaultdict(lambda: collections.defaultdict(list))
@@ -34,10 +39,19 @@ for line in open(stats_path, encoding="utf-8", errors="replace"):
     stats[(m.group(1), m.group(2))][m.group(4)].append(d)
 
 use = collections.defaultdict(lambda: [0, 0])
+# pass -> [textures, unsigned, signed, biased, gamma] (texture counts).
+signs = collections.defaultdict(lambda: [0.0] * 5)
 frames = 0
 for line in open(use_path, encoding="utf-8", errors="replace"):
     if "PipeUse frame" in line:
         frames += 1
+    m = signs_re.search(line)
+    if m:
+        s = signs[f"{m.group(1)}x{m.group(2)}"]
+        textures = int(m.group(3))
+        s[0] += textures
+        for i in range(4):
+            s[1 + i] += textures * float(m.group(4 + i)) / 100
     m = use_re.search(line)
     if m:
         u = use[(m.group(1), m.group(2), f"{m.group(3)}x{m.group(4)}")]
@@ -74,6 +88,11 @@ for p, rows in sorted(by_pass.items(), key=lambda kv: -sum(r[0] for r in kv[1]))
     total = sum(r[0] for r in rows)
     print(f"\n== pass {p}: {total / frames:.0f} draws/frame, {len(rows)} "
           f"shader pairs")
+    if signs[p][0]:
+        t = signs[p][0]
+        print(f"  texture bindings/frame {t / frames:.0f}: unsigned "
+              f"{100 * signs[p][1] / t:.0f}% signed {100 * signs[p][2] / t:.0f}% "
+              f"biased {100 * signs[p][3] / t:.0f}% gamma {100 * signs[p][4] / t:.0f}%")
     print("  draws/fr verts/fr | FS instr nops regs waves tex sy_stall loops "
           "| VS instr | VS / PS")
     for draws, verts, vs, ps in rows[:top]:
