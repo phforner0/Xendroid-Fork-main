@@ -196,9 +196,12 @@ void PollDebugPropertyOverride(const char* property, const char* cvar_name,
 
 // On-device A/B switches that need no title restart (the per-game config is
 // only applied at launch), e.g. `adb shell setprop
-// debug.xendroid.resolve_clear_in_guest_pass 0|1`; an empty value leaves the
-// cvar as configured. Polled every 30 guest frames from the command processor
-// thread, which is the only reader of these cvars.
+// debug.xendroid.resolve_clear_in_guest_pass 0|1`. An empty value stops the
+// override, but the last forced value stays until the title is relaunched,
+// and a property left set (they last until reboot) overrides every later
+// launch 30 frames in - tools/fh_auto.sh clears them before launching.
+// Polled every 30 guest frames from the command processor thread, which is
+// the only reader of these cvars.
 void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
 #if defined(__ANDROID__)
   static uint32_t frames_since_poll = 0;

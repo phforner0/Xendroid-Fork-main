@@ -78,6 +78,12 @@ if [ -n "$COOL" ] && [ "$LAUNCH" = 1 ]; then
 fi
 
 if [ "$LAUNCH" = 1 ]; then
+  # debug.xendroid.* overrides last until reboot and win over the per-game
+  # config 30 frames into the game - clear any left by earlier runs.
+  for p in $(getprop | sed -n 's/^\[\(debug\.xendroid\.[^]]*\)\]: \[..*\]$/\1/p'); do
+    say "clearing stale $p=$(getprop $p)"
+    setprop $p ""
+  done
   am force-stop $PKG
   sleep 1
   rm -f $LOG
@@ -166,4 +172,7 @@ for v in $VALUES; do
   [ -n "$EMU" ] && top -H -b -n 1 -d 3 -p $EMU -o TID,%CPU,CMD -s 2 2>/dev/null |
     head -16 > /data/local/tmp/fh_arm_${i}_top.txt
 done
+# Don't leave the override set for later launches (the running game keeps the
+# last arm's value).
+setprop $PROP ""
 say "FH_AUTO_DONE"

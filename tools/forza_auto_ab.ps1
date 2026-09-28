@@ -20,7 +20,10 @@
 #
 # -Config adds per-game config lines on relaunch, '\n' separated (printf
 #   escapes; \042 is a double quote). With -RestartArms it is appended after
-#   every arm's lines.
+#   every arm's lines. A relaunch REPLACES config/4D5309C9.config.toml, so pass
+#   the settings the arms share (e.g. render_target_7e3_as_r11g11b10 and the
+#   spin park lines) here, and clears debug.xendroid.* properties left set by
+#   earlier runs (they would override the config after 30 frames).
 # -Passes also logs per-render-pass, per-resolve and other GPU work times
 #   (VkPassTime, VkResolveTime, VkMiscTime); the timestamps serialize passes,
 #   so compare relatively.
