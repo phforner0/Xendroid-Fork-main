@@ -601,10 +601,12 @@ void VulkanTextureCache::TransitionTextureForGuestShader(
     VkImageLayout old_layout;
     GetTextureUsageMasks(old_usage, src_stage_mask, src_access_mask,
                          old_layout);
+    // Not skipped when equal - after a store the usage often stays the same.
     command_processor_.PushImageMemoryBarrier(
         texture.image(), ui::vulkan::util::InitializeSubresourceRange(),
         src_stage_mask, dst_stage_mask, src_access_mask, dst_access_mask,
-        old_layout, new_layout);
+        old_layout, new_layout, VK_QUEUE_FAMILY_IGNORED,
+        VK_QUEUE_FAMILY_IGNORED, false);
   }
 }
 
