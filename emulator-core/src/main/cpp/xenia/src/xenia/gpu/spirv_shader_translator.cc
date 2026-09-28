@@ -64,6 +64,17 @@ DEFINE_bool(
     "bottleneck.",
     "GPU");
 
+DEFINE_int32(
+    spirv_ps_math_experiment, 0,
+    "Diagnostics - measures how much GPU time the emulation of Xenos math and "
+    "texture semantics costs in pixel shaders. Bit mask, pixel shaders only, "
+    "read when shaders are translated (startup): 1 - no Shader Model 3 "
+    "'0 * anything = 0' multiplication emulation; 2 - no 21-bit precision "
+    "rounding after exp/log/sqrt/rsq/rcp; 4 - texture fetches ignore the "
+    "signed/biased/gamma component signs (WRONG COLORS, measurement only); 8 - "
+    "allow floating-point contraction (fused multiply-add).",
+    "GPU");
+
 DEFINE_bool(
     spirv_moltenvk_allow_contraction, true,
     "When translating SPIR-V for MoltenVK, omit NoContraction decorations so "
@@ -336,7 +347,9 @@ void SpirvShaderTranslator::StartTranslation() {
   // TODO(Triang3l): Logger.
   builder_ = std::make_unique<SpirvBuilder>(
       features_.spirv_version, (kSpirvMagicToolId << 16) | 1, nullptr);
-  builder_->SetAllowContraction(features_.allow_float_contraction);
+  builder_->SetAllowContraction(
+      features_.allow_float_contraction ||
+      (is_pixel_shader() && (cvars::spirv_ps_math_experiment & 8)));
 
   builder_->addCapability(IsSpirvTessEvalShader() ? spv::CapabilityTessellation
                                                   : spv::CapabilityShader);

@@ -21,6 +21,7 @@
 #include "xenia/gpu/spirv_compatibility.h"
 
 DECLARE_bool(spirv_multiply_zero_test_on_bits);
+DECLARE_int32(spirv_ps_math_experiment);
 
 namespace xe {
 namespace gpu {
@@ -28,6 +29,9 @@ namespace gpu {
 spv::Id SpirvShaderTranslator::ZeroIfAnyOperandIsZero(spv::Id value,
                                                       spv::Id operand_0_abs,
                                                       spv::Id operand_1_abs) {
+  if (is_pixel_shader() && (cvars::spirv_ps_math_experiment & 1)) {
+    return value;
+  }
   EnsureBuildPointAvailable();
   int num_components = builder_->getNumComponents(value);
   assert_true(builder_->getNumComponents(operand_0_abs) == num_components);
@@ -74,6 +78,9 @@ spv::Id SpirvShaderTranslator::ReduceFloatPrecision(spv::Id value,
   // Denormals may be flushed to zero, closer approximating Xbox 360
   // hardware behavior.
   assert_true(mantissa_bits > 0 && mantissa_bits < 23);
+  if (is_pixel_shader() && (cvars::spirv_ps_math_experiment & 2)) {
+    return value;
+  }
 
   EnsureBuildPointAvailable();
 
