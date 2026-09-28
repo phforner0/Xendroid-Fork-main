@@ -97,7 +97,17 @@ struct A64BackendContext {
   // bit 1 = got reserve
   unsigned int flags;
   unsigned int Ox1000;  // constant 0x1000
+  // The current spin_park_guest_functions wait of this guest thread (see
+  // SpinWaitParkThunk). Kept per guest thread rather than thread_local:
+  // fibers share and migrate between host threads, and a thread-local address
+  // taken before a fiber yield is still used after it.
+  int64_t spin_park_episode_start_ns;
+  int64_t spin_park_last_ns;
+  uint32_t spin_park_last_generation;
 };
+// Lives in the 256 bytes that cpu/thread_state.cc allocates before each
+// PPCContext.
+static_assert(sizeof(A64BackendContext) <= 256);
 
 // Default FPCR for FPU mode (round to nearest, no flush to zero).
 constexpr unsigned int DEFAULT_FPU_FPCR = 0;
