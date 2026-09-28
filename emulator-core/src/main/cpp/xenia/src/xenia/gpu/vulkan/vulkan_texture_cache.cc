@@ -1453,6 +1453,10 @@ VkImageView VulkanTextureCache::GetResolveDestStorageView(
 void VulkanTextureCache::MarkResolveDestWritten(uint32_t base,
                                                 uint64_t frame) {
   if (VulkanTexture* texture = FindResolveDestTexture(base)) {
+    // The store keeps the image in use by this submission - without this, a
+    // texture only written in-pass while sampled through other keys ages out
+    // of the LRU and is destroyed with stores into it still in flight.
+    texture->MarkAsUsed();
     texture->SetResolveDestWrittenFrame(frame);
     // The fragment's imageStore is only ordered before later sampled reads by
     // the barrier the next bind emits for this flag.
