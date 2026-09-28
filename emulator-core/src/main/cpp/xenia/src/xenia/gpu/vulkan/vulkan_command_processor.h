@@ -236,6 +236,10 @@ class VulkanCommandProcessor final : public CommandProcessor {
     // signs of each texture: all unsigned, any signed, any biased, any gamma
     // (a texture counts in the last of these that applies).
     uint32_t texture_signs[4] = {};
+    // Draws with a pixel shader by alpha handling: specialized without alpha
+    // operations (kNoAlphaTests), alpha test only, alpha to coverage, and
+    // generic for other reasons (no color 0 write, depth modifiers).
+    uint32_t alpha_modes[4] = {};
   };
   std::map<std::tuple<uint64_t, uint64_t, uint32_t>, PipelineUse>
       pipeline_use_;

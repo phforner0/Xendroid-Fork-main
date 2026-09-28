@@ -22,6 +22,11 @@ use_re = re.compile(r"PipeUse: VS ([0-9A-F]{16}) PS ([0-9A-F]{16}) pass "
 signs_re = re.compile(r"TexSigns frame \d+: pass (\d+)x(\d+) draws=\d+ "
                       r"textures=(\d+) unsigned=([\d.]+)% signed=([\d.]+)% "
                       r"biased=([\d.]+)% gamma=([\d.]+)%")
+# Draws with a pixel shader by alpha handling, per pass size (newer builds):
+# specialized without alpha / alpha test only / alpha to coverage / other.
+alpha_re = re.compile(r"AlphaModes frame \d+: pass (\d+)x(\d+) ps_draws=(\d+) "
+                      r"no_alpha=([\d.]+)% test_only=([\d.]+)% "
+                      r"coverage=([\d.]+)% other=([\d.]+)%")
 
 # (vs, ps) -> stage -> list of {stat: value} (one per pixel shader variant).
 stats = collections.defaultdict(lambda: collections.defaultdict(list))
@@ -41,6 +46,8 @@ for line in open(stats_path, encoding="utf-8", errors="replace"):
 use = collections.defaultdict(lambda: [0, 0])
 # pass -> [textures, unsigned, signed, biased, gamma] (texture counts).
 signs = collections.defaultdict(lambda: [0.0] * 5)
+# pass -> [draws, no alpha, test only, coverage, other] (draw counts).
+alpha = collections.defaultdict(lambda: [0.0] * 5)
 frames = 0
 for line in open(use_path, encoding="utf-8", errors="replace"):
     if "PipeUse frame" in line:
@@ -52,6 +59,13 @@ for line in open(use_path, encoding="utf-8", errors="replace"):
         s[0] += textures
         for i in range(4):
             s[1 + i] += textures * float(m.group(4 + i)) / 100
+    m = alpha_re.search(line)
+    if m:
+        a = alpha[f"{m.group(1)}x{m.group(2)}"]
+        draws = int(m.group(3))
+        a[0] += draws
+        for i in range(4):
+            a[1 + i] += draws * float(m.group(4 + i)) / 100
     m = use_re.search(line)
     if m:
         u = use[(m.group(1), m.group(2), f"{m.group(3)}x{m.group(4)}")]
@@ -93,6 +107,11 @@ for p, rows in sorted(by_pass.items(), key=lambda kv: -sum(r[0] for r in kv[1]))
         print(f"  texture bindings/frame {t / frames:.0f}: unsigned "
               f"{100 * signs[p][1] / t:.0f}% signed {100 * signs[p][2] / t:.0f}% "
               f"biased {100 * signs[p][3] / t:.0f}% gamma {100 * signs[p][4] / t:.0f}%")
+    if alpha[p][0]:
+        a = alpha[p]
+        print(f"  pixel shader draws by alpha: no alpha (specialized) "
+              f"{100 * a[1] / a[0]:.0f}% test only {100 * a[2] / a[0]:.0f}% "
+              f"coverage {100 * a[3] / a[0]:.0f}% other {100 * a[4] / a[0]:.0f}%")
     print("  draws/fr verts/fr | FS instr nops regs waves tex sy_stall loops "
           "| VS instr | VS / PS")
     for draws, verts, vs, ps in rows[:top]:

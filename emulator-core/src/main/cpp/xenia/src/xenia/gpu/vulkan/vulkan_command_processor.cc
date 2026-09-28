@@ -2349,15 +2349,20 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
       return a.second.draws > b.second.draws;
     });
     uint32_t total_draws = 0;
-    // Pixel shader texture bindings by sign class, per pass size.
+    // Pixel shader texture bindings by sign class and draws by alpha
+    // handling, per pass size.
     std::map<uint32_t, std::array<uint64_t, 5>> texture_signs_by_pass;
+    std::map<uint32_t, std::array<uint64_t, 4>> alpha_modes_by_pass;
     for (const auto& use : uses) {
       total_draws += use.second.draws;
       std::array<uint64_t, 5>& pass_signs =
           texture_signs_by_pass[std::get<2>(use.first)];
+      std::array<uint64_t, 4>& pass_alpha_modes =
+          alpha_modes_by_pass[std::get<2>(use.first)];
       pass_signs[4] += use.second.draws;
       for (uint32_t i = 0; i < 4; ++i) {
         pass_signs[i] += use.second.texture_signs[i];
+        pass_alpha_modes[i] += use.second.alpha_modes[i];
       }
     }
     XELOGI("PipeUse frame {}: {} shader pairs/pass sizes, {} draws",
@@ -2384,6 +2389,19 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
           bin_trace_.frame_number, pass.first >> 16, pass.first & 0xFFFF,
           signs[4], textures, signs[0] * percent, signs[1] * percent,
           signs[2] * percent, signs[3] * percent);
+    }
+    // Whether draws with the alpha test but without alpha to coverage are
+    // common decides on an alpha-test-only pixel shader variant.
+    for (const auto& pass : alpha_modes_by_pass) {
+      const std::array<uint64_t, 4>& modes = pass.second;
+      const uint64_t draws = modes[0] + modes[1] + modes[2] + modes[3];
+      const double percent = draws ? 100.0 / double(draws) : 0.0;
+      XELOGI(
+          "AlphaModes frame {}: pass {}x{} ps_draws={} no_alpha={:.1f}% "
+          "test_only={:.1f}% coverage={:.1f}% other={:.1f}%",
+          bin_trace_.frame_number, pass.first >> 16, pass.first & 0xFFFF,
+          draws, modes[0] * percent, modes[1] * percent, modes[2] * percent,
+          modes[3] * percent);
     }
     pipeline_use_.clear();
   }
@@ -5039,6 +5057,21 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         sign_class = std::max(sign_class, (signs >> (i * 2)) & 3);
       }
       ++use.texture_signs[sign_class];
+    }
+    if (pixel_shader) {
+      auto color_control = regs.Get<reg::RB_COLORCONTROL>();
+      uint32_t alpha_mode = 3;
+      if (pixel_shader_modification.pixel.depth_stencil_mode ==
+          SpirvShaderTranslator::Modification::DepthStencilMode::
+              kNoAlphaTests) {
+        alpha_mode = 0;
+      } else if (color_control.alpha_to_mask_enable) {
+        alpha_mode = 2;
+      } else if (color_control.alpha_test_enable &&
+                 color_control.alpha_func != xenos::CompareFunction::kAlways) {
+        alpha_mode = 1;
+      }
+      ++use.alpha_modes[alpha_mode];
     }
   }
   submission_in_progress_.last_render_pass_key =
