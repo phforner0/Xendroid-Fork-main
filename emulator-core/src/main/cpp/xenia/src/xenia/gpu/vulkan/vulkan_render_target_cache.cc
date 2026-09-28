@@ -2798,6 +2798,7 @@ bool VulkanRenderTargetCache::Resolve(
   if (written_scaled_out) {
     *written_scaled_out = false;
   }
+  last_resolve_key_ = 0;
 
   bool draw_resolution_scaled = IsDrawResolutionScaled();
 
@@ -2810,7 +2811,6 @@ bool VulkanRenderTargetCache::Resolve(
     return false;
   }
 
-  last_resolve_key_ = 0;
   // Nothing to copy/clear.
   if (!resolve_info.coordinate_info.width_div_8 || !resolve_info.height_div_8) {
     return true;
