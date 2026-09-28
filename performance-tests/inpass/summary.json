@@ -1,0 +1,14 @@
+{
+  "label": "inpass",
+  "package": "xendroid.compose.fork",
+  "surface": "6ff36bd SurfaceView[xendroid.compose.fork/xendroid.compose.EmulatorHostActivity](BLAST)#86236",
+  "measurement_elapsed_s": 60.1726751060005,
+  "presented_frames": 785,
+  "presented_fps": 13.046140348019009,
+  "presented_frame_ms_median": 83.25625,
+  "presented_frame_ms_p95": 99.907449,
+  "presented_frame_ms_p99": 99.907604,
+  "presented_frame_ms_max": 99.907657,
+  "native_samples": 0,
+  "caveat": "Compare the same scene and thermal conditions; native logging adds overhead."
+}

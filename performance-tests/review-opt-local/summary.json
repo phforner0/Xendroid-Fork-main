@@ -1,0 +1,75 @@
+{
+  "source": "previous-session/xe.log",
+  "cpu_samples_total": 226,
+  "gpu_samples_total": 226,
+  "windows": {
+    "heavy_scene_4800_to_end": {
+      "frame_range": [
+        4800,
+        6827
+      ],
+      "cpu_samples": 96,
+      "gpu_samples": 96,
+      "logged_frames": 2032,
+      "logged_duration_s": 98.3724,
+      "guest_fps": 20.656200316348897,
+      "sample_fps_min": 14.749262536873157,
+      "sample_fps_max": 27.548209366391188,
+      "worst_logged_frame_ms": 237.5,
+      "command_thread_exec_ms": 48.019438976377955,
+      "draws_per_frame": 2770.0634842519685,
+      "draw_processing_ms": 23.535679133858267,
+      "swap_ms": 4.979232283464566,
+      "ringbuffer_idle_ms": 0.39463582677165354,
+      "submissions_per_frame": 3.6365554465161924,
+      "resolves_per_frame": 97.93233562315996,
+      "gpu_exec_ms_per_submission": 11.951226692836114,
+      "gpu_gap_ms_per_submission": 1.4651128557409225,
+      "render_pass_begins_per_frame": 211.41658488714427,
+      "replay_and_submit_cpu_ms": 12.855250245338567,
+      "resolve_clears_per_frame": 81.246908734053,
+      "clears_in_guest_pass_per_frame": 77.53606476938175,
+      "clear_fast_path_percent": 95.43263365647792
+    },
+    "final_heavy_scene_6400_to_end": {
+      "frame_range": [
+        6400,
+        6827
+      ],
+      "cpu_samples": 21,
+      "gpu_samples": 21,
+      "logged_frames": 433,
+      "logged_duration_s": 21.6799,
+      "guest_fps": 19.972416846941176,
+      "sample_fps_min": 17.57469244288225,
+      "sample_fps_max": 22.22222222222222,
+      "worst_logged_frame_ms": 96.2,
+      "command_thread_exec_ms": 49.84688221709007,
+      "draws_per_frame": 2719.593533487298,
+      "draw_processing_ms": 25.06674364896074,
+      "swap_ms": 6.134872979214781,
+      "ringbuffer_idle_ms": 0.22355658198614317,
+      "submissions_per_frame": 3.6410672853828303,
+      "resolves_per_frame": 98.63201856148493,
+      "gpu_exec_ms_per_submission": 12.296983758700696,
+      "gpu_gap_ms_per_submission": 1.5436194895591646,
+      "render_pass_begins_per_frame": 218.8909512761021,
+      "replay_and_submit_cpu_ms": 14.86751740139211,
+      "resolve_clears_per_frame": 81.66867749419953,
+      "clears_in_guest_pass_per_frame": 77.66426914153134,
+      "clear_fast_path_percent": 95.09676356280826
+    }
+  },
+  "notes": [
+    "Frame ranges exclude the earlier light intro and the final pause.",
+    "CPU/GPU reports are asynchronous and rounded; FPS is an estimate from logged intervals.",
+    "These are logged observations, not a controlled original-versus-optimized A/B.",
+    "resolve_ms=0 is unmeasured when log_gpu_frame_time_breakdown_passes=false."
+  ],
+  "cached_pipeline_pixel_depth_modes": {
+    "0": 658,
+    "7": 166
+  },
+  "cached_no_alpha_pipelines": 166,
+  "pipeline_cache_note": "Mode 7 is kNoAlphaTests. Counts prove cached specialization use, not draw frequency."
+}

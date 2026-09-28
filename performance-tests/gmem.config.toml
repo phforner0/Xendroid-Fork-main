@@ -1,0 +1,6 @@
+# Candidato A/B: altera somente o modo de renderizacao Turnip.
+[GPU]
+log_gpu_frame_time_breakdown = false
+
+[Vulkan]
+turnip_debug = ""

@@ -1,0 +1,14 @@
+{
+  "label": "gmem",
+  "package": "xendroid.compose.fork",
+  "surface": "6ff36bd SurfaceView[xendroid.compose.fork/xendroid.compose.EmulatorHostActivity](BLAST)#86163",
+  "measurement_elapsed_s": 60.16831357299998,
+  "presented_frames": 454,
+  "presented_fps": 7.546503862231009,
+  "presented_frame_ms_median": 133.210104,
+  "presented_frame_ms_p95": 149.861354,
+  "presented_frame_ms_p99": 183.163906,
+  "presented_frame_ms_max": 199.815157,
+  "native_samples": 0,
+  "caveat": "Compare the same scene and thermal conditions; native logging adds overhead."
+}

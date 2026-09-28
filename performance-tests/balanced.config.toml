@@ -1,0 +1,14 @@
+# Candidato A/B: reduzir custo de submissao, descriptors e logs.
+# Mantem a renderizacao e os patches do perfil original.
+[GPU]
+log_gpu_frame_time_breakdown = false
+vulkan_mid_frame_submission_draws = 0
+
+[Vulkan]
+turnip_debug = "sysmem"
+vulkan_dynamic_constant_buffers = true
+adrenotools_force_max_clocks = false
+
+[Logging]
+log_level = 1
+flush_log = false

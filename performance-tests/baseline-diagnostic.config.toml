@@ -1,0 +1,3 @@
+# Perfil original; somente a instrumentacao foi adicionada.
+[GPU]
+log_gpu_frame_time_breakdown = true

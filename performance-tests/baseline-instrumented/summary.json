@@ -1,0 +1,14 @@
+{
+  "label": "baseline-instrumented",
+  "package": "xendroid.compose.fork",
+  "surface": "7805c26 SurfaceView[xendroid.compose.fork/xendroid.compose.EmulatorHostActivity](BLAST)#86027",
+  "measurement_elapsed_s": 20.159569995999846,
+  "presented_frames": 146,
+  "presented_fps": 7.262759858547468,
+  "presented_frame_ms_median": 133.210104,
+  "presented_frame_ms_p95": 149.862864,
+  "presented_frame_ms_p99": 183.163906,
+  "presented_frame_ms_max": 183.163907,
+  "native_samples": 0,
+  "caveat": "Compare the same scene and thermal conditions; native logging adds overhead."
+}
