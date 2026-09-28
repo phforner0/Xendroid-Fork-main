@@ -76,6 +76,21 @@ DEFINE_int32(
     "GPU");
 
 DEFINE_bool(
+    spirv_texture_sign_branch, false,
+    "Convert gamma texture components to linear only inside a branch on "
+    "whether any component of the fetch is gamma (a uniform condition), "
+    "marked DontFlatten, with selects for the cheap signed and biased "
+    "components, instead of a switch per component. Mesa lowers such a "
+    "switch to ifs that it flattens, so the piecewise linear gamma conversion "
+    "runs for every component of every texture fetch and is discarded unless "
+    "the texture is gamma (texture sign handling took ~12% of the Forza "
+    "Horizon main pass on Adreno 825). The branch costs a few instructions "
+    "per fetch, so this pays off unless most fetched textures are gamma (see "
+    "the TexSigns lines of pm4_bin_trace). Same results; read when shaders "
+    "are translated (startup).",
+    "GPU");
+
+DEFINE_bool(
     spirv_moltenvk_allow_contraction, true,
     "When translating SPIR-V for MoltenVK, omit NoContraction decorations so "
     "SPIRV-Cross doesn't emit MSL NoContraction helper wrappers with "
