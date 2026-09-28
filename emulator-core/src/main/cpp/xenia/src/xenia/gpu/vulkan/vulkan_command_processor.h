@@ -204,6 +204,10 @@ class VulkanCommandProcessor final : public CommandProcessor {
   struct PipelineUse {
     uint32_t draws = 0;
     uint64_t vertices = 0;
+    // Pixel shader texture bindings summed over the draws, by the component
+    // signs of each texture: all unsigned, any signed, any biased, any gamma
+    // (a texture counts in the last of these that applies).
+    uint32_t texture_signs[4] = {};
   };
   std::map<std::tuple<uint64_t, uint64_t, uint32_t>, PipelineUse>
       pipeline_use_;

@@ -2340,17 +2340,41 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
       return a.second.draws > b.second.draws;
     });
     uint32_t total_draws = 0;
+    // Pixel shader texture bindings by sign class, per pass size.
+    std::map<uint32_t, std::array<uint64_t, 5>> texture_signs_by_pass;
     for (const auto& use : uses) {
       total_draws += use.second.draws;
+      std::array<uint64_t, 5>& pass_signs =
+          texture_signs_by_pass[std::get<2>(use.first)];
+      pass_signs[4] += use.second.draws;
+      for (uint32_t i = 0; i < 4; ++i) {
+        pass_signs[i] += use.second.texture_signs[i];
+      }
     }
     XELOGI("PipeUse frame {}: {} shader pairs/pass sizes, {} draws",
            bin_trace_.frame_number, uses.size(), total_draws);
     for (size_t i = 0; i < std::min(uses.size(), size_t(60)); ++i) {
       const auto& key = uses[i].first;
-      XELOGI("PipeUse: VS {:016X} PS {:016X} pass {}x{} draws={} verts={}",
-             std::get<0>(key), std::get<1>(key), std::get<2>(key) >> 16,
-             std::get<2>(key) & 0xFFFF, uses[i].second.draws,
-             uses[i].second.vertices);
+      const uint32_t* signs = uses[i].second.texture_signs;
+      XELOGI(
+          "PipeUse: VS {:016X} PS {:016X} pass {}x{} draws={} verts={} "
+          "tex={}/{}/{}/{}",
+          std::get<0>(key), std::get<1>(key), std::get<2>(key) >> 16,
+          std::get<2>(key) & 0xFFFF, uses[i].second.draws,
+          uses[i].second.vertices, signs[0], signs[1], signs[2], signs[3]);
+    }
+    // Whether gamma textures are common decides between converting gamma in
+    // a uniform branch (spirv_texture_sign_branch) and per-draw variants.
+    for (const auto& pass : texture_signs_by_pass) {
+      const std::array<uint64_t, 5>& signs = pass.second;
+      const uint64_t textures = signs[0] + signs[1] + signs[2] + signs[3];
+      const double percent = textures ? 100.0 / double(textures) : 0.0;
+      XELOGI(
+          "TexSigns frame {}: pass {}x{} draws={} textures={} unsigned={:.1f}% "
+          "signed={:.1f}% biased={:.1f}% gamma={:.1f}%",
+          bin_trace_.frame_number, pass.first >> 16, pass.first & 0xFFFF,
+          signs[4], textures, signs[0] * percent, signs[1] * percent,
+          signs[2] * percent, signs[3] * percent);
     }
     pipeline_use_.clear();
   }
@@ -4864,6 +4888,21 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
             uint32_t(current_framebuffer_->host_extent.height))];
     ++use.draws;
     use.vertices += primitive_processing_result.host_draw_vertex_count;
+    uint32_t textures_remaining =
+        pixel_shader && stage_bindings_ready[1]
+            ? pixel_shader->GetUsedTextureMaskAfterTranslation()
+            : 0;
+    uint32_t texture_index;
+    while (xe::bit_scan_forward(textures_remaining, &texture_index)) {
+      textures_remaining &= ~(UINT32_C(1) << texture_index);
+      uint32_t signs =
+          texture_cache_->GetActiveTextureSwizzledSigns(texture_index);
+      uint32_t sign_class = 0;
+      for (uint32_t i = 0; i < 4; ++i) {
+        sign_class = std::max(sign_class, (signs >> (i * 2)) & 3);
+      }
+      ++use.texture_signs[sign_class];
+    }
   }
   submission_in_progress_.last_render_pass_key =
       render_target_cache_->last_update_render_pass_key().key;
