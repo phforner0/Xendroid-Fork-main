@@ -1,277 +1,263 @@
 name: XenDroid
+
+# Android APK build (arm64-v8a).
+# - Pull requests into main (including the claude/* branches of cloud
+#   sessions) and manual runs build the test package xendroid.compose.fork.opt:
+#   debuggable and installed alongside the regular app, the package the A/B
+#   tools in tools/ drive.
+# - Pushes to main build the regular package xendroid.compose.fork and, when
+#   the signing secrets are set, publish it as a GitHub release.
+# Signing (repository secrets, all optional):
+# - release key: ANDROID_KEYSTORE_BASE64, KEY_ALIAS, KEYSTORE_PASSWORD,
+#   KEY_PASSWORD (defaults to the keystore password). Needed for releases.
+# - test key, used for test builds before the release key: TEST_KEYSTORE_BASE64,
+#   TEST_KEY_ALIAS, TEST_KEYSTORE_PASSWORD (also the key password). With the key
+#   of the test builds already on the phone, CI builds install over them.
+# Without a key the APK is signed with a temporary key made for the run: it
+# installs, but not over a build signed with another key, and no release is
+# published.
 on:
-  pull_request:
-    branches: main
-    
   push:
-    branches: main 
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'performance-tests/**'
+      - 'tools/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/cache-cleanup.yml'
+      - '.github/workflows/checks.yml'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'performance-tests/**'
+      - 'tools/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/cache-cleanup.yml'
+      - '.github/workflows/checks.yml'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: >-
+          test: xendroid.compose.fork.opt (debuggable, side by side);
+          regular: xendroid.compose.fork
+        type: choice
+        options: [test, regular]
+        default: test
 
 permissions:
-  contents: write
-  actions:  write
+  contents: read
+
+concurrency:
+  group: xendroid-${{ github.event.pull_request.number || github.ref }}
+  # A new push to a pull request replaces its running build; main builds
+  # (releases) always finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build-arm64_v8a:
+  apk:
+    name: APK (arm64-v8a)
     runs-on: ubuntu-24.04
+    timeout-minutes: 300
 
     container:
       image: ghcr.io/cirruslabs/android-sdk:35
 
-    # Allow to use gradle wrapper from xenia
     env:
-      ANDROID_PLATFORM: android-35
+      ANDROID_SDK_ROOT: /opt/android-sdk-linux
       ANDROID_NDK_VERSION: 29.0.14206865
-
-      # Gradle tuning
+      CMAKE_VERSION: 3.30.3
+      BUILD_TOOLS_VERSION: 35.0.0
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
       GRADLE_OPTS: -Dorg.gradle.daemon=false
-
-      # Native compile cache
+      # Native compile cache (emulator-core/build.gradle adds the launcher).
       USE_CCACHE: 'true'
-      CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_COMPILERCHECK: content
 
+    outputs:
+      sha: ${{ steps.cfg.outputs.sha }}
+      name: ${{ steps.cfg.outputs.name }}
+      apk: ${{ steps.sign.outputs.apk }}
+      signed_with: ${{ steps.sign.outputs.signed_with }}
+
     steps:
-
-    - name: Check APK keystore
-      run: |
-        if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-          echo "::error::ANDROID_KEYSTORE_BASE64 secret is not configured."
-          exit 1
-        fi
-
-    ##################################################################
-    # Checkout
-    ##################################################################
     - name: Checkout
       uses: actions/checkout@v4
       with:
-        submodules: recursive
         fetch-depth: 1
 
-    - name: Configure Git
+    - name: Build settings
+      id: cfg
+      env:
+        INPUT_PACKAGE: ${{ inputs.package }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        sha=$(git rev-parse --short=8 HEAD)
+        if [ "$GITHUB_EVENT_NAME" = push ] || [ "$INPUT_PACKAGE" = regular ]; then
+          variant=regular
+          name="XenDroid_Release_$sha"
+          package=xendroid.compose.fork
+          package_args=""
+        else
+          variant=test
+          name="XenDroid_test_${PR_NUMBER:+pr${PR_NUMBER}_}$sha"
+          package=xendroid.compose.fork.opt
+          package_args="-PxendroidReleaseIdSuffix=.fork.opt -PxendroidReleaseDebuggable"
+        fi
+        {
+          echo "sha=$sha"
+          echo "variant=$variant"
+          echo "name=$name"
+          echo "package=$package"
+          echo "package_args=$package_args"
+        } >> "$GITHUB_OUTPUT"
+        # Paths inside the container (github.workspace is the host path).
+        echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+        echo "Building $package as $name.apk"
 
-    ##################################################################
-    # System tools
-    ##################################################################
-    - name: Install tools
+    - name: Install system tools
       run: |
-        apt-get update
-        apt-get install -y ninja-build python3 glslang-tools spirv-tools
+        apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+          ninja-build python3 glslang-tools spirv-tools ccache
 
-
-    ##################################################################
-    # Cache Gradle
-    ##################################################################
-    - name: Cache Gradle
-      uses:  gradle/actions/setup-gradle@v4
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v4
       with:
-        gradle-home-cache-strict-match: false
         validate-wrappers: false
 
-
-    ##################################################################
-    # Android SDK / NDK
-    ##################################################################
-    - name: Cache NDK + CMake
+    - name: Cache NDK and CMake
       uses: actions/cache@v4
       with:
         path: |
           /opt/android-sdk-linux/ndk/${{ env.ANDROID_NDK_VERSION }}
-          /opt/android-sdk-linux/cmake/3.30.3
-        key: sdk-ndk${{ env.ANDROID_NDK_VERSION }}-cmake3.30.3
+          /opt/android-sdk-linux/cmake/${{ env.CMAKE_VERSION }}
+        key: sdk-ndk${{ env.ANDROID_NDK_VERSION }}-cmake${{ env.CMAKE_VERSION }}
 
-    - name: Install Android NDK
+    - name: Install Android SDK packages
       run: |
-        export ANDROID_SDK_ROOT=/opt/android-sdk-linux
-
-        yes | sdkmanager --licenses
-
-        if [ ! -d "$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" ]; then
-          sdkmanager "ndk;$ANDROID_NDK_VERSION"
-        fi
-
-        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-        echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" >> $GITHUB_ENV
-
-    ##################################################################  
-    # CMake Install
-    ##################################################################
-    - name: Install CMake
-      run: |
-        export ANDROID_SDK_ROOT=/opt/android-sdk-linux
-
-        if [ ! -d "$ANDROID_SDK_ROOT/cmake/3.30.3" ]; then
-            sdkmanager "cmake;3.30.3"
-        fi
-
-        echo "CMAKE_HOME=$ANDROID_SDK_ROOT/cmake/3.30.3" >> $GITHUB_ENV
-
-    ##################################################################
-    # local.properties
-    ##################################################################
-    - name: Generate local.properties
-      run: |
+        yes | sdkmanager --licenses > /dev/null
+        for package in "ndk;$ANDROID_NDK_VERSION" "cmake;$CMAKE_VERSION" \
+                       "build-tools;$BUILD_TOOLS_VERSION" "platforms;android-35"; do
+          dir="$ANDROID_SDK_ROOT/$(echo "$package" | tr ';' '/')"
+          [ -d "$dir" ] || sdkmanager "$package" > /dev/null
+        done
+        echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
         echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
-    ##################################################################
-    # Restore keystore
-    ##################################################################
-    - name: Decode keystore
-      run: |
-        if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-          echo "::error::ANDROID_KEYSTORE_BASE64 secret is not configured."
-          exit 1
-        fi
-
-        echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
-
-        if [ ! -s release.keystore ]; then
-          echo "::error::Failed to decode keystore or keystore is empty."
-          exit 1
-        fi
-
-    - name: Check signing secrets
-      run: |
-        if [ ! -n "${{ secrets.KEY_ALIAS }}" ]; then
-          echo "::error::Failed to fetch key alias."
-          exit 1
-        fi
-
-        if [ ! -n "${{ secrets.KEYSTORE_PASSWORD }}" ]; then
-          echo "::error::Failed to fetch keystore password."
-          exit 1
-        fi
-
-        if [ ! -n "${{ secrets.KEY_PASSWORD }}" ]; then
-          echo "::error::Failed to fetch key password."
-          exit 1
-        fi
-
-    ##################################################################
-    # Gradle properties
-    #################################################################
-    - name: Generate gradle.properties
-      run: |
-        cat > gradle.properties <<EOF
-        org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
-        org.gradle.parallel=true
-        org.gradle.caching=true
-        org.gradle.configuration-cache=true
-
-        android.useAndroidX=true
-        android.nonTransitiveRClass=true
-        EOF
-
-    ##################################################################
-    # Native compile cache (ccache)
-    ##################################################################
     - name: ccache
       uses: hendrikmuhs/ccache-action@v1.2
       with:
-        key: ${{ runner.os }}-ndk${{ env.ANDROID_NDK_VERSION }}-arm64
+        key: ndk${{ env.ANDROID_NDK_VERSION }}-arm64
         max-size: 2G
 
-    - name: Get Git hash
-      id: git
-      run: echo "hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-    ##################################################################
-    # Build
-    ##################################################################
-    - name: Build Release APK
+    - name: Build release APK
+      env:
+        SHA: ${{ steps.cfg.outputs.sha }}
+        PACKAGE_ARGS: ${{ steps.cfg.outputs.package_args }}
       run: |
         chmod +x gradlew
+        # PACKAGE_ARGS holds several arguments (unquoted on purpose).
+        ./gradlew --console=plain --build-cache --parallel \
+          -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+          -PgitHash="$SHA" $PACKAGE_ARGS :app:assembleRelease
+        ccache -s || true
+        df -h "$GITHUB_WORKSPACE" || true
 
-        ./gradlew assembleRelease \
-          -PgitHash=${{ steps.git.outputs.hash }} \
-          --build-cache \
-          --parallel \
-          --max-workers=$(nproc) \
-          --no-daemon
-
-    ##################################################################
-    # Sign APK
-    ##################################################################
     - name: Sign APK
+      id: sign
+      env:
+        NAME: ${{ steps.cfg.outputs.name }}
+        PACKAGE: ${{ steps.cfg.outputs.package }}
+        VARIANT: ${{ steps.cfg.outputs.variant }}
+        KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        TEST_KEYSTORE_BASE64: ${{ secrets.TEST_KEYSTORE_BASE64 }}
+        TEST_KEY_ALIAS: ${{ secrets.TEST_KEY_ALIAS }}
+        TEST_KEYSTORE_PASSWORD: ${{ secrets.TEST_KEYSTORE_PASSWORD }}
       run: |
-        APK=$(find . -name "*release*.apk" | head -n 1)
+        set -eu
+        bt="$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS_VERSION"
+        unsigned=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+        "$bt/zipalign" -f -p 4 "$unsigned" "$RUNNER_TEMP/aligned.apk"
+        keystore="$RUNNER_TEMP/signing.keystore"
+        trap 'rm -f "$keystore"' EXIT
+        if [ "$VARIANT" = test ] && [ -n "$TEST_KEYSTORE_BASE64" ] &&
+           [ -n "$TEST_KEY_ALIAS" ] && [ -n "$TEST_KEYSTORE_PASSWORD" ]; then
+          printf '%s' "$TEST_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          signed_with=test
+          alias=$TEST_KEY_ALIAS
+          KEYSTORE_PASSWORD=$TEST_KEYSTORE_PASSWORD
+          KEY_PASSWORD=$TEST_KEYSTORE_PASSWORD
+        elif [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          signed_with=release
+          alias=$KEY_ALIAS
+          KEY_PASSWORD=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}
+        else
+          echo "::warning::No signing secrets set: signed with a temporary key, no release is published (see the header of XenDroid.yml)."
+          KEYSTORE_PASSWORD=$(head -c 24 /dev/urandom | base64 | tr -d '/+=')
+          echo "::add-mask::$KEYSTORE_PASSWORD"
+          KEY_PASSWORD=$KEYSTORE_PASSWORD
+          export KEYSTORE_PASSWORD
+          "${JAVA_HOME:+$JAVA_HOME/bin/}keytool" -genkeypair -keystore "$keystore" \
+            -storetype PKCS12 -alias ci \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass:env KEYSTORE_PASSWORD -dname "CN=XenDroid CI temporary key"
+          signed_with=temporary
+          alias=ci
+        fi
+        # Read by apksigner from the environment, never on the command line.
+        export KEYSTORE_PASSWORD KEY_PASSWORD
+        "$bt/apksigner" sign --ks "$keystore" --ks-key-alias "$alias" \
+          --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD \
+          --out "$NAME.apk" "$RUNNER_TEMP/aligned.apk"
+        "$bt/apksigner" verify --print-certs "$NAME.apk" | grep -E 'Signer #1 certificate (DN|SHA-256)'
+        {
+          echo "### $NAME.apk"
+          echo "- Package: \`$PACKAGE\`"
+          echo "- Signed with the $signed_with key"
+          echo "- Size: $(du -h "$NAME.apk" | cut -f1), SHA-256: \`$(sha256sum "$NAME.apk" | cut -d' ' -f1)\`"
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "apk=$NAME.apk" >> "$GITHUB_OUTPUT"
+        echo "signed_with=$signed_with" >> "$GITHUB_OUTPUT"
 
-        "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" sign \
-          --ks release.keystore \
-          --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
-          --ks-pass pass:${{ secrets.KEYSTORE_PASSWORD }} \
-          --key-pass pass:${{ secrets.KEY_PASSWORD }} \
-          "$APK"
-
-    - name: Verify Signature
-      run: |
-        APK=$(ls app/build/outputs/apk/release/*.apk)
-
-        "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify "$APK"
-
-    ##################################################################
-    # Artifact naming
-    ##################################################################
-    - name: Compute SHA
-      id: vars
-      run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-    - name: Rename APK
-      run: |
-        APK=$(ls app/build/outputs/apk/release/*.apk)
-        mv "$APK" "XenDroid_Release_${{ steps.vars.outputs.sha_short }}.apk"
-
-    ##################################################################
-    # Delete old artifacts if needed
-    ##################################################################
-    - name: Delete oldest artifacts
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const { owner, repo } = context.repo;
-
-          const artifacts = await github.paginate(
-            github.rest.actions.listArtifactsForRepo,
-            {
-              owner,
-              repo,
-              per_page: 100
-            }
-          );
-
-          // Ordina dal più vecchio al più recente
-          artifacts.sort(
-            (a, b) => new Date(a.created_at) - new Date(b.created_at)
-          );
-          
-          if (artifacts.length >= 2) {
-            for (const artifact of artifacts.slice(0, 2)) {
-              core.info(`Deleting artifact: ${artifact.name}`);
-
-              await github.rest.actions.deleteArtifact({
-                owner,
-                repo,
-                artifact_id: artifact.id
-              });
-            }
-          } else {
-            core.info("Less than 2 artifacts found, nothing to delete.");
-          }
-
-    - name: Upload artifact
-      if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: XenDroid_Release_${{ steps.vars.outputs.sha_short }}
-        path: XenDroid_Release_${{ steps.vars.outputs.sha_short }}.apk
+        name: ${{ steps.cfg.outputs.name }}
+        path: ${{ steps.sign.outputs.apk }}
+        if-no-files-found: error
+        retention-days: 14
+        compression-level: 0
 
-    - name: Create GitHub Release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  release:
+    name: GitHub release
+    needs: apk
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      needs.apk.outputs.signed_with == 'release'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download APK
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ needs.apk.outputs.name }}
+
+    - name: Create GitHub release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: XenDroid-${{ steps.vars.outputs.sha_short }}
-        name: XenDroid ${{ steps.vars.outputs.sha_short }}
+        tag_name: XenDroid-${{ needs.apk.outputs.sha }}
+        name: XenDroid ${{ needs.apk.outputs.sha }}
+        target_commitish: ${{ github.sha }}
         generate_release_notes: true
-        files: XenDroid_Release_${{ steps.vars.outputs.sha_short }}.apk
+        files: ${{ needs.apk.outputs.apk }}
