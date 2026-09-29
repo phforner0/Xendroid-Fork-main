@@ -1,0 +1,64 @@
+name: Checks
+
+# Fast checks that need no Android build: syntax of the Python, shell and
+# PowerShell tools, and a lint of the workflows themselves.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scripts:
+    name: Scripts and workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+        sparse-checkout: |
+          tools
+          .github
+
+    - name: Python syntax
+      run: python3 -m py_compile tools/*.py tools/ir3_offline/*.py
+
+    - name: Shell syntax
+      run: |
+        status=0
+        for f in tools/*.sh tools/ir3_offline/*.sh; do
+          bash -n "$f" || status=1
+        done
+        exit $status
+
+    - name: PowerShell syntax
+      shell: pwsh
+      run: |
+        $failed = $false
+        foreach ($file in Get-ChildItem tools -Recurse -Filter *.ps1) {
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $file.FullName, [ref]$null, [ref]$errors) | Out-Null
+          foreach ($e in $errors) {
+            $path = Resolve-Path -Relative $file.FullName
+            Write-Output "::error file=$path,line=$($e.Extent.StartLineNumber)::$($e.Message)"
+            $failed = $true
+          }
+        }
+        if ($failed) { exit 1 }
+
+    - name: Workflow lint (actionlint)
+      run: |
+        docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 \
+          -color -shellcheck= -pyflakes=
