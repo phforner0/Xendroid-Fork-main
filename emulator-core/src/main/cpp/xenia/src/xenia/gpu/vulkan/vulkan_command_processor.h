@@ -434,6 +434,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   void IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbuffer_width,
                  uint32_t frontbuffer_height) override;
+  // adrenotools_turbo_reassert_seconds, once per swap: requests the KGSL
+  // power control again after a resume or once the period has passed.
+  void ReassertGpuPowerControlIfDue();
 
   void OnPrimaryBufferEnd() override;
 
@@ -1255,6 +1258,10 @@ class VulkanCommandProcessor final : public CommandProcessor {
   bool in_render_pass_ = false;
   // Draws since the last vulkan_debug_extra_pass_breaks break.
   uint32_t debug_extra_pass_break_draws_ = 0;
+  // adrenotools_turbo_reassert_seconds: the last resume the KGSL power
+  // control was requested for, and when it was last requested.
+  uint32_t gpu_power_resume_count_seen_ = 0;
+  uint64_t gpu_power_last_request_ms_ = 0;
 
   // Currently bound graphics pipeline, either from the pipeline cache (with
   // potentially deferred creation - current_external_graphics_pipeline_ is

@@ -12,6 +12,7 @@
 #include "xenia/gpu/vulkan/vulkan_command_processor.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdlib>
@@ -45,9 +46,13 @@
 #include "xenia/gpu/xenos.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/user_module.h"
+#include "xenia/ui/vulkan/vulkan_instance.h"
 #include "xenia/ui/vulkan/vulkan_presenter.h"
 #include "xenia/ui/vulkan/vulkan_util.h"
 
+#if defined(__ANDROID__)
+DECLARE_int32(adrenotools_turbo_reassert_seconds);
+#endif
 DECLARE_bool(clear_memory_page_state);
 DECLARE_bool(vulkan_in_pass_resolve_debug_read_usage);
 DECLARE_bool(log_gpu_frame_time_breakdown);
@@ -259,6 +264,21 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
         }
         break;
       }
+    }
+  }
+  // Seconds between KGSL power control requests (0: only at startup), read
+  // per swap.
+  char reassert_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.turbo_reassert", reassert_value) >
+          0 &&
+      reassert_value[0] >= '0' && reassert_value[0] <= '9') {
+    const int32_t seconds = std::atoi(reassert_value);
+    if (cvars::adrenotools_turbo_reassert_seconds != seconds) {
+      cvars::adrenotools_turbo_reassert_seconds = seconds;
+      XELOGI(
+          "debug.xendroid.turbo_reassert: adrenotools_turbo_reassert_seconds "
+          "= {}",
+          seconds);
     }
   }
   // Extra render pass breaks every N draws (negative: with a barrier), read
@@ -2354,6 +2374,29 @@ void VulkanCommandProcessor::OnGammaRampPWLValueWritten() {
   gamma_ramp_pwl_current_frame_ = UINT32_MAX;
 }
 
+void VulkanCommandProcessor::ReassertGpuPowerControlIfDue() {
+#if defined(__ANDROID__)
+  const int32_t period_seconds = cvars::adrenotools_turbo_reassert_seconds;
+  if (period_seconds <= 0) {
+    return;
+  }
+  const uint32_t resumes = resume_count();
+  const uint64_t now_ms = uint64_t(
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count());
+  const bool after_resume = resumes != gpu_power_resume_count_seen_;
+  if (!after_resume &&
+      now_ms - gpu_power_last_request_ms_ < uint64_t(period_seconds) * 1000) {
+    return;
+  }
+  gpu_power_resume_count_seen_ = resumes;
+  gpu_power_last_request_ms_ = now_ms;
+  // Logged after a resume; the periodic requests only log failures.
+  ui::vulkan::RequestGpuPowerControl(after_resume ? "after resume" : nullptr);
+#endif
+}
+
 void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                                        uint32_t frontbuffer_width,
                                        uint32_t frontbuffer_height) {
@@ -2364,6 +2407,7 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
   xe::RecordGuestPresent();
 
   PollDebugPropertyOverrides(*this);
+  ReassertGpuPowerControlIfDue();
 
   if (!pipeline_use_.empty()) {
     // Most-used shader pairs of the traced frame, to rank against PipeStats.
