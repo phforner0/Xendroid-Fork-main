@@ -138,6 +138,13 @@ vale ~0,3–0,4% do tempo do passe principal**.
   principal sem diferença visível nas cenas testadas.
 - Com a 4.2 ligada, o bit 2 só remove o que sobrou do arredondamento (−7,5%
   estático a mais); o A/B da fila mede isso.
+- **Correção (revisão local, 2026-09-29):** o bit 1 não removia o teste de
+  zero das instruções vetoriais MUL/MAD (feito inline em
+  `spirv_shader_translator_alu.cc`, fora de `ZeroIfAnyOperandIsZero`) — nem
+  no `spirv_ps_math_experiment` original. Agora remove; os números acima de 1
+  e 11 (offline e o −6% do AB4) foram medidos sem isso e subestimam o bit 1.
+  Os vertex shaders (`spirv_vs_math_experiment` 1/11) também passam a
+  incluí-lo.
 
 ### 4.4 `spirv_vs_math_experiment = 11` (plano 4.1) — só medição
 
