@@ -26,6 +26,10 @@ mensagens de commit em inglês, no estilo do histórico.
   (`gpu/command_processor.cc`).
 - Se o toolchain não funcionar em ~30 min, siga com revisão linha a linha e diga
   no relatório exatamente o que foi e o que não foi compilado.
+- O PR para a `main` dispara o GitHub Actions: `XenDroid` compila o APK de teste
+  (`xendroid.compose.fork.opt`, artifact `XenDroid_test_pr<N>_<sha>`) e
+  `Checks` valida a sintaxe dos scripts de `tools/` e os workflows. Registre no
+  relatório o resultado (`gh pr checks <N>` se o `gh` estiver disponível).
 
 ## 2. Leia antes (estado atual e medições)
 
