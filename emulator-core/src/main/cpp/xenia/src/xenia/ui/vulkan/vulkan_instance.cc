@@ -9,6 +9,7 @@
 
 #include "xenia/ui/vulkan/vulkan_instance.h"
 
+#include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -109,6 +110,17 @@ DEFINE_bool(
         adrenotools_force_max_clocks, false,
         "Custom Driver Force Max Clocks",
         "Vulkan");
+DEFINE_int32(
+    adrenotools_turbo_reassert_seconds, 5,
+    "With a custom driver: request the KGSL GPU power control state (Custom "
+    "Driver Force Max Clocks) again after the emulator resumes from a pause "
+    "and every this many seconds while it runs, instead of only when the "
+    "Vulkan instance is created (0). The forced state does not survive the app "
+    "losing focus: on a POCO F7 (Adreno 825), after opening the notification "
+    "shade Forza Horizon ran at half its frame rate (GPU 48 -> 101 ms per "
+    "frame) until restarted; requesting it again restores it at once. Read at "
+    "run time (debug.xendroid.turbo_reassert on Android).",
+    "Vulkan");
 DEFINE_string(
         turnip_debug, "sysmem",
         "TU_DEBUG flags passed to the Turnip (Mesa freedreno) Vulkan driver, "
@@ -166,6 +178,37 @@ DEFINE_bool(
 namespace xe {
 namespace ui {
 namespace vulkan {
+
+#if XE_PLATFORM_ANDROID || XE_PLATFORM_xendroid
+namespace {
+// Set once the custom driver path has made the first request.
+std::atomic<bool> gpu_power_control_in_use{false};
+}  // namespace
+
+bool RequestGpuPowerControl(const char* reason) {
+  if (!gpu_power_control_in_use.load(std::memory_order_relaxed)) {
+    return false;
+  }
+  // Made either way: KGSL power control is device-wide state, which a request
+  // with the option off returns to the governor.
+  if (adrenotools_set_turbo(cvars::adrenotools_force_max_clocks)) {
+    if (reason) {
+      XELOGI("GPU clocks: KGSL power control {} ({})",
+             cvars::adrenotools_force_max_clocks
+                 ? "forced on at the maximum clock"
+                 : "returned to the kernel governor",
+             reason);
+    }
+    return true;
+  }
+  XELOGW("GPU clocks: KGSL power control request ({}, {}) failed: {}",
+         cvars::adrenotools_force_max_clocks ? "maximum clock" : "governor",
+         reason ? reason : "periodic", std::strerror(errno));
+  return false;
+}
+#else
+bool RequestGpuPowerControl(const char* reason) { return false; }
+#endif
 
 std::unique_ptr<VulkanInstance> VulkanInstance::Create(
     const bool with_surface, const int validation_level) {
@@ -257,19 +300,8 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
                  custom_lib_path, dlerror());
         }
 
-        // Made either way: KGSL power control is device-wide state, which a
-        // request with the option off returns to the governor.
-        if (adrenotools_set_turbo(cvars::adrenotools_force_max_clocks)) {
-          XELOGI("GPU clocks: KGSL power control {}",
-                 cvars::adrenotools_force_max_clocks
-                     ? "forced on at the maximum clock"
-                     : "returned to the kernel governor");
-        } else {
-          XELOGW("GPU clocks: KGSL power control request ({}) failed: {}",
-                 cvars::adrenotools_force_max_clocks ? "maximum clock"
-                                                     : "governor",
-                 std::strerror(errno));
-        }
+        gpu_power_control_in_use.store(true, std::memory_order_relaxed);
+        RequestGpuPowerControl("startup");
     }
     else {
         if (!custom_lib_path.empty()) {

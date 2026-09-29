@@ -234,6 +234,10 @@ class CommandProcessor {
   bool is_paused() const { return paused_; }
   void Pause();
   void Resume();
+  // Times Resume() ended a pause, for state to restore after one.
+  uint32_t resume_count() const {
+    return resume_count_.load(std::memory_order_relaxed);
+  }
 
   bool Save(ByteStream* stream);
   bool Restore(ByteStream* stream);
@@ -708,6 +712,7 @@ class CommandProcessor {
   uint32_t active_vertex_shader_ucode_address_ = 0;
 
   std::atomic<bool> paused_{false};
+  std::atomic<uint32_t> resume_count_{0};
   std::unique_ptr<xe::threading::Event> pause_resume_event_;
 
   // By default (such as for tools), post-processing is disabled.

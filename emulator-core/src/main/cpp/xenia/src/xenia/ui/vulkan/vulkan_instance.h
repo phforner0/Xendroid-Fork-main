@@ -25,6 +25,12 @@ namespace xe {
 namespace ui {
 namespace vulkan {
 
+// Requests the KGSL GPU power control state (Custom Driver Force Max Clocks)
+// again, once the custom driver path made the first request at instance
+// creation; logs with the reason if one is given, failures always. False
+// where it is not in use or the kernel refuses.
+bool RequestGpuPowerControl(const char* reason);
+
 class VulkanInstance {
  public:
   // validation_level: 0=off, 1=standard layer, 2=+synchronization validation.

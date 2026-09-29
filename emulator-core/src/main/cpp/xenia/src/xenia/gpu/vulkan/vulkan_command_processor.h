@@ -1253,6 +1253,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
   const VulkanRenderTargetCache::Framebuffer* current_framebuffer_;
   // True when inside a render pass or dynamic rendering block.
   bool in_render_pass_ = false;
+  // Draws since the last vulkan_debug_extra_pass_breaks break.
+  uint32_t debug_extra_pass_break_draws_ = 0;
 
   // Currently bound graphics pipeline, either from the pipeline cache (with
   // potentially deferred creation - current_external_graphics_pipeline_ is

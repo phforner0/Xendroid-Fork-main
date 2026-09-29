@@ -1054,6 +1054,7 @@ void CommandProcessor::Resume() {
     return;
   }
 
+  resume_count_.fetch_add(1, std::memory_order_relaxed);
   pause_resume_event_->Set();
 }
 

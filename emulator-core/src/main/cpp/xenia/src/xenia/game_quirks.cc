@@ -38,6 +38,12 @@ static const Quirk kQuirks[] = {
     {0x49470804, "network_enabled", false, "hangs on a blocking recvfrom"},
     {0x4E4D083A, "spirv_multiply_zero_test_on_bits", true,
      "ir3 cannot compile fmadz"},
+    // Forza Horizon: both exact (the same image for every input); on the POCO
+    // F7 (Adreno 825) together +3.0% fps, -3.7% GPU time (AB5, 2026-09-29).
+    {0x4D5309C9, "spirv_texture_sign_branch", true,
+     "exact texture sign decode in a uniform branch"},
+    {0x4D5309C9, "spirv_fast_precision_rounding", true,
+     "exact cheaper 21-bit rounding"},
 };
 
 // Same path/priority as a per-game config file.

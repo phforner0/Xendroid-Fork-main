@@ -70,7 +70,8 @@ gpu_clock() {
   s=""
   for f in gpuclk max_gpuclk thermal_pwrlevel max_pwrlevel min_pwrlevel \
            force_clk_on devfreq/governor; do
-    s="$s ${f#devfreq/}=$(cat /sys/class/kgsl/kgsl-3d0/$f 2>/dev/null || echo ?)"
+    # '?' quoted: unquoted, the shell globs it (Android's root has /d).
+    s="$s ${f#devfreq/}=$(cat /sys/class/kgsl/kgsl-3d0/$f 2>/dev/null || echo '?')"
   done
   echo "${s# }"
 }

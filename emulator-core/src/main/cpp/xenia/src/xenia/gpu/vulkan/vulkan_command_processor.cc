@@ -162,6 +162,15 @@ DEFINE_bool(
     "(the guest constant-buffer count).",
     "Vulkan");
 
+DEFINE_int32(
+    vulkan_debug_extra_pass_breaks, 0,
+    "Diagnostics - measures what a render pass break costs the GPU: end the "
+    "guest render pass before every Nth draw (0 = never). A negative N ends it "
+    "with a shared memory barrier between the guest shader stages, like the "
+    "breaks that pending barriers cause. Read per draw "
+    "(debug.xendroid.extra_pass_breaks on Android).",
+    "Vulkan");
+
 DECLARE_bool(gpu_debug_markers);
 DECLARE_bool(submit_on_primary_buffer_end);
 DECLARE_bool(vulkan_placeholder_pipelines);
@@ -250,6 +259,22 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
         }
         break;
       }
+    }
+  }
+  // Extra render pass breaks every N draws (negative: with a barrier), read
+  // per draw.
+  char breaks_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.extra_pass_breaks",
+                            breaks_value) > 0 &&
+      (breaks_value[0] == '-' ||
+       (breaks_value[0] >= '0' && breaks_value[0] <= '9'))) {
+    const int32_t every = std::atoi(breaks_value);
+    if (cvars::vulkan_debug_extra_pass_breaks != every) {
+      cvars::vulkan_debug_extra_pass_breaks = every;
+      XELOGI(
+          "debug.xendroid.extra_pass_breaks: vulkan_debug_extra_pass_breaks = "
+          "{}",
+          every);
     }
   }
   // Bounded fence collection (all Vulkan completion timelines), read per poll.
@@ -4990,6 +5015,24 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
          !cvars::vulkan_in_pass_resolve_debug_read_usage)
             ? VulkanSharedMemory::Usage::kGuestDrawReadWrite
             : VulkanSharedMemory::Usage::kRead);
+  }
+
+  // vulkan_debug_extra_pass_breaks: break the guest pass before every Nth draw
+  // to measure what a break costs.
+  if (cvars::vulkan_debug_extra_pass_breaks && in_render_pass_ &&
+      ++debug_extra_pass_break_draws_ >=
+          uint32_t(std::abs(cvars::vulkan_debug_extra_pass_breaks))) {
+    debug_extra_pass_break_draws_ = 0;
+    if (cvars::vulkan_debug_extra_pass_breaks < 0) {
+      PushBufferMemoryBarrier(
+          shared_memory_->buffer(), 0, VK_WHOLE_SIZE,
+          guest_shader_pipeline_stages_, guest_shader_pipeline_stages_,
+          VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_READ_BIT,
+          VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, false);
+      SubmitBarriers(true);
+    } else {
+      EndRenderPass();
+    }
   }
 
   // After all commands that may dispatch, copy or insert barriers, submit the
