@@ -57,6 +57,10 @@ static const Quirk kQuirks[] = {
     // and in the pause menu (2026-09-30); night, rain and tunnels unchecked.
     {0x4D5309C9, "spirv_ps_relaxed_math", int64_t(3),
      "no SM3 zero-multiply or 21-bit rounding emulation in pixel shaders"},
+    // 55% of the main pass draws use alpha to coverage: main pass -7.5%, the
+    // same foliage parked and driving (only the dither pattern differs).
+    {0x4D5309C9, "host_alpha_to_coverage", true,
+     "alpha to coverage by the host's fixed function"},
 };
 
 // Same path/priority as a per-game config file.
