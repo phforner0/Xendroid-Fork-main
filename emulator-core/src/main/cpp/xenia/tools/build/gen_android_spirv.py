@@ -41,7 +41,8 @@ def direct_host_resolve_variants():
     here because they drive the host tool xenia-shader-cc). Each entry is
     (id, entry_source_basename, [define, ...]) where id ends in "_cs" and the
     defines select one bpp/MSAA/source-uint/scaled permutation from a shared
-    .xesli body. 24 fast-color + 60 full-color + 6 depth = 90 variants.
+    .xesli body. 24 fast-color + 60 full-color + 8 in-pass + 6 depth + 18
+    4-pixel (fast 32bpp color and depth) = 116 variants.
     """
     variants = []
     for source_uint in (0, 1):
@@ -106,6 +107,24 @@ def direct_host_resolve_variants():
                 defines.append("XE_RESOLVE_RESOLUTION_SCALED=1")
             ident += "_cs"
             variants.append((ident, "resolve_host_depth_entry.xesli", defines))
+    # 4 pixels per thread (coalesced stores) for the 8-pixel ones: 32bpp fast
+    # color and depth (vulkan_direct_host_resolve_4px).
+    for msaa in (1, 2, 4):
+        for scaled in (0, 1):
+            suffix = f"_32bpp_{msaa}xmsaa" + ("_scaled" if scaled else "")
+            scaled_defines = ["XE_RESOLVE_RESOLUTION_SCALED=1"] if scaled else []
+            for source_uint in (0, 1):
+                ident = ("resolve_host_color" + ("_uint" if source_uint else "") +
+                         suffix + "_4px_cs")
+                variants.append((ident, "resolve_host_color_entry.xesli", [
+                    "XE_RESOLVE_HOST_COLOR_BPP=32",
+                    f"XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES={msaa}",
+                    f"XE_RESOLVE_HOST_COLOR_SOURCE_UINT={source_uint}",
+                    "XE_RESOLVE_HOST_4PX=1"] + scaled_defines))
+            variants.append(("resolve_host_depth" + suffix + "_4px_cs",
+                             "resolve_host_depth_entry.xesli", [
+                                 f"XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES={msaa}",
+                                 "XE_RESOLVE_HOST_4PX=1"] + scaled_defines))
     return variants
 
 

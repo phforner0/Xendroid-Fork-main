@@ -169,7 +169,9 @@ uint XeResolveHostColorPixelsPerThread() {
       return 4u;
     #endif
   #else
-    #if XE_RESOLVE_HOST_COLOR_BPP == 64
+    // XE_RESOLVE_HOST_4PX: one 16-byte store per thread, next to its
+    // neighbors', so each store instruction of a wave covers whole cache lines.
+    #if XE_RESOLVE_HOST_COLOR_BPP == 64 || defined(XE_RESOLVE_HOST_4PX)
       return 4u;
     #else
       return 8u;
@@ -1299,6 +1301,9 @@ void XeResolveHostColorMain(
               pass_next_after_texture_xe
               pass_texture_xe(xe_resolve_host_color_source)),
           resolve_info.edram_format);
+      #ifdef XE_RESOLVE_HOST_4PX
+      pixels_4567 = uint4_xe(0u, 0u, 0u, 0u);
+      #else
       pixels_4567.x = XeResolveHostColorPack32Uint(
           XeResolveHostColorFetchUint(
               resolve_info,
@@ -1339,6 +1344,7 @@ void XeResolveHostColorMain(
               pass_next_after_texture_xe
               pass_texture_xe(xe_resolve_host_color_source)),
           resolve_info.edram_format);
+      #endif
     #else
       pixels_0123.x = XeResolveHostColorPack32Float(
           XeResolveHostColorFetchFloat(
@@ -1380,6 +1386,9 @@ void XeResolveHostColorMain(
               pass_next_after_texture_xe
               pass_texture_xe(xe_resolve_host_color_source)),
           resolve_info.edram_format);
+      #ifdef XE_RESOLVE_HOST_4PX
+      pixels_4567 = uint4_xe(0u, 0u, 0u, 0u);
+      #else
       pixels_4567.x = XeResolveHostColorPack32Float(
           XeResolveHostColorFetchFloat(
               resolve_info,
@@ -1420,6 +1429,7 @@ void XeResolveHostColorMain(
               pass_next_after_texture_xe
               pass_texture_xe(xe_resolve_host_color_source)),
           resolve_info.edram_format);
+      #endif
     #endif
     XeResolveHostColorApplyHalfPixelOffset32(resolve_info, pixel_index,
                                              pixels_0123);
@@ -1429,10 +1439,12 @@ void XeResolveHostColorMain(
     byte_buffer_align16_store16_xe(
         xe_resolve_dest, dest_address,
         XeEndianSwap32(pixels_0123, resolve_info.dest_endian_128));
+    #ifndef XE_RESOLVE_HOST_4PX
     dest_address += XeResolveLocalXAddressXor(4u, 2u);
     byte_buffer_align16_store16_xe(
         xe_resolve_dest, dest_address,
         XeEndianSwap32(pixels_4567, resolve_info.dest_endian_128));
+    #endif
   #endif
 }
 

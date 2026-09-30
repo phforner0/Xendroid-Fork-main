@@ -118,6 +118,14 @@ DEFINE_bool(
     "Vulkan");
 
 DEFINE_bool(
+    vulkan_direct_host_resolve_4px, false,
+    "Run the direct host resolves that take 8 pixels per thread (32bpp fast "
+    "color copies and depth) with 4, so the one 16-byte store of each thread of "
+    "a wave lands next to its neighbors' and every store instruction covers "
+    "whole cache lines. Results are identical.",
+    "Vulkan");
+
+DEFINE_bool(
     render_target_7e3_as_r11g11b10, false,
     "Store the guest k_2_10_10_10_FLOAT (7e3) color render target as "
     "B10G11R11_UFLOAT (32 bpp) on the host instead of R16G16B16A16_SFLOAT "
@@ -418,6 +426,40 @@ const VulkanRenderTargetCache::DirectHostResolveShaderCode
              XE_DHR_SHADER(resolve_host_depth_32bpp_2xmsaa_scaled_cs)},
             {XE_DHR_SHADER(resolve_host_depth_32bpp_4xmsaa_cs),
              XE_DHR_SHADER(resolve_host_depth_32bpp_4xmsaa_scaled_cs)},
+};
+
+const VulkanRenderTargetCache::DirectHostResolveShaderCode
+    VulkanRenderTargetCache::kDirectHostResolveColor32Shaders4px
+        [VulkanRenderTargetCache::kDirectHostResolveMsaaCount]
+        [VulkanRenderTargetCache::kDirectHostResolveScaledCount]
+        [VulkanRenderTargetCache::kDirectHostResolveSourceUintCount] = {
+            {{XE_DHR_SHADER(resolve_host_color_32bpp_1xmsaa_4px_cs),
+              XE_DHR_SHADER(resolve_host_color_uint_32bpp_1xmsaa_4px_cs)},
+             {XE_DHR_SHADER(resolve_host_color_32bpp_1xmsaa_scaled_4px_cs),
+              XE_DHR_SHADER(
+                  resolve_host_color_uint_32bpp_1xmsaa_scaled_4px_cs)}},
+            {{XE_DHR_SHADER(resolve_host_color_32bpp_2xmsaa_4px_cs),
+              XE_DHR_SHADER(resolve_host_color_uint_32bpp_2xmsaa_4px_cs)},
+             {XE_DHR_SHADER(resolve_host_color_32bpp_2xmsaa_scaled_4px_cs),
+              XE_DHR_SHADER(
+                  resolve_host_color_uint_32bpp_2xmsaa_scaled_4px_cs)}},
+            {{XE_DHR_SHADER(resolve_host_color_32bpp_4xmsaa_4px_cs),
+              XE_DHR_SHADER(resolve_host_color_uint_32bpp_4xmsaa_4px_cs)},
+             {XE_DHR_SHADER(resolve_host_color_32bpp_4xmsaa_scaled_4px_cs),
+              XE_DHR_SHADER(
+                  resolve_host_color_uint_32bpp_4xmsaa_scaled_4px_cs)}},
+};
+
+const VulkanRenderTargetCache::DirectHostResolveShaderCode
+    VulkanRenderTargetCache::kDirectHostResolveDepthShaders4px
+        [VulkanRenderTargetCache::kDirectHostResolveMsaaCount]
+        [VulkanRenderTargetCache::kDirectHostResolveScaledCount] = {
+            {XE_DHR_SHADER(resolve_host_depth_32bpp_1xmsaa_4px_cs),
+             XE_DHR_SHADER(resolve_host_depth_32bpp_1xmsaa_scaled_4px_cs)},
+            {XE_DHR_SHADER(resolve_host_depth_32bpp_2xmsaa_4px_cs),
+             XE_DHR_SHADER(resolve_host_depth_32bpp_2xmsaa_scaled_4px_cs)},
+            {XE_DHR_SHADER(resolve_host_depth_32bpp_4xmsaa_4px_cs),
+             XE_DHR_SHADER(resolve_host_depth_32bpp_4xmsaa_scaled_4px_cs)},
 };
 
 #undef XE_DHR_SHADER
@@ -1589,6 +1631,20 @@ void VulkanRenderTargetCache::Shutdown(bool from_destructor) {
                                              pipeline);
     }
   }
+  for (auto& msaa_pipelines : direct_host_resolve_pipelines_4px_) {
+    for (auto& scaled_pipelines : msaa_pipelines) {
+      for (VkPipeline& pipeline : scaled_pipelines) {
+        ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyPipeline, device,
+                                               pipeline);
+      }
+    }
+  }
+  for (auto& msaa_pipelines : direct_host_depth_resolve_pipelines_4px_) {
+    for (VkPipeline& pipeline : msaa_pipelines) {
+      ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyPipeline, device,
+                                             pipeline);
+    }
+  }
   direct_host_resolve_constants_pool_.reset();
   ui::vulkan::util::DestroyAndNullHandle(
       dfn.vkDestroyPipelineLayout, device,
@@ -1742,9 +1798,9 @@ bool IsResolveDirectHostRTFullColorSourcePackable(
 
 uint32_t DirectHostResolvePixelsPerThread(
     draw_util::ResolveCopyShaderIndex shader, bool source_is_64bpp,
-    bool resolve_is_depth, xenos::MsaaSamples msaa_samples) {
+    bool resolve_is_depth, xenos::MsaaSamples msaa_samples, bool four_pixels) {
   if (resolve_is_depth) {
-    return 8u;
+    return four_pixels ? 4u : 8u;
   }
   switch (shader) {
     case draw_util::ResolveCopyShaderIndex::kFull8bpp:
@@ -1756,28 +1812,36 @@ uint32_t DirectHostResolvePixelsPerThread(
     case draw_util::ResolveCopyShaderIndex::kFull64bpp:
       return 4u;
     default:
-      return source_is_64bpp ? 4u : 8u;
+      return (source_is_64bpp || four_pixels) ? 4u : 8u;
   }
 }
 
 VkPipeline VulkanRenderTargetCache::GetDirectHostResolvePipeline(
     bool is_64bpp, xenos::MsaaSamples msaa_samples, bool scaled,
-    bool source_is_uint) {
+    bool source_is_uint, bool four_pixels) {
   size_t msaa_index = DirectHostResolveMsaaIndex(msaa_samples);
   if (msaa_index >= kDirectHostResolveMsaaCount) {
     return VK_NULL_HANDLE;
   }
+  // 64bpp already takes 4 pixels per thread.
+  four_pixels = four_pixels && !is_64bpp;
   VkPipeline& pipeline =
-      direct_host_resolve_pipelines_[is_64bpp ? 1u : 0u][msaa_index]
-                                    [scaled ? 1u : 0u]
-                                    [source_is_uint ? 1u : 0u];
+      four_pixels
+          ? direct_host_resolve_pipelines_4px_[msaa_index][scaled ? 1u : 0u]
+                                              [source_is_uint ? 1u : 0u]
+          : direct_host_resolve_pipelines_[is_64bpp ? 1u : 0u][msaa_index]
+                                          [scaled ? 1u : 0u]
+                                          [source_is_uint ? 1u : 0u];
   if (pipeline != VK_NULL_HANDLE) {
     return pipeline;
   }
   const DirectHostResolveShaderCode& shader =
-      kDirectHostResolveColorShaders[is_64bpp ? 1u : 0u][msaa_index]
-                                    [scaled ? 1u : 0u]
-                                    [source_is_uint ? 1u : 0u];
+      four_pixels
+          ? kDirectHostResolveColor32Shaders4px[msaa_index][scaled ? 1u : 0u]
+                                               [source_is_uint ? 1u : 0u]
+          : kDirectHostResolveColorShaders[is_64bpp ? 1u : 0u][msaa_index]
+                                          [scaled ? 1u : 0u]
+                                          [source_is_uint ? 1u : 0u];
   pipeline = ui::vulkan::util::CreateComputePipeline(
       command_processor_.GetVulkanDevice(),
       direct_host_resolve_pipeline_layout_color_, shader.code,
@@ -1830,18 +1894,23 @@ VkPipeline VulkanRenderTargetCache::GetDirectHostColorFullResolvePipeline(
 }
 
 VkPipeline VulkanRenderTargetCache::GetDirectHostDepthResolvePipeline(
-    xenos::MsaaSamples msaa_samples, bool scaled) {
+    xenos::MsaaSamples msaa_samples, bool scaled, bool four_pixels) {
   size_t msaa_index = DirectHostResolveMsaaIndex(msaa_samples);
   if (msaa_index >= kDirectHostResolveMsaaCount) {
     return VK_NULL_HANDLE;
   }
   VkPipeline& pipeline =
-      direct_host_depth_resolve_pipelines_[msaa_index][scaled ? 1u : 0u];
+      four_pixels
+          ? direct_host_depth_resolve_pipelines_4px_[msaa_index]
+                                                    [scaled ? 1u : 0u]
+          : direct_host_depth_resolve_pipelines_[msaa_index][scaled ? 1u : 0u];
   if (pipeline != VK_NULL_HANDLE) {
     return pipeline;
   }
   const DirectHostResolveShaderCode& shader =
-      kDirectHostResolveDepthShaders[msaa_index][scaled ? 1u : 0u];
+      four_pixels
+          ? kDirectHostResolveDepthShaders4px[msaa_index][scaled ? 1u : 0u]
+          : kDirectHostResolveDepthShaders[msaa_index][scaled ? 1u : 0u];
   pipeline = ui::vulkan::util::CreateComputePipeline(
       command_processor_.GetVulkanDevice(),
       direct_host_resolve_pipeline_layout_depth_, shader.code,
@@ -2473,6 +2542,8 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
     return false;
   }
 
+  // The pipelines and the thread counts must agree - read once.
+  const bool four_pixels = cvars::vulkan_direct_host_resolve_4px;
   uint64_t covered_tiles = 0;
   std::vector<DirectHostResolveSource> sources;
   sources.reserve(dump_rectangles_.size());
@@ -2510,8 +2581,8 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
         source_flags |= kDirectHostResolveDepthFlagRoundDepth;
       }
       source_flags |= kDirectHostResolveDepthFlagHasStencil;
-      pipeline = GetDirectHostDepthResolvePipeline(key.msaa_samples,
-                                                   IsDrawResolutionScaled());
+      pipeline = GetDirectHostDepthResolvePipeline(
+          key.msaa_samples, IsDrawResolutionScaled(), four_pixels);
     } else {
       if (key.GetColorFormat() != resolve_color_format ||
           key.msaa_samples != resolve_info.color_edram_info.msaa_samples) {
@@ -2528,9 +2599,9 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
                      ? GetDirectHostColorFullResolvePipeline(
                            key.msaa_samples, IsDrawResolutionScaled(),
                            source_is_uint, copy_shader)
-                     : GetDirectHostResolvePipeline(is_64bpp, key.msaa_samples,
-                                                    IsDrawResolutionScaled(),
-                                                    source_is_uint);
+                     : GetDirectHostResolvePipeline(
+                           is_64bpp, key.msaa_samples, IsDrawResolutionScaled(),
+                           source_is_uint, four_pixels);
     }
     if (pipeline == VK_NULL_HANDLE) {
       return false;
@@ -2543,8 +2614,10 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
     source.dispatch_count =
         rect.GetDispatches(dump_pitch, dump_row_length_used, source.dispatches);
     source.flags = source_flags;
-    source.pixels_per_thread = DirectHostResolvePixelsPerThread(
-        copy_shader, is_64bpp, resolve_is_depth, key.msaa_samples);
+    source.pixels_per_thread =
+        DirectHostResolvePixelsPerThread(copy_shader, is_64bpp,
+                                         resolve_is_depth, key.msaa_samples,
+                                         four_pixels && !copy_shader_is_full_color);
     source.is_64bpp = is_64bpp;
     source.is_depth = resolve_is_depth;
     if (!source.dispatch_count) {

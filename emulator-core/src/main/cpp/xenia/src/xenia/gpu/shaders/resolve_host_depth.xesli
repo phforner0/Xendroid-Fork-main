@@ -143,7 +143,16 @@ uint XeResolveHostDepthTilePixelSizeY(XeResolveInfo resolve_info) {
   #endif
 }
 
-uint XeResolveHostDepthPixelsPerThread() { return 8u; }
+// XE_RESOLVE_HOST_4PX: 4 pixels per thread, so the one 16-byte store of each
+// thread of a wave lands next to its neighbors' and covers whole cache lines
+// (with 8, every store instruction covers half of each line).
+uint XeResolveHostDepthPixelsPerThread() {
+  #ifdef XE_RESOLVE_HOST_4PX
+    return 4u;
+  #else
+    return 8u;
+  #endif
+}
 
 uint XeResolveHostDepthRoundToNearestEven(float value) {
   float floor_value = floor(value);
@@ -463,6 +472,9 @@ void XeResolveHostDepthMain(
       pass_depth_texture_xe(xe_resolve_host_depth_source)
       pass_next_after_stencil_texture_xe
       pass_stencil_texture_xe(xe_resolve_host_depth_stencil));
+#ifdef XE_RESOLVE_HOST_4PX
+  pixels_4567 = uint4_xe(0u, 0u, 0u, 0u);
+#else
   pixels_4567.x = XeResolveHostDepthPack(
       resolve_info,
       XeResolveHostDepthSourceSampleForLane(resolve_info, pixel_index, 4u)
@@ -499,6 +511,7 @@ void XeResolveHostDepthMain(
       pass_depth_texture_xe(xe_resolve_host_depth_source)
       pass_next_after_stencil_texture_xe
       pass_stencil_texture_xe(xe_resolve_host_depth_stencil));
+#endif
 
   XeResolveHostDepthApplyHalfPixelOffset32(resolve_info, pixel_index,
                                            pixels_0123, pixels_4567);
@@ -507,10 +520,12 @@ void XeResolveHostDepthMain(
   byte_buffer_align16_store16_xe(
       xe_resolve_dest, dest_address,
       XeEndianSwap32(pixels_0123, resolve_info.dest_endian_128));
+#ifndef XE_RESOLVE_HOST_4PX
   dest_address += XeResolveLocalXAddressXor(4u, 2u);
   byte_buffer_align16_store16_xe(
       xe_resolve_dest, dest_address,
       XeEndianSwap32(pixels_4567, resolve_info.dest_endian_128));
+#endif
 }
 
 #endif  // XENIA_GPU_SHADERS_RESOLVE_HOST_DEPTH_XESLI_

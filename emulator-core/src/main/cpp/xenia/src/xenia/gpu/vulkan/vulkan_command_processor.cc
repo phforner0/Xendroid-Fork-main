@@ -61,6 +61,7 @@ DECLARE_bool(spirv_specialize_no_alpha);
 DECLARE_bool(vulkan_texture_load_coalesced);
 DECLARE_bool(vulkan_texture_load_to_image);
 DECLARE_bool(vulkan_direct_host_resolve);
+DECLARE_bool(vulkan_direct_host_resolve_4px);
 
 DEFINE_bool(
     render_area_dirty_extent, false,
@@ -248,6 +249,10 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.direct_host_resolve",
                             "vulkan_direct_host_resolve",
                             cvars::vulkan_direct_host_resolve);
+  // Read per resolve; the pipelines of both are created on first use.
+  PollDebugPropertyOverride("debug.xendroid.resolve_4px",
+                            "vulkan_direct_host_resolve_4px",
+                            cvars::vulkan_direct_host_resolve_4px);
   // Both texture load switches at once, for A/Bs of the load paths: 0 - the
   // original untiling into a buffer copied to the image, 1 - coalesced
   // untiling, 2 - coalesced straight into the image (which only has the

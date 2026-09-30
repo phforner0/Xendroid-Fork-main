@@ -433,6 +433,19 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   VkPipeline
       direct_host_depth_resolve_pipelines_[kDirectHostResolveMsaaCount]
                                           [kDirectHostResolveScaledCount] = {};
+  // 4 pixels per thread instead of 8 (vulkan_direct_host_resolve_4px): the
+  // 32bpp fast color and the depth resolves, the only ones taking 8.
+  static const DirectHostResolveShaderCode kDirectHostResolveColor32Shaders4px
+      [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount]
+      [kDirectHostResolveSourceUintCount];
+  static const DirectHostResolveShaderCode
+      kDirectHostResolveDepthShaders4px[kDirectHostResolveMsaaCount]
+                                       [kDirectHostResolveScaledCount];
+  VkPipeline direct_host_resolve_pipelines_4px_
+      [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount]
+      [kDirectHostResolveSourceUintCount] = {};
+  VkPipeline direct_host_depth_resolve_pipelines_4px_
+      [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount] = {};
   std::unique_ptr<ui::vulkan::VulkanUploadBufferPool>
       direct_host_resolve_constants_pool_;
 
@@ -1100,14 +1113,16 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
 
   VkPipeline GetDumpPipeline(DumpPipelineKey key);
 
+  // four_pixels: the 4-pixel-per-thread variant (32bpp only for color).
   VkPipeline GetDirectHostResolvePipeline(bool is_64bpp,
                                           xenos::MsaaSamples msaa_samples,
-                                          bool scaled, bool source_is_uint);
+                                          bool scaled, bool source_is_uint,
+                                          bool four_pixels);
   VkPipeline GetDirectHostColorFullResolvePipeline(
       xenos::MsaaSamples msaa_samples, bool scaled, bool source_is_uint,
       draw_util::ResolveCopyShaderIndex copy_shader);
   VkPipeline GetDirectHostDepthResolvePipeline(xenos::MsaaSamples msaa_samples,
-                                               bool scaled);
+                                               bool scaled, bool four_pixels);
   bool TryInPassResolveCopy(
       const draw_util::ResolveInfo& resolve_info,
       const draw_util::ResolveCopyShaderConstants& copy_shader_constants,
