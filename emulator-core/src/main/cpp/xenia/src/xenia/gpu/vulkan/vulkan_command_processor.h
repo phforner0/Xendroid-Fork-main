@@ -72,6 +72,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
     kUniformBufferComputeB1,
     // Storage image at binding 0 for the resolve-to-texture fragment variant.
     kStorageImageFragment,
+    // Storage image at binding 0 for texture loads straight into the image.
+    kStorageImageCompute,
     kCount,
   };
 
@@ -203,11 +205,21 @@ class VulkanCommandProcessor final : public CommandProcessor {
     kTextureLoad = 1,
     // The setup command buffer (hoisted shared memory uploads).
     kSetupCommands = 2,
+    // The copy dispatches of a resolve, from the end of their barriers (the
+    // render pass break, source layout transitions) to the last dispatch:
+    // height / 8 in bits 0:7 and width / 8 in bits 8:15 (both saturated),
+    // depth in bit 16, source xenos::MsaaSamples in bits 17:18, source format
+    // in bits 19:22, and bit 23 for the direct host path (otherwise the copy
+    // from the EDRAM buffer).
+    kResolveCopyDispatch = 3,
   };
   static constexpr uint32_t kMiscTimestampKeyBit = UINT32_C(1) << 30;
   static constexpr uint32_t kMiscTimestampTextureGpuWritten = UINT32_C(1) << 7;
   static constexpr uint32_t kMiscTimestampTextureBase = UINT32_C(1) << 6;
   static constexpr uint32_t kMiscTimestampTextureMips = UINT32_C(1) << 5;
+  // The copy of the untiled texels from the scratch buffer to the image (the
+  // load's second half; without it, the untiling dispatches).
+  static constexpr uint32_t kMiscTimestampTextureCopy = UINT32_C(1) << 4;
   static constexpr uint32_t MakeMiscTimestampKey(MiscTimestampKind kind,
                                                  uint32_t payload) {
     return kMiscTimestampKeyBit | (uint32_t(kind) << 24) |
