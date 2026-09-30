@@ -197,11 +197,22 @@ class RenderTargetCache {
   // Quietly assuming the global scale all but promises a bunch of mixed-
   // space artifacts (trust me).
   uint32_t GetDrawScaleX() const {
-    return IsDrawScaleNative() ? 1 : draw_resolution_scale_x();
+    return (IsDrawScaleNative() ? 1 : draw_resolution_scale_x())
+           << uint32_t(draw_samples_as_pixels_);
   }
   uint32_t GetDrawScaleY() const {
-    return IsDrawScaleNative() ? 1 : draw_resolution_scale_y();
+    return (IsDrawScaleNative() ? 1 : draw_resolution_scale_y())
+           << uint32_t(draw_samples_as_pixels_);
   }
+  // For the current draw only: it renders into the EDRAM of a 4x MSAA surface
+  // as the 1x surface twice as wide and tall that the same tiles hold (the 2x2
+  // samples of a pixel are laid out like 2x2 pixels), with the surface info
+  // rewritten to that 1x surface - the draw's scale and its estimated extent
+  // (in the guest's 4x pixels) double.
+  void SetDrawSamplesAsPixels(bool samples_as_pixels) {
+    draw_samples_as_pixels_ = samples_as_pixels;
+  }
+  bool draw_samples_as_pixels() const { return draw_samples_as_pixels_; }
 
   // Virtual (both the common code and the implementation may do something
   // here), don't call from destructors (does work not needed for shutdown
@@ -647,6 +658,7 @@ class RenderTargetCache {
   const RegisterFile& register_file_;
   uint32_t draw_resolution_scale_x_;
   uint32_t draw_resolution_scale_y_;
+  bool draw_samples_as_pixels_ = false;
 
   DrawExtentEstimator draw_extent_estimator_;
 
