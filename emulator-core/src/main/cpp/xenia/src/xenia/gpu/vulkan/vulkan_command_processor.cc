@@ -5267,11 +5267,21 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         primitive_processing_result.host_draw_vertex_count, 1, 0, 0);
   } else {
     std::pair<VkBuffer, VkDeviceSize> index_buffer;
+    const VkIndexType index_type =
+        primitive_processing_result.host_index_format ==
+                xenos::IndexFormat::kInt16
+            ? VK_INDEX_TYPE_UINT16
+            : VK_INDEX_TYPE_UINT32;
+    // Guest DMA indices: the buffer stays bound at 0 and the draw starts at
+    // the guest index base instead (the base is aligned to the index size).
+    uint32_t first_index = 0;
     switch (primitive_processing_result.index_buffer_type) {
       case PrimitiveProcessor::ProcessedIndexBufferType::kGuestDMA:
         index_buffer.first = route_to_host ? shared_memory_->host_buffer()
                                            : shared_memory_->buffer();
-        index_buffer.second = primitive_processing_result.guest_index_base;
+        index_buffer.second = 0;
+        first_index = primitive_processing_result.guest_index_base >>
+                      (index_type == VK_INDEX_TYPE_UINT16 ? 1 : 2);
         break;
       case PrimitiveProcessor::ProcessedIndexBufferType::kHostConverted:
         index_buffer = primitive_processor_->GetConvertedIndexBuffer(
@@ -5286,14 +5296,18 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         assert_unhandled_case(primitive_processing_result.index_buffer_type);
         return false;
     }
-    deferred_command_buffer_.CmdVkBindIndexBuffer(
-        index_buffer.first, index_buffer.second,
-        primitive_processing_result.host_index_format ==
-                xenos::IndexFormat::kInt16
-            ? VK_INDEX_TYPE_UINT16
-            : VK_INDEX_TYPE_UINT32);
+    if (current_index_buffer_ != index_buffer.first ||
+        current_index_buffer_offset_ != index_buffer.second ||
+        current_index_type_ != index_type) {
+      deferred_command_buffer_.CmdVkBindIndexBuffer(
+          index_buffer.first, index_buffer.second, index_type);
+      current_index_buffer_ = index_buffer.first;
+      current_index_buffer_offset_ = index_buffer.second;
+      current_index_type_ = index_type;
+    }
     deferred_command_buffer_.CmdVkDrawIndexed(
-        primitive_processing_result.host_draw_vertex_count, 1, 0, 0, 0);
+        primitive_processing_result.host_draw_vertex_count, 1, first_index, 0,
+        0);
   }
 
   // Pop debug marker for draw call.
@@ -6856,6 +6870,7 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
     current_external_compute_pipeline_ = VK_NULL_HANDLE;
     current_guest_graphics_pipeline_layout_ = nullptr;
     current_graphics_descriptor_sets_bound_up_to_date_ = 0;
+    current_index_buffer_ = VK_NULL_HANDLE;
 
     primitive_processor_->BeginSubmission();
 

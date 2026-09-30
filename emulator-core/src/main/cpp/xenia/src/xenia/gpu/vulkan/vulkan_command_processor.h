@@ -1291,6 +1291,13 @@ class VulkanCommandProcessor final : public CommandProcessor {
   VkPipeline current_external_graphics_pipeline_;
   VkPipeline current_external_compute_pipeline_;
 
+  // The index buffer bound in the current submission's command buffer. Guest
+  // DMA index buffers are bound at the start of the shared memory buffer and
+  // selected with firstIndex, the others rebound only when they change.
+  VkBuffer current_index_buffer_ = VK_NULL_HANDLE;
+  VkDeviceSize current_index_buffer_offset_ = 0;
+  VkIndexType current_index_type_ = VK_INDEX_TYPE_MAX_ENUM;
+
   // Pipeline layout of the current guest graphics pipeline.
   const PipelineLayout* current_guest_graphics_pipeline_layout_;
   VkDescriptorBufferInfo current_constant_buffer_infos_
