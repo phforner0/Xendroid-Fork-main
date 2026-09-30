@@ -65,6 +65,7 @@ DECLARE_bool(vulkan_direct_host_resolve_4px);
 DECLARE_bool(vulkan_direct_host_resolve_to_texture);
 DECLARE_bool(vulkan_resolve_dest_diag);
 DECLARE_bool(vulkan_replay_stats);
+DECLARE_bool(vulkan_resolve_draw_barriers_at_resolve);
 
 DEFINE_bool(
     render_area_dirty_extent, false,
@@ -266,6 +267,10 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
                             cvars::vulkan_resolve_dest_diag);
   PollDebugPropertyOverride("debug.xendroid.replay_stats",
                             "vulkan_replay_stats", cvars::vulkan_replay_stats);
+  // Read per resolve.
+  PollDebugPropertyOverride("debug.xendroid.resolve_draw_barriers",
+                            "vulkan_resolve_draw_barriers_at_resolve",
+                            cvars::vulkan_resolve_draw_barriers_at_resolve);
   // Both texture load switches at once, for A/Bs of the load paths: 0 - the
   // original untiling into a buffer copied to the image, 1 - coalesced
   // untiling, 2 - coalesced straight into the image (which only has the

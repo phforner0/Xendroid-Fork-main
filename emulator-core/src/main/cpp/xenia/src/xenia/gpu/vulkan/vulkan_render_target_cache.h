@@ -1119,7 +1119,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // Returns false without recording anything if not applicable.
   bool TryResolveClearInGuestPass(RenderTarget* const* clear_render_targets,
                                   const uint64_t* clear_values,
-                                  const Transfer::Rectangle& clear_rectangle);
+                                  const Transfer::Rectangle& clear_rectangle,
+                                  VulkanSharedMemory& shared_memory);
 
   // Queuing of transfers for in-pass execution.
   void ClearPendingDrawPassTransfers();

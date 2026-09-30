@@ -83,6 +83,19 @@ DEFINE_bool(
     "Vulkan");
 
 DEFINE_bool(
+    vulkan_resolve_draw_barriers_at_resolve, true,
+    "Issue at a resolve the barriers the next draws would need after it - its "
+    "stores into a texture before the texture's sampling, and (with "
+    "vulkan_resolve_clear_in_guest_pass) the shared memory's return to the "
+    "draw usage before the guest render pass is reopened for the clear - "
+    "instead of at the next draw, where they end the render pass the draw has "
+    "just reopened (Forza Horizon on an Adreno 825: render pass begins 205 -> "
+    "133 per frame, replay time -5%, GPU time -0.8% with the phone warm and "
+    "unchanged at the game's 30 fps cap). Can be switched at runtime "
+    "(debug.xendroid.resolve_draw_barriers).",
+    "Vulkan");
+
+DEFINE_bool(
     vulkan_resolve_clear_in_guest_pass, false,
     "Perform the clear part of an EDRAM resolve inside the last guest render "
     "pass when the cleared depth/color targets are its attachments, instead of "
@@ -3755,7 +3768,7 @@ bool VulkanRenderTargetCache::Resolve(
           // case to the general path, which breaks the pass.
           if (!cvars::vulkan_resolve_clear_in_guest_pass || copied_in_pass ||
               !TryResolveClearInGuestPass(clear_render_targets, clear_values,
-                                          clear_rectangle)) {
+                                          clear_rectangle, shared_memory)) {
             PerformTransfersAndResolveClears(2, clear_render_targets,
                                              clear_transfers_, clear_values,
                                              &clear_rectangle);
@@ -8231,7 +8244,8 @@ void VulkanRenderTargetCache::GetResolveClearAttachment(
 
 bool VulkanRenderTargetCache::TryResolveClearInGuestPass(
     RenderTarget* const* clear_render_targets, const uint64_t* clear_values,
-    const Transfer::Rectangle& clear_rectangle) {
+    const Transfer::Rectangle& clear_rectangle,
+    VulkanSharedMemory& shared_memory) {
   // The general path opens a single-attachment pass per cleared target just
   // to record a vkCmdClearAttachments, and the next draw then opens the guest
   // pass again. When the cleared targets are attachments of the last guest
@@ -8339,6 +8353,16 @@ bool VulkanRenderTargetCache::TryResolveClearInGuestPass(
         vulkan_rt.current_access_mask(), rt_dst_access_mask,
         vulkan_rt.current_layout(), rt_new_layout);
     vulkan_rt.SetUsage(rt_dst_stage_mask, rt_dst_access_mask, rt_new_layout);
+  }
+  if (cvars::vulkan_resolve_draw_barriers_at_resolve) {
+    // The copy of this resolve wrote the shared memory, and the next draw's
+    // switch of it back to the draw usage would end the pass reopened here
+    // (only to reopen it again). Switch it now, with the barriers above - as
+    // IssueDraw does for a draw without memory export.
+    shared_memory.Use((local_read_attachments_ &&
+                       !cvars::vulkan_in_pass_resolve_debug_read_usage)
+                          ? VulkanSharedMemory::Usage::kGuestDrawReadWrite
+                          : VulkanSharedMemory::Usage::kRead);
   }
   // Stays in the pass if it's still open (a clear-only resolve right after the
   // draws), otherwise reopens it - and the next draw to these targets keeps it.

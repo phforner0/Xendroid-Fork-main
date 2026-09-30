@@ -29,6 +29,7 @@
 #include "xenia/ui/vulkan/vulkan_util.h"
 
 DECLARE_bool(tiled_shared_memory);
+DECLARE_bool(vulkan_resolve_draw_barriers_at_resolve);
 
 DEFINE_bool(
     vulkan_resolve_to_texture_serve, true,
@@ -1621,6 +1622,12 @@ void VulkanTextureCache::MarkResolveDestWritten(
     // The compute store is ordered before later sampled reads by the barrier
     // the next bind emits for this flag.
     texture->SetPendingStorageWrite();
+    if (cvars::vulkan_resolve_draw_barriers_at_resolve) {
+      // Or by that barrier now, while the resolve has the render pass ended
+      // anyway: pushed at the next bind, it would end the pass that samples
+      // the texture first (and the pass is usually reopened right after).
+      TransitionTextureForGuestShader(*texture);
+    }
   }
 }
 
