@@ -93,6 +93,12 @@ class VulkanTextureCache final : public TextureCache {
   // Whether the texture can be served from its resolve instead of uploaded.
   bool TryServeFromResolveDest(const VulkanTexture& texture, bool load_base,
                                bool load_mips) const;
+  // The load shader of the host format a texture with the key is loaded to.
+  LoadShaderIndex GetLoadShaderForKey(const TextureKey& key) const;
+  // Whether textures with the key are created with the R32_UINT storage alias
+  // for loads straight into the image (vulkan_texture_load_to_image) - the
+  // host format is checked by the caller.
+  bool IsLoadToImageCandidate(const TextureKey& key) const;
 
  public:
   // Sampler parameters that can be directly converted to a host sampler or used
@@ -365,10 +371,16 @@ class VulkanTextureCache final : public TextureCache {
       // transition. STORAGE usage already forfeits UBWC on Adreno, so
       // sampling from GENERAL costs these images nothing extra.
       kResolveDestStorage,
+      // Written by a texture load compute shader through load_storage_view()
+      // (GENERAL).
+      kLoadStorageWrite,
     };
 
    private:
     VkImageView resolve_dest_storage_view_ = VK_NULL_HANDLE;
+    // R32_UINT alias of the base level for texture loads straight into the
+    // image (vulkan_texture_load_to_image); may be resolve_dest_storage_view_.
+    VkImageView load_storage_view_ = VK_NULL_HANDLE;
     uint64_t resolve_dest_written_frame_ = 0;
     bool pending_storage_write_ = false;
 
@@ -390,6 +402,8 @@ class VulkanTextureCache final : public TextureCache {
     void SetResolveDestStorageView(VkImageView view) {
       resolve_dest_storage_view_ = view;
     }
+    VkImageView load_storage_view() const { return load_storage_view_; }
+    void SetLoadStorageView(VkImageView view) { load_storage_view_ = view; }
     uint64_t resolve_dest_written_frame() const {
       return resolve_dest_written_frame_;
     }
@@ -578,6 +592,18 @@ class VulkanTextureCache final : public TextureCache {
   VkPipelineLayout load_pipeline_layout_ = VK_NULL_HANDLE;
   std::array<VkPipeline, kLoadShaderCount> load_pipelines_{};
   std::array<VkPipeline, kLoadShaderCount> load_pipelines_scaled_{};
+  // Unscaled variants with whole-cache-line accesses per instruction, for the
+  // load shaders that have one (vulkan_texture_load_coalesced).
+  std::array<VkPipeline, kLoadShaderCount> load_pipelines_coalesced_{};
+  // Variants storing straight into the texture's R32_UINT alias instead of a
+  // buffer to copy to the image (vulkan_texture_load_to_image), with a storage
+  // image destination descriptor set.
+  VkPipelineLayout load_pipeline_layout_image_ = VK_NULL_HANDLE;
+  std::array<VkPipeline, kLoadShaderCount> load_pipelines_image_{};
+  // vulkan_texture_load_to_image at startup: eligible textures are created
+  // with the R32_UINT storage alias (the cvar itself can be switched later to
+  // compare the load paths on the same images).
+  bool load_to_image_storage_ = false;
 
   // Persistent descriptor binding the whole shared memory buffer
   // (kStorageBufferCompute layout) for compute load/store, so per-operation

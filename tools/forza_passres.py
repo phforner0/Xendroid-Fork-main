@@ -26,8 +26,9 @@ sync_re = re.compile(r"VkFrameSync: (\d+) frames .*?submissions=" + num +
 gf_re = re.compile(r"GpuFrame: \d+ frames, interval avg=" + num)
 pass_re = re.compile(r"VkPassTime: (xfer )?(\d+)x(\d+) : " + num +
                      r"ms/fr \(" + num + r"pass " + num + r"draw/fr")
+# Newer builds add the source format and MSAA of the copy after the size.
 res_re = re.compile(r"VkResolveTime: copy=(\w+)(\+clear)?( direct)? (\d+)x(\d+)"
-                    r" : " + num + r"ms/fr \(" + num + r"/fr")
+                    r"( [^:]+?)? : " + num + r"ms/fr \(" + num + r"/fr")
 # Split of each resolve kind at the end of its copy (newer builds).
 split_re = re.compile(r"\| copy " + num + r"ms/fr clear " + num + r"ms/fr")
 misc_re = re.compile(r"VkMiscTime: (.+?) : " + num + r"ms/fr \(" + num + r"/fr")
@@ -53,8 +54,8 @@ def parse(path):
                 float(m.group(4)))
         elif (m := res_re.search(line)):
             key = (f"{m.group(1)}{m.group(2) or ''}{m.group(3) or ''} "
-                   f"{m.group(4)}x{m.group(5)}")
-            cur["res"][key] = float(m.group(6))
+                   f"{m.group(4)}x{m.group(5)}{m.group(6) or ''}")
+            cur["res"][key] = float(m.group(7))
             if (sm := split_re.search(line)):
                 cur["split"][f"{key} copy"] = float(sm.group(1))
                 cur["split"][f"{key} clear"] = float(sm.group(2))
@@ -122,10 +123,10 @@ for kind, title in (("pass", "render passes, ms/frame"),
     if not keys:
         continue
     print(f"\n{title} (top {top} + total):")
-    print(" " * 36 + "".join(f"{label[:12]:>13}" for label in labels))
+    print(" " * 50 + "".join(f"{label[:12]:>13}" for label in labels))
     for k, _ in keys.most_common(top):
-        print(f"  {k[:34]:<34}" +
+        print(f"  {k[:48]:<48}" +
               "".join(f"{mean(groups[label], kind, k):13.2f}" for label in labels))
-    print(f"  {'total':<34}" + "".join(
+    print(f"  {'total':<48}" + "".join(
         f"{statistics.fmean(sum(r[kind].values()) for r in groups[label]):13.2f}"
         for label in labels))

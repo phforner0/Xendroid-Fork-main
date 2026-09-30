@@ -58,6 +58,9 @@ DECLARE_bool(vulkan_in_pass_resolve_debug_read_usage);
 DECLARE_bool(log_gpu_frame_time_breakdown);
 DECLARE_bool(vulkan_resolve_clear_in_guest_pass);
 DECLARE_bool(spirv_specialize_no_alpha);
+DECLARE_bool(vulkan_texture_load_coalesced);
+DECLARE_bool(vulkan_texture_load_to_image);
+DECLARE_bool(vulkan_direct_host_resolve);
 
 DEFINE_bool(
     render_area_dirty_extent, false,
@@ -231,6 +234,20 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.spirv_specialize_no_alpha",
                             "spirv_specialize_no_alpha",
                             cvars::spirv_specialize_no_alpha);
+  // Read per texture load; both pipelines are created at startup.
+  PollDebugPropertyOverride("debug.xendroid.texload_coalesced",
+                            "vulkan_texture_load_coalesced",
+                            cvars::vulkan_texture_load_coalesced);
+  // Read per texture load; only textures created while it was set at startup
+  // have the storage alias it needs.
+  PollDebugPropertyOverride("debug.xendroid.texload_to_image",
+                            "vulkan_texture_load_to_image",
+                            cvars::vulkan_texture_load_to_image);
+  // Read per resolve (0: dump the render targets to the EDRAM buffer and copy
+  // from there).
+  PollDebugPropertyOverride("debug.xendroid.direct_host_resolve",
+                            "vulkan_direct_host_resolve",
+                            cvars::vulkan_direct_host_resolve);
   // Draws per mid-frame submission (0 = one submission per frame), read per
   // draw.
   char submit_value[PROP_VALUE_MAX] = {};
@@ -649,10 +666,20 @@ bool VulkanCommandProcessor::SetupContext() {
         "bound to the fragment shader");
     return false;
   }
-  descriptor_set_layout_binding_transient.descriptorType =
-      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   descriptor_set_layout_binding_transient.stageFlags =
       VK_SHADER_STAGE_COMPUTE_BIT;
+  if (dfn.vkCreateDescriptorSetLayout(
+          device, &descriptor_set_layout_create_info, nullptr,
+          &descriptor_set_layouts_single_transient_[size_t(
+              SingleTransientDescriptorLayout::kStorageImageCompute)]) !=
+      VK_SUCCESS) {
+    XELOGE(
+        "Failed to create a Vulkan descriptor set layout for a storage image "
+        "bound to the compute shader");
+    return false;
+  }
+  descriptor_set_layout_binding_transient.descriptorType =
+      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   descriptor_set_layout_binding_transient.binding = 1;
   descriptor_set_layout_binding_transient.descriptorType =
       VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -2583,7 +2610,8 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
           switch (MiscTimestampKind((key >> 24) & 0x3F)) {
             case MiscTimestampKind::kTextureLoad:
               label = fmt::format(
-                  "texload {} 2^{}tx {}{}{}",
+                  "{} {} 2^{}tx {}{}{}",
+                  (key & kMiscTimestampTextureCopy) ? "texcopy" : "texload",
                   FormatInfo::GetName(xenos::TextureFormat((key >> 16) & 0x3F)),
                   (key >> 8) & 0x1F,
                   (key & kMiscTimestampTextureGpuWritten) ? "gpu" : "cpu",
@@ -2598,6 +2626,20 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
             case MiscTimestampKind::kSetupCommands:
               label = "setup (shared memory uploads)";
               break;
+            case MiscTimestampKind::kResolveCopyDispatch: {
+              const bool depth = (key & (1u << 16)) != 0;
+              const uint32_t format = (key >> 19) & 0xF;
+              label = fmt::format(
+                  "resolve dispatch {}{} {}x{} {} {}x",
+                  depth ? "depth" : "color",
+                  (key & (1u << 23)) ? " direct" : "", ((key >> 8) & 0xFF) * 8,
+                  (key & 0xFF) * 8,
+                  depth ? xenos::GetDepthRenderTargetFormatName(
+                              xenos::DepthRenderTargetFormat(format))
+                        : xenos::GetColorRenderTargetFormatName(
+                              xenos::ColorRenderTargetFormat(format)),
+                  1u << ((key >> 17) & 0x3));
+            } break;
             default:
               label = fmt::format("misc {:08X}", key);
               break;
@@ -2623,12 +2665,26 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
         const char* kind = (key & (1u << 29))
                                ? ((key & (1u << 30)) ? "depth" : "color")
                                : "none";
+        // Source format and MSAA of the copy.
+        std::string source;
+        if (key & (1u << 29)) {
+          const uint32_t format = (key >> 24) & 0xF;
+          source = fmt::format(
+              " {} {}x",
+              (key & (1u << 30))
+                  ? xenos::GetDepthRenderTargetFormatName(
+                        xenos::DepthRenderTargetFormat(format))
+                  : xenos::GetColorRenderTargetFormatName(
+                        xenos::ColorRenderTargetFormat(format)),
+              1u << ((key >> 22) & 0x3));
+        }
         XELOGI(
-            "VkResolveTime: copy={}{}{} {}x{} : {:.2f}ms/fr ({:.1f}/fr, "
+            "VkResolveTime: copy={}{}{} {}x{}{} : {:.2f}ms/fr ({:.1f}/fr, "
             "{:.3f}ms ea, max {:.3f}) | copy {:.2f}ms/fr clear {:.2f}ms/fr",
             kind, (key & (1u << 31)) ? "+clear" : "",
             (key & (1u << 28)) ? " direct" : "", ((key >> 11) & 0x7FF) * 8,
-            (key & 0x7FF) * 8, kv.second.ns / f / 1e6, kv.second.count / f,
+            (key & 0x7FF) * 8, source, kv.second.ns / f / 1e6,
+            kv.second.count / f,
             kv.second.count
                 ? kv.second.ns / static_cast<double>(kv.second.count) / 1e6
                 : 0.0,
@@ -3805,7 +3861,9 @@ VkDescriptorSet VulkanCommandProcessor::AllocateSingleTransientDescriptor(
             SingleTransientDescriptorLayout::kStorageBufferFragment;
     bool is_storage_image =
         transient_descriptor_layout ==
-        SingleTransientDescriptorLayout::kStorageImageFragment;
+            SingleTransientDescriptorLayout::kStorageImageFragment ||
+        transient_descriptor_layout ==
+            SingleTransientDescriptorLayout::kStorageImageCompute;
     ui::vulkan::LinkedTypeDescriptorSetAllocator&
         transient_descriptor_allocator =
             is_storage_image

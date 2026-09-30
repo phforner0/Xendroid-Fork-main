@@ -36,6 +36,7 @@
 #include "xenia/ui/vulkan/vulkan_util.h"
 
 DECLARE_bool(accurate_resolve_number_formats);
+DECLARE_bool(log_gpu_frame_time_breakdown);
 DECLARE_bool(rt_cache_ownership_claim_memo);
 DECLARE_bool(vulkan_dynamic_rendering);
 
@@ -2373,6 +2374,18 @@ bool VulkanRenderTargetCache::TryInPassResolveCopy(
   return true;
 }
 
+bool VulkanRenderTargetCache::OpenResolveCopyDispatchTimestamp(
+    bool direct_host) {
+  const uint32_t key = last_resolve_key_;
+  return command_processor_.OpenMiscTimestamp(
+      VulkanCommandProcessor::MakeMiscTimestampKey(
+          VulkanCommandProcessor::MiscTimestampKind::kResolveCopyDispatch,
+          std::min(key & 0x7FFu, 0xFFu) |
+              (std::min((key >> 11) & 0x7FFu, 0xFFu) << 8) |
+              (((key >> 30) & 0x1u) << 16) | (((key >> 22) & 0x3u) << 17) |
+              (((key >> 24) & 0xFu) << 19) | (uint32_t(direct_host) << 23)));
+}
+
 bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
     const draw_util::ResolveInfo& resolve_info,
     const draw_util::ResolveCopyShaderConstants& copy_shader_constants,
@@ -2702,6 +2715,36 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
       draw_util::GetD3D10SampleIndexForGuest2xMSAA(
           1, msaa_2x_attachments_supported_);
 
+  if (cvars::log_gpu_frame_time_breakdown &&
+      direct_resolves_logged_.size() < 128) {
+    // What each kind of direct resolve reads, once per source layout.
+    for (const DirectHostResolveSource& source : sources) {
+      if (!direct_resolves_logged_
+               .insert((uint64_t(last_resolve_key_) << 32) | source.key.key)
+               .second) {
+        continue;
+      }
+      std::string dispatches;
+      for (uint32_t i = 0; i < source.dispatch_count; ++i) {
+        dispatches += fmt::format(" {}x{}t@{}", source.dispatches[i].width_tiles,
+                                  source.dispatches[i].height_tiles,
+                                  source.dispatches[i].offset);
+      }
+      XELOGI(
+          "VkDirectResolve: {} {}x{} from {} (host height {}) | dump base {}t "
+          "pitch {}t rows {} used {}t | {} px/thread, dispatches{}",
+          resolve_is_depth ? "depth" : "color",
+          ((last_resolve_key_ >> 11) & 0x7FF) * 8,
+          (last_resolve_key_ & 0x7FF) * 8, source.key.GetDebugName(),
+          GetRenderTargetHeight(source.key.pitch_tiles_at_32bpp,
+                                source.key.msaa_samples),
+          dump_base, dump_pitch, dump_rows, dump_row_length_used,
+          source.pixels_per_thread, dispatches);
+    }
+  }
+
+  bool dispatch_timing_attempted = false;
+  bool dispatch_timed = false;
   for (const DirectHostResolveSource& source : sources) {
     command_processor_.BindExternalComputePipeline(source.pipeline);
     VkDescriptorSet source_descriptor_set =
@@ -2735,18 +2778,19 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
       auto* constants_mapping = direct_host_resolve_constants_pool_->Request(
           current_submission, sizeof(constants), constants_alignment,
           constants_buffer, constants_offset);
-      if (!constants_mapping) {
+      VkDescriptorSet descriptor_set_constants =
+          constants_mapping
+              ? command_processor_.AllocateSingleTransientDescriptor(
+                    VulkanCommandProcessor::SingleTransientDescriptorLayout::
+                        kUniformBufferComputeB1)
+              : VK_NULL_HANDLE;
+      if (descriptor_set_constants == VK_NULL_HANDLE) {
+        if (dispatch_timed) {
+          command_processor_.CloseMiscTimestamp();
+        }
         return false;
       }
       std::memcpy(constants_mapping, &constants, sizeof(constants));
-
-      VkDescriptorSet descriptor_set_constants =
-          command_processor_.AllocateSingleTransientDescriptor(
-              VulkanCommandProcessor::SingleTransientDescriptorLayout::
-                  kUniformBufferComputeB1);
-      if (descriptor_set_constants == VK_NULL_HANDLE) {
-        return false;
-      }
       VkDescriptorBufferInfo constants_buffer_info = {};
       constants_buffer_info.buffer = constants_buffer;
       constants_buffer_info.offset = constants_offset;
@@ -2772,9 +2816,16 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
           VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0,
           uint32_t(xe::countof(descriptor_sets)), descriptor_sets, 0, nullptr);
       command_processor_.SubmitBarriers(true);
+      if (!dispatch_timing_attempted) {
+        dispatch_timing_attempted = true;
+        dispatch_timed = OpenResolveCopyDispatchTimestamp(true);
+      }
       command_buffer.CmdVkDispatch((constants.thread_count_x + 7u) >> 3,
                                    (constants.thread_count_y + 7u) >> 3, 1);
     }
+  }
+  if (dispatch_timed) {
+    command_processor_.CloseMiscTimestamp();
   }
 
   if (scaled_buffer_ready) {
@@ -2840,6 +2891,15 @@ bool VulkanRenderTargetCache::Resolve(
            : 0u) |
       ((uint32_t(resolve_info.coordinate_info.width_div_8) & 0x7FF) << 11) |
       (uint32_t(resolve_info.height_div_8) & 0x7FF);
+  if (resolve_info.copy_dest_extent_length) {
+    // The source MSAA and format of the copy.
+    const draw_util::ResolveEdramInfo& copy_edram_info =
+        resolve_info.IsCopyingDepth() ? resolve_info.depth_edram_info
+                                      : resolve_info.color_edram_info;
+    last_resolve_key_ |=
+        ((uint32_t(copy_edram_info.msaa_samples) & 0x3) << 22) |
+        ((uint32_t(copy_edram_info.format) & 0xF) << 24);
+  }
   command_processor_.BinTraceNoteIfActive(
       resolve_info.IsClearingDepth() || resolve_info.IsClearingColor() ? "RC"
                                                                         : "R",
@@ -3163,8 +3223,12 @@ bool VulkanRenderTargetCache::Resolve(
                 sizeof(copy_shader_constants), &copy_shader_constants);
           }
           command_processor_.SubmitBarriers(true);
+          const bool dispatch_timed = OpenResolveCopyDispatchTimestamp(false);
           command_buffer.CmdVkDispatch(copy_group_count_x, copy_group_count_y,
                                        1);
+          if (dispatch_timed) {
+            command_processor_.CloseMiscTimestamp();
+          }
 
           // Add barrier after writing to scaled resolve buffer
           if (scaled_buffer_ready) {

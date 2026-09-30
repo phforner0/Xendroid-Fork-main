@@ -16,6 +16,7 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "xenia/base/hash.h"
 #include "xenia/base/xxhash.h"
@@ -145,9 +146,14 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
                bool* written_scaled_out = nullptr);
   // Kind and size of the last Resolve, for per-resolve GPU timing: bit 31 -
   // clears, bit 30 - copies depth, bit 29 - copies, bit 28 - copied with the
-  // direct host path, bits 11:21 - width / 8, bits 0:10 - height / 8. 0 if
-  // there was nothing to do.
+  // direct host path, bits 24:27 - source format of the copy, bits 22:23 -
+  // source xenos::MsaaSamples of the copy, bits 11:21 - width / 8, bits 0:10 -
+  // height / 8. 0 if there was nothing to do.
   uint32_t last_resolve_key() const { return last_resolve_key_; }
+  // Opens the VkMiscTime region of the current resolve's copy dispatches
+  // (MiscTimestampKind::kResolveCopyDispatch) - after the barriers before
+  // them, outside a render pass.
+  bool OpenResolveCopyDispatchTimestamp(bool direct_host);
 
   bool Update(bool is_rasterization_done,
               reg::RB_DEPTHCONTROL normalized_depth_control,
@@ -1129,6 +1135,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   bool color_7e3_as_r11g11b10_ = false;
   // See last_resolve_key().
   uint32_t last_resolve_key_ = 0;
+  // Direct host resolve source layouts already logged (VkDirectResolve).
+  std::unordered_set<uint64_t> direct_resolves_logged_;
 
   bool depth_unorm24_vulkan_format_supported_ = false;
   bool depth_float24_round_ = false;

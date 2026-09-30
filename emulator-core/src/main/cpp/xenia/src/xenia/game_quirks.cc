@@ -44,6 +44,10 @@ static const Quirk kQuirks[] = {
      "exact texture sign decode in a uniform branch"},
     {0x4D5309C9, "spirv_fast_precision_rounding", true,
      "exact cheaper 21-bit rounding"},
+    // Exact too: ~10 full-screen textures reloaded per frame skip the copy from
+    // a buffer; +4.5% fps, -5.4% GPU time on the POCO F7 (2026-09-29).
+    {0x4D5309C9, "vulkan_texture_load_to_image", true,
+     "texture loads straight into the image"},
 };
 
 // Same path/priority as a per-game config file.
