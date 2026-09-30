@@ -383,6 +383,10 @@ class VulkanPipelineCache : public GuestSpirvShaderCache::Host {
     // key when dynamic primitive topology is enabled but topology may not cross
     // classes (dynamicPrimitiveTopologyUnrestricted absent). Zero otherwise.
     uint32_t topology_class : 2;  // 11
+    // host_alpha_to_coverage: the guest's alpha to coverage done by the host's
+    // fixed function (the pixel shaders don't emulate it then). Zero in
+    // pipeline storages written before it, which is the emulated behavior.
+    uint32_t alpha_to_coverage : 1;  // 12
 
     // Filled only for the attachments present in the render pass object.
     PipelineRenderTarget render_targets[xenos::kMaxColorRenderTargets];

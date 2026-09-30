@@ -20,9 +20,10 @@ por braço (`-RestartArms`).
 | Anomalia do `depth 512x512` | 1 resolve/frame de 1,12 ms dentro do dispatch; flush e ociosidade entre submissões descartados | sem ação |
 | Laço principal sem a dica `DontUnroll` (item 1.3) | NIR perde o laço, mas o ir3 fica igual (+0,13% instruções, +0,9% ciclos de nop) | descartado |
 | `precise_interpolation` (item 1.7) | inerte neste aparelho (o Turnip não expõe `fragmentShaderBarycentric`) | sem ação |
-| Teto da emulação de alpha-to-coverage (item 1.6) | 55% dos draws do passe principal usam A2C; sem a emulação: passe principal **−14,8%**, GPU −2,6 ms, **+8,1% FPS** | alpha-to-coverage pelo hardware (`host_alpha_to_coverage`) *(medição na sessão S5)* |
+| Teto da emulação de alpha-to-coverage (item 1.6) | 55% dos draws do passe principal usam A2C; sem nenhum A2C: passe principal −14,8%, +8,1% FPS | — |
+| **Alpha-to-coverage pelo hardware** (`host_alpha_to_coverage`, build 28) | passe principal **16,56 → 15,32 ms (−7,5%)**, GPU −0,9 ms, +1,4 a +1,6% FPS; folhagem igual parado e dirigindo | ligado no Forza Horizon via `game_quirks.cc` |
 | Teto da matemática do vertex shader (item 4.1) | passe principal −2,7% (−0,4 ms), +1,1% FPS | sem ação (arrisca a invariância de posição) |
-| Turnip mais novo (passo 6) | só há o Gen8 V36 no aparelho | depende de um driver fornecido pelo usuário |
+| Turnip Gen8 V37 "patched" contra o V36 (passo 6) | **+1,4% FPS**, GPU −2%, mesma imagem | driver recomendado (configuração do usuário) |
 
 ## 1. Resolves diretos com 4 pixels por thread (build 20)
 
@@ -184,17 +185,89 @@ prioridade (~2% da GPU).
   | `spirv_ps_no_alpha_to_coverage_experiment` | **27,23** | **32,8** | **13,68** | 5,63 |
 
   A matemática Xenos no vertex shader custa pouco (−0,4 ms no teto) e não dá
-  para tirá-la sem arriscar posições diferentes entre passes — sem ação. A
-  emulação do alpha-to-coverage custa 2,4 ms do passe principal (15%), muito
-  mais do que as instruções justificam: a suspeita é a própria saída
-  `gl_SampleMask`, que impede o teste de profundidade antecipado em 55% dos
-  draws. Daí a opção `host_alpha_to_coverage`: o pipeline liga o
-  alpha-to-coverage fixo do hardware (bit novo na descrição do pipeline, zero
-  nas descrições já armazenadas) e os pixel shaders deixam de emulá-lo; o
-  padrão de dither passa a ser o do hardware, não os deslocamentos de limiar
-  do Xenos. *(medição e checagem visual na sessão S5)*
+  para tirá-la sem arriscar posições diferentes entre passes — sem ação. Tirar
+  o alpha-to-coverage inteiro poupa 2,4 ms do passe principal (15%), muito
+  mais do que as instruções da emulação justificam.
+- **Alpha-to-coverage pelo hardware** (`host_alpha_to_coverage`, build 28): o
+  pipeline liga o `alphaToCoverageEnable` (bit novo na descrição do pipeline,
+  zero nas descrições já armazenadas, então o cache de pipelines segue
+  válido) e os pixel shaders deixam de escrever `gl_SampleMask`. Passes só de
+  profundidade (o atlas de sombra, ~100% A2C) não têm a saída de cor 0 da qual
+  o hardware tiraria o alfa e mantêm a emulação — sem isso as sombras da
+  vegetação ficariam sólidas. Com timestamps (um lançamento por braço):
+
+  | braço | passe principal | sombras | passes | GPU ms | FPS |
+  |---|---|---|---|---|---|
+  | emulado | 16,56 | 4,73 | 25,28 | 33,2 | 27,95 |
+  | hardware | **15,32** | 4,93 | 24,32 | 32,3 | 28,41 |
+
+  Sem timestamps (dois lançamentos por braço, celular frio): 29,49 → 29,91
+  FPS, GPU 29,1 → 28,7 ms — o FPS fica preso perto de 29,9 pelo lado da CPU
+  quando o celular está frio. O hardware recupera metade do teto: a outra
+  metade é o próprio efeito da cobertura parcial com MSAA 4x (amostras
+  diferentes no pixel, escrita de profundidade dependente da cobertura), que
+  ele também paga. A folhagem fica igual parada (recorte em resolução total)
+  e dirigindo; só o padrão de dither das bordas é o do hardware, não os
+  deslocamentos de limiar do Xenos. Ligado no Forza Horizon.
 
 ## 6. Turnip mais novo
 
-O app de teste só tem `Turnip_Gen8_V36` em `compose/driver`. O A/B depende de
-um driver mais novo fornecido pelo usuário.
+Turnip Gen8 V37 "patched" (StevenMXZ, Vulkan 1.4.363, fornecido pelo usuário;
+instalado só no app de teste) contra o V36 em uso, um lançamento por braço
+alternando os drivers (`vulkan_lib_path` por jogo), 35 s sem timestamps, com o
+build 27:
+
+| lançamento | driver | FPS | GPU ms |
+|---|---|---|---|
+| 1 | V36 | 28,91 | 30,0 |
+| 2 | V37 | 29,13 | 29,5 |
+| 3 | V36 | 28,81 | 29,8 |
+| 4 | V37 | 29,36 | 29,1 |
+
+O V37 ganha nos dois pares (+0,8% e +1,9% de FPS, GPU −2%) e a imagem é a
+mesma nas capturas. Trocar o driver do app principal é escolha do usuário
+(configuração, não código).
+
+## 7. Reanálise: onde está o tempo agora e próximos caminhos
+
+GPU por frame com timestamps (build 25, resolves na textura): **~35,6 ms**
+(passes 26,7 — principal 16,3, sombras 5,7; resolves 8,0; cargas de textura
+0,75; o resto ~0,2). Sem timestamps e com o celular frio: GPU ~30 ms num frame
+de ~35 ms — **a GPU já fica ~15% ociosa**; quente, ela volta a limitar.
+
+Caminhos, do maior para o menor ganho esperado:
+
+1. **O resto do custo do alpha-to-coverage** (~1,2 ms do passe principal):
+   inerente à cobertura parcial com MSAA 4x. Só sai trocando qualidade — por
+   exemplo, uma opção de desempenho que troque o A2C por teste alfa (bordas da
+   vegetação serrilhadas); é escolha de qualidade do usuário, não de código.
+2. **Lado da CPU com o celular frio**: com a GPU ociosa ~5 ms por frame, o que
+   limita é a espera pelo guest (`WAIT_REG_MEM` ~9 ms/frame, guest esperando
+   56% do tempo) e a thread de comandos (53% de um núcleo). Medir a linha do
+   tempo de um frame (quando o CP espera o guest e quando a GPU fica sem
+   trabalho) antes de mexer; `submit_draws` e o estacionamento do spin são as
+   alavancas conhecidas.
+3. **Quebras de render pass**: ~210 passes por frame, ~164 encerrados por
+   barreiras de buffer + imagem (≈15 µs cada, ~2,5–3 ms/frame). Auditar quais
+   barreiras são necessárias (ex.: barreiras de faixas da memória compartilhada
+   que o passe seguinte não lê) pode juntar passes.
+4. **Resolves (8 ms/frame)**: (a) os resolves minúsculos da cadeia de
+   downsample (8×8 a 128×128, ~50/frame, ~1,2 ms) pagam custo fixo por
+   dispatch/barreira; (b) o `depth 512x512` do atlas (0,8–1,1 ms, 5× o custo
+   por pixel do 1024×1024 do mesmo RT) segue sem explicação — próxima hipótese:
+   estado de energia da GPU depois de uma espera do CP pelo guest (cruzar com as
+   marcas `W` do `pm4_bin_trace`); (c) gravar na textura custa +0,85 ms:
+   variantes de 8 px por thread para fonte 1x e gravar a memória compartilhada
+   só quando alguém a lê (resolve "só textura", grande) cortariam parte disso.
+5. **Cargas que sobram (0,75 ms)**: duas `k_24_8` 1024×1024 (0,41 ms — um
+   resolve de depth 520×520 que às vezes vai pelo caminho da EDRAM, e memória
+   reusada por resolves de cor de outros formatos) e o alias `k_8_8_8_8` de
+   `1DAC5000` (0,20 ms — exigiria o resolve de depth gravar também os bits crus
+   na textura de cor).
+6. **Sem retorno (medido)**: matemática Xenos no vertex shader (teto −0,4 ms,
+   com risco), laço sem dica, `precise_interpolation`, variante "só teste
+   alfa" isolada (o teste alfa em si é barato; o custo estava no A2C).
+
+Achado de fidelidade (não de desempenho): nos passes só de profundidade a
+emulação de A2C roda com a amostra única do atlas (1x) — o hardware não tem
+como fazer isso sem saída de cor, por isso a opção nova preserva a emulação lá.
