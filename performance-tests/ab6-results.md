@@ -142,6 +142,39 @@ começou quente (bateria a 42,7 °C, depois de outras três sessões) e o códig
 o mesmo do braço "sim" do build 17 (36 ms/frame). A comparação que vale é a
 das seções 1 e 2, com os braços alternados na mesma sessão.
 
+## 5. Número final e sonda de flush (build 19)
+
+Build 19 = `main` depois do PR #5 + `debug.xendroid.texload_mode` (0 = untile
+original com cópia, 1 = coalescido, 2 = coalescido direto na imagem — o padrão
+do Forza), que entrou no código para os próximos A/B, e uma sonda de flush que
+ficou só no build de teste (resultado negativo, abaixo).
+
+**Padrões × caminho original**, sem timestamps, braços de 40 s alternados na
+mesma sessão, celular quente (bateria de 40 a 45 °C) — o ganho cresce com a
+GPU limitada pela temperatura:
+
+| braço | modo | FPS | GPU ms |
+|---|---|---|---|
+| 1 | 0 | 15,87 | 61,04 |
+| 2 | 2 | 18,45 | 51,88 |
+| 3 | 0 | 15,85 | 60,78 |
+| 4 | 2 | 18,41 | 51,94 |
+| 5 | 0 | 15,86 | 60,97 |
+| 6 | 2 | 18,28 | 52,46 |
+
+**+16% FPS, −8,9 ms de GPU por frame.** Os 52 ms do lançamento do build 18
+(seção 4) são exatamente o modo 2 nessas condições: era temperatura, não
+regressão.
+
+**Sonda de flush:** preenchendo 4 bytes de um buffer logo depois das barreiras
+de cada resolve (o Turnip emite os flushes pendentes na próxima operação de
+transferência ou dispatch), os flushes custam 1–3 µs e o dispatch do
+`depth 512x512` continua em ~0,73 ms/frame (0,72 com a sonda, 0,74 sem). A
+hipótese do flush está descartada: o custo está dentro do dispatch. Próxima
+suspeita: o estado de energia da GPU depois de um intervalo ocioso, se esse
+resolve cair logo no começo de uma submissão (testar com
+`debug.xendroid.submit_draws`).
+
 ## Ferramentas
 
 - `tools/forza_passres.py` lê os rótulos novos dos resolves (formato e MSAA).

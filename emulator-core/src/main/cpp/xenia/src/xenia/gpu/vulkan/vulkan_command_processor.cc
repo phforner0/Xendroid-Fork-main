@@ -248,6 +248,23 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.direct_host_resolve",
                             "vulkan_direct_host_resolve",
                             cvars::vulkan_direct_host_resolve);
+  // Both texture load switches at once, for A/Bs of the load paths: 0 - the
+  // original untiling into a buffer copied to the image, 1 - coalesced
+  // untiling, 2 - coalesced straight into the image (which only has the
+  // storage aliases it needs if it was on at startup).
+  char texload_mode_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.texload_mode",
+                            texload_mode_value) > 0 &&
+      texload_mode_value[0] >= '0' && texload_mode_value[0] <= '2' &&
+      !texload_mode_value[1]) {
+    const int mode = texload_mode_value[0] - '0';
+    if (cvars::vulkan_texture_load_coalesced != (mode >= 1) ||
+        cvars::vulkan_texture_load_to_image != (mode >= 2)) {
+      cvars::vulkan_texture_load_coalesced = mode >= 1;
+      cvars::vulkan_texture_load_to_image = mode >= 2;
+      XELOGI("debug.xendroid.texload_mode: texload_mode = {}", mode);
+    }
+  }
   // Draws per mid-frame submission (0 = one submission per frame), read per
   // draw.
   char submit_value[PROP_VALUE_MAX] = {};
