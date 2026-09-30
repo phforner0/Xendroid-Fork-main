@@ -826,13 +826,18 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
 
   // Estimate height used by render targets (for color for writes, for depth /
   // stencil for both reads and writes) from various sources.
-  uint32_t height_used = std::min(
-      GetRenderTargetHeight(pitch_tiles_at_32bpp, msaa_samples),
-      draw_extent_estimator_.EstimateMaxY(
-          interlock_barrier_only
-              ? cvars::execute_unclipped_draw_vs_on_cpu_for_psi_render_backend
-              : true,
-          vertex_shader));
+  uint32_t height_used = draw_extent_estimator_.EstimateMaxY(
+      interlock_barrier_only
+          ? cvars::execute_unclipped_draw_vs_on_cpu_for_psi_render_backend
+          : true,
+      vertex_shader);
+  if (draw_samples_as_pixels_) {
+    // In the guest's 4x pixels, but rounded like at 1x (the surface info is
+    // the 1x one now) - one more row covers the lower samples of the last.
+    height_used = (height_used + 1) << 1;
+  }
+  height_used = std::min(
+      GetRenderTargetHeight(pitch_tiles_at_32bpp, msaa_samples), height_used);
 
   // Sorted by EDRAM base and then by index in the pipeline - for simplicity,
   // treat render targets placed closer to the end of the EDRAM as truncating

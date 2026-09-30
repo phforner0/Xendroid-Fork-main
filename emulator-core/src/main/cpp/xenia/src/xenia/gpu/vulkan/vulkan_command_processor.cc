@@ -64,6 +64,38 @@ DECLARE_bool(vulkan_direct_host_resolve);
 DECLARE_bool(vulkan_direct_host_resolve_4px);
 DECLARE_bool(vulkan_direct_host_resolve_to_texture);
 DECLARE_bool(vulkan_resolve_dest_diag);
+DECLARE_bool(vulkan_replay_stats);
+DECLARE_bool(vulkan_resolve_draw_barriers_at_resolve);
+
+DEFINE_bool(
+    msaa_4x_as_2x, false,
+    "EXPERIMENTAL. Host render target path, trading image quality for speed: "
+    "draw and resolve the guest's 4x MSAA scenes (surfaces drawn with color) "
+    "as 2x MSAA (the surface info is rewritten for each draw and resolve, so "
+    "the render targets, pipelines and resolves all see 2x; averaging resolves "
+    "average 2 samples). 4x depth-only surfaces stay 4x (see "
+    "vulkan_depth_4x_as_1x), and so do surfaces also used as 1x (their samples "
+    "read as pixels) and whatever is drawn with them. Other reinterpretations "
+    "of the 4x EDRAM contents still break: Forza Horizon (-15% GPU time) "
+    "reads its 4x scene color as a 4x surface of half the pitch, and gets a "
+    "glow around the car. Occlusion queries count half the samples. Can be "
+    "switched at runtime (debug.xendroid.msaa_4x_as_2x).",
+    "GPU");
+
+DEFINE_bool(
+    vulkan_depth_4x_as_1x, false,
+    "Host render target path: render the guest's 4x MSAA depth-only draws into "
+    "surfaces never drawn with color - a title's own trick for fast depth "
+    "clears and double-resolution depth, like the shadow atlas of Forza "
+    "Horizon, read back as a 1x surface - into that 1x surface twice as wide "
+    "and tall (the same EDRAM tiles hold the 2x2 samples of a 4x pixel like "
+    "2x2 pixels), with the viewport and the scissor doubled, instead of into a "
+    "4x render target whose contents have to be transferred to and from the "
+    "1x one. Depth is taken at the pixel centers of the double-resolution grid "
+    "instead of at the 4x sample positions (up to 1/4 of a 1x pixel away). "
+    "Not with resolution scaling. Can be switched at runtime "
+    "(debug.xendroid.depth_4x_as_1x).",
+    "GPU");
 
 DEFINE_bool(
     render_area_dirty_extent, false,
@@ -263,6 +295,20 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.resolve_dest_diag",
                             "vulkan_resolve_dest_diag",
                             cvars::vulkan_resolve_dest_diag);
+  PollDebugPropertyOverride("debug.xendroid.replay_stats",
+                            "vulkan_replay_stats", cvars::vulkan_replay_stats);
+  // Read per draw and resolve; the render target cache moves the contents
+  // between the 4x and the 2x render targets like for any other key change.
+  PollDebugPropertyOverride("debug.xendroid.msaa_4x_as_2x", "msaa_4x_as_2x",
+                            cvars::msaa_4x_as_2x);
+  // Read per draw, like msaa_4x_as_2x.
+  PollDebugPropertyOverride("debug.xendroid.depth_4x_as_1x",
+                            "vulkan_depth_4x_as_1x",
+                            cvars::vulkan_depth_4x_as_1x);
+  // Read per resolve.
+  PollDebugPropertyOverride("debug.xendroid.resolve_draw_barriers",
+                            "vulkan_resolve_draw_barriers_at_resolve",
+                            cvars::vulkan_resolve_draw_barriers_at_resolve);
   // Both texture load switches at once, for A/Bs of the load paths: 0 - the
   // original untiling into a buffer copied to the image, 1 - coalesced
   // untiling, 2 - coalesced straight into the image (which only has the
@@ -2585,6 +2631,30 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
           s.render_pass_begins / f, s.primary_buffer_splits / f,
           s.replay_ns / f / 1e6, s.resolve_clears / f,
           s.resolve_clears_in_guest_pass / f);
+      // What the replays sent to the driver per frame, and how much of the
+      // state setting repeated what the command buffer already had.
+      if (cvars::vulkan_replay_stats) {
+        DeferredCommandBuffer::ReplayStats replay_stats;
+        deferred_command_buffer_.TakeReplayStats(replay_stats);
+        deferred_setup_command_buffer_.TakeReplayStats(replay_stats);
+        std::string commands;
+        for (size_t i = 0; i < DeferredCommandBuffer::kReplayStatCommandCount;
+             ++i) {
+          if (!replay_stats.commands[i]) {
+            continue;
+          }
+          commands += fmt::format(
+              " {}={:.0f}", DeferredCommandBuffer::GetReplayStatCommandName(i),
+              replay_stats.commands[i] / f);
+          if (replay_stats.redundant[i]) {
+            commands +=
+                fmt::format("(same {:.0f})", replay_stats.redundant[i] / f);
+          }
+        }
+        XELOGI("VkReplay: per frame: sets={:.0f} push_bytes={:.0f} |{}",
+               replay_stats.descriptor_sets / f,
+               replay_stats.push_constant_bytes / f, commands);
+      }
       // Driver fence polls and waits of the submission timeline (a poll of a
       // pending fence blocks on Turnip/kgsl, see fence_collect).
       const ui::vulkan::VulkanGPUCompletionTimeline::DriverWaitStats fence =
@@ -2601,11 +2671,20 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
         auto ends = [&](PassEndReason reason) {
           return s.pass_ends[size_t(reason)] / f;
         };
+        auto reopens = [&](PassEndReason reason) {
+          return s.pass_reopens[size_t(reason)] / f;
+        };
+        uint64_t reopens_total = 0;
+        for (uint64_t count : s.pass_reopens) {
+          reopens_total += count;
+        }
         XELOGI(
             "VkPassEnd: per frame: render_targets={:.1f} resolve={:.1f} "
             "textures={:.1f} shared_memory={:.1f} primitives={:.1f} "
             "query={:.1f} submission={:.1f} other={:.1f} | barriers: "
-            "buffer={:.1f} image={:.1f} both={:.1f}",
+            "buffer={:.1f} image={:.1f} both={:.1f} | reopened on the same "
+            "framebuffer: {:.1f} (after a resolve {:.1f}; ended by barriers: "
+            "buffer={:.1f} image={:.1f} both={:.1f}; submission={:.1f})",
             ends(PassEndReason::kRenderTargets),
             ends(PassEndReason::kResolve), ends(PassEndReason::kTextures),
             ends(PassEndReason::kSharedMemory),
@@ -2613,7 +2692,34 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
             ends(PassEndReason::kQuery), ends(PassEndReason::kSubmission),
             ends(PassEndReason::kOther), ends(PassEndReason::kBufferBarriers),
             ends(PassEndReason::kImageBarriers),
-            ends(PassEndReason::kBufferAndImageBarriers));
+            ends(PassEndReason::kBufferAndImageBarriers), reopens_total / f,
+            s.pass_reopens_after_resolve / f,
+            reopens(PassEndReason::kBufferBarriers),
+            reopens(PassEndReason::kImageBarriers),
+            reopens(PassEndReason::kBufferAndImageBarriers),
+            reopens(PassEndReason::kSubmission));
+        auto origins = [&](PassEndReason reason) {
+          return s.pass_ending_barrier_origins[size_t(reason)] / f;
+        };
+        XELOGI(
+            "VkPassEndBarriers: per frame, passes ended by barriers pushed "
+            "while: textures={:.1f} shared_memory={:.1f} render_targets={:.1f} "
+            "bindings={:.1f} primitives={:.1f} resolve={:.1f} query={:.1f} "
+            "other={:.1f}",
+            origins(PassEndReason::kTextures),
+            origins(PassEndReason::kSharedMemory),
+            origins(PassEndReason::kRenderTargets),
+            origins(PassEndReason::kBindings),
+            origins(PassEndReason::kPrimitiveProcessor),
+            origins(PassEndReason::kResolve), origins(PassEndReason::kQuery),
+            origins(PassEndReason::kOther));
+      }
+      // Ownership transfers of the draws, by source -> destination.
+      {
+        std::string transfer_stats = render_target_cache_->TakeTransferStats(f);
+        if (!transfer_stats.empty()) {
+          XELOGI("VkXfer: {}", transfer_stats);
+        }
       }
       // Per-render-pass-bucket GPU time (key: WxH, bit31 = ownership transfer).
       if (!pass_bucket_stats_.empty()) {
@@ -3373,6 +3479,7 @@ bool VulkanCommandProcessor::PushBufferMemoryBarrier(
 
   current_pending_barrier_.src_stage_mask |= src_stage_mask;
   current_pending_barrier_.dst_stage_mask |= dst_stage_mask;
+  pending_barrier_origins_ |= uint32_t(1) << uint32_t(pass_end_reason_);
   VkBufferMemoryBarrier& buffer_memory_barrier =
       pending_barriers_buffer_memory_barriers_.emplace_back();
   buffer_memory_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -3454,6 +3561,7 @@ bool VulkanCommandProcessor::PushImageMemoryBarrier(
 
   current_pending_barrier_.src_stage_mask |= src_stage_mask;
   current_pending_barrier_.dst_stage_mask |= dst_stage_mask;
+  pending_barrier_origins_ |= uint32_t(1) << uint32_t(pass_end_reason_);
   VkImageMemoryBarrier& image_memory_barrier =
       pending_barriers_image_memory_barriers_.emplace_back();
   image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -3479,6 +3587,14 @@ bool VulkanCommandProcessor::SubmitBarriers(bool force_end_render_pass) {
     return false;
   }
   if (in_render_pass_ && cvars::log_gpu_frame_time_breakdown) {
+    // Who pushed the barriers that end the pass (the PassEndReason scope open
+    // when each was pushed).
+    uint32_t origins = pending_barrier_origins_;
+    uint32_t origin;
+    while (xe::bit_scan_forward(origins, &origin)) {
+      origins &= ~(uint32_t(1) << origin);
+      ++vk_frame_sync_stats_.pass_ending_barrier_origins[origin];
+    }
     // The barriers are what ends the pass here (VkPassEnd).
     const bool buffer_barriers =
         !pending_barriers_buffer_memory_barriers_.empty();
@@ -3521,6 +3637,7 @@ bool VulkanCommandProcessor::SubmitBarriers(bool force_end_render_pass) {
   pending_barriers_image_memory_barriers_.clear();
   current_pending_barrier_.buffer_memory_barriers_offset = 0;
   current_pending_barrier_.image_memory_barriers_offset = 0;
+  pending_barrier_origins_ = 0;
   return true;
 }
 
@@ -3642,6 +3759,12 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
   current_render_pass_ = use_dynamic_rendering ? VK_NULL_HANDLE : render_pass;
   current_framebuffer_ = framebuffer;
   ++vk_frame_sync_stats_.render_pass_begins;
+  if (cvars::log_gpu_frame_time_breakdown &&
+      framebuffer == last_ended_framebuffer_) {
+    ++vk_frame_sync_stats_.pass_reopens[size_t(last_pass_end_reason_)];
+    vk_frame_sync_stats_.pass_reopens_after_resolve +=
+        uint64_t(resolve_since_pass_end_);
+  }
   BinTraceNoteIfActive("P", framebuffer->host_extent.width,
                        framebuffer->host_extent.height);
   // Identify each pass bucket once by the guest render targets behind it.
@@ -3840,6 +3963,9 @@ void VulkanCommandProcessor::EndRenderPass() {
   }
   if (cvars::log_gpu_frame_time_breakdown) {
     ++vk_frame_sync_stats_.pass_ends[size_t(pass_end_reason_)];
+    last_ended_framebuffer_ = current_framebuffer_;
+    last_pass_end_reason_ = pass_end_reason_;
+    resolve_since_pass_end_ = false;
   }
   // Close native Vulkan occlusion queries before ending the pass. FSI counter
   // segments don't use vkCmdBeginQuery / vkCmdEndQuery and can stay logically
@@ -4269,6 +4395,20 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
 
   const RegisterFile& regs = *register_file_;
 
+  // msaa_4x_as_2x and vulkan_depth_4x_as_1x rewrite the surface info for one
+  // draw or resolve only - the guest may keep drawing with it, and every draw
+  // decides for itself.
+  struct SurfaceInfoRestore {
+    VulkanCommandProcessor& command_processor;
+    uint32_t surface_info;
+    ~SurfaceInfoRestore() {
+      command_processor.register_file_->values[XE_GPU_REG_RB_SURFACE_INFO] =
+          surface_info;
+      command_processor.render_target_cache_->SetDrawSamplesAsPixels(false);
+    }
+  } surface_info_restore{*this,
+                         register_file_->values[XE_GPU_REG_RB_SURFACE_INFO]};
+
   // One-time confirmation of the effective guest depth path for this title
   // (after per-game config has loaded) - lets a setting like the per-game
   // vulkan_depth_unorm24 override be verified from the log.
@@ -4352,6 +4492,9 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   if (memexport_used_pixel) {
     draw_util::AddMemExportRanges(regs, *pixel_shader, memexport_ranges_);
   }
+
+  // The surface info of a 4x MSAA draw, before anything reads it.
+  const bool depth_4x_as_1x = RewriteMsaa4xSurfaceInfoForDraw(pixel_shader);
 
   uint32_t ps_param_gen_pos = UINT32_MAX;
   uint32_t interpolator_mask =
@@ -4895,15 +5038,20 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // ZPD segments can't mix scales. The resolved sample count is divided by
   // one scale area per segment. Split before the FSI counter index goes
   // into system constants.
-  UpdateZPDScale(draw_resolution_scale_x * draw_resolution_scale_y);
+  // A 4x depth draw into the 1x surface of its samples covers as many host
+  // pixels per guest pixel as a 4x one has samples.
+  UpdateZPDScale((draw_resolution_scale_x * draw_resolution_scale_y) >>
+                 (depth_4x_as_1x ? 2 : 0));
   draw_util::GetViewportInfoArgs gviargs{};
   gviargs.Setup(
       draw_resolution_scale_x, draw_resolution_scale_y,
       draw_resolution_scale_x > 1
-          ? texture_cache_->draw_resolution_scale_x_divisor()
+          ? (depth_4x_as_1x ? divisors::MagicDiv(draw_resolution_scale_x)
+                            : texture_cache_->draw_resolution_scale_x_divisor())
           : divisors::MagicDiv(1),
       draw_resolution_scale_y > 1
-          ? texture_cache_->draw_resolution_scale_y_divisor()
+          ? (depth_4x_as_1x ? divisors::MagicDiv(draw_resolution_scale_y)
+                            : texture_cache_->draw_resolution_scale_y_divisor())
           : divisors::MagicDiv(1),
       false, device_properties.maxViewportDimensions[0],
       device_properties.maxViewportDimensions[1],
@@ -5016,10 +5164,13 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
 
   // Update uniform buffers and descriptor sets after binding the pipeline with
   // the new layout.
-  if (!UpdateBindings(vertex_shader, pixel_shader, stage_bindings_ready[0],
-                      stage_bindings_ready[1], interpreter_placeholder,
-                      placeholder_pixel_shader)) {
-    return false;
+  {
+    PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kBindings);
+    if (!UpdateBindings(vertex_shader, pixel_shader, stage_bindings_ready[0],
+                        stage_bindings_ready[1], interpreter_placeholder,
+                        placeholder_pixel_shader)) {
+      return false;
+    }
   }
 
   // Ensure vertex buffers are resident.
@@ -5140,20 +5291,24 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // TODO(Triang3l): Find some PM4 command that can be used for indication of
   // when memexports should be awaited instead of inserting the barrier in Use
   // every time if memory export was done in the previous draw?
-  if (memexport_extent_start < memexport_extent_end) {
-    shared_memory_->Use(
-        VulkanSharedMemory::Usage::kGuestDrawReadWrite,
-        std::make_pair(memexport_extent_start,
-                       memexport_extent_end - memexport_extent_start));
-  } else {
-    // With in-pass resolves, fragment shaders may write shared memory inside
-    // any guest pass - declare the write usage up front so no barrier is
-    // needed at the resolve point.
-    shared_memory_->Use(
-        (render_target_cache_->local_read_attachments() &&
-         !cvars::vulkan_in_pass_resolve_debug_read_usage)
-            ? VulkanSharedMemory::Usage::kGuestDrawReadWrite
-            : VulkanSharedMemory::Usage::kRead);
+  {
+    PassEndReasonScope pass_end_reason_scope(*this,
+                                             PassEndReason::kSharedMemory);
+    if (memexport_extent_start < memexport_extent_end) {
+      shared_memory_->Use(
+          VulkanSharedMemory::Usage::kGuestDrawReadWrite,
+          std::make_pair(memexport_extent_start,
+                         memexport_extent_end - memexport_extent_start));
+    } else {
+      // With in-pass resolves, fragment shaders may write shared memory inside
+      // any guest pass - declare the write usage up front so no barrier is
+      // needed at the resolve point.
+      shared_memory_->Use(
+          (render_target_cache_->local_read_attachments() &&
+           !cvars::vulkan_in_pass_resolve_debug_read_usage)
+              ? VulkanSharedMemory::Usage::kGuestDrawReadWrite
+              : VulkanSharedMemory::Usage::kRead);
+    }
   }
 
   // vulkan_debug_extra_pass_breaks: break the guest pass before every Nth draw
@@ -5267,11 +5422,21 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         primitive_processing_result.host_draw_vertex_count, 1, 0, 0);
   } else {
     std::pair<VkBuffer, VkDeviceSize> index_buffer;
+    const VkIndexType index_type =
+        primitive_processing_result.host_index_format ==
+                xenos::IndexFormat::kInt16
+            ? VK_INDEX_TYPE_UINT16
+            : VK_INDEX_TYPE_UINT32;
+    // Guest DMA indices: the buffer stays bound at 0 and the draw starts at
+    // the guest index base instead (the base is aligned to the index size).
+    uint32_t first_index = 0;
     switch (primitive_processing_result.index_buffer_type) {
       case PrimitiveProcessor::ProcessedIndexBufferType::kGuestDMA:
         index_buffer.first = route_to_host ? shared_memory_->host_buffer()
                                            : shared_memory_->buffer();
-        index_buffer.second = primitive_processing_result.guest_index_base;
+        index_buffer.second = 0;
+        first_index = primitive_processing_result.guest_index_base >>
+                      (index_type == VK_INDEX_TYPE_UINT16 ? 1 : 2);
         break;
       case PrimitiveProcessor::ProcessedIndexBufferType::kHostConverted:
         index_buffer = primitive_processor_->GetConvertedIndexBuffer(
@@ -5286,14 +5451,18 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         assert_unhandled_case(primitive_processing_result.index_buffer_type);
         return false;
     }
-    deferred_command_buffer_.CmdVkBindIndexBuffer(
-        index_buffer.first, index_buffer.second,
-        primitive_processing_result.host_index_format ==
-                xenos::IndexFormat::kInt16
-            ? VK_INDEX_TYPE_UINT16
-            : VK_INDEX_TYPE_UINT32);
+    if (current_index_buffer_ != index_buffer.first ||
+        current_index_buffer_offset_ != index_buffer.second ||
+        current_index_type_ != index_type) {
+      deferred_command_buffer_.CmdVkBindIndexBuffer(
+          index_buffer.first, index_buffer.second, index_type);
+      current_index_buffer_ = index_buffer.first;
+      current_index_buffer_offset_ = index_buffer.second;
+      current_index_type_ = index_type;
+    }
     deferred_command_buffer_.CmdVkDrawIndexed(
-        primitive_processing_result.host_draw_vertex_count, 1, 0, 0, 0);
+        primitive_processing_result.host_draw_vertex_count, 1, first_index, 0,
+        0);
   }
 
   // Pop debug marker for draw call.
@@ -5424,11 +5593,173 @@ void VulkanCommandProcessor::ResolveReadCallbackThunk(void* context,
       physical_address, length);
 }
 
+uint32_t VulkanCommandProcessor::GetMsaa4xDepthSurface() const {
+  const RegisterFile& regs = *register_file_;
+  return regs.Get<reg::RB_DEPTH_INFO>().depth_base |
+         (uint32_t(regs.Get<reg::RB_SURFACE_INFO>().surface_pitch) << 16);
+}
+
+bool VulkanCommandProcessor::TrackMsaa4xSurfacesReadAs1x(
+    uint32_t used_render_targets) {
+  // A 1x surface with the same EDRAM base and pitch in tiles as a 4x one holds
+  // its samples as pixels (titles render at 4x and read the result as a 1x
+  // surface twice as wide and tall - Forza Horizon's light halos, its shadow
+  // atlas) - which only works with the 4x layout, so such surfaces must stay
+  // 4x. Records the 1x surfaces, and returns whether a 4x one is also used as
+  // 1x. used_render_targets: bit 0 - depth, 1 + i - color i. Keys: EDRAM base
+  // | pitch in tiles << 16.
+  const RegisterFile& regs = *register_file_;
+  const auto surface_info = regs.Get<reg::RB_SURFACE_INFO>();
+  const bool is_4x = surface_info.msaa_samples == xenos::MsaaSamples::k4X;
+  if (!is_4x && surface_info.msaa_samples != xenos::MsaaSamples::k1X) {
+    return false;
+  }
+  const uint32_t pitch_tiles =
+      ((uint32_t(surface_info.surface_pitch) << uint32_t(is_4x)) +
+       (xenos::kEdramTileWidthSamples - 1)) /
+      xenos::kEdramTileWidthSamples;
+  uint32_t keys[1 + xenos::kMaxColorRenderTargets];
+  uint32_t key_count = 0;
+  bool keep_4x = false;
+  uint32_t rt_index;
+  while (xe::bit_scan_forward(used_render_targets, &rt_index)) {
+    used_render_targets &= ~(uint32_t(1) << rt_index);
+    uint32_t base;
+    if (rt_index) {
+      base = regs.Get<reg::RB_COLOR_INFO>(
+                     reg::RB_COLOR_INFO::rt_register_indices[rt_index - 1])
+                 .color_base;
+    } else {
+      base = regs.Get<reg::RB_DEPTH_INFO>().depth_base;
+    }
+    const uint32_t key = base | (pitch_tiles << 16);
+    if (is_4x) {
+      keys[key_count++] = key;
+      keep_4x = keep_4x || msaa_1x_surfaces_.count(key) != 0 ||
+                msaa_keep_4x_surfaces_.count(key) != 0;
+    } else {
+      msaa_1x_surfaces_.insert(key);
+    }
+  }
+  if (keep_4x) {
+    // Surfaces drawn together must agree on the sample count - whatever is
+    // drawn with a surface that stays 4x stays 4x too, everywhere, or the same
+    // tiles would be transferred between the 2x and the 4x layouts.
+    for (uint32_t i = 0; i < key_count; ++i) {
+      msaa_keep_4x_surfaces_.insert(keys[i]);
+    }
+  }
+  return keep_4x;
+}
+
+bool VulkanCommandProcessor::RewriteMsaa4xSurfaceInfoForDraw(
+    const Shader* pixel_shader) {
+  if ((!cvars::msaa_4x_as_2x && !cvars::vulkan_depth_4x_as_1x) ||
+      render_target_cache_->GetPath() !=
+          RenderTargetCache::Path::kHostRenderTargets) {
+    return false;
+  }
+  const RegisterFile& regs = *register_file_;
+  uint32_t& surface_info_value =
+      register_file_->values[XE_GPU_REG_RB_SURFACE_INFO];
+  reg::RB_SURFACE_INFO surface_info;
+  surface_info.value = surface_info_value;
+  if (surface_info.msaa_samples != xenos::MsaaSamples::k4X &&
+      (!cvars::msaa_4x_as_2x ||
+       surface_info.msaa_samples != xenos::MsaaSamples::k1X)) {
+    return false;
+  }
+  const uint32_t color_mask =
+      pixel_shader ? draw_util::GetNormalizedColorMask(
+                         regs, pixel_shader->writes_color_targets())
+                   : 0;
+  // The render targets the draw uses: bit 0 - depth, 1 + i - color i.
+  const auto depth_control = regs.Get<reg::RB_DEPTHCONTROL>();
+  uint32_t used_render_targets =
+      uint32_t(depth_control.z_enable || depth_control.stencil_enable);
+  for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
+    if (color_mask & (uint32_t(0b1111) << (4 * i))) {
+      used_render_targets |= uint32_t(1) << (1 + i);
+    }
+  }
+  // Also records the 1x surfaces for msaa_4x_as_2x.
+  const bool read_as_1x = cvars::msaa_4x_as_2x &&
+                          TrackMsaa4xSurfacesReadAs1x(used_render_targets);
+  if (surface_info.msaa_samples != xenos::MsaaSamples::k4X) {
+    return false;
+  }
+  // A depth surface drawn with color at least once is a multisampled scene's.
+  // The others are depth-only - titles reinterpret their samples as the pixels
+  // of a 1x surface twice the size (Forza Horizon's shadow atlas).
+  const uint32_t depth_surface = GetMsaa4xDepthSurface();
+  bool scene;
+  if (color_mask) {
+    msaa_4x_scene_depth_surfaces_.insert(depth_surface);
+    scene = true;
+  } else {
+    scene = msaa_4x_scene_depth_surfaces_.count(depth_surface) != 0;
+  }
+  if (scene) {
+    if (cvars::msaa_4x_as_2x && !read_as_1x) {
+      surface_info.msaa_samples = xenos::MsaaSamples::k2X;
+      surface_info_value = surface_info.value;
+    }
+    return false;
+  }
+  // Depth-only draws only (no pixel shader) - nothing then depends on the
+  // sample positions or on the pixel shader seeing 4x.
+  if (!cvars::vulkan_depth_4x_as_1x || pixel_shader ||
+      texture_cache_->IsDrawResolutionScaled() ||
+      uint32_t(surface_info.surface_pitch) * 2 >
+          xenos::kTexture2DCubeMaxWidthHeight) {
+    return false;
+  }
+  // The same EDRAM tiles as the 1x surface twice as wide (and tall): 2
+  // horizontal samples per pixel at 4x, 1 at 1x.
+  surface_info.msaa_samples = xenos::MsaaSamples::k1X;
+  surface_info.surface_pitch = surface_info.surface_pitch * 2;
+  surface_info_value = surface_info.value;
+  render_target_cache_->SetDrawSamplesAsPixels(true);
+  return true;
+}
+
+void VulkanCommandProcessor::RewriteMsaa4xSurfaceInfoForCopy() {
+  if (!cvars::msaa_4x_as_2x ||
+      render_target_cache_->GetPath() !=
+          RenderTargetCache::Path::kHostRenderTargets) {
+    return;
+  }
+  const RegisterFile& regs = *register_file_;
+  uint32_t& surface_info_value =
+      register_file_->values[XE_GPU_REG_RB_SURFACE_INFO];
+  reg::RB_SURFACE_INFO surface_info;
+  surface_info.value = surface_info_value;
+  const uint32_t copy_src_select =
+      regs.Get<reg::RB_COPY_CONTROL>().copy_src_select;
+  const bool copies_color = copy_src_select < xenos::kMaxColorRenderTargets;
+  // Also records the 1x surfaces copied from.
+  if (TrackMsaa4xSurfacesReadAs1x(copies_color
+                                      ? uint32_t(1) << (1 + copy_src_select)
+                                      : uint32_t(1)) ||
+      surface_info.msaa_samples != xenos::MsaaSamples::k4X) {
+    return;
+  }
+  // Color surfaces are only ever drawn with color. Depth-only 4x surfaces are
+  // left 4x, as for the draws.
+  if (copies_color ||
+      msaa_4x_scene_depth_surfaces_.count(GetMsaa4xDepthSurface())) {
+    surface_info.msaa_samples = xenos::MsaaSamples::k2X;
+    surface_info_value = surface_info.value;
+  }
+}
+
 bool VulkanCommandProcessor::IssueCopy() {
 #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
 #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
   PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kResolve);
+  // Restored by IssueDraw, the only caller.
+  RewriteMsaa4xSurfaceInfoForCopy();
 
   if (!BeginSubmission(true)) {
     return false;
@@ -5489,6 +5820,7 @@ bool VulkanCommandProcessor::IssueCopy() {
   }
   ++submission_in_progress_.resolve_count;
   ++vk_frame_sync_stats_.resolves;
+  resolve_since_pass_end_ = true;
 
   // The resolve wrote the device buffer. Drop any stale memexport marks so the
   // output isn't overwritten with guest RAM by a later texture load.
@@ -6856,6 +7188,7 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
     current_external_compute_pipeline_ = VK_NULL_HANDLE;
     current_guest_graphics_pipeline_layout_ = nullptr;
     current_graphics_descriptor_sets_bound_up_to_date_ = 0;
+    current_index_buffer_ = VK_NULL_HANDLE;
 
     primitive_processor_->BeginSubmission();
 

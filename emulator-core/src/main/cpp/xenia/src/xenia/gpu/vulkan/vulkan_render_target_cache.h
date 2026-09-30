@@ -121,6 +121,10 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // Debug names of the guest render targets backing the last update, for
   // identifying a render pass bucket in the frame-time breakdown.
   std::string GetLastUpdateRenderTargetsDebugName() const;
+  // log_gpu_frame_time_breakdown: the ownership transfers of the draws since
+  // the last call, per frame, by source -> destination render target with the
+  // most tiles first ("" if there were none).
+  std::string TakeTransferStats(double frames);
 
 
   // Called once per guest frame (from IssueSwap) to aggregate and, once per
@@ -1115,7 +1119,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // Returns false without recording anything if not applicable.
   bool TryResolveClearInGuestPass(RenderTarget* const* clear_render_targets,
                                   const uint64_t* clear_values,
-                                  const Transfer::Rectangle& clear_rectangle);
+                                  const Transfer::Rectangle& clear_rectangle,
+                                  VulkanSharedMemory& shared_memory);
 
   // Queuing of transfers for in-pass execution.
   void ClearPendingDrawPassTransfers();
@@ -1275,6 +1280,13 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
 
   // Temporary storage for DumpRenderTargets.
   std::vector<ResolveCopyDumpRectangle> dump_rectangles_;
+
+  // TakeTransferStats: per (source key << 32 | destination key).
+  struct TransferPairStats {
+    uint64_t transfers = 0;
+    uint64_t tiles = 0;
+  };
+  std::unordered_map<uint64_t, TransferPairStats> transfer_stats_;
   std::vector<DumpInvocation> dump_invocations_;
 
   // For pixel (fragment) shader interlock.

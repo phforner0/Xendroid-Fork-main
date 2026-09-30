@@ -177,15 +177,31 @@ fi
 
 i=0
 EMU=$(pidof $PKG:emu)
-rm -f /data/local/tmp/fh_arm_*_top.txt
+rm -f /data/local/tmp/fh_arm_*_top.txt /data/local/tmp/fh_ab_*.png
 for v in $VALUES; do
   i=$((i + 1))
   setprop $PROP $v
   say "arm $i $PROP=$v"
+  # Battery charge used over the arm (the sysfs current is not readable by the
+  # shell; the counter moves in ~1 mAh steps). Only meaningful on battery: on
+  # external power the charger's varying input and the gauge's update bursts
+  # dominate it (0 to 3100 mA between identical 36 s arms on USB).
+  c0=$(dumpsys battery | sed -n 's/.*Charge counter: \([0-9]*\).*/\1/p')
+  t0=$(date +%s)
   sleep $((ARM - 4))
+  c1=$(dumpsys battery | sed -n 's/.*Charge counter: \([0-9]*\).*/\1/p')
+  t1=$(date +%s)
+  if [ -n "$c0" ] && [ -n "$c1" ] && [ $t1 -gt $t0 ]; then
+    note=""
+    [ "$(dumpsys battery | grep -cE '(AC|USB|Wireless|Dock) powered: true')" -gt 0 ] &&
+      note=" (on external power: not the load)"
+    say "arm $i power: charge used $(((c0 - c1) / 1000)) mAh in $((t1 - t0)) s = $(((c0 - c1) * 36 / 10 / (t1 - t0))) mA net$note"
+  fi
   # Per-thread CPU over the arm's last seconds (guest busy-wait, GPU Commands).
   [ -n "$EMU" ] && top -H -b -n 1 -d 3 -p $EMU -o TID,%CPU,CMD -s 2 2>/dev/null |
     head -16 > /data/local/tmp/fh_arm_${i}_top.txt
+  # The arm's image, after its measured window (for visual A/Bs of switches).
+  screencap -p /data/local/tmp/fh_ab_${i}_${v}.png 2>/dev/null
   say "arm $i end: $(gpu_clock)"
 done
 # Don't leave the override set for later launches (the running game keeps the

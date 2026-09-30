@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <unordered_map>
 #include <vector>
 
 #include "xenia/base/assert.h"
@@ -694,6 +695,7 @@ class DeferredCommandBuffer {
     kVkBeginDebugUtilsLabelEXT,
     kVkEndDebugUtilsLabelEXT,
     kVkInsertDebugUtilsLabelEXT,
+    kCount,
   };
 
   struct CommandHeader {
@@ -997,6 +999,28 @@ class DeferredCommandBuffer {
   // called before the stream is executed, while the args are still patchable.
   void ShrinkRenderAreaToDrawn(uint32_t granularity_width,
                                uint32_t granularity_height);
+
+  // vulkan_replay_stats: what the replays sent to the driver, and how much of
+  // it repeated the state already set in the same command buffer (the same
+  // pipeline, descriptor sets, push constant bytes or dynamic state value).
+  static constexpr size_t kReplayStatCommandCount = 50;
+  struct ReplayStats {
+    uint64_t commands[kReplayStatCommandCount] = {};
+    uint64_t redundant[kReplayStatCommandCount] = {};
+    uint64_t descriptor_sets = 0;
+    uint64_t push_constant_bytes = 0;
+  };
+  // Adds the counts since the last call to `stats` and restarts them.
+  void TakeReplayStats(ReplayStats& stats);
+  static const char* GetReplayStatCommandName(size_t index);
+
+ private:
+  ReplayStats replay_stats_;
+  // The last arguments replayed per command and state key, for the redundancy
+  // counts (cleared at the start of every replayed command buffer).
+  std::unordered_map<uint64_t, std::vector<uint8_t>> replay_last_args_;
+  void CountReplayedCommand(uint32_t command, const void* args,
+                            size_t args_size, uint64_t key);
 
  private:
   // Offset of the last recorded begin-pass argument struct, in stream elements

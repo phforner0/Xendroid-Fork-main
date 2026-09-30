@@ -25,6 +25,13 @@
 
 DECLARE_bool(log_gpu_frame_time_breakdown);
 
+DEFINE_bool(vulkan_replay_stats, false,
+            "Diagnostics - count the commands the deferred command buffers "
+            "replay to the driver by type, and how many binds and dynamic "
+            "states repeat what is already set in the same command buffer "
+            "(VkReplay lines with log_gpu_frame_time_breakdown).",
+            "Vulkan");
+
 DEFINE_bool(vulkan_deferred_cmd_size_cursor, true,
             "Track the deferred command buffer's recorded length with a size "
             "cursor over a geometrically grown buffer instead of resizing the "
@@ -72,11 +79,45 @@ void DeferredCommandBuffer::Execute(VkCommandBuffer command_buffer) {
   // bound pipeline would use mismatched state, so draws are dropped until the
   // next successful graphics pipeline bind.
   bool guest_graphics_pipeline_unready = false;
+  const bool count_replay = cvars::vulkan_replay_stats;
+  if (count_replay) {
+    replay_last_args_.clear();
+  }
   while (stream_remaining) {
     const CommandHeader& header =
         *reinterpret_cast<const CommandHeader*>(stream);
     stream += kCommandHeaderSizeElements;
     stream_remaining -= kCommandHeaderSizeElements;
+
+    if (count_replay) {
+      // What counts as the same state slot for the redundancy check.
+      uint64_t key = uint64_t(header.command) << 32;
+      switch (header.command) {
+        case Command::kVkBindDescriptorSets: {
+          auto& args =
+              *reinterpret_cast<const ArgsVkBindDescriptorSets*>(stream);
+          key |= (uint64_t(args.pipeline_bind_point) << 8) | args.first_set;
+          replay_stats_.descriptor_sets += args.descriptor_set_count;
+        } break;
+        case Command::kVkPushConstants: {
+          auto& args = *reinterpret_cast<const ArgsVkPushConstants*>(stream);
+          key |= (uint64_t(args.offset) << 16) | args.size;
+          replay_stats_.push_constant_bytes += args.size;
+        } break;
+        case Command::kVkBindPipeline:
+        case Command::kVkBindPipelineDeferred:
+          // Both bind the graphics or compute pipeline slot.
+          key = (uint64_t(Command::kVkBindPipeline) << 32) |
+                uint64_t(reinterpret_cast<const ArgsVkBindPipeline*>(stream)
+                             ->pipeline_bind_point);
+          break;
+        default:
+          break;
+      }
+      CountReplayedCommand(uint32_t(header.command), stream,
+                           header.arguments_size_elements * sizeof(uintmax_t),
+                           key);
+    }
 
     switch (header.command) {
       case Command::kVkBeginRenderPass: {
@@ -767,7 +808,94 @@ void* DeferredCommandBuffer::WriteCommand(Command command,
       *reinterpret_cast<CommandHeader*>(command_stream_.data() + offset);
   header.command = command;
   header.arguments_size_elements = uint32_t(arguments_size_elements);
-  return command_stream_.data() + (offset + kCommandHeaderSizeElements);
+  uintmax_t* arguments =
+      command_stream_.data() + (offset + kCommandHeaderSizeElements);
+  if (cvars::vulkan_replay_stats) {
+    // The replay statistics compare whole argument blocks, padding included.
+    std::memset(arguments, 0, arguments_size_elements * sizeof(uintmax_t));
+  }
+  return arguments;
+}
+
+void DeferredCommandBuffer::CountReplayedCommand(uint32_t command,
+                                                 const void* args,
+                                                 size_t args_size,
+                                                 uint64_t key) {
+  static_assert(size_t(Command::kCount) == kReplayStatCommandCount);
+  ++replay_stats_.commands[command];
+  // Only state setting can be redundant.
+  switch (Command(command)) {
+    case Command::kVkBindDescriptorSets:
+    case Command::kVkBindIndexBuffer:
+    case Command::kVkBindPipeline:
+    case Command::kVkBindPipelineDeferred:
+    case Command::kVkBindVertexBuffers:
+    case Command::kVkPushConstants:
+    case Command::kVkSetBlendConstants:
+    case Command::kVkSetDepthBias:
+    case Command::kVkSetScissor:
+    case Command::kVkSetStencilCompareMask:
+    case Command::kVkSetStencilReference:
+    case Command::kVkSetStencilWriteMask:
+    case Command::kVkSetViewport:
+    case Command::kVkSetCullMode:
+    case Command::kVkSetFrontFace:
+    case Command::kVkSetPrimitiveTopology:
+    case Command::kVkSetPrimitiveRestartEnable:
+    case Command::kVkSetDepthTestEnable:
+    case Command::kVkSetDepthWriteEnable:
+    case Command::kVkSetDepthCompareOp:
+    case Command::kVkSetStencilTestEnable:
+    case Command::kVkSetStencilOp:
+    case Command::kVkSetDepthClampEnableEXT:
+    case Command::kVkSetPolygonModeEXT:
+    case Command::kVkSetColorBlendEnableEXT:
+    case Command::kVkSetColorBlendEquationEXT:
+    case Command::kVkSetColorWriteMaskEXT:
+      break;
+    default:
+      return;
+  }
+  std::vector<uint8_t>& last = replay_last_args_[key];
+  const uint8_t* bytes = static_cast<const uint8_t*>(args);
+  if (last.size() == args_size &&
+      std::memcmp(last.data(), bytes, args_size) == 0) {
+    ++replay_stats_.redundant[command];
+    return;
+  }
+  last.assign(bytes, bytes + args_size);
+}
+
+void DeferredCommandBuffer::TakeReplayStats(ReplayStats& stats) {
+  for (size_t i = 0; i < kReplayStatCommandCount; ++i) {
+    stats.commands[i] += replay_stats_.commands[i];
+    stats.redundant[i] += replay_stats_.redundant[i];
+  }
+  stats.descriptor_sets += replay_stats_.descriptor_sets;
+  stats.push_constant_bytes += replay_stats_.push_constant_bytes;
+  replay_stats_ = ReplayStats();
+}
+
+const char* DeferredCommandBuffer::GetReplayStatCommandName(size_t index) {
+  static const char* const kNames[] = {
+      "BeginRenderPass", "BindDescriptorSets", "BindIndexBuffer",
+      "BindPipeline", "BindPipelineDeferred", "BindVertexBuffers",
+      "BeginQuery", "EndQuery", "CopyQueryPoolResults", "ResetQueryPool",
+      "WriteTimestamp", "ClearAttachments", "ClearColorImage", "CopyBuffer",
+      "CopyBufferToImage", "FillBuffer", "BlitImage", "Dispatch", "Draw",
+      "DrawIndexed", "EndRenderPass", "BeginRendering", "EndRendering",
+      "PipelineBarrier", "PushConstants", "SetBlendConstants",
+      "SetRenderingInputAttachmentIndices", "SetDepthBias", "SetScissor",
+      "SetStencilCompareMask", "SetStencilReference", "SetStencilWriteMask",
+      "SetViewport", "SetCullMode", "SetFrontFace", "SetPrimitiveTopology",
+      "SetPrimitiveRestartEnable", "SetDepthTestEnable", "SetDepthWriteEnable",
+      "SetDepthCompareOp", "SetStencilTestEnable", "SetStencilOp",
+      "SetDepthClampEnable", "SetPolygonMode", "SetColorBlendEnable",
+      "SetColorBlendEquation", "SetColorWriteMask", "BeginDebugUtilsLabel",
+      "EndDebugUtilsLabel", "InsertDebugUtilsLabel",
+  };
+  static_assert(xe::countof(kNames) == kReplayStatCommandCount);
+  return index < kReplayStatCommandCount ? kNames[index] : "?";
 }
 
 }  // namespace vulkan

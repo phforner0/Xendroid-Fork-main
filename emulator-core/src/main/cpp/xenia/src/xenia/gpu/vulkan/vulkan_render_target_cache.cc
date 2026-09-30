@@ -83,6 +83,19 @@ DEFINE_bool(
     "Vulkan");
 
 DEFINE_bool(
+    vulkan_resolve_draw_barriers_at_resolve, true,
+    "Issue at a resolve the barriers the next draws would need after it - its "
+    "stores into a texture before the texture's sampling, and (with "
+    "vulkan_resolve_clear_in_guest_pass) the shared memory's return to the "
+    "draw usage before the guest render pass is reopened for the clear - "
+    "instead of at the next draw, where they end the render pass the draw has "
+    "just reopened (Forza Horizon on an Adreno 825: render pass begins 205 -> "
+    "133 per frame, replay time -5%, GPU time -0.8% with the phone warm and "
+    "unchanged at the game's 30 fps cap). Can be switched at runtime "
+    "(debug.xendroid.resolve_draw_barriers).",
+    "Vulkan");
+
+DEFINE_bool(
     vulkan_resolve_clear_in_guest_pass, false,
     "Perform the clear part of an EDRAM resolve inside the last guest render "
     "pass when the cleared depth/color targets are its attachments, instead of "
@@ -239,6 +252,42 @@ std::string VulkanRenderTargetCache::GetLastUpdateRenderTargetsDebugName()
     names += rts[i]->key().GetDebugName();
   }
   return names.empty() ? std::string("(none)") : names;
+}
+
+std::string VulkanRenderTargetCache::TakeTransferStats(double frames) {
+  if (transfer_stats_.empty() || frames <= 0.0) {
+    transfer_stats_.clear();
+    return std::string();
+  }
+  std::vector<std::pair<uint64_t, TransferPairStats>> pairs(
+      transfer_stats_.begin(), transfer_stats_.end());
+  transfer_stats_.clear();
+  std::sort(pairs.begin(), pairs.end(), [](const auto& a, const auto& b) {
+    return a.second.tiles > b.second.tiles;
+  });
+  uint64_t transfers = 0, tiles = 0;
+  for (const auto& pair : pairs) {
+    transfers += pair.second.transfers;
+    tiles += pair.second.tiles;
+  }
+  std::string stats = fmt::format("per frame: transfers={:.1f} tiles={:.0f}",
+                                  transfers / frames, tiles / frames);
+  auto name = [](uint32_t key_value) {
+    if (!key_value) {
+      return std::string("(none)");
+    }
+    RenderTargetKey key;
+    key.key = key_value;
+    return (key.is_depth ? "depth " : "color ") + key.GetDebugName();
+  };
+  for (size_t i = 0; i < std::min(pairs.size(), size_t(8)); ++i) {
+    stats += fmt::format(" | {} -> {}: {:.1f}x {:.0f} tiles",
+                         name(uint32_t(pairs[i].first >> 32)),
+                         name(uint32_t(pairs[i].first)),
+                         pairs[i].second.transfers / frames,
+                         pairs[i].second.tiles / frames);
+  }
+  return stats;
 }
 
 const VulkanRenderTargetCache::ResolveCopyShaderCode
@@ -3386,6 +3435,32 @@ bool VulkanRenderTargetCache::Resolve(
             dump_row_length_used, dump_rows, dump_pitch, shared_memory,
             texture_cache, written_address_out, written_length_out);
         direct_host_used = copied;
+        // vulkan_resolve_dest_diag: what a resolve the direct path refused
+        // looks like (once per resolve kind), to tell which condition failed.
+        if (!copied && cvars::vulkan_resolve_dest_diag &&
+            resolve_dest_diag_logged_.size() < 512 &&
+            resolve_dest_diag_logged_
+                .insert((uint64_t(0xD1) << 56) | last_resolve_key_)
+                .second) {
+          const bool is_depth = resolve_info.IsCopyingDepth();
+          XELOGI(
+              "VkDirectRefused: {} {}x{} {}xMSAA rt format {} -> {} "
+              "exp_bias {} sample_select {} copy_shader {} dump {}x{} rows",
+              is_depth ? "depth" : "color",
+              uint32_t(resolve_info.coordinate_info.width_div_8) << 3,
+              uint32_t(resolve_info.height_div_8) << 3,
+              1u << uint32_t(is_depth
+                                 ? resolve_info.depth_edram_info.msaa_samples
+                                 : resolve_info.color_edram_info.msaa_samples),
+              is_depth ? uint32_t(resolve_info.depth_edram_info.format)
+                       : uint32_t(resolve_info.color_edram_info.format),
+              FormatInfo::GetName(xenos::TextureFormat(
+                  resolve_info.copy_dest_info.copy_dest_format)),
+              int32_t(resolve_info.copy_dest_info.copy_dest_exp_bias),
+              uint32_t(
+                  resolve_info.copy_dest_coordinate_info.copy_sample_select),
+              uint32_t(copy_shader), dump_row_length_used, dump_rows);
+        }
       }
       if (!copied || cvars::vulkan_in_pass_resolve_debug_dump) {
         DumpRenderTargets(dump_base, dump_row_length_used, dump_rows,
@@ -3693,7 +3768,7 @@ bool VulkanRenderTargetCache::Resolve(
           // case to the general path, which breaks the pass.
           if (!cvars::vulkan_resolve_clear_in_guest_pass || copied_in_pass ||
               !TryResolveClearInGuestPass(clear_render_targets, clear_values,
-                                          clear_rectangle)) {
+                                          clear_rectangle, shared_memory)) {
             PerformTransfersAndResolveClears(2, clear_render_targets,
                                              clear_transfers_, clear_values,
                                              &clear_rectangle);
@@ -3955,6 +4030,24 @@ bool VulkanRenderTargetCache::Update(
         }
       } else {
         any_transfers = true;
+      }
+      if (any_transfers && cvars::log_gpu_frame_time_breakdown) {
+        for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+          const RenderTarget* dest = depth_and_color_render_targets[i];
+          if (!dest) {
+            continue;
+          }
+          for (const Transfer& transfer : update_transfers[i]) {
+            TransferPairStats& stats =
+                transfer_stats_[(uint64_t(transfer.source
+                                              ? transfer.source->key().key
+                                              : 0)
+                                 << 32) |
+                                dest->key().key];
+            ++stats.transfers;
+            stats.tiles += transfer.end_tiles - transfer.start_tiles;
+          }
+        }
       }
       if (any_transfers) {
         if (cvars::vulkan_in_pass_transfers) {
@@ -8151,7 +8244,8 @@ void VulkanRenderTargetCache::GetResolveClearAttachment(
 
 bool VulkanRenderTargetCache::TryResolveClearInGuestPass(
     RenderTarget* const* clear_render_targets, const uint64_t* clear_values,
-    const Transfer::Rectangle& clear_rectangle) {
+    const Transfer::Rectangle& clear_rectangle,
+    VulkanSharedMemory& shared_memory) {
   // The general path opens a single-attachment pass per cleared target just
   // to record a vkCmdClearAttachments, and the next draw then opens the guest
   // pass again. When the cleared targets are attachments of the last guest
@@ -8259,6 +8353,16 @@ bool VulkanRenderTargetCache::TryResolveClearInGuestPass(
         vulkan_rt.current_access_mask(), rt_dst_access_mask,
         vulkan_rt.current_layout(), rt_new_layout);
     vulkan_rt.SetUsage(rt_dst_stage_mask, rt_dst_access_mask, rt_new_layout);
+  }
+  if (cvars::vulkan_resolve_draw_barriers_at_resolve) {
+    // The copy of this resolve wrote the shared memory, and the next draw's
+    // switch of it back to the draw usage would end the pass reopened here
+    // (only to reopen it again). Switch it now, with the barriers above - as
+    // IssueDraw does for a draw without memory export.
+    shared_memory.Use((local_read_attachments_ &&
+                       !cvars::vulkan_in_pass_resolve_debug_read_usage)
+                          ? VulkanSharedMemory::Usage::kGuestDrawReadWrite
+                          : VulkanSharedMemory::Usage::kRead);
   }
   // Stays in the pass if it's still open (a clear-only resolve right after the
   // draws), otherwise reopens it - and the next draw to these targets keeps it.

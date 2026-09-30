@@ -31,6 +31,11 @@ DECLARE_int32(spin_park_mode);
 #include "xenia/base/profiling.h"
 #include "xenia/base/threading.h"
 #include "xenia/config.h"
+#include "xenia/cpu/backend/backend.h"
+#include "xenia/cpu/backend/code_cache.h"
+#include "xenia/cpu/function.h"
+#include "xenia/cpu/mmio_handler.h"
+#include "xenia/cpu/processor.h"
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/gpu/packet_disassembler.h"
@@ -347,6 +352,12 @@ void CommandProcessor::Shutdown() {
   write_ptr_index_event_->Set();
   worker_thread_->Wait(0, 0, 0, nullptr);
   worker_thread_.reset();
+
+  if (wrm_writer_callback_handle_) {
+    memory_->UnregisterPhysicalMemoryInvalidationCallback(
+        wrm_writer_callback_handle_);
+    wrm_writer_callback_handle_ = nullptr;
+  }
 }
 
 void CommandProcessor::InitializeShaderStorage(
@@ -548,6 +559,66 @@ void CommandProcessor::SetDesiredSwapPostEffect(
   CallInThread([this, swap_post_effect]() {
     swap_post_effect_actual_ = swap_post_effect;
   });
+}
+
+std::pair<uint32_t, uint32_t> CommandProcessor::WrmWriterWatchCallback(
+    void* context_ptr, uint32_t physical_address_start, uint32_t length,
+    bool exact_range) {
+  // In the writing thread's fault handler, under the global critical region:
+  // only record, and cheaply - this is called for every watched CPU write.
+  auto& command_processor = *static_cast<CommandProcessor*>(context_ptr);
+  const uint32_t address =
+      command_processor.wrm_writer_address_.load(std::memory_order_acquire);
+  if (address != UINT32_MAX && address >= physical_address_start &&
+      address - physical_address_start < length &&
+      !command_processor.wrm_writer_hit_.load(std::memory_order_relaxed)) {
+    command_processor.wrm_writer_event_.host_pc =
+        cpu::MMIOHandler::last_fault_host_pc();
+    command_processor.wrm_writer_event_.guest_thread =
+        cpu::MMIOHandler::last_fault_thread_id();
+    command_processor.wrm_writer_event_.time_ns = FrameStatsNow();
+    command_processor.wrm_writer_hit_.store(true, std::memory_order_release);
+  }
+  return std::make_pair(uint32_t(0), UINT32_MAX);
+}
+
+void CommandProcessor::WrmWriterArm(uint32_t physical_address) {
+  // As TranslatePhysical reads it.
+  physical_address &= 0x1FFFFFFF;
+  if (!wrm_writer_callback_handle_) {
+    wrm_writer_callback_handle_ =
+        memory_->RegisterPhysicalMemoryInvalidationCallback(
+            WrmWriterWatchCallback, this);
+  }
+  wrm_writer_hit_.store(false, std::memory_order_relaxed);
+  wrm_writer_address_.store(physical_address, std::memory_order_release);
+  memory_->EnablePhysicalMemoryAccessCallbacks(physical_address & ~0xFFFu,
+                                               0x1000, true, false);
+}
+
+std::string CommandProcessor::WrmWriterTake() {
+  wrm_writer_address_.store(UINT32_MAX, std::memory_order_release);
+  if (!wrm_writer_hit_.load(std::memory_order_acquire)) {
+    return "writer not seen";
+  }
+  const WrmWriterEvent event = wrm_writer_event_;
+  uint32_t guest_function = 0, guest_instruction = 0;
+  cpu::Processor* processor =
+      kernel_state_ ? kernel_state_->processor() : nullptr;
+  if (processor && processor->backend() &&
+      processor->backend()->code_cache()) {
+    if (cpu::GuestFunction* function =
+            processor->backend()->code_cache()->LookupFunction(
+                event.host_pc)) {
+      guest_function = function->address();
+      guest_instruction = function->MapMachineCodeToGuestAddress(
+          uintptr_t(event.host_pc));
+    }
+  }
+  return fmt::format(
+      "writer thread {:08X} fn {:08X} at {:08X}, {}us before the wait saw it",
+      event.guest_thread, guest_function, guest_instruction,
+      (FrameStatsNow() - event.time_ns) / 1000);
 }
 
 uint64_t CommandProcessor::FrameStatsNow() {

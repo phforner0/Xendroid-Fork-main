@@ -42,7 +42,15 @@ using WaitItem = TimerQueueWaitItem;
     edit2: (30.12.2024) After uplifting version of MSVC compiler Xenia cannot be
    correctly initialized if you're using proton.
 */
+#if XE_PLATFORM_xendroid
+// Android: the spin wait yields without end between timers, and every wait
+// re-read the CPU count from sysfs - ~13% of a core on a POCO F7. Block on a
+// condition variable until the next due time or a newly queued timer instead
+// (futex wakeups are well under the timers' millisecond granularity).
+using WaitStrat = dp::blocking_wait_strategy;
+#else
 using WaitStrat = dp::spin_wait_strategy;
+#endif
 
 class TimerQueue {
  public:
@@ -85,10 +93,17 @@ class TimerQueue {
     while (!shutdown_.load(std::memory_order_relaxed)) {
       {
         // Consume new wait items and add them to sorted wait queue
+#if XE_PLATFORM_xendroid
+        // A finite deadline for the blocking wait when idle - the loop just
+        // comes back here.
+        const clock::time_point idle_deadline =
+            clock::now() + std::chrono::milliseconds(100);
+#else
+        const clock::time_point idle_deadline = clock::time_point::max();
+#endif
         dp::sequence_t available = claim_strategy_.wait_until_published(
             next_sequence, next_sequence - 1,
-            wait_queue_.empty() ? clock::time_point::max()
-                                : wait_queue_.front()->due_);
+            wait_queue_.empty() ? idle_deadline : wait_queue_.front()->due_);
 
         // Check for timeout
         if (available != next_sequence - 1) {

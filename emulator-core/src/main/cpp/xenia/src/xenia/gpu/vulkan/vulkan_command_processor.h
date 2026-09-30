@@ -342,6 +342,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
     kBufferBarriers,
     kImageBarriers,
     kBufferAndImageBarriers,
+    // Descriptor and texture bindings of a draw (texture usage transitions).
+    kBindings,
     kCount,
   };
   class PassEndReasonScope {
@@ -363,6 +365,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
     PassEndReason previous_reason_;
   };
   PassEndReason pass_end_reason_ = PassEndReason::kOther;
+  // The PassEndReason scopes open when the pending barriers were pushed (a bit
+  // per reason), for the origins of the barriers that end render passes.
+  uint32_t pending_barrier_origins_ = 0;
 
   VkDescriptorSetLayout GetSingleTransientDescriptorLayout(
       SingleTransientDescriptorLayout transient_descriptor_layout) const {
@@ -460,6 +465,26 @@ class VulkanCommandProcessor final : public CommandProcessor {
                  IndexBufferInfo* index_buffer_info,
                  bool major_mode_explicit) override;
   bool IssueCopy() override;
+  // msaa_4x_as_2x and vulkan_depth_4x_as_1x: the guest's 4x MSAA surface info
+  // rewritten for the current draw or resolve (IssueDraw restores it) - 2x
+  // for the surfaces of multisampled scenes (depth surfaces drawn with color),
+  // and the 1x surface of the samples for depth-only draws into the others.
+  // pixel_shader is the one the draw uses (null for depth-only). Returns
+  // whether the draw renders the samples as pixels.
+  bool RewriteMsaa4xSurfaceInfoForDraw(const Shader* pixel_shader);
+  void RewriteMsaa4xSurfaceInfoForCopy();
+  // The key of the current depth surface: depth base | pitch << 16.
+  uint32_t GetMsaa4xDepthSurface() const;
+  std::unordered_set<uint32_t> msaa_4x_scene_depth_surfaces_;
+  // msaa_4x_as_2x: records the 1x surfaces of a draw or resolve, or for a 4x
+  // one, returns whether it must stay 4x - a used surface of it is also used
+  // as 1x (its samples read as pixels), or drawn with one that is.
+  // used_render_targets: bit 0 - depth, 1 + i - color i.
+  bool TrackMsaa4xSurfacesReadAs1x(uint32_t used_render_targets);
+  // EDRAM base | pitch in tiles << 16 of the 1x surfaces seen, and of the 4x
+  // surfaces that must stay 4x (used as 1x, or drawn with one that is).
+  std::unordered_set<uint32_t> msaa_1x_surfaces_;
+  std::unordered_set<uint32_t> msaa_keep_4x_surfaces_;
 
   void InitializeTrace() override;
 
@@ -796,6 +821,14 @@ class VulkanCommandProcessor final : public CommandProcessor {
     uint64_t resolve_clears_in_guest_pass = 0;
     // Render passes ended, by PassEndReason.
     uint64_t pass_ends[size_t(PassEndReason::kCount)] = {};
+    // Guest passes reopened on the framebuffer the previous guest pass ended
+    // on - breaks between draws into the same attachments - by the
+    // PassEndReason of that end, and how many of them had a resolve between.
+    uint64_t pass_reopens[size_t(PassEndReason::kCount)] = {};
+    uint64_t pass_reopens_after_resolve = 0;
+    // Render passes ended by barriers, by the PassEndReason scope that pushed
+    // them (several per pass end if several did).
+    uint64_t pass_ending_barrier_origins[size_t(PassEndReason::kCount)] = {};
     uint64_t last_report_ns = 0;
   };
   VkFrameSyncStats vk_frame_sync_stats_;
@@ -1266,6 +1299,11 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // but in_render_pass_ is true.
   VkRenderPass current_render_pass_;
   const VulkanRenderTargetCache::Framebuffer* current_framebuffer_;
+  // For the VkPassEnd reopen counts: the framebuffer of the last guest pass
+  // ended, why it ended, and whether a resolve was issued since.
+  const VulkanRenderTargetCache::Framebuffer* last_ended_framebuffer_ = nullptr;
+  PassEndReason last_pass_end_reason_ = PassEndReason::kOther;
+  bool resolve_since_pass_end_ = false;
   // True when inside a render pass or dynamic rendering block.
   bool in_render_pass_ = false;
   // Draws since the last vulkan_debug_extra_pass_breaks break.
@@ -1290,6 +1328,13 @@ class VulkanCommandProcessor final : public CommandProcessor {
   VkPipeline current_guest_graphics_pipeline_handle_ = VK_NULL_HANDLE;
   VkPipeline current_external_graphics_pipeline_;
   VkPipeline current_external_compute_pipeline_;
+
+  // The index buffer bound in the current submission's command buffer. Guest
+  // DMA index buffers are bound at the start of the shared memory buffer and
+  // selected with firstIndex, the others rebound only when they change.
+  VkBuffer current_index_buffer_ = VK_NULL_HANDLE;
+  VkDeviceSize current_index_buffer_offset_ = 0;
+  VkIndexType current_index_type_ = VK_INDEX_TYPE_MAX_ENUM;
 
   // Pipeline layout of the current guest graphics pipeline.
   const PipelineLayout* current_guest_graphics_pipeline_layout_;

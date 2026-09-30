@@ -61,6 +61,12 @@ static const Quirk kQuirks[] = {
     // same foliage parked and driving (only the dither pattern differs).
     {0x4D5309C9, "host_alpha_to_coverage", true,
      "alpha to coverage by the host's fixed function"},
+    // The shadow atlas is cleared by 4x depth-only quads read back as 1x: no
+    // more 1x <-> 4x transfers of it, GPU time -1.1 ms (-3.4%), the same
+    // shadows (depth at the double-resolution pixel centers instead of the 4x
+    // sample positions; 2026-09-30).
+    {0x4D5309C9, "vulkan_depth_4x_as_1x", true,
+     "4x depth-only draws into the 1x surface of their samples"},
 };
 
 // Same path/priority as a per-game config file.
