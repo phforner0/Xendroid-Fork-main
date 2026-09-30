@@ -128,6 +128,27 @@ DEFINE_bool(
     "GPU");
 
 DEFINE_bool(
+    host_alpha_to_coverage, false,
+    "Host render target path: do the guest's alpha to coverage with the "
+    "host's fixed function (Vulkan alphaToCoverageEnable) instead of "
+    "emulating it in the pixel shaders, which write gl_SampleMask for it "
+    "(Forza Horizon on an Adreno 825: main pass -7.5%, about half of what "
+    "alpha to coverage costs there at all). The host applies its own dither "
+    "pattern instead of the Xenos threshold offsets. Draws without color "
+    "output 0 (depth-only passes) keep the emulation. Read when shaders are "
+    "translated (startup).",
+    "GPU");
+
+DEFINE_bool(
+    spirv_ps_no_alpha_to_coverage_experiment, false,
+    "Diagnostics - measures what the alpha to coverage emulation of the host "
+    "render target path costs: pixel shaders with the alpha test or alpha to "
+    "coverage don't write gl_SampleMask (WRONG for draws with alpha to "
+    "coverage, measurement only). Read when shaders are translated "
+    "(startup).",
+    "GPU");
+
+DEFINE_bool(
     spirv_moltenvk_allow_contraction, true,
     "When translating SPIR-V for MoltenVK, omit NoContraction decorations so "
     "SPIRV-Cross doesn't emit MSL NoContraction helper wrappers with "
@@ -3444,8 +3465,14 @@ void SpirvShaderTranslator::StartFragmentShaderBeforeMain() {
   // Sample mask output for alpha-to-coverage.
   // Only needed for non-FSI mode. FSI uses main_fsi_sample_mask_ instead.
   output_fragment_sample_mask_ = spv::NoResult;
+  // With host_alpha_to_coverage the pipeline does it from the alpha of color
+  // output 0 (the sample mask output only serves the emulation) - when there
+  // is that output. Depth-only passes (shadow maps) keep the emulation.
   if (!edram_fragment_shader_interlock_ && !is_depth_only_fragment_shader_ &&
-      !IsAlphaTestAndCoverageDisabled()) {
+      !IsAlphaTestAndCoverageDisabled() &&
+      !(cvars::host_alpha_to_coverage &&
+        IsColorOutput0ForHostAlphaToCoverage()) &&
+      !cvars::spirv_ps_no_alpha_to_coverage_experiment) {
     // gl_SampleMask is an array of int in SPIR-V.
     spv::Id type_sample_mask_array =
         builder_->makeArrayType(type_int_, builder_->makeUintConstant(1), 0);

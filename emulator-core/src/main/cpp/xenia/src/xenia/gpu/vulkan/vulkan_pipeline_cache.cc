@@ -121,6 +121,7 @@ DEFINE_string(
 DECLARE_bool(vulkan_dynamic_rendering);
 DECLARE_bool(spirv_disable_rounding_mode_rte);
 DECLARE_bool(precise_interpolation);
+DECLARE_bool(host_alpha_to_coverage);
 
 namespace xe {
 namespace gpu {
@@ -1836,6 +1837,20 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
           (normalized_color_mask >> (color_rt_index * 4)) & 0b1111,
           description_out.render_targets[color_rt_index]);
     }
+
+    // Alpha to coverage by the host's fixed function, from the alpha of color
+    // output 0 - exactly where the pixel shader leaves the emulation out
+    // (SpirvShaderTranslator::IsColorOutput0ForHostAlphaToCoverage); without
+    // that output (depth-only passes) the shader still emulates it.
+    if (cvars::host_alpha_to_coverage && pixel_shader &&
+        (render_pass_color_rts & 0b1) &&
+        pixel_shader->shader().writes_color_target(0) &&
+        (SpirvShaderTranslator::Modification(pixel_shader->modification())
+             .pixel.color_targets_used &
+         0b1) &&
+        regs.Get<reg::RB_COLORCONTROL>().alpha_to_mask_enable) {
+      description_out.alpha_to_coverage = 1;
+    }
   }
 
   return true;
@@ -2628,6 +2643,12 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
     multisample_state.rasterizationSamples = VkSampleCountFlagBits(
         uint32_t(1) << uint32_t(description.render_pass_key.msaa_samples));
   }
+  // Only with the option on: otherwise the pixel shaders emulate it, and a
+  // stored description with the bit must not add the host's on top.
+  multisample_state.alphaToCoverageEnable =
+      (description.alpha_to_coverage && cvars::host_alpha_to_coverage)
+          ? VK_TRUE
+          : VK_FALSE;
 
   VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {};
   depth_stencil_state.sType =

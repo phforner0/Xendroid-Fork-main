@@ -662,6 +662,15 @@ class SpirvShaderTranslator : public ShaderTranslator {
                 Modification::DepthStencilMode::kNoAlphaTests);
   }
 
+  // Whether the pixel shader has the color output 0 that the host's fixed
+  // function alpha to coverage takes the alpha from (host_alpha_to_coverage;
+  // VulkanPipelineCache enables it under the same condition). Without it -
+  // depth-only passes - the alpha to coverage stays emulated.
+  bool IsColorOutput0ForHostAlphaToCoverage() const {
+    return (current_shader().writes_color_targets() &
+            GetSpirvShaderModification().pixel.color_targets_used & 0b1) != 0;
+  }
+
   // Whether the current non-FSI pixel shader should convert the depth to 20e4.
   bool DSV_IsWritingFloat24Depth() const {
     if (edram_fragment_shader_interlock_) {
