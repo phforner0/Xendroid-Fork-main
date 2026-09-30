@@ -48,6 +48,15 @@ static const Quirk kQuirks[] = {
     // a buffer; +4.5% fps, -5.4% GPU time on the POCO F7 (2026-09-29).
     {0x4D5309C9, "vulkan_texture_load_to_image", true,
      "texture loads straight into the image"},
+    // Exact: the resolves store into the textures read back from them, whose
+    // uploads are then skipped (3.0 -> 0.75 ms per frame, GPU -1.4 ms, +1.4%
+    // fps with the POCO F7 cool; 2026-09-30).
+    {0x4D5309C9, "vulkan_direct_host_resolve_to_texture", true,
+     "resolves store straight into their textures"},
+    // Main pass -7% (AB5). No visible difference parked, over a 45 s drive
+    // and in the pause menu (2026-09-30); night, rain and tunnels unchecked.
+    {0x4D5309C9, "spirv_ps_relaxed_math", int64_t(3),
+     "no SM3 zero-multiply or 21-bit rounding emulation in pixel shaders"},
 };
 
 // Same path/priority as a per-game config file.
