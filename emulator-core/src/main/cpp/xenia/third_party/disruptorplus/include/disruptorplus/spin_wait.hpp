@@ -54,7 +54,12 @@ namespace disruptorplus
         /// Reset the spin_wait back to its original state.
         void reset()
         {
-            m_value = std::thread::hardware_concurrency() > 1 ? 0 : 10;
+            // Cached: a spin_wait is constructed for every wait, and on
+            // Android (bionic) hardware_concurrency() opens and parses
+            // /sys/devices/system/cpu/online on every call.
+            static const unsigned int hardware_concurrency =
+                std::thread::hardware_concurrency();
+            m_value = hardware_concurrency > 1 ? 0 : 10;
         }
         
         /// \brief
