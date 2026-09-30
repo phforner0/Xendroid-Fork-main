@@ -42,7 +42,7 @@ def direct_host_resolve_variants():
     (id, entry_source_basename, [define, ...]) where id ends in "_cs" and the
     defines select one bpp/MSAA/source-uint/scaled permutation from a shared
     .xesli body. 24 fast-color + 60 full-color + 8 in-pass + 6 depth + 18
-    4-pixel (fast 32bpp color and depth) = 116 variants.
+    4-pixel (fast 32bpp color and depth) + 15 into-texture = 131 variants.
     """
     variants = []
     for source_uint in (0, 1):
@@ -125,6 +125,27 @@ def direct_host_resolve_variants():
                              "resolve_host_depth_entry.xesli", [
                                  f"XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES={msaa}",
                                  "XE_RESOLVE_HOST_4PX=1"] + scaled_defines))
+    # Unscaled resolves that also store into the destination texture
+    # (vulkan_direct_host_resolve_to_texture): 4-pixel 32bpp fast color, full
+    # color to 32bpp and 4-pixel depth.
+    for msaa in (1, 2, 4):
+        for source_uint in (0, 1):
+            uint = "_uint" if source_uint else ""
+            color_defines = [f"XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES={msaa}",
+                             f"XE_RESOLVE_HOST_COLOR_SOURCE_UINT={source_uint}",
+                             "XE_RESOLVE_HOST_TEXTURE=1"]
+            variants.append((f"resolve_host_color{uint}_32bpp_{msaa}xmsaa_4px_tex_cs",
+                             "resolve_host_color_entry.xesli",
+                             ["XE_RESOLVE_HOST_COLOR_BPP=32",
+                              "XE_RESOLVE_HOST_4PX=1"] + color_defines))
+            variants.append((f"resolve_host_color_full{uint}_32bpp_{msaa}xmsaa_tex_cs",
+                             "resolve_host_color_full_entry.xesli",
+                             ["XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP=32"] +
+                             color_defines))
+        variants.append((f"resolve_host_depth_32bpp_{msaa}xmsaa_4px_tex_cs",
+                         "resolve_host_depth_entry.xesli",
+                         [f"XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES={msaa}",
+                          "XE_RESOLVE_HOST_4PX=1", "XE_RESOLVE_HOST_TEXTURE=1"]))
     return variants
 
 

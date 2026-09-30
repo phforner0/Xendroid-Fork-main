@@ -28,6 +28,9 @@
 
 #define XE_RESOLVE_HOST_DEPTH_FLAG_HAS_STENCIL (1u << 0u)
 #define XE_RESOLVE_HOST_DEPTH_FLAG_ROUND_DEPTH (1u << 1u)
+// XE_RESOLVE_HOST_TEXTURE: the texture is k_24_8_FLOAT (20e4 depth) rather
+// than k_24_8 - both hold the depth as a 32-bit float on the host.
+#define XE_RESOLVE_HOST_DEPTH_FLAG_TEXTURE_FLOAT24 (1u << 2u)
 
 const_buffer_begin_xe(xe_resolve_host_depth, 0, 1, b1, space0)
   uint xe_resolve_host_depth_dispatch_offset;
@@ -41,7 +44,13 @@ const_buffer_begin_xe(xe_resolve_host_depth, 0, 1, b1, space0)
   uint xe_resolve_host_depth_msaa_2x_sample_0;
   uint xe_resolve_host_depth_msaa_2x_sample_1;
   uint xe_resolve_host_depth_flags;
+  // XE_RESOLVE_HOST_TEXTURE: texel of the destination texture at pixel (0, 0)
+  // of the resolve (signed).
+  uint xe_resolve_host_depth_texture_origin_x;
+  uint xe_resolve_host_depth_texture_origin_y;
 const_buffer_end_xe(xe_resolve_host_depth)
+
+#include "resolve_host_texture.xesli"
 
 #define XE_RESOLVE_HOST_DEPTH_CONSTANTS_BINDING \
     const_buffer_binding_xe(xe_resolve_host_depth, buffer(2))
@@ -516,6 +525,23 @@ void XeResolveHostDepthMain(
   XeResolveHostDepthApplyHalfPixelOffset32(resolve_info, pixel_index,
                                            pixels_0123, pixels_4567);
   XeResolveSwap8PixelsRedBlue32bpp(resolve_info, pixels_0123, pixels_4567);
+#if XE_RESOLVE_HOST_TEXTURE
+  #ifndef XE_RESOLVE_HOST_4PX
+    #error Depth resolves into textures take 4 pixels per thread.
+  #endif
+  // What the texture upload makes of the 24-bit depth (the stencil dropped).
+  uint4_xe depth_texels =
+      (constant_xe(xe_resolve_host_depth, xe_resolve_host_depth_flags) &
+       XE_RESOLVE_HOST_DEPTH_FLAG_TEXTURE_FLOAT24) != 0u
+          ? XeFloat20e4To32(pixels_0123 >> 8u)
+          : float_bits_to_uint_xe(XeUNorm24To32(pixels_0123 >> 8u));
+  XeResolveHostTextureStore4(
+      int2_xe(int(constant_xe(xe_resolve_host_depth,
+                              xe_resolve_host_depth_texture_origin_x)),
+              int(constant_xe(xe_resolve_host_depth,
+                              xe_resolve_host_depth_texture_origin_y))),
+      pixel_index, depth_texels);
+#endif
   uint dest_address = XeResolveDestPixelAddress(resolve_info, pixel_index, 2u);
   byte_buffer_align16_store16_xe(
       xe_resolve_dest, dest_address,

@@ -1,0 +1,46 @@
+/**
+ ******************************************************************************
+ * Xenia : Xbox 360 Emulator Research Project                                 *
+ ******************************************************************************
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
+ * Released under the BSD license - see LICENSE in the root for more details. *
+ ******************************************************************************
+ */
+
+#ifndef XENIA_GPU_SHADERS_RESOLVE_HOST_TEXTURE_XESLI_
+#define XENIA_GPU_SHADERS_RESOLVE_HOST_TEXTURE_XESLI_
+
+// XE_RESOLVE_HOST_TEXTURE: the direct host resolve also stores the 4 texels of
+// its thread straight into the destination texture, viewed as raw uints (the
+// R32_UINT alias of a 32-bit format), so the upload that would read the same
+// bytes back from guest memory can be skipped. The texels are the values the
+// upload would produce: the packed pixels before the endian swap of guest
+// memory (the texture must have the same endianness as the resolve).
+#if XE_RESOLVE_HOST_TEXTURE
+  #if !SHADING_LANGUAGE_GLSL_XE || defined(XE_RESOLVE_RESOLUTION_SCALED)
+    #error Direct host resolves into textures are unscaled SPIR-V only.
+  #endif
+
+layout(set = 3, binding = 0, r32ui) uniform writeonly uimage2D
+    xe_resolve_host_texture;
+
+// Stores the texels at origin + pixel_index + (0...3, 0), none outside the
+// texture (a strip may overhang it).
+void XeResolveHostTextureStore4(int2_xe origin, uint2_xe pixel_index,
+                                uint4_xe texels) {
+  int2_xe size = imageSize(xe_resolve_host_texture);
+  int2_xe position = origin + int2_xe(pixel_index);
+  if (position.y < 0 || position.y >= size.y) {
+    return;
+  }
+  for (int i = 0; i < 4; ++i) {
+    int x = position.x + i;
+    if (x >= 0 && x < size.x) {
+      imageStore(xe_resolve_host_texture, int2_xe(x, position.y),
+                 uint4_xe(texels[i], 0u, 0u, 0u));
+    }
+  }
+}
+#endif
+
+#endif  // XENIA_GPU_SHADERS_RESOLVE_HOST_TEXTURE_XESLI_

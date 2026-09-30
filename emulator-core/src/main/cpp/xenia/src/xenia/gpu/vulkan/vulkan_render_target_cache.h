@@ -446,6 +446,31 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
       [kDirectHostResolveSourceUintCount] = {};
   VkPipeline direct_host_depth_resolve_pipelines_4px_
       [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount] = {};
+  // Unscaled variants also storing into the destination texture
+  // (vulkan_direct_host_resolve_to_texture).
+  enum class DirectHostResolveTextureKind {
+    kFastColor4px,
+    kFullColor32bpp,
+    kDepth4px,
+  };
+  static constexpr size_t kDirectHostResolveTextureKindCount = 3;
+  static const DirectHostResolveShaderCode kDirectHostResolveTextureShaders
+      [kDirectHostResolveTextureKindCount][kDirectHostResolveMsaaCount]
+      [kDirectHostResolveSourceUintCount];
+  VkPipeline direct_host_resolve_texture_pipelines_
+      [kDirectHostResolveTextureKindCount][kDirectHostResolveMsaaCount]
+      [kDirectHostResolveSourceUintCount] = {};
+  VkPipeline GetDirectHostResolveTexturePipeline(
+      DirectHostResolveTextureKind kind, xenos::MsaaSamples msaa_samples,
+      bool source_is_uint);
+  // Texel offset of a resolve strip into the texture it was matched to by
+  // containment, from the byte offset of its base into the tiled texture.
+  // False if the offset has no texel form.
+  static bool GetResolveDestTextureDelta(
+      const draw_util::ResolveInfo& resolve_info, uint32_t base_delta,
+      int32_t& delta_x_out, int32_t& delta_y_out);
+  // vulkan_resolve_dest_diag: the destinations and refusals already logged.
+  std::unordered_set<uint64_t> resolve_dest_diag_logged_;
   std::unique_ptr<ui::vulkan::VulkanUploadBufferPool>
       direct_host_resolve_constants_pool_;
 

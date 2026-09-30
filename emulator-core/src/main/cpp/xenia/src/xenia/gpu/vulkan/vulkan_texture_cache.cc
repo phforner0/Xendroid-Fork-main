@@ -38,6 +38,14 @@ DEFINE_bool(
     "Vulkan");
 
 DEFINE_bool(
+    vulkan_resolve_dest_diag, false,
+    "Log why the uploads of textures the GPU wrote are not served from a "
+    "resolve into them (once per texture and reason, with the resolves "
+    "recorded over their memory), and why resolves did not store into a "
+    "texture (once per destination and reason).",
+    "Vulkan");
+
+DEFINE_bool(
     vulkan_resolve_to_texture_promote, true,
     "Allocate textures that an in-pass resolve writes with STORAGE usage and a "
     "uint alias view, so the resolve can write them directly. Changes nothing "
@@ -1453,7 +1461,7 @@ std::unique_ptr<TextureCache::Texture> VulkanTextureCache::CreateTexture(
                               &storage_view) == VK_SUCCESS) {
       if (resolve_dest_uint_format != VK_FORMAT_UNDEFINED) {
         vulkan_texture->SetResolveDestStorageView(storage_view);
-        resolve_dest_textures_[key.base_page << 12] = vulkan_texture;
+        resolve_dest_textures_.emplace(key.base_page << 12, vulkan_texture);
       }
       if (load_to_image_storage) {
         vulkan_texture->SetLoadStorageView(storage_view);
@@ -1518,6 +1526,79 @@ VkImageView VulkanTextureCache::GetResolveDestStorageView(
   return texture->resolve_dest_storage_view();
 }
 
+VkImageView VulkanTextureCache::GetResolveDestStorageViewForCompute(
+    uint32_t base, uint32_t pitch_div_32, xenos::TextureFormat format,
+    bool is_depth, uint32_t endian, uint32_t* base_delta_out,
+    ResolveDestTextureInfo* info_out) const {
+  if (endian >= 4 ||
+      (is_depth && format != xenos::TextureFormat::k_24_8 &&
+       format != xenos::TextureFormat::k_24_8_FLOAT)) {
+    return VK_NULL_HANDLE;
+  }
+  // Strips advance the base, so match by containment, taking the closest
+  // preceding base among the textures in the format the resolve writes.
+  VulkanTexture* best = nullptr;
+  uint32_t best_base = 0;
+  for (const auto& pair : resolve_dest_textures_) {
+    VulkanTexture* texture = pair.second;
+    if (!texture) {
+      continue;
+    }
+    const TextureKey& key = texture->key();
+    uint32_t texture_size = std::max(texture->GetGuestBaseSize(), uint32_t(1));
+    if (base < pair.first || base >= pair.first + texture_size ||
+        key.pitch != pitch_div_32 || key.format != format ||
+        uint32_t(key.endianness) != endian) {
+      continue;
+    }
+    if (!best || pair.first > best_base) {
+      best = texture;
+      best_base = pair.first;
+    }
+  }
+  if (base_delta_out) {
+    *base_delta_out = best ? base - best_base : 0;
+  }
+  if (!best) {
+    return VK_NULL_HANDLE;
+  }
+  if (info_out) {
+    const TextureKey& key = best->key();
+    info_out->width = key.GetWidth();
+    info_out->height = key.GetHeight();
+    info_out->pitch = key.pitch;
+    info_out->format = uint32_t(key.format);
+    info_out->texture = best;
+  }
+  return best->resolve_dest_storage_view();
+}
+
+void VulkanTextureCache::BeginResolveDestComputeStore(
+    const ResolveDestTextureInfo& info) {
+  VulkanTexture* texture = static_cast<VulkanTexture*>(info.texture);
+  if (!texture) {
+    return;
+  }
+  // Keeps the image alive while the store is in flight (it may not be
+  // sampled through this key again soon).
+  texture->MarkAsUsed();
+  // Never skipped: a resolve into a texture another resolve of the frame has
+  // already written is a write-after-write.
+  VulkanTexture::Usage old_usage =
+      texture->SetUsage(VulkanTexture::Usage::kLoadStorageWrite);
+  VkPipelineStageFlags src_stage_mask, dst_stage_mask;
+  VkAccessFlags src_access_mask, dst_access_mask;
+  VkImageLayout old_layout, new_layout;
+  GetTextureUsageMasks(old_usage, src_stage_mask, src_access_mask, old_layout);
+  GetTextureUsageMasks(VulkanTexture::Usage::kLoadStorageWrite, dst_stage_mask,
+                       dst_access_mask, new_layout);
+  command_processor_.PushImageMemoryBarrier(
+      texture->image(), ui::vulkan::util::InitializeSubresourceRange(),
+      src_stage_mask, dst_stage_mask, src_access_mask, dst_access_mask,
+      old_layout, new_layout, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
+      false);
+}
+
 void VulkanTextureCache::MarkResolveDestWritten(uint32_t base,
                                                 uint64_t frame) {
   if (VulkanTexture* texture = FindResolveDestTexture(base)) {
@@ -1529,6 +1610,94 @@ void VulkanTextureCache::MarkResolveDestWritten(uint32_t base,
     // The fragment's imageStore is only ordered before later sampled reads by
     // the barrier the next bind emits for this flag.
     texture->SetPendingStorageWrite();
+  }
+}
+
+void VulkanTextureCache::MarkResolveDestWritten(
+    const ResolveDestTextureInfo& info, uint64_t frame) {
+  if (VulkanTexture* texture = static_cast<VulkanTexture*>(info.texture)) {
+    texture->MarkAsUsed();
+    texture->SetResolveDestWrittenFrame(frame);
+    // The compute store is ordered before later sampled reads by the barrier
+    // the next bind emits for this flag.
+    texture->SetPendingStorageWrite();
+  }
+}
+
+void VulkanTextureCache::BeginResolveStoreRangeWrite(
+    const ResolveDestTextureInfo& info, int32_t x0, int32_t y0,
+    uint32_t width, uint32_t height) {
+  auto global_lock = global_critical_region::Acquire();
+  resolve_store_in_flight_ = static_cast<VulkanTexture*>(info.texture);
+  resolve_store_x0_ = x0;
+  resolve_store_y0_ = y0;
+  resolve_store_width_ = width;
+  resolve_store_height_ = height;
+}
+
+void VulkanTextureCache::EndResolveStoreRangeWrite() {
+  auto global_lock = global_critical_region::Acquire();
+  VulkanTexture* texture = resolve_store_in_flight_;
+  resolve_store_in_flight_ = nullptr;
+  if (!texture) {
+    return;
+  }
+  // The texels the resolve wrote to the memory are in the image too, so a
+  // valid image stays valid. An invalid one is revalidated once stores have
+  // rewritten all of its rows, top to bottom (strips of one surface, or a
+  // single resolve of all of it) - with the watch armed from the first strip,
+  // so a write between strips resets the count.
+  const TextureKey& key = texture->key();
+  const uint32_t width = key.GetWidth(), height = key.GetHeight();
+  if (!texture->store_tracked_valid() && resolve_store_x0_ <= 0 &&
+      int64_t(resolve_store_x0_) + resolve_store_width_ >= int64_t(width) &&
+      resolve_store_y0_ <= int32_t(texture->store_covered_rows())) {
+    int64_t rows = int64_t(resolve_store_y0_) + resolve_store_height_;
+    if (rows > int64_t(texture->store_covered_rows())) {
+      texture->SetStoreCoveredRows(
+          uint32_t(std::min(rows, int64_t(UINT32_MAX))));
+    }
+    if (texture->store_covered_rows() >= height) {
+      texture->SetStoreTrackedValid(true);
+    }
+  }
+  if (texture->store_tracked_valid() || texture->store_covered_rows()) {
+    ArmResolveStoreWatch(*texture);
+  }
+}
+
+void VulkanTextureCache::InvalidateResolveStoreTracking() {
+  auto global_lock = global_critical_region::Acquire();
+  for (const auto& pair : resolve_dest_textures_) {
+    if (pair.second) {
+      pair.second->SetStoreTrackedValid(false);
+    }
+  }
+}
+
+void VulkanTextureCache::ArmResolveStoreWatch(VulkanTexture& texture) {
+  if (texture.store_watch_handle()) {
+    return;
+  }
+  texture.SetStoreWatchHandle(shared_memory().WatchMemoryRange(
+      texture.key().base_page << 12,
+      std::max(texture.GetGuestBaseSize(), uint32_t(1)),
+      ResolveStoreWatchCallback, this, &texture, 0));
+}
+
+void VulkanTextureCache::ResolveStoreWatchCallback(
+    const global_unique_lock_type& global_lock, void* context, void* data,
+    uint64_t argument, bool invalidated_by_gpu) {
+  auto& texture_cache = *static_cast<VulkanTextureCache*>(context);
+  auto& texture = *static_cast<VulkanTexture*>(data);
+  // The watch is cancelled after the callback.
+  texture.SetStoreWatchHandle(nullptr);
+  // Only the resolve storing into this very image keeps it valid (it is
+  // re-armed by EndResolveStoreRangeWrite); the CPU, other resolves (another
+  // texture, the EDRAM path, one refused the store), memexport do not.
+  if (!invalidated_by_gpu ||
+      texture_cache.resolve_store_in_flight_ != &texture) {
+    texture.SetStoreTrackedValid(false);
   }
 }
 
@@ -1550,7 +1719,23 @@ bool VulkanTextureCache::TryServeFromResolveDest(const VulkanTexture& texture,
   if (!load_base) {
     return false;
   }
-  // The resolve must structurally match, and have covered the whole base level.
+  // Direct host resolves: every write to the memory since the image was last
+  // uploaded stored the same texels into it (see store_tracked_valid). A page
+  // the CPU wrote while not watched (it was not valid, so not protected) is
+  // still invalid; wholesale invalidation also clears the tracking
+  // (InvalidateResolveStoreTracking). Parts of the texture only ever written
+  // by the CPU are fine - the upload read them, and a later CPU write fires.
+  {
+    auto global_lock = global_critical_region::Acquire();
+    if (texture.store_tracked_valid() &&
+        shared_memory().IsRangeValid(
+            key.base_page << 12,
+            xe::align(texture.GetGuestBaseSize(), UINT32_C(16)))) {
+      return true;
+    }
+  }
+  // In-pass resolves: the resolve must structurally match, and have covered
+  // the whole base level this frame.
   if (!IsResolveDestEligible(texture)) {
     return false;
   }
@@ -1566,6 +1751,89 @@ bool VulkanTextureCache::TryServeFromResolveDest(const VulkanTexture& texture,
     return false;
   }
   return true;
+}
+
+void VulkanTextureCache::LogResolveDestMiss(const VulkanTexture& texture,
+                                            bool load_mips) {
+  const TextureKey& key = texture.key();
+  const uint32_t base = key.base_page << 12;
+  const uint32_t size = std::max(texture.GetGuestBaseSize(), uint32_t(1));
+  // Only the sizable textures - the ones worth serving.
+  if (key.GetWidth() * key.GetHeight() < (UINT32_C(1) << 14)) {
+    return;
+  }
+  static const char* const kReasons[] = {
+      "mips",
+      "resolution-scaled",
+      "not promoted",
+      "the image missed a write (not stored into it)",
+      "memory not all GPU-written",
+  };
+  const uint64_t frame = command_processor_.GetCurrentFrame();
+  uint32_t reason;
+  uint32_t covered_rows;
+  {
+    auto global_lock = global_critical_region::Acquire();
+    covered_rows = texture.store_covered_rows();
+  }
+  if (!shared_memory().IsRangeGpuWritten(base, size)) {
+    // Also every texture from the CPU - only the reloaded ones are logged.
+    reason = 4;
+  } else if (load_mips || key.mip_max_level || key.packed_mips) {
+    reason = 0;
+  } else if (key.scaled_resolve) {
+    reason = 1;
+  } else if (texture.resolve_dest_storage_view() == VK_NULL_HANDLE) {
+    reason = 2;
+  } else {
+    reason = 3;
+  }
+  // Logged when the reason changes, and at the 2^n-th miss for the same one,
+  // so the count in the last line gives the rate.
+  auto it = resolve_dest_diag_reasons_.find(key);
+  uint32_t count;
+  if (it != resolve_dest_diag_reasons_.end()) {
+    if (it->second.first != reason) {
+      it->second = std::make_pair(reason, uint32_t(0));
+    }
+    count = ++it->second.second;
+    if (count & (count - 1)) {
+      return;
+    }
+  } else {
+    if (resolve_dest_diag_reasons_.size() >= 2048) {
+      return;
+    }
+    resolve_dest_diag_reasons_.emplace(key, std::make_pair(reason, 1u));
+    count = 1;
+  }
+  if (reason == 4 && count < 2) {
+    return;
+  }
+  XELOGI(
+      "VkServeMiss: {} {}x{} pitch {} base {:08X} endian {} tiled {} mips {} "
+      "packed {}: {} (rows rewritten since {}; miss #{} in frame {})",
+      FormatInfo::GetName(key.format), key.GetWidth(), key.GetHeight(),
+      uint32_t(key.pitch), base, uint32_t(key.endianness),
+      uint32_t(key.tiled), uint32_t(key.mip_max_level),
+      uint32_t(key.packed_mips), kReasons[reason], covered_rows, count,
+      frame);
+  uint32_t listed = 0;
+  for (const ResolveDestDescriptor& d : resolve_dests_) {
+    if ((!d.width && !d.height) || d.base < base || d.base >= base + size ||
+        d.frame + 2 < frame) {
+      continue;
+    }
+    XELOGI(
+        "  resolve at +{:X}: {} pitch {} endian {} array {} at {},{} {}x{} "
+        "stored {} frame -{}",
+        d.base - base, FormatInfo::GetName(xenos::TextureFormat(d.format)),
+        d.pitch_div_32, d.endian, d.is_array, d.x0, d.y0, d.width, d.height,
+        d.wrote_texture, frame - d.frame);
+    if (++listed >= 8) {
+      break;
+    }
+  }
 }
 
 void VulkanTextureCache::NoteResolveDestination(
@@ -1730,11 +1998,43 @@ bool VulkanTextureCache::ResolveDestsCoverSurface(
 bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
                                                                bool load_base,
                                                                bool load_mips) {
-  if (TryServeFromResolveDest(static_cast<const VulkanTexture&>(texture),
-                              load_base, load_mips)) {
+  VulkanTexture& vulkan_texture = static_cast<VulkanTexture&>(texture);
+  if (TryServeFromResolveDest(vulkan_texture, load_base, load_mips)) {
+    NoteResolveDestImageUpToDate(vulkan_texture, load_base);
     return true;
   }
-  VulkanTexture& vulkan_texture = static_cast<VulkanTexture&>(texture);
+  if (cvars::vulkan_resolve_dest_diag && load_base) {
+    LogResolveDestMiss(vulkan_texture, load_mips);
+  }
+  if (!LoadTextureDataFromResidentMemoryUpload(vulkan_texture, load_base,
+                                               load_mips)) {
+    return false;
+  }
+  NoteResolveDestImageUpToDate(vulkan_texture, load_base);
+  return true;
+}
+
+void VulkanTextureCache::NoteResolveDestImageUpToDate(VulkanTexture& texture,
+                                                      bool load_base) {
+  if (!load_base || texture.resolve_dest_storage_view() == VK_NULL_HANDLE) {
+    return;
+  }
+  const uint32_t base = texture.key().base_page << 12;
+  auto global_lock = global_critical_region::Acquire();
+  // As in MakeUpToDateAndWatch: a CPU write since the range was requested
+  // leaves it invalid, and the upload may then have read stale data.
+  if (!shared_memory().IsRangeValid(
+          base, xe::align(texture.GetGuestBaseSize(), UINT32_C(16)))) {
+    texture.SetStoreTrackedValid(false);
+    return;
+  }
+  texture.SetStoreTrackedValid(true);
+  ArmResolveStoreWatch(texture);
+}
+
+bool VulkanTextureCache::LoadTextureDataFromResidentMemoryUpload(
+    VulkanTexture& vulkan_texture, bool load_base, bool load_mips) {
+  Texture& texture = vulkan_texture;
   TextureKey texture_key = vulkan_texture.key();
 
   // Get the pipeline.
@@ -1919,10 +2219,15 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   // Eligible but created before any resolve targeted it, so it has no storage
   // view. Queue it for recreation - otherwise a texture that is never
   // naturally recreated can never be promoted.
+  // The structural match is the test, as at creation: coverage by resolves
+  // that stored into the image can't exist before it has a storage view.
   if (cvars::vulkan_resolve_to_texture_promote &&
       vulkan_texture.resolve_dest_storage_view() == VK_NULL_HANDLE &&
       resolve_dest_promotion_queue_.size() < 64 &&
-      IsResolveDestEligible(texture)) {
+      ShouldPromoteToResolveDest(texture.key()) &&
+      std::find(resolve_dest_promotion_queue_.cbegin(),
+                resolve_dest_promotion_queue_.cend(),
+                texture.key()) == resolve_dest_promotion_queue_.cend()) {
     resolve_dest_promotion_queue_.push_back(texture.key());
   }
 
@@ -2632,9 +2937,24 @@ VulkanTextureCache::VulkanTexture::~VulkanTexture() {
   if (resolve_dest_storage_view_ != VK_NULL_HANDLE) {
     dfn.vkDestroyImageView(device, resolve_dest_storage_view_, nullptr);
     auto& mutable_cache = const_cast<VulkanTextureCache&>(vulkan_texture_cache);
-    auto it = mutable_cache.resolve_dest_textures_.find(key().base_page << 12);
-    if (it != mutable_cache.resolve_dest_textures_.end() && it->second == this) {
-      mutable_cache.resolve_dest_textures_.erase(it);
+    auto range =
+        mutable_cache.resolve_dest_textures_.equal_range(key().base_page << 12);
+    for (auto it = range.first; it != range.second; ++it) {
+      if (it->second == this) {
+        mutable_cache.resolve_dest_textures_.erase(it);
+        break;
+      }
+    }
+    {
+      // The callback may clear the handle from another thread.
+      auto global_lock = global_critical_region::Acquire();
+      if (store_watch_handle_) {
+        mutable_cache.shared_memory().UnwatchMemoryRange(store_watch_handle_);
+        store_watch_handle_ = nullptr;
+      }
+      if (mutable_cache.resolve_store_in_flight_ == this) {
+        mutable_cache.resolve_store_in_flight_ = nullptr;
+      }
     }
   }
   for (const auto& view_pair : views_) {
