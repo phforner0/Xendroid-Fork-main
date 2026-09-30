@@ -342,6 +342,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
     kBufferBarriers,
     kImageBarriers,
     kBufferAndImageBarriers,
+    // Descriptor and texture bindings of a draw (texture usage transitions).
+    kBindings,
     kCount,
   };
   class PassEndReasonScope {
@@ -363,6 +365,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
     PassEndReason previous_reason_;
   };
   PassEndReason pass_end_reason_ = PassEndReason::kOther;
+  // The PassEndReason scopes open when the pending barriers were pushed (a bit
+  // per reason), for the origins of the barriers that end render passes.
+  uint32_t pending_barrier_origins_ = 0;
 
   VkDescriptorSetLayout GetSingleTransientDescriptorLayout(
       SingleTransientDescriptorLayout transient_descriptor_layout) const {
@@ -796,6 +801,14 @@ class VulkanCommandProcessor final : public CommandProcessor {
     uint64_t resolve_clears_in_guest_pass = 0;
     // Render passes ended, by PassEndReason.
     uint64_t pass_ends[size_t(PassEndReason::kCount)] = {};
+    // Guest passes reopened on the framebuffer the previous guest pass ended
+    // on - breaks between draws into the same attachments - by the
+    // PassEndReason of that end, and how many of them had a resolve between.
+    uint64_t pass_reopens[size_t(PassEndReason::kCount)] = {};
+    uint64_t pass_reopens_after_resolve = 0;
+    // Render passes ended by barriers, by the PassEndReason scope that pushed
+    // them (several per pass end if several did).
+    uint64_t pass_ending_barrier_origins[size_t(PassEndReason::kCount)] = {};
     uint64_t last_report_ns = 0;
   };
   VkFrameSyncStats vk_frame_sync_stats_;
@@ -1266,6 +1279,11 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // but in_render_pass_ is true.
   VkRenderPass current_render_pass_;
   const VulkanRenderTargetCache::Framebuffer* current_framebuffer_;
+  // For the VkPassEnd reopen counts: the framebuffer of the last guest pass
+  // ended, why it ended, and whether a resolve was issued since.
+  const VulkanRenderTargetCache::Framebuffer* last_ended_framebuffer_ = nullptr;
+  PassEndReason last_pass_end_reason_ = PassEndReason::kOther;
+  bool resolve_since_pass_end_ = false;
   // True when inside a render pass or dynamic rendering block.
   bool in_render_pass_ = false;
   // Draws since the last vulkan_debug_extra_pass_breaks break.

@@ -64,6 +64,7 @@ DECLARE_bool(vulkan_direct_host_resolve);
 DECLARE_bool(vulkan_direct_host_resolve_4px);
 DECLARE_bool(vulkan_direct_host_resolve_to_texture);
 DECLARE_bool(vulkan_resolve_dest_diag);
+DECLARE_bool(vulkan_replay_stats);
 
 DEFINE_bool(
     render_area_dirty_extent, false,
@@ -263,6 +264,8 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.resolve_dest_diag",
                             "vulkan_resolve_dest_diag",
                             cvars::vulkan_resolve_dest_diag);
+  PollDebugPropertyOverride("debug.xendroid.replay_stats",
+                            "vulkan_replay_stats", cvars::vulkan_replay_stats);
   // Both texture load switches at once, for A/Bs of the load paths: 0 - the
   // original untiling into a buffer copied to the image, 1 - coalesced
   // untiling, 2 - coalesced straight into the image (which only has the
@@ -2585,6 +2588,30 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
           s.render_pass_begins / f, s.primary_buffer_splits / f,
           s.replay_ns / f / 1e6, s.resolve_clears / f,
           s.resolve_clears_in_guest_pass / f);
+      // What the replays sent to the driver per frame, and how much of the
+      // state setting repeated what the command buffer already had.
+      if (cvars::vulkan_replay_stats) {
+        DeferredCommandBuffer::ReplayStats replay_stats;
+        deferred_command_buffer_.TakeReplayStats(replay_stats);
+        deferred_setup_command_buffer_.TakeReplayStats(replay_stats);
+        std::string commands;
+        for (size_t i = 0; i < DeferredCommandBuffer::kReplayStatCommandCount;
+             ++i) {
+          if (!replay_stats.commands[i]) {
+            continue;
+          }
+          commands += fmt::format(
+              " {}={:.0f}", DeferredCommandBuffer::GetReplayStatCommandName(i),
+              replay_stats.commands[i] / f);
+          if (replay_stats.redundant[i]) {
+            commands +=
+                fmt::format("(same {:.0f})", replay_stats.redundant[i] / f);
+          }
+        }
+        XELOGI("VkReplay: per frame: sets={:.0f} push_bytes={:.0f} |{}",
+               replay_stats.descriptor_sets / f,
+               replay_stats.push_constant_bytes / f, commands);
+      }
       // Driver fence polls and waits of the submission timeline (a poll of a
       // pending fence blocks on Turnip/kgsl, see fence_collect).
       const ui::vulkan::VulkanGPUCompletionTimeline::DriverWaitStats fence =
@@ -2601,11 +2628,20 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
         auto ends = [&](PassEndReason reason) {
           return s.pass_ends[size_t(reason)] / f;
         };
+        auto reopens = [&](PassEndReason reason) {
+          return s.pass_reopens[size_t(reason)] / f;
+        };
+        uint64_t reopens_total = 0;
+        for (uint64_t count : s.pass_reopens) {
+          reopens_total += count;
+        }
         XELOGI(
             "VkPassEnd: per frame: render_targets={:.1f} resolve={:.1f} "
             "textures={:.1f} shared_memory={:.1f} primitives={:.1f} "
             "query={:.1f} submission={:.1f} other={:.1f} | barriers: "
-            "buffer={:.1f} image={:.1f} both={:.1f}",
+            "buffer={:.1f} image={:.1f} both={:.1f} | reopened on the same "
+            "framebuffer: {:.1f} (after a resolve {:.1f}; ended by barriers: "
+            "buffer={:.1f} image={:.1f} both={:.1f}; submission={:.1f})",
             ends(PassEndReason::kRenderTargets),
             ends(PassEndReason::kResolve), ends(PassEndReason::kTextures),
             ends(PassEndReason::kSharedMemory),
@@ -2613,7 +2649,34 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
             ends(PassEndReason::kQuery), ends(PassEndReason::kSubmission),
             ends(PassEndReason::kOther), ends(PassEndReason::kBufferBarriers),
             ends(PassEndReason::kImageBarriers),
-            ends(PassEndReason::kBufferAndImageBarriers));
+            ends(PassEndReason::kBufferAndImageBarriers), reopens_total / f,
+            s.pass_reopens_after_resolve / f,
+            reopens(PassEndReason::kBufferBarriers),
+            reopens(PassEndReason::kImageBarriers),
+            reopens(PassEndReason::kBufferAndImageBarriers),
+            reopens(PassEndReason::kSubmission));
+        auto origins = [&](PassEndReason reason) {
+          return s.pass_ending_barrier_origins[size_t(reason)] / f;
+        };
+        XELOGI(
+            "VkPassEndBarriers: per frame, passes ended by barriers pushed "
+            "while: textures={:.1f} shared_memory={:.1f} render_targets={:.1f} "
+            "bindings={:.1f} primitives={:.1f} resolve={:.1f} query={:.1f} "
+            "other={:.1f}",
+            origins(PassEndReason::kTextures),
+            origins(PassEndReason::kSharedMemory),
+            origins(PassEndReason::kRenderTargets),
+            origins(PassEndReason::kBindings),
+            origins(PassEndReason::kPrimitiveProcessor),
+            origins(PassEndReason::kResolve), origins(PassEndReason::kQuery),
+            origins(PassEndReason::kOther));
+      }
+      // Ownership transfers of the draws, by source -> destination.
+      {
+        std::string transfer_stats = render_target_cache_->TakeTransferStats(f);
+        if (!transfer_stats.empty()) {
+          XELOGI("VkXfer: {}", transfer_stats);
+        }
       }
       // Per-render-pass-bucket GPU time (key: WxH, bit31 = ownership transfer).
       if (!pass_bucket_stats_.empty()) {
@@ -3373,6 +3436,7 @@ bool VulkanCommandProcessor::PushBufferMemoryBarrier(
 
   current_pending_barrier_.src_stage_mask |= src_stage_mask;
   current_pending_barrier_.dst_stage_mask |= dst_stage_mask;
+  pending_barrier_origins_ |= uint32_t(1) << uint32_t(pass_end_reason_);
   VkBufferMemoryBarrier& buffer_memory_barrier =
       pending_barriers_buffer_memory_barriers_.emplace_back();
   buffer_memory_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -3454,6 +3518,7 @@ bool VulkanCommandProcessor::PushImageMemoryBarrier(
 
   current_pending_barrier_.src_stage_mask |= src_stage_mask;
   current_pending_barrier_.dst_stage_mask |= dst_stage_mask;
+  pending_barrier_origins_ |= uint32_t(1) << uint32_t(pass_end_reason_);
   VkImageMemoryBarrier& image_memory_barrier =
       pending_barriers_image_memory_barriers_.emplace_back();
   image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -3479,6 +3544,14 @@ bool VulkanCommandProcessor::SubmitBarriers(bool force_end_render_pass) {
     return false;
   }
   if (in_render_pass_ && cvars::log_gpu_frame_time_breakdown) {
+    // Who pushed the barriers that end the pass (the PassEndReason scope open
+    // when each was pushed).
+    uint32_t origins = pending_barrier_origins_;
+    uint32_t origin;
+    while (xe::bit_scan_forward(origins, &origin)) {
+      origins &= ~(uint32_t(1) << origin);
+      ++vk_frame_sync_stats_.pass_ending_barrier_origins[origin];
+    }
     // The barriers are what ends the pass here (VkPassEnd).
     const bool buffer_barriers =
         !pending_barriers_buffer_memory_barriers_.empty();
@@ -3521,6 +3594,7 @@ bool VulkanCommandProcessor::SubmitBarriers(bool force_end_render_pass) {
   pending_barriers_image_memory_barriers_.clear();
   current_pending_barrier_.buffer_memory_barriers_offset = 0;
   current_pending_barrier_.image_memory_barriers_offset = 0;
+  pending_barrier_origins_ = 0;
   return true;
 }
 
@@ -3642,6 +3716,12 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
   current_render_pass_ = use_dynamic_rendering ? VK_NULL_HANDLE : render_pass;
   current_framebuffer_ = framebuffer;
   ++vk_frame_sync_stats_.render_pass_begins;
+  if (cvars::log_gpu_frame_time_breakdown &&
+      framebuffer == last_ended_framebuffer_) {
+    ++vk_frame_sync_stats_.pass_reopens[size_t(last_pass_end_reason_)];
+    vk_frame_sync_stats_.pass_reopens_after_resolve +=
+        uint64_t(resolve_since_pass_end_);
+  }
   BinTraceNoteIfActive("P", framebuffer->host_extent.width,
                        framebuffer->host_extent.height);
   // Identify each pass bucket once by the guest render targets behind it.
@@ -3840,6 +3920,9 @@ void VulkanCommandProcessor::EndRenderPass() {
   }
   if (cvars::log_gpu_frame_time_breakdown) {
     ++vk_frame_sync_stats_.pass_ends[size_t(pass_end_reason_)];
+    last_ended_framebuffer_ = current_framebuffer_;
+    last_pass_end_reason_ = pass_end_reason_;
+    resolve_since_pass_end_ = false;
   }
   // Close native Vulkan occlusion queries before ending the pass. FSI counter
   // segments don't use vkCmdBeginQuery / vkCmdEndQuery and can stay logically
@@ -5016,10 +5099,13 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
 
   // Update uniform buffers and descriptor sets after binding the pipeline with
   // the new layout.
-  if (!UpdateBindings(vertex_shader, pixel_shader, stage_bindings_ready[0],
-                      stage_bindings_ready[1], interpreter_placeholder,
-                      placeholder_pixel_shader)) {
-    return false;
+  {
+    PassEndReasonScope pass_end_reason_scope(*this, PassEndReason::kBindings);
+    if (!UpdateBindings(vertex_shader, pixel_shader, stage_bindings_ready[0],
+                        stage_bindings_ready[1], interpreter_placeholder,
+                        placeholder_pixel_shader)) {
+      return false;
+    }
   }
 
   // Ensure vertex buffers are resident.
@@ -5140,20 +5226,24 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // TODO(Triang3l): Find some PM4 command that can be used for indication of
   // when memexports should be awaited instead of inserting the barrier in Use
   // every time if memory export was done in the previous draw?
-  if (memexport_extent_start < memexport_extent_end) {
-    shared_memory_->Use(
-        VulkanSharedMemory::Usage::kGuestDrawReadWrite,
-        std::make_pair(memexport_extent_start,
-                       memexport_extent_end - memexport_extent_start));
-  } else {
-    // With in-pass resolves, fragment shaders may write shared memory inside
-    // any guest pass - declare the write usage up front so no barrier is
-    // needed at the resolve point.
-    shared_memory_->Use(
-        (render_target_cache_->local_read_attachments() &&
-         !cvars::vulkan_in_pass_resolve_debug_read_usage)
-            ? VulkanSharedMemory::Usage::kGuestDrawReadWrite
-            : VulkanSharedMemory::Usage::kRead);
+  {
+    PassEndReasonScope pass_end_reason_scope(*this,
+                                             PassEndReason::kSharedMemory);
+    if (memexport_extent_start < memexport_extent_end) {
+      shared_memory_->Use(
+          VulkanSharedMemory::Usage::kGuestDrawReadWrite,
+          std::make_pair(memexport_extent_start,
+                         memexport_extent_end - memexport_extent_start));
+    } else {
+      // With in-pass resolves, fragment shaders may write shared memory inside
+      // any guest pass - declare the write usage up front so no barrier is
+      // needed at the resolve point.
+      shared_memory_->Use(
+          (render_target_cache_->local_read_attachments() &&
+           !cvars::vulkan_in_pass_resolve_debug_read_usage)
+              ? VulkanSharedMemory::Usage::kGuestDrawReadWrite
+              : VulkanSharedMemory::Usage::kRead);
+    }
   }
 
   // vulkan_debug_extra_pass_breaks: break the guest pass before every Nth draw
@@ -5503,6 +5593,7 @@ bool VulkanCommandProcessor::IssueCopy() {
   }
   ++submission_in_progress_.resolve_count;
   ++vk_frame_sync_stats_.resolves;
+  resolve_since_pass_end_ = true;
 
   // The resolve wrote the device buffer. Drop any stale memexport marks so the
   // output isn't overwritten with guest RAM by a later texture load.
