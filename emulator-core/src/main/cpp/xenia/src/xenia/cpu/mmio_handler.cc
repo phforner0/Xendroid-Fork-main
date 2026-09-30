@@ -17,11 +17,21 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/platform.h"
+#include "xenia/base/threading.h"
 
 namespace xe {
 namespace cpu {
 
 MMIOHandler* MMIOHandler::global_handler_ = nullptr;
+std::atomic<uint64_t> MMIOHandler::last_fault_host_pc_{0};
+std::atomic<uint32_t> MMIOHandler::last_fault_thread_id_{0};
+
+void MMIOHandler::NoteFaultForCallback(Exception* ex) {
+  // Plain stores and a thread-local read: fine in the signal handler.
+  last_fault_host_pc_.store(uint64_t(ex->pc()), std::memory_order_relaxed);
+  last_fault_thread_id_.store(xe::threading::current_thread_id(),
+                              std::memory_order_relaxed);
+}
 
 std::unique_ptr<MMIOHandler> MMIOHandler::Install(
     uint8_t* virtual_membase, uint8_t* physical_membase, uint8_t* membase_end,
@@ -467,6 +477,7 @@ bool MMIOHandler::ExceptionCallback(Exception* ex) {
     // watches were already cleared by another thread, TriggerCallbacks finds
     // no watches and the page is unprotected by the time we retry.
     if (access_violation_callback_) {
+      NoteFaultForCallback(ex);
       return access_violation_callback_(std::move(lock),
                                         access_violation_callback_context_,
                                         fault_host_address, is_write);
@@ -485,6 +496,7 @@ bool MMIOHandler::ExceptionCallback(Exception* ex) {
     // The address is not found within any range, so either a write watch or an
     // actual access violation.
     if (access_violation_callback_) {
+      NoteFaultForCallback(ex);
       return access_violation_callback_(std::move(lock),
                                         access_violation_callback_context_,
                                         fault_host_address, is_write);

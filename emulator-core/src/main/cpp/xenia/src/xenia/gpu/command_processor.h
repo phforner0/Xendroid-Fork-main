@@ -337,6 +337,26 @@ class CommandProcessor {
   // debug.xendroid.wrm_log: unmet PM4_WAIT_REG_MEM waits still to be logged.
   uint32_t wrm_log_left_ = 0;
   int32_t wrm_log_last_property_ = -1;
+  // debug.xendroid.wrm_log: for a logged memory wait, the guest write that
+  // satisfied it, caught by a physical write watch armed on the waited page
+  // (the callback runs in the writing guest thread's fault handler, so it only
+  // stores what it saw; the command processor maps it to guest code).
+  struct WrmWriterEvent {
+    uint64_t host_pc;
+    uint32_t guest_thread;
+    uint64_t time_ns;
+  };
+  static std::pair<uint32_t, uint32_t> WrmWriterWatchCallback(
+      void* context_ptr, uint32_t physical_address_start, uint32_t length,
+      bool exact_range);
+  void WrmWriterArm(uint32_t physical_address);
+  // Disarms and describes the write (who, where in guest code, how long
+  // before the wait noticed it).
+  std::string WrmWriterTake();
+  void* wrm_writer_callback_handle_ = nullptr;
+  std::atomic<uint32_t> wrm_writer_address_{UINT32_MAX};
+  std::atomic<bool> wrm_writer_hit_{false};
+  WrmWriterEvent wrm_writer_event_ = {};
   void BinTracePoll();
   void BinTraceOpcode(uint32_t opcode);
   void BinTraceSetBin(bool is_select, uint32_t packet_guest_address);

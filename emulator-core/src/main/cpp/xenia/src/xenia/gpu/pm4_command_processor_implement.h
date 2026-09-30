@@ -981,6 +981,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
       if (log_unmet && first_check) {
         first_value = value;
         log_begin_ns = COMMAND_PROCESSOR::FrameStatsNow();
+        if (is_memory) {
+          // Catch the guest write that will satisfy the wait.
+          COMMAND_PROCESSOR::WrmWriterArm(poll_reg_addr & ~uint32_t(0x3));
+        }
       }
       first_check = false;
       // Wait using the duration specified by the guest.
@@ -1027,11 +1031,12 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
     --wrm_log_left_;
     XELOGI(
         "WaitRegMem: {} {:08X} func={} ref={:08X} mask={:08X} interval={} "
-        "first={:08X} final={:08X} waited={}us | rptr={} wptr={}",
+        "first={:08X} final={:08X} waited={}us | rptr={} wptr={} | {}",
         is_memory ? "mem" : "reg", poll_reg_addr, wait_info & 0x7, ref, mask,
         wait, first_value, value,
         (COMMAND_PROCESSOR::FrameStatsNow() - log_begin_ns) / 1000,
-        read_ptr_index_, write_ptr_index_.load(std::memory_order_relaxed));
+        read_ptr_index_, write_ptr_index_.load(std::memory_order_relaxed),
+        is_memory ? COMMAND_PROCESSOR::WrmWriterTake() : std::string());
   }
   return true;
 }
