@@ -433,6 +433,44 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   VkPipeline
       direct_host_depth_resolve_pipelines_[kDirectHostResolveMsaaCount]
                                           [kDirectHostResolveScaledCount] = {};
+  // 4 pixels per thread instead of 8 (vulkan_direct_host_resolve_4px): the
+  // 32bpp fast color and the depth resolves, the only ones taking 8.
+  static const DirectHostResolveShaderCode kDirectHostResolveColor32Shaders4px
+      [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount]
+      [kDirectHostResolveSourceUintCount];
+  static const DirectHostResolveShaderCode
+      kDirectHostResolveDepthShaders4px[kDirectHostResolveMsaaCount]
+                                       [kDirectHostResolveScaledCount];
+  VkPipeline direct_host_resolve_pipelines_4px_
+      [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount]
+      [kDirectHostResolveSourceUintCount] = {};
+  VkPipeline direct_host_depth_resolve_pipelines_4px_
+      [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount] = {};
+  // Unscaled variants also storing into the destination texture
+  // (vulkan_direct_host_resolve_to_texture).
+  enum class DirectHostResolveTextureKind {
+    kFastColor4px,
+    kFullColor32bpp,
+    kDepth4px,
+  };
+  static constexpr size_t kDirectHostResolveTextureKindCount = 3;
+  static const DirectHostResolveShaderCode kDirectHostResolveTextureShaders
+      [kDirectHostResolveTextureKindCount][kDirectHostResolveMsaaCount]
+      [kDirectHostResolveSourceUintCount];
+  VkPipeline direct_host_resolve_texture_pipelines_
+      [kDirectHostResolveTextureKindCount][kDirectHostResolveMsaaCount]
+      [kDirectHostResolveSourceUintCount] = {};
+  VkPipeline GetDirectHostResolveTexturePipeline(
+      DirectHostResolveTextureKind kind, xenos::MsaaSamples msaa_samples,
+      bool source_is_uint);
+  // Texel offset of a resolve strip into the texture it was matched to by
+  // containment, from the byte offset of its base into the tiled texture.
+  // False if the offset has no texel form.
+  static bool GetResolveDestTextureDelta(
+      const draw_util::ResolveInfo& resolve_info, uint32_t base_delta,
+      int32_t& delta_x_out, int32_t& delta_y_out);
+  // vulkan_resolve_dest_diag: the destinations and refusals already logged.
+  std::unordered_set<uint64_t> resolve_dest_diag_logged_;
   std::unique_ptr<ui::vulkan::VulkanUploadBufferPool>
       direct_host_resolve_constants_pool_;
 
@@ -1100,14 +1138,16 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
 
   VkPipeline GetDumpPipeline(DumpPipelineKey key);
 
+  // four_pixels: the 4-pixel-per-thread variant (32bpp only for color).
   VkPipeline GetDirectHostResolvePipeline(bool is_64bpp,
                                           xenos::MsaaSamples msaa_samples,
-                                          bool scaled, bool source_is_uint);
+                                          bool scaled, bool source_is_uint,
+                                          bool four_pixels);
   VkPipeline GetDirectHostColorFullResolvePipeline(
       xenos::MsaaSamples msaa_samples, bool scaled, bool source_is_uint,
       draw_util::ResolveCopyShaderIndex copy_shader);
   VkPipeline GetDirectHostDepthResolvePipeline(xenos::MsaaSamples msaa_samples,
-                                               bool scaled);
+                                               bool scaled, bool four_pixels);
   bool TryInPassResolveCopy(
       const draw_util::ResolveInfo& resolve_info,
       const draw_util::ResolveCopyShaderConstants& copy_shader_constants,
