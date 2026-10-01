@@ -2228,7 +2228,11 @@ uint32_t CommandProcessor::NormalizeSampleCount(uint64_t samples,
     return 0;
   }
 
-  uint64_t scale = scale_area;
+  if (scale_area & kZPDScaleHalfSamples) {
+    // Each host sample stands for two of the guest's.
+    samples <<= 1;
+  }
+  uint64_t scale = scale_area & ~kZPDScaleHalfSamples;
   // Round, don't truncate. 1 guest sample at 2x = 4 host samples, need >= 1.
   uint64_t normalized = scale <= 1 ? samples : (samples + (scale >> 1)) / scale;
 

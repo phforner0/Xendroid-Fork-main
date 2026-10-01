@@ -213,6 +213,15 @@ class RenderTargetCache {
     draw_samples_as_pixels_ = samples_as_pixels;
   }
   bool draw_samples_as_pixels() const { return draw_samples_as_pixels_; }
+  // Whether the 4x MSAA render targets now created are stored with 2 samples
+  // per pixel (RenderTargetKey::host_2x, msaa_4x_as_2x).
+  virtual bool IsMsaa4xHost2x() const { return false; }
+  // The sample count of the host images of a guest surface with this count.
+  xenos::MsaaSamples GetHostMsaaSamples(xenos::MsaaSamples msaa_samples) const {
+    return (msaa_samples == xenos::MsaaSamples::k4X && IsMsaa4xHost2x())
+               ? xenos::MsaaSamples::k2X
+               : msaa_samples;
+  }
 
   // Virtual (both the common code and the implementation may do something
   // here), don't call from destructors (does work not needed for shutdown
@@ -293,6 +302,11 @@ class RenderTargetCache {
       // enough. The only classes are the global scale and 1x1. Keys never
       // carry arbitrary scales.
       uint32_t scale_native : 1;  // 27
+      // A 4x MSAA surface - the guest's 4x EDRAM layout, for ownership and
+      // resolves - stored with 2 samples per pixel on the host (msaa_4x_as_2x):
+      // guest sample s (horizontal | vertical << 1) is host sample
+      // (s >> 1) ^ 1, the host's top sample being 1, like for native 2x.
+      uint32_t host_2x : 1;  // 28
     };
 
     RenderTargetKey() : key(0) { static_assert_size(*this, sizeof(key)); }
@@ -348,9 +362,14 @@ class RenderTargetCache {
     }
 
     std::string GetDebugName() const {
-      return fmt::format("RT @ {}t, <{}t>, {}xMSAA, {}{}", base_tiles,
+      return fmt::format("RT @ {}t, <{}t>, {}xMSAA{}, {}{}", base_tiles,
                          GetPitchTiles(), uint32_t(1) << uint32_t(msaa_samples),
-                         GetFormatName(), scale_native ? ", native" : "");
+                         host_2x ? " as 2x" : "", GetFormatName(),
+                         scale_native ? ", native" : "");
+    }
+    // The sample count of the host image.
+    xenos::MsaaSamples GetHostMsaaSamples() const {
+      return host_2x ? xenos::MsaaSamples::k2X : msaa_samples;
     }
   };
 

@@ -570,6 +570,9 @@ class CommandProcessor {
   // Splits the open segment when the draw scale changes so each segment
   // normalizes with one scale.
   void UpdateZPDScale(uint32_t scale_area);
+  // Or-ed into the scale area: the host passes half the samples the guest
+  // would (4x MSAA stored at 2x) - the count is doubled before the division.
+  static constexpr uint32_t kZPDScaleHalfSamples = UINT32_C(1) << 31;
 
   // Called by backends when a host query resolve completes.  Accumulates
   // the normalized sample count, and if all segments are done, commits the

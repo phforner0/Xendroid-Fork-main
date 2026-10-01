@@ -46,6 +46,13 @@ const_buffer_begin_xe(xe_resolve_host_color, 0, 1, b1, space0)
   uint xe_resolve_host_color_texture_origin_y;
 const_buffer_end_xe(xe_resolve_host_color)
 
+// XE_RESOLVE_HOST_TEXTURE, diagnostics (vulkan_debug_gpu_probe): store into the
+// texture only, not into guest memory - what the memory store costs.
+#define XE_RESOLVE_HOST_COLOR_FLAG_TEXTURE_ONLY (1u << 0u)
+// A 4x MSAA source stored with 2 samples per pixel (msaa_4x_as_2x): guest
+// sample s is host sample (s >> 1) ^ 1.
+#define XE_RESOLVE_HOST_COLOR_FLAG_SOURCE_HOST_2X (1u << 1u)
+
 #include "resolve_host_texture.xesli"
 
 #define XE_RESOLVE_HOST_COLOR_CONSTANTS_BINDING \
@@ -263,6 +270,10 @@ uint4_xe XeResolveHostColorFetchUint(
         int2_xe(source_texel.x, source_texel.y >> 1u), int(sample_id));
   #else
     uint sample_id = (source_texel.x & 1u) | ((source_texel.y & 1u) << 1u);
+    if ((constant_xe(xe_resolve_host_color, xe_resolve_host_color_flags) &
+         XE_RESOLVE_HOST_COLOR_FLAG_SOURCE_HOST_2X) != 0u) {
+      sample_id = (sample_id >> 1u) ^ 1u;
+    }
     return texel_fetch_2d_ms_xe(
         xe_resolve_host_color_source,
         int2_xe(source_texel.x >> 1u, source_texel.y >> 1u), int(sample_id));
@@ -292,6 +303,10 @@ float4_xe XeResolveHostColorFetchFloat(
         int2_xe(source_texel.x, source_texel.y >> 1u), int(sample_id));
   #else
     uint sample_id = (source_texel.x & 1u) | ((source_texel.y & 1u) << 1u);
+    if ((constant_xe(xe_resolve_host_color, xe_resolve_host_color_flags) &
+         XE_RESOLVE_HOST_COLOR_FLAG_SOURCE_HOST_2X) != 0u) {
+      sample_id = (sample_id >> 1u) ^ 1u;
+    }
     return texel_fetch_2d_ms_xe(
         xe_resolve_host_color_source,
         int2_xe(source_texel.x >> 1u, source_texel.y >> 1u), int(sample_id));

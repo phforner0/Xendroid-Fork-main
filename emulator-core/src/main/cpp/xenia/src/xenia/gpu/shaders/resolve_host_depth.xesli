@@ -31,6 +31,12 @@
 // XE_RESOLVE_HOST_TEXTURE: the texture is k_24_8_FLOAT (20e4 depth) rather
 // than k_24_8 - both hold the depth as a 32-bit float on the host.
 #define XE_RESOLVE_HOST_DEPTH_FLAG_TEXTURE_FLOAT24 (1u << 2u)
+// XE_RESOLVE_HOST_TEXTURE, diagnostics (vulkan_debug_gpu_probe): store into the
+// texture only, not into guest memory - what the memory store costs.
+#define XE_RESOLVE_HOST_DEPTH_FLAG_TEXTURE_ONLY (1u << 3u)
+// A 4x MSAA source stored with 2 samples per pixel (msaa_4x_as_2x): guest
+// sample s is host sample (s >> 1) ^ 1.
+#define XE_RESOLVE_HOST_DEPTH_FLAG_SOURCE_HOST_2X (1u << 4u)
 
 const_buffer_begin_xe(xe_resolve_host_depth, 0, 1, b1, space0)
   uint xe_resolve_host_depth_dispatch_offset;
@@ -250,6 +256,10 @@ float XeResolveHostDepthFetchDepth(
         int2_xe(source_texel.x, source_texel.y >> 1u), int(sample_id)).r;
   #else
     uint sample_id = (source_texel.x & 1u) | ((source_texel.y & 1u) << 1u);
+    if ((constant_xe(xe_resolve_host_depth, xe_resolve_host_depth_flags) &
+         XE_RESOLVE_HOST_DEPTH_FLAG_SOURCE_HOST_2X) != 0u) {
+      sample_id = (sample_id >> 1u) ^ 1u;
+    }
     return texel_fetch_2d_ms_xe(
         xe_resolve_host_depth_source,
         int2_xe(source_texel.x >> 1u, source_texel.y >> 1u),
@@ -286,6 +296,10 @@ uint XeResolveHostDepthFetchStencil(
         0xFFu;
   #else
     uint sample_id = (source_texel.x & 1u) | ((source_texel.y & 1u) << 1u);
+    if ((constant_xe(xe_resolve_host_depth, xe_resolve_host_depth_flags) &
+         XE_RESOLVE_HOST_DEPTH_FLAG_SOURCE_HOST_2X) != 0u) {
+      sample_id = (sample_id >> 1u) ^ 1u;
+    }
     return texel_fetch_2d_ms_xe(
         xe_resolve_host_depth_stencil,
         int2_xe(source_texel.x >> 1u, source_texel.y >> 1u),

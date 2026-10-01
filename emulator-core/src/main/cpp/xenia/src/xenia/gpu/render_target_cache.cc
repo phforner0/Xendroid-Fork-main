@@ -660,6 +660,9 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
   }
   uint32_t msaa_samples_x_log2 =
       uint32_t(msaa_samples >= xenos::MsaaSamples::k4X);
+  // msaa_4x_as_2x: the guest's 4x layout, stored with 2 samples per pixel.
+  const bool host_2x =
+      GetHostMsaaSamples(msaa_samples) != msaa_samples;
   uint32_t pitch_pixels = rb_surface_info.surface_pitch;
   // surface_pitch 0 should be handled in disabling rasterization (hopefully
   // it's safe to assume that).
@@ -811,7 +814,8 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
         }
         RenderTargetKey rt_key = render_target->key();
         if (rt_key.pitch_tiles_at_32bpp != pitch_tiles_at_32bpp ||
-            rt_key.msaa_samples != msaa_samples) {
+            rt_key.msaa_samples != msaa_samples ||
+            rt_key.host_2x != uint32_t(host_2x)) {
           are_accumulated_render_targets_valid_ = false;
           break;
         }
@@ -909,6 +913,7 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
     rt_key.is_depth = rt_bit_index == 0;
     rt_key.resource_format = resource_formats[rt_bit_index];
     rt_key.scale_native = uint32_t(scale_native);
+    rt_key.host_2x = uint32_t(host_2x);
     if (!interlock_barrier_only) {
       RenderTarget* render_target = GetOrCreateRenderTarget(rt_key);
       if (!render_target) {
@@ -1029,7 +1034,8 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
       } else {
         RenderTargetKey accumulated_rt_key = accumulated_rt->key();
         if (accumulated_rt_key.pitch_tiles_at_32bpp != pitch_tiles_at_32bpp ||
-            accumulated_rt_key.msaa_samples != msaa_samples) {
+            accumulated_rt_key.msaa_samples != msaa_samples ||
+            accumulated_rt_key.host_2x != uint32_t(host_2x)) {
           // The previously bound render target is incompatible with the
           // current surface info.
           are_accumulated_render_targets_valid_ = false;
@@ -1430,6 +1436,8 @@ bool RenderTargetCache::PrepareHostRenderTargetsResolveClear(
     depth_render_target_key.resource_format =
         resolve_info.depth_edram_info.format;
     depth_render_target_key.scale_native = uint32_t(scale_native);
+    depth_render_target_key.host_2x =
+        uint32_t(GetHostMsaaSamples(msaa_samples) != msaa_samples);
     depth_render_target = GetOrCreateRenderTarget(depth_render_target_key);
     if (!depth_render_target) {
       // Failed to create the depth render target, don't clear it.
@@ -1447,6 +1455,8 @@ bool RenderTargetCache::PrepareHostRenderTargetsResolveClear(
     color_render_target_key.resource_format = uint32_t(GetColorResourceFormat(
         xenos::ColorRenderTargetFormat(resolve_info.color_edram_info.format)));
     color_render_target_key.scale_native = uint32_t(scale_native);
+    color_render_target_key.host_2x =
+        uint32_t(GetHostMsaaSamples(msaa_samples) != msaa_samples);
     color_render_target = GetOrCreateRenderTarget(color_render_target_key);
     if (!color_render_target) {
       // Failed to create the color render target, don't clear it.
@@ -1765,8 +1775,11 @@ void RenderTargetCache::ChangeOwnership(
                 host_depth_encoding_different
                     ? it->second.GetHostDepthRenderTarget(dest.GetDepthFormat())
                     : RenderTargetKey();
-            if (transfer_host_depth_source == transfer_source) {
+            if (transfer_host_depth_source == transfer_source ||
+                (transfer_host_depth_source == dest && dest.host_2x)) {
               // Same render target, don't provide a separate host depth source.
+              // Neither for a destination stored at 2x being its own host depth
+              // source - copying its host depth aside takes raw 4x samples.
               transfer_host_depth_source = RenderTargetKey();
             }
             if (!transfers_append_out->empty() &&

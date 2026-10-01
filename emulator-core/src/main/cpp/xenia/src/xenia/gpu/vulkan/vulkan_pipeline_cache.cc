@@ -2627,7 +2627,10 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   VkPipelineMultisampleStateCreateInfo multisample_state = {};
   multisample_state.sType =
       VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-  if (description.render_pass_key.msaa_samples == xenos::MsaaSamples::k2X &&
+  // 4x MSAA attachments stored at 2x (host_2x) rasterize with 2 samples.
+  const xenos::MsaaSamples host_msaa_samples =
+      description.render_pass_key.GetHostMsaaSamples();
+  if (host_msaa_samples == xenos::MsaaSamples::k2X &&
       !render_target_cache_.IsMsaa2xSupported(
           !edram_fragment_shader_interlock &&
           description.render_pass_key.depth_and_color_used != 0)) {
@@ -2640,8 +2643,8 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
     // Direct3D, it's completely ignored in this case).
     multisample_state.pSampleMask = &sample_mask;
   } else {
-    multisample_state.rasterizationSamples = VkSampleCountFlagBits(
-        uint32_t(1) << uint32_t(description.render_pass_key.msaa_samples));
+    multisample_state.rasterizationSamples =
+        VkSampleCountFlagBits(uint32_t(1) << uint32_t(host_msaa_samples));
   }
   // Only with the option on: otherwise the pixel shaders emulate it, and a
   // stored description with the bit must not add the host's on top.

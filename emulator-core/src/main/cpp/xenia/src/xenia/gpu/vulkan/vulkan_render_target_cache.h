@@ -76,6 +76,10 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
       // contents can be discarded (loadOp = DONT_CARE).
       uint32_t depth_and_color_load_dont_care
           : 1 + xenos::kMaxColorRenderTargets;  // 30
+      // 4x MSAA attachments stored with 2 samples per pixel (RenderTargetKey::
+      // host_2x): msaa_samples stays 4x, for the guest decisions and the
+      // framebuffer extent, and the attachments and the rasterization have 2.
+      uint32_t host_2x : 1;  // 31
     };
     uint32_t key = 0;
     struct Hasher {
@@ -83,6 +87,11 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
         return std::hash<uint32_t>{}(key.key);
       }
     };
+    // The sample count of the attachments and of the rasterization (before
+    // the 2x-as-4x emulation when 2x attachments are unsupported).
+    xenos::MsaaSamples GetHostMsaaSamples() const {
+      return host_2x ? xenos::MsaaSamples::k2X : msaa_samples;
+    }
     bool operator==(const RenderPassKey& other_key) const {
       return key == other_key.key;
     }
@@ -126,12 +135,22 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // most tiles first ("" if there were none).
   std::string TakeTransferStats(double frames);
 
+  // vulkan_debug_gpu_probe bits (the work skipped to measure what it costs).
+  static constexpr int32_t kGpuProbeSkipSmallResolves = 1 << 0;
+  static constexpr int32_t kGpuProbeTextureOnlyResolves = 1 << 1;
+  static constexpr int32_t kGpuProbeSkipTransfers = 1 << 2;
+  static constexpr int32_t kGpuProbeSkipSameBaseMsaaTransfers = 1 << 3;
+  // Direct host resolves of averaged MSAA samples read only the first sample.
+  static constexpr int32_t kGpuProbeSingleSampleResolves = 1 << 4;
+
 
   // Called once per guest frame (from IssueSwap) to aggregate and, once per
   // second, log the resolve classification when log_resolve_details is set.
   void LogResolveDetailsOnFrameEnd();
 
   Path GetPath() const override { return path_; }
+  // msaa_4x_as_2x, on the host render target path with 2x attachments.
+  bool IsMsaa4xHost2x() const override;
 
   VkBuffer edram_buffer() const { return edram_buffer_; }
 
@@ -801,6 +820,10 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
       // size and conversion between the scale spaces.
       uint32_t dest_scale_native : 1;
       uint32_t source_scale_native : 1;
+      // 4x MSAA sides stored with 2 samples per pixel (RenderTargetKey::host_2x).
+      uint32_t dest_host_2x : 1;
+      uint32_t source_host_2x : 1;
+      uint32_t host_depth_source_host_2x : 1;
 
       // Last bits because this affects the pipeline layout - after sorting,
       // only change it as fewer times as possible. Depth buffers have an
@@ -944,6 +967,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
       // source_scale_native only.
       // Address the EDRAM buffer with the plain 1x1 tile layout.
       uint32_t native_layout : 1;
+      // A 4x MSAA source stored with 2 samples per pixel.
+      uint32_t host_2x : 1;
     };
 
     DumpPipelineKey() : key(0) { static_assert_size(*this, sizeof(key)); }
