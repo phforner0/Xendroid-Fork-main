@@ -302,6 +302,16 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
         return nullptr;
       }
       assert_true(supported_extension_count == supported_extensions.size());
+      // All of them, to see what a driver offers beyond what's requested.
+      std::string supported_line;
+      for (size_t i = 0; i < supported_extensions.size(); ++i) {
+        supported_line += ' ';
+        supported_line += supported_extensions[i].extensionName;
+        if (i % 12 == 11 || i + 1 == supported_extensions.size()) {
+          XELOGI("Supported Vulkan device extensions:{}", supported_line);
+          supported_line.clear();
+        }
+      }
       for (const VkExtensionProperties& supported_extension :
            supported_extensions) {
         const auto requested_extension_it =

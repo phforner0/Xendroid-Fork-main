@@ -467,14 +467,19 @@ class VulkanCommandProcessor final : public CommandProcessor {
   bool IssueCopy() override;
   // vulkan_depth_4x_as_1x: the guest's 4x MSAA surface info rewritten for the
   // current draw (IssueDraw restores it) to the 1x surface of the samples, for
-  // depth-only draws into surfaces never drawn with color (the depth surfaces
-  // of multisampled scenes are left alone). pixel_shader is the one the draw
-  // uses (null for depth-only). Returns whether the draw renders the samples
-  // as pixels.
-  bool RewriteMsaa4xSurfaceInfoForDraw(const Shader* pixel_shader);
+  // depth-only draws (and with vulkan_samples_as_pixels_simple_ps, draws with
+  // simple pixel shaders) into surfaces never drawn with color otherwise (the
+  // depth surfaces of multisampled scenes are left alone). pixel_shader is the
+  // one the draw uses (null for depth-only). Returns whether the draw renders
+  // the samples as pixels.
+  bool RewriteMsaa4xSurfaceInfoForDraw(const Shader* pixel_shader,
+                                       bool pixel_shader_uses_position);
   // The key of the current depth surface: depth base | pitch << 16.
   uint32_t GetMsaa4xDepthSurface() const;
   std::unordered_set<uint32_t> msaa_4x_scene_depth_surfaces_;
+  // vulkan_samples_as_pixels_simple_ps when msaa_4x_scene_depth_surfaces_ was
+  // filled.
+  bool msaa_4x_scene_depth_surfaces_simple_ps_ = false;
 
   void InitializeTrace() override;
 

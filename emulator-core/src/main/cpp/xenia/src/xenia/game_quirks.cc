@@ -97,6 +97,12 @@ static const Quirk kQuirks[] = {
     // the same image parked and over a drive (S24, 2026-10-01).
     {0x4D5309C9, "skip_overwritten_transfers", true,
      "no transfers into what the draw overwrites"},
+    // The 1280x720 lighting marks stencil at 640x360 4x (quads with texture-
+    // less pixel shaders) between 1x passes: drawn into the 1x surface of
+    // their samples, transfers 8071 -> 3703 tiles a frame, GPU time -1.7 ms
+    // (-5.2%) at the 30 fps cap, the same image parked (S28, 2026-10-01).
+    {0x4D5309C9, "vulkan_samples_as_pixels_simple_ps", true,
+     "4x stencil marking with simple pixel shaders into the 1x surface"},
 };
 
 // Same path/priority as a per-game config file.

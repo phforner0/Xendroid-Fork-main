@@ -38,7 +38,8 @@ DEFINE_bool(
     "(its vertex shader run on the CPU) covering the transferred area and "
     "writing every pixel and sample unconditionally - depth with the always "
     "test and the stencil replaced in full, color with all components and no "
-    "blending, no alpha test, alpha to coverage, pixel kill or culling. The "
+    "blending, no alpha test, alpha to coverage or pixel kill (rectangles are "
+    "never culled). The "
     "clear quads of titles reusing the EDRAM for other formats are such "
     "draws. Read per draw (debug.xendroid.skip_overwritten_transfers on "
     "Android).",
@@ -676,28 +677,33 @@ void RenderTargetCache::SkipTransfersOverwrittenByDraw(
     uint32_t normalized_color_mask, const Shader& vertex_shader,
     const RenderTargetKey* rt_keys) {
   const RegisterFile& regs = register_file();
-  if (draw_samples_as_pixels_ || draw_pixel_shader_kills_) {
+  auto trace_kept = [&](const char* reason) {
+    if (edram_trace_frames_left_) {
+      EdramTraceNote(fmt::format("transfers kept: {}", reason));
+    }
+  };
+  if (draw_pixel_shader_kills_) {
+    trace_kept("the pixel shader may kill");
     return;
   }
-  // Every covered pixel, and all its samples, reaches the output merger.
-  auto pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
-  if (pa_su_sc_mode_cntl.cull_front || pa_su_sc_mode_cntl.cull_back ||
-      pa_su_sc_mode_cntl.poly_mode == xenos::PolygonModeEnable::kDualMode) {
-    return;
-  }
+  // Every covered pixel, and all its samples, reaches the output merger. Face
+  // culling and polygon modes don't matter: the draws checked here are single
+  // rectangles, and rectangle lists aren't polygonal primitives for the hosts
+  // (draw_util::IsPrimitivePolygonal) - never culled, always filled.
+  // The alpha test and alpha to coverage are done on the pixel shader's alpha
+  // - none without a pixel shader, whatever the state says.
   auto rb_colorcontrol = regs.Get<reg::RB_COLORCONTROL>();
-  if ((rb_colorcontrol.alpha_test_enable &&
-       rb_colorcontrol.alpha_func != xenos::CompareFunction::kAlways) ||
-      rb_colorcontrol.alpha_to_mask_enable) {
+  if (draw_has_pixel_shader_ &&
+      ((rb_colorcontrol.alpha_test_enable &&
+        rb_colorcontrol.alpha_func != xenos::CompareFunction::kAlways) ||
+       rb_colorcontrol.alpha_to_mask_enable)) {
+    trace_kept("alpha test or alpha to coverage");
     return;
   }
   // The targets the draw overwrites whatever they hold: bit 0 - depth and
   // stencil, 1 + i - color i.
   uint32_t overwritten = 0;
-  if (!last_update_transfers_[0].empty() &&
-      normalized_depth_control.z_enable &&
-      normalized_depth_control.z_write_enable &&
-      normalized_depth_control.zfunc == xenos::CompareFunction::kAlways &&
+  const bool stencil_overwritten =
       normalized_depth_control.stencil_enable &&
       normalized_depth_control.stencilfunc == xenos::CompareFunction::kAlways &&
       normalized_depth_control.stencilzpass == xenos::StencilOp::kReplace &&
@@ -708,7 +714,12 @@ void RenderTargetCache::SkipTransfersOverwrittenByDraw(
         normalized_depth_control.stencilzpass_bf ==
             xenos::StencilOp::kReplace &&
         regs.Get<reg::RB_STENCILREFMASK>(XE_GPU_REG_RB_STENCILREFMASK_BF)
-                .stencilwritemask == 0xFF))) {
+                .stencilwritemask == 0xFF));
+  if (!last_update_transfers_[0].empty() &&
+      normalized_depth_control.z_enable &&
+      normalized_depth_control.z_write_enable &&
+      normalized_depth_control.zfunc == xenos::CompareFunction::kAlways &&
+      stencil_overwritten) {
     overwritten |= 1;
   }
   for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
@@ -728,13 +739,51 @@ void RenderTargetCache::SkipTransfersOverwrittenByDraw(
     }
     overwritten |= uint32_t(1) << (1 + i);
   }
+  if (edram_trace_frames_left_) {
+    // Why the transfers of a target are kept.
+    if (!last_update_transfers_[0].empty() && !(overwritten & 1)) {
+      EdramTraceNote(fmt::format(
+          "depth transfers kept: depth test {} write {} func {}, stencil {} "
+          "func {} pass op {} write mask {:02X}, back face {}",
+          uint32_t(normalized_depth_control.z_enable),
+          uint32_t(normalized_depth_control.z_write_enable),
+          uint32_t(normalized_depth_control.zfunc),
+          uint32_t(normalized_depth_control.stencil_enable),
+          uint32_t(normalized_depth_control.stencilfunc),
+          uint32_t(normalized_depth_control.stencilzpass),
+          uint32_t(regs.Get<reg::RB_STENCILREFMASK>().stencilwritemask),
+          uint32_t(normalized_depth_control.backface_enable)));
+    }
+    for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
+      if (!last_update_transfers_[1 + i].empty() &&
+          !(overwritten & (uint32_t(1) << (1 + i)))) {
+        EdramTraceNote(fmt::format(
+            "color {} transfers kept: mask {:X}, blend control {:08X}", i,
+            (normalized_color_mask >> (4 * i)) & 0b1111,
+            regs.Get<reg::RB_BLENDCONTROL>(
+                    reg::RB_BLENDCONTROL::rt_register_indices[i])
+                .value));
+      }
+    }
+  }
   if (!overwritten) {
     return;
   }
   // The pixels the rectangle covers inside the scissor.
   float left, top, right, bottom;
-  if (!draw_extent_estimator_.EstimateRectangle(vertex_shader, left, top,
-                                                right, bottom)) {
+  const char* not_rectangle_reason = "";
+  if (!draw_extent_estimator_.EstimateRectangle(
+          vertex_shader, left, top, right, bottom,
+          edram_trace_frames_left_ ? &not_rectangle_reason : nullptr)) {
+    if (edram_trace_frames_left_) {
+      auto vgt_draw_initiator = regs.Get<reg::VGT_DRAW_INITIATOR>();
+      EdramTraceNote(fmt::format(
+          "transfers kept: not a single rectangle the CPU can run (primitive "
+          "type {}, {} indices, source select {}): {}",
+          uint32_t(vgt_draw_initiator.prim_type),
+          uint32_t(vgt_draw_initiator.num_indices),
+          uint32_t(vgt_draw_initiator.source_select), not_rectangle_reason));
+    }
     return;
   }
   draw_util::Scissor scissor;
@@ -743,6 +792,15 @@ void RenderTargetCache::SkipTransfersOverwrittenByDraw(
   top = std::max(top, float(scissor.offset[1]));
   right = std::min(right, float(scissor.offset[0] + scissor.extent[0]));
   bottom = std::min(bottom, float(scissor.offset[1] + scissor.extent[1]));
+  if (draw_samples_as_pixels_) {
+    // From the guest's 4x pixels to the pixels of the 1x surface of their
+    // samples (rt_keys), 2x2 per 4x pixel - a whole 1x pixel inside the
+    // doubled rectangle has its center inside too.
+    left *= 2.0f;
+    top *= 2.0f;
+    right *= 2.0f;
+    bottom *= 2.0f;
+  }
   uint32_t rts_remaining = overwritten;
   uint32_t rt_index;
   while (xe::bit_scan_forward(rts_remaining, &rt_index)) {
@@ -770,6 +828,15 @@ void RenderTargetCache::SkipTransfersOverwrittenByDraw(
                         right ||
                     float(rectangle.y_pixels + rectangle.height_pixels) >
                         bottom) {
+                  if (edram_trace_frames_left_) {
+                    EdramTraceNote(fmt::format(
+                        "transfer kept: [{}] -> [{}] {},{} {}x{} outside the "
+                        "covered {},{} - {},{}",
+                        transfer.source->key().GetDebugName(),
+                        key.GetDebugName(), rectangle.x_pixels,
+                        rectangle.y_pixels, rectangle.width_pixels,
+                        rectangle.height_pixels, left, top, right, bottom));
+                  }
                   return false;
                 }
               }
@@ -1026,16 +1093,15 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
 
   // Estimate height used by render targets (for color for writes, for depth /
   // stencil for both reads and writes) from various sources.
+  // With the samples drawn as pixels, in the rows of the 1x surface (2 per
+  // guest 4x pixel row, rounded like at 1x - the surface info is the 1x one
+  // now), not past the last covered one: a full-screen 4x quad mustn't claim
+  // the next row of tiles (owned by another surface) from its 1x surface.
   uint32_t height_used = draw_extent_estimator_.EstimateMaxY(
       interlock_barrier_only
           ? cvars::execute_unclipped_draw_vs_on_cpu_for_psi_render_backend
           : true,
-      vertex_shader);
-  if (draw_samples_as_pixels_) {
-    // In the guest's 4x pixels, but rounded like at 1x (the surface info is
-    // the 1x one now) - one more row covers the lower samples of the last.
-    height_used = (height_used + 1) << 1;
-  }
+      vertex_shader, draw_samples_as_pixels_ ? 2 : 1);
   height_used = std::min(
       GetRenderTargetHeight(pitch_tiles_at_32bpp, msaa_samples), height_used);
 
@@ -1226,13 +1292,19 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
       auto rb_stencil_ref_mask = regs.Get<reg::RB_STENCILREFMASK>();
       XELOGI(
           "EdramTrace: first draw: depth test {} write {} func {}, stencil {} "
-          "write mask {:02X}, color mask {:08X}, {} rows",
+          "write mask {:02X}, color mask {:08X}, {} rows | stencil func {} "
+          "pass {} fail {} zfail {}{}",
           uint32_t(normalized_depth_control.z_enable),
           uint32_t(normalized_depth_control.z_write_enable),
           uint32_t(normalized_depth_control.zfunc),
           uint32_t(normalized_depth_control.stencil_enable),
           uint32_t(rb_stencil_ref_mask.stencilwritemask),
-          normalized_color_mask, height_used);
+          normalized_color_mask, height_used,
+          uint32_t(normalized_depth_control.stencilfunc),
+          uint32_t(normalized_depth_control.stencilzpass),
+          uint32_t(normalized_depth_control.stencilfail),
+          uint32_t(normalized_depth_control.stencilzfail),
+          edram_trace_draw_info_);
     }
     ++edram_trace_draws_;
   }
