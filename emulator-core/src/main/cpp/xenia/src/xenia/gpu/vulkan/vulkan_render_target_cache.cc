@@ -84,6 +84,16 @@ DEFINE_bool(
     "Vulkan");
 
 DEFINE_bool(
+    transfer_cleared_sources_as_clears, false,
+    "Host render target path: an ownership transfer copying only what the "
+    "last resolve clear of its source left there (no draw since) is a clear "
+    "of its destination inside the draw's pass instead - the same EDRAM bits "
+    "in the destination's format, without sampling the source. Titles "
+    "reusing cleared EDRAM in other formats (Forza Horizon: ~900 tiles a "
+    "frame). Read per draw (debug.xendroid.cleared_transfers on Android).",
+    "GPU");
+
+DEFINE_bool(
     vulkan_resolve_draw_barriers_at_resolve, true,
     "Issue at a resolve the barriers the next draws would need after it - its "
     "stores into a texture before the texture's sampling, and (with "
@@ -275,9 +285,16 @@ bool VulkanRenderTargetCache::IsMsaa4xHost2x() const {
 }
 
 std::string VulkanRenderTargetCache::TakeTransferStats(double frames) {
-  uint64_t skipped_transfers, skipped_tiles;
-  TakeOverwrittenTransferSkips(skipped_transfers, skipped_tiles);
-  if ((transfer_stats_.empty() && !skipped_transfers) || frames <= 0.0) {
+  uint64_t skipped_transfers, skipped_tiles, cut_transfers;
+  TakeOverwrittenTransferSkips(skipped_transfers, skipped_tiles,
+                               &cut_transfers);
+  const uint64_t transfers_as_clears = transfers_as_clears_;
+  const uint64_t transfer_tiles_as_clears = transfer_tiles_as_clears_;
+  transfers_as_clears_ = 0;
+  transfer_tiles_as_clears_ = 0;
+  if ((transfer_stats_.empty() && !skipped_transfers &&
+       !transfers_as_clears) ||
+      frames <= 0.0) {
     transfer_stats_.clear();
     return std::string();
   }
@@ -298,6 +315,16 @@ std::string VulkanRenderTargetCache::TakeTransferStats(double frames) {
     // skip_overwritten_transfers.
     stats += fmt::format(" skipped as overwritten={:.1f} tiles={:.0f}",
                          skipped_transfers / frames, skipped_tiles / frames);
+  }
+  if (cut_transfers) {
+    // skip_overwritten_transfers_cutout (their tiles counted above in full).
+    stats += fmt::format(" cut={:.1f}", cut_transfers / frames);
+  }
+  if (transfers_as_clears) {
+    // transfer_cleared_sources_as_clears (not counted above).
+    stats += fmt::format(" as clears={:.1f} tiles={:.0f}",
+                         transfers_as_clears / frames,
+                         transfer_tiles_as_clears / frames);
   }
   auto name = [](uint32_t key_value) {
     if (!key_value) {
@@ -3359,6 +3386,10 @@ bool VulkanRenderTargetCache::Resolve(
   if (flushed_pending_transfers) {
     FlushPendingDrawPassTransfers();
   }
+  // The same for the transfers turned into clears.
+  if (GetPath() == Path::kHostRenderTargets) {
+    FlushPendingDrawPassClears();
+  }
   // For the per-resolve GPU timestamps (VkResolveTime).
   last_resolve_key_ =
       (resolve_info.IsClearingDepth() || resolve_info.IsClearingColor()
@@ -3867,6 +3898,11 @@ bool VulkanRenderTargetCache::Resolve(
                                              clear_transfers_, clear_values,
                                              &clear_rectangle);
           }
+          // What later transfers from these may copy as a clear instead.
+          RecordResolveClear(clear_render_targets[0], clear_values[0],
+                             clear_rectangle);
+          RecordResolveClear(clear_render_targets[1], clear_values[1],
+                             clear_rectangle);
         }
         cleared = true;
       } break;
@@ -4066,6 +4102,7 @@ bool VulkanRenderTargetCache::Update(
   if (!FlushPendingDrawPassTransfers()) {
     return false;
   }
+  FlushPendingDrawPassClears();
 
   if (!RenderTargetCache::Update(is_rasterization_done,
                                  normalized_depth_control,
@@ -4112,6 +4149,54 @@ bool VulkanRenderTargetCache::Update(
         render_pass_key.depth_and_color_used |= 1 << 4;
         render_pass_key.color_3_view_format =
             depth_and_color_render_targets[4]->key().GetColorFormat();
+      }
+
+      // Transfers of only what a resolve clear left in their source: a clear
+      // of the destination inside the draw's pass instead, with the same
+      // EDRAM bits (transfer_cleared_sources_as_clears).
+      if (cvars::transfer_cleared_sources_as_clears) {
+        std::vector<Transfer>* transfers_to_clear =
+            last_update_transfers_mutable();
+        for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+          RenderTarget* dest = depth_and_color_render_targets[i];
+          std::vector<Transfer>& transfers = transfers_to_clear[i];
+          if (!dest || transfers.empty()) {
+            continue;
+          }
+          const RenderTargetKey dest_key = dest->key();
+          // The clear values of the formats with a separate transfer view
+          // (uint reinterpretation) are for that view, not for the draw view
+          // bound in the guest pass.
+          if (!dest_key.is_depth &&
+              static_cast<VulkanRenderTarget*>(dest)
+                      ->view_color_transfer_separate() != VK_NULL_HANDLE) {
+            continue;
+          }
+          for (auto it = transfers.begin(); it != transfers.end();) {
+            uint64_t value;
+            // With a host depth source, the transfer may write its more
+            // precise depth instead of the one in the EDRAM bits.
+            if (it->source && !it->host_depth_source &&
+                it->source->key().Is64bpp() == dest_key.Is64bpp() &&
+                IsTransferSourceResolveCleared(*it, value)) {
+              if (IsEdramTraceActive()) {
+                EdramTraceNote(fmt::format(
+                    "transfer as a clear: [{}] -> [{}], tiles {}-{}, value "
+                    "{:016X}",
+                    it->source->key().GetDebugName(), dest_key.GetDebugName(),
+                    it->start_tiles, it->end_tiles, value));
+              }
+              ++transfers_as_clears_;
+              transfer_tiles_as_clears_ += it->end_tiles - it->start_tiles;
+              pending_draw_pass_clears_[i].emplace_back(*it, value);
+              pending_draw_pass_clear_render_targets_[i] = dest;
+              pending_draw_pass_clear_mask_ |= uint32_t(1) << i;
+              it = transfers.erase(it);
+            } else {
+              ++it;
+            }
+          }
+        }
       }
 
       // Determine whether there's any transfer work at all (the common
@@ -4346,7 +4431,8 @@ bool VulkanRenderTargetCache::BuildTransferRectanglePlans(
     TransferRectanglePlan plan;
     plan.rectangle_count = transfer.GetRectangles(
         dest_key.base_tiles, dest_key.GetPitchTiles(), dest_key.msaa_samples,
-        dest_key.Is64bpp(), plan.rectangles.data(), nullptr);
+        dest_key.Is64bpp(), plan.rectangles.data(),
+        transfer.GetCutout(nullptr));
     if (!plan.rectangle_count) {
       transfer_rectangles_out.clear();
       return false;
@@ -4639,6 +4725,131 @@ bool VulkanRenderTargetCache::EncodePendingDrawPassTransfers() {
                                    nullptr, true);
   ClearPendingDrawPassTransfers();
   return true;
+}
+
+void VulkanRenderTargetCache::EncodePendingDrawPassClears() {
+  if (!pending_draw_pass_clear_mask_) {
+    return;
+  }
+  const RenderPassKey render_pass_key = last_update_render_pass_key_;
+  RenderTarget* const* pass_render_targets =
+      last_update_accumulated_render_targets();
+  const VkExtent2D pass_extent = last_update_framebuffer_
+                                     ? last_update_framebuffer_->host_extent
+                                     : VkExtent2D{0, 0};
+  DeferredCommandBuffer& command_buffer =
+      command_processor_.deferred_command_buffer();
+  for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+    if (!(pending_draw_pass_clear_mask_ & (uint32_t(1) << i))) {
+      continue;
+    }
+    RenderTarget* dest = pending_draw_pass_clear_render_targets_[i];
+    // The attachment of the pass the destination is bound to - always the
+    // same slot as in the draw it was made for.
+    if (!dest || pass_render_targets[i] != dest ||
+        !(render_pass_key.depth_and_color_used & (uint32_t(1) << i))) {
+      assert_always("A transfer turned into a clear lost its attachment");
+      continue;
+    }
+    const RenderTargetKey dest_key = dest->key();
+    const uint32_t scale_x = GetKeyScaleX(dest_key);
+    const uint32_t scale_y = GetKeyScaleY(dest_key);
+    for (const auto& transfer_clear : pending_draw_pass_clears_[i]) {
+      const Transfer& transfer = transfer_clear.first;
+      VkClearAttachment clear_attachment;
+      GetResolveClearAttachment(dest_key, transfer_clear.second,
+                                clear_attachment);
+      clear_attachment.colorAttachment = i ? i - 1 : 0;
+      Transfer::Rectangle rectangles[Transfer::kMaxRectanglesWithCutout];
+      uint32_t rectangle_count = transfer.GetRectangles(
+          dest_key.base_tiles, dest_key.GetPitchTiles(), dest_key.msaa_samples,
+          dest_key.Is64bpp(), rectangles, transfer.GetCutout(nullptr));
+      VkClearRect clear_rects[Transfer::kMaxRectanglesWithCutout];
+      uint32_t clear_rect_count = 0;
+      for (uint32_t j = 0; j < rectangle_count; ++j) {
+        // Inside the render area (the framebuffer extent).
+        const uint32_t x0 = std::min(rectangles[j].x_pixels * scale_x,
+                                     pass_extent.width);
+        const uint32_t y0 = std::min(rectangles[j].y_pixels * scale_y,
+                                     pass_extent.height);
+        const uint32_t x1 = std::min(
+            (rectangles[j].x_pixels + rectangles[j].width_pixels) * scale_x,
+            pass_extent.width);
+        const uint32_t y1 = std::min(
+            (rectangles[j].y_pixels + rectangles[j].height_pixels) * scale_y,
+            pass_extent.height);
+        if (x1 <= x0 || y1 <= y0) {
+          continue;
+        }
+        VkClearRect& clear_rect = clear_rects[clear_rect_count++];
+        clear_rect.rect.offset.x = int32_t(x0);
+        clear_rect.rect.offset.y = int32_t(y0);
+        clear_rect.rect.extent.width = x1 - x0;
+        clear_rect.rect.extent.height = y1 - y0;
+        clear_rect.baseArrayLayer = 0;
+        clear_rect.layerCount = 1;
+      }
+      if (clear_rect_count) {
+        command_buffer.CmdVkClearAttachments(1, &clear_attachment,
+                                             clear_rect_count, clear_rects);
+      }
+    }
+  }
+  ClearPendingDrawPassClears();
+}
+
+void VulkanRenderTargetCache::FlushPendingDrawPassClears() {
+  if (!pending_draw_pass_clear_mask_) {
+    return;
+  }
+  // A draw that never happened: in its pass, before anything else uses its
+  // render targets. Not if reopening that pass would discard what's in its
+  // attachments (in-pass transfers made its loads "don't care").
+  if (last_update_render_pass_ == VK_NULL_HANDLE ||
+      !last_update_framebuffer_ ||
+      last_update_render_pass_key_.depth_and_color_load_dont_care) {
+    XELOGW(
+        "VulkanRenderTargetCache: dropped the clears replacing transfers of a "
+        "draw that didn't happen");
+    ClearPendingDrawPassClears();
+    return;
+  }
+  // Every attachment of the pass in its draw usage, as Update leaves them.
+  const RenderPassKey render_pass_key = last_update_render_pass_key_;
+  RenderTarget* const* pass_render_targets =
+      last_update_accumulated_render_targets();
+  for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+    RenderTarget* rt = pass_render_targets[i];
+    if (!rt || !(render_pass_key.depth_and_color_used & (uint32_t(1) << i))) {
+      continue;
+    }
+    auto& vulkan_rt = *static_cast<VulkanRenderTarget*>(rt);
+    VkPipelineStageFlags rt_dst_stage_mask;
+    VkAccessFlags rt_dst_access_mask;
+    VkImageLayout rt_new_layout;
+    vulkan_rt.GetDrawUsage(&rt_dst_stage_mask, &rt_dst_access_mask,
+                           &rt_new_layout);
+    command_processor_.PushImageMemoryBarrier(
+        vulkan_rt.image(),
+        ui::vulkan::util::InitializeSubresourceRange(
+            i ? VK_IMAGE_ASPECT_COLOR_BIT
+              : (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)),
+        vulkan_rt.current_stage_mask(), rt_dst_stage_mask,
+        vulkan_rt.current_access_mask(), rt_dst_access_mask,
+        vulkan_rt.current_layout(), rt_new_layout);
+    vulkan_rt.SetUsage(rt_dst_stage_mask, rt_dst_access_mask, rt_new_layout);
+  }
+  command_processor_.SubmitBarriersAndEnterRenderTargetCacheRenderPass(
+      last_update_render_pass_, last_update_framebuffer_);
+  EncodePendingDrawPassClears();
+}
+
+void VulkanRenderTargetCache::ClearPendingDrawPassClears() {
+  for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+    pending_draw_pass_clears_[i].clear();
+    pending_draw_pass_clear_render_targets_[i] = nullptr;
+  }
+  pending_draw_pass_clear_mask_ = 0;
 }
 
 bool VulkanRenderTargetCache::FlushPendingDrawPassTransfers() {
@@ -8676,7 +8887,7 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
       uint32_t transfer_rectangle_count = transfer.GetRectangles(
           dest_rt_key.base_tiles, dest_rt_key.pitch_tiles_at_32bpp,
           dest_rt_key.msaa_samples, false, transfer_rectangles,
-          resolve_clear_rectangle);
+          transfer.GetCutout(resolve_clear_rectangle));
       assert_not_zero(transfer_rectangle_count);
       HostDepthStoreRectangleConstant host_depth_store_rectangle_constant;
       for (uint32_t j = 0; j < transfer_rectangle_count; ++j) {
@@ -8992,7 +9203,8 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
             stencil_clear_rectangle_count +=
                 transfer.GetRectangles(dest_rt_key.base_tiles, dest_pitch_tiles,
                                        dest_rt_key.msaa_samples, dest_is_64bpp,
-                                       nullptr, resolve_clear_rectangle);
+                                       nullptr,
+                                       transfer.GetCutout(resolve_clear_rectangle));
           }
           current_transfer_invocations_.emplace_back(transfer,
                                                      new_transfer_shader_key);
@@ -9079,7 +9291,7 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
               transfer.GetRectangles(dest_rt_key.base_tiles, dest_pitch_tiles,
                                      dest_rt_key.msaa_samples, dest_is_64bpp,
                                      transfer_stencil_clear_rectangles,
-                                     resolve_clear_rectangle);
+                                     transfer.GetCutout(resolve_clear_rectangle));
           for (uint32_t j = 0; j < transfer_stencil_clear_rectangle_count;
                ++j) {
             const Transfer::Rectangle& stencil_clear_rectangle =
@@ -9136,7 +9348,8 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
             transfer_invocation_first.transfer.GetRectangles(
                 dest_rt_key.base_tiles, dest_pitch_tiles,
                 dest_rt_key.msaa_samples, dest_is_64bpp, nullptr,
-                resolve_clear_rectangle);
+                transfer_invocation_first.transfer.GetCutout(
+                    resolve_clear_rectangle));
         for (auto it_merge = std::next(it_merged_first);
              it_merge != current_transfer_invocations_.cend(); ++it_merge) {
           if (!transfer_invocation_first.CanBeMergedIntoOneDraw(*it_merge)) {
@@ -9145,7 +9358,7 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
           transfer_rectangle_count += it_merge->transfer.GetRectangles(
               dest_rt_key.base_tiles, dest_pitch_tiles,
               dest_rt_key.msaa_samples, dest_is_64bpp, nullptr,
-              resolve_clear_rectangle);
+              it_merge->transfer.GetCutout(resolve_clear_rectangle));
           it_merged_last = it_merge;
         }
         assert_not_zero(transfer_rectangle_count);
@@ -9193,7 +9406,8 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
               it_merged->transfer.GetRectangles(
                   dest_rt_key.base_tiles, dest_pitch_tiles,
                   dest_rt_key.msaa_samples, dest_is_64bpp,
-                  transfer_invocation_rectangles, resolve_clear_rectangle);
+                  transfer_invocation_rectangles,
+                  it_merged->transfer.GetCutout(resolve_clear_rectangle));
           assert_not_zero(transfer_invocation_rectangle_count);
           for (uint32_t j = 0; j < transfer_invocation_rectangle_count; ++j) {
             const Transfer::Rectangle& transfer_rectangle =

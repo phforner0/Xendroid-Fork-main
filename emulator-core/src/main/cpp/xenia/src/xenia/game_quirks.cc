@@ -103,6 +103,11 @@ static const Quirk kQuirks[] = {
     // (-5.2%) at the 30 fps cap, the same image parked (S28, 2026-10-01).
     {0x4D5309C9, "vulkan_samples_as_pixels_simple_ps", true,
      "4x stencil marking with simple pixel shaders into the 1x surface"},
+    // Transfers a clear quad covers in part (whole rows of tiles claimed, less
+    // drawn) copy only the rest: 9 a frame, GPU time -0.1 to -0.2 ms at the
+    // 30 fps cap, the same image parked (S37, 2026-10-01).
+    {0x4D5309C9, "skip_overwritten_transfers_cutout", true,
+     "transfers skip the part the draw overwrites"},
 };
 
 // Same path/priority as a per-game config file.

@@ -69,6 +69,8 @@ DECLARE_bool(vulkan_resolve_draw_barriers_at_resolve);
 DECLARE_int32(vulkan_debug_gpu_probe);
 DECLARE_int32(edram_trace_frames);
 DECLARE_bool(skip_overwritten_transfers);
+DECLARE_bool(skip_overwritten_transfers_cutout);
+DECLARE_bool(transfer_cleared_sources_as_clears);
 DECLARE_bool(host_alpha_to_coverage);
 
 DEFINE_bool(
@@ -120,6 +122,17 @@ DEFINE_bool(
     "result for flat colors, interpolated values taken at the 1x pixel "
     "centers otherwise. Can be switched at runtime "
     "(debug.xendroid.samples_as_pixels_ps).",
+    "GPU");
+
+DEFINE_bool(
+    vulkan_samples_as_pixels_2x, false,
+    "With vulkan_depth_4x_as_1x: a 4x MSAA draw it would render into the 1x "
+    "surface of its samples, over EDRAM a 2x MSAA surface of the same pitch "
+    "owns, goes into that 2x surface twice as wide instead (the 2 columns of "
+    "samples of a 4x pixel are 2 pixels there, its vertical samples the 2x "
+    "ones) - no transfers to the 1x surface and back. Forza Horizon clears "
+    "its 256x256 2x reflection with a 4x quad (512 tiles a frame). Can be "
+    "switched at runtime (debug.xendroid.samples_as_pixels_2x).",
     "GPU");
 
 DEFINE_bool(
@@ -345,6 +358,9 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.samples_as_pixels_ps",
                             "vulkan_samples_as_pixels_simple_ps",
                             cvars::vulkan_samples_as_pixels_simple_ps);
+  PollDebugPropertyOverride("debug.xendroid.samples_as_pixels_2x",
+                            "vulkan_samples_as_pixels_2x",
+                            cvars::vulkan_samples_as_pixels_2x);
   // Read per resolve.
   PollDebugPropertyOverride("debug.xendroid.resolve_draw_barriers",
                             "vulkan_resolve_draw_barriers_at_resolve",
@@ -353,6 +369,12 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.skip_overwritten_transfers",
                             "skip_overwritten_transfers",
                             cvars::skip_overwritten_transfers);
+  PollDebugPropertyOverride("debug.xendroid.transfer_cutout",
+                            "skip_overwritten_transfers_cutout",
+                            cvars::skip_overwritten_transfers_cutout);
+  PollDebugPropertyOverride("debug.xendroid.cleared_transfers",
+                            "transfer_cleared_sources_as_clears",
+                            cvars::transfer_cleared_sources_as_clears);
   // Both texture load switches at once, for A/Bs of the load paths: 0 - the
   // original untiling into a buffer copied to the image, 1 - coalesced
   // untiling, 2 - coalesced straight into the image (which only has the
@@ -4621,7 +4643,11 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         ps_param_gen_pos != UINT32_MAX ? " position" : "",
         pixel_shader && pixel_shader->kills_pixels() ? " kill" : "",
         pixel_shader && pixel_shader->writes_depth() ? " depth" : "",
-        depth_4x_as_1x ? ", samples as pixels" : "",
+        depth_4x_as_1x
+            ? (render_target_cache_->draw_samples_as_pixels_keep_vertical()
+                   ? ", samples as pixels at 2x"
+                   : ", samples as pixels")
+            : "",
         uint32_t(rb_colorcontrol.alpha_test_enable),
         uint32_t(rb_colorcontrol.alpha_func),
         uint32_t(rb_colorcontrol.alpha_to_mask_enable),
@@ -5172,9 +5198,14 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   {
     const xenos::MsaaSamples guest_msaa_samples =
         regs.Get<reg::RB_SURFACE_INFO>().msaa_samples;
+    // Into a 2x surface twice as wide: 2 host pixels of 2 samples.
     UpdateZPDScale(
         ((draw_resolution_scale_x * draw_resolution_scale_y) >>
-         (depth_4x_as_1x ? 2 : 0)) |
+         (depth_4x_as_1x
+              ? (render_target_cache_->draw_samples_as_pixels_keep_vertical()
+                     ? 1
+                     : 2)
+              : 0)) |
         (render_target_cache_->GetHostMsaaSamples(guest_msaa_samples) !=
                  guest_msaa_samples
              ? kZPDScaleHalfSamples
@@ -5541,6 +5572,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       return false;
     }
   }
+  // Transfers of what a resolve clear left in their source - clears of the
+  // destinations in this pass, after the transfers (no state of the draw is
+  // changed by them).
+  render_target_cache_->EncodePendingDrawPassClears();
 
   // Track for device-lost diagnostics.
   ++submission_in_progress_.draw_count;
@@ -5850,12 +5885,48 @@ bool VulkanCommandProcessor::RewriteMsaa4xSurfaceInfoForDraw(
           xenos::kTexture2DCubeMaxWidthHeight) {
     return false;
   }
+  // Over EDRAM 2x MSAA surfaces of the same pitch own, the 2x surface twice
+  // as wide (vulkan_samples_as_pixels_2x) - 2 vertical samples per pixel at
+  // both 4x and 2x.
+  bool keep_vertical_samples = false;
+  if (cvars::vulkan_samples_as_pixels_2x) {
+    const uint32_t pitch_tiles_at_32bpp =
+        ((uint32_t(surface_info.surface_pitch) << 1) +
+         (xenos::kEdramTileWidthSamples - 1)) /
+        xenos::kEdramTileWidthSamples;
+    uint32_t bases_checked = 0;
+    bool all_owned_by_2x = true;
+    auto check_base = [&](uint32_t base_tiles) {
+      ++bases_checked;
+      xenos::MsaaSamples owner_msaa_samples;
+      uint32_t owner_pitch_tiles_at_32bpp;
+      if (!render_target_cache_->GetEdramTileOwner(
+              base_tiles, owner_msaa_samples, owner_pitch_tiles_at_32bpp) ||
+          owner_msaa_samples != xenos::MsaaSamples::k2X ||
+          owner_pitch_tiles_at_32bpp != pitch_tiles_at_32bpp) {
+        all_owned_by_2x = false;
+      }
+    };
+    const auto depth_control = regs.Get<reg::RB_DEPTHCONTROL>();
+    if (depth_control.z_enable || depth_control.stencil_enable) {
+      check_base(regs.Get<reg::RB_DEPTH_INFO>().depth_base);
+    }
+    for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
+      if ((color_mask >> (4 * i)) & 0b1111) {
+        check_base(regs.Get<reg::RB_COLOR_INFO>(
+                           reg::RB_COLOR_INFO::rt_register_indices[i])
+                       .color_base);
+      }
+    }
+    keep_vertical_samples = bases_checked && all_owned_by_2x;
+  }
   // The same EDRAM tiles as the 1x surface twice as wide (and tall): 2
   // horizontal samples per pixel at 4x, 1 at 1x.
-  surface_info.msaa_samples = xenos::MsaaSamples::k1X;
+  surface_info.msaa_samples = keep_vertical_samples ? xenos::MsaaSamples::k2X
+                                                    : xenos::MsaaSamples::k1X;
   surface_info.surface_pitch = surface_info.surface_pitch * 2;
   surface_info_value = surface_info.value;
-  render_target_cache_->SetDrawSamplesAsPixels(true);
+  render_target_cache_->SetDrawSamplesAsPixels(true, keep_vertical_samples);
   return true;
 }
 
