@@ -41,7 +41,10 @@ param(
   [string[]]$RestartArms = @(),
   [switch]$Passes,
   [string]$Adb = "C:\Users\Administrator\Downloads\scrcpy-win64-v4.1\adb.exe",
-  [string]$Serial = "e11d1729",
+  # The phone: its USB serial, or host:port for adb over the network (adb
+  # tcpip 5555, e.g. through a VPN) - XENDROID_ADB_SERIAL overrides the default.
+  [string]$Serial = $(if ($env:XENDROID_ADB_SERIAL) { $env:XENDROID_ADB_SERIAL }
+                      else { "e11d1729" }),
   [string]$Python = "C:\Users\Administrator\AppData\Local\Python\bin\python.exe"
 )
 $out = Join-Path (Split-Path $PSScriptRoot -Parent) "performance-tests\$Name"
@@ -57,8 +60,21 @@ $xeLog = "/sdcard/Android/data/xendroid.compose.fork.opt/files/compose/xe.log"
 function Invoke-Driver([int]$launch, [string]$property, [string]$values,
                        [string]$config) {
   & $Adb -s $Serial shell "rm -f /data/local/tmp/fh_auto.status; ${envPrefix}nohup sh /data/local/tmp/fh_auto.sh $launch $property '$values' $ArmSeconds '$config' > /data/local/tmp/fh_auto.out 2>&1 &"
-  # One long-lived adb call; the phone does the polling.
-  & $Adb -s $Serial shell "while ! grep -q FH_AUTO_DONE /data/local/tmp/fh_auto.status 2>/dev/null; do sleep 2; done; cat /data/local/tmp/fh_auto.status"
+  # One long-lived adb call; the phone does the polling. A dropped network
+  # connection ends the call early - the driver keeps running on the phone,
+  # so reconnect and wait again (for up to 30 minutes).
+  $deadline = (Get-Date).AddMinutes(30)
+  do {
+    if ($Serial -match ':') {
+      & $Adb connect $Serial | Out-Null
+    }
+    $status = & $Adb -s $Serial shell "while ! grep -q FH_AUTO_DONE /data/local/tmp/fh_auto.status 2>/dev/null; do sleep 2; done; cat /data/local/tmp/fh_auto.status"
+    $done = ($status | Out-String) -match 'FH_AUTO_DONE'
+    if (-not $done) {
+      Start-Sleep -Seconds 10
+    }
+  } until ($done -or (Get-Date) -gt $deadline)
+  $status
 }
 
 function Show-Top([string]$file) {
