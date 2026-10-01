@@ -23,7 +23,10 @@ num = r"([-\d.]+)"
 sync_re = re.compile(r"VkFrameSync: (\d+) frames .*?submissions=" + num +
                      r".*?resolves=" + num + r".*?gpu exec avg=" + num +
                      r"ms.*?rp_begins=" + num)
-gf_re = re.compile(r"GpuFrame: \d+ frames, interval avg=" + num)
+gf_re = re.compile(r"GpuFrame: (\d+) frames, interval avg=" + num +
+                   r"ms max=" + num)
+# Frame intervals over 37 ms, counted per report (newer builds).
+long_re = re.compile(r"intervals >37ms=(\d+)")
 pass_re = re.compile(r"VkPassTime: (xfer )?(\d+)x(\d+) : " + num +
                      r"ms/fr \(" + num + r"pass " + num + r"draw/fr")
 # Newer builds add the source format and MSAA of the copy after the size.
@@ -40,7 +43,11 @@ def parse(path):
     reports, intervals, cur = [], [], None
     for line in open(path, encoding="utf-8", errors="replace"):
         if (m := gf_re.search(line)):
-            intervals.append(float(m.group(1)))
+            lg = long_re.search(line)
+            # interval, worst interval, frames, frames over 37 ms.
+            intervals.append((float(m.group(2)), float(m.group(3)),
+                              float(m.group(1)),
+                              float(lg.group(1)) if lg else float("nan")))
         if (m := sync_re.search(line)):
             cur = {"gpu": float(m.group(2)) * float(m.group(4)),
                    "resolves": float(m.group(3)), "rp": float(m.group(5)),
@@ -72,7 +79,10 @@ def parse(path):
     if not reports or not intervals:
         return None
     n = len(reports)
-    run = {"interval": statistics.fmean(intervals),
+    run = {"interval": statistics.fmean(x[0] for x in intervals),
+           "max": statistics.fmean(x[1] for x in intervals),
+           "slow": 100.0 * sum(x[3] for x in intervals) /
+                   sum(x[2] for x in intervals),
            "gpu": sum(r["gpu"] for r in reports) / n,
            "resolves": sum(r["resolves"] for r in reports) / n,
            "rp": sum(r["rp"] for r in reports) / n}
@@ -102,13 +112,17 @@ def mean(runs, key, sub=None):
 
 
 labels = list(groups)
-print("label".ljust(24) + "runs    fps  interval   GPU/fr  resolves  passes")
+# max: mean of the per-second worst frame interval; >37ms: share of frames
+# (nan with older builds).
+print("label".ljust(24) + "runs    fps  interval   GPU/fr  resolves  passes"
+      "    max  >37ms")
 for label in labels:
     runs = groups[label]
     iv = mean(runs, "interval")
     print(f"{label[:23]:<24}{len(runs):>4} {1000 / iv:6.2f} {iv:8.1f}ms "
           f"{mean(runs, 'gpu'):7.1f}ms {mean(runs, 'resolves'):8.1f} "
-          f"{mean(runs, 'rp'):7.0f}")
+          f"{mean(runs, 'rp'):7.0f} {mean(runs, 'max'):6.1f} "
+          f"{mean(runs, 'slow'):5.1f}%")
 
 for kind, title in (("pass", "render passes, ms/frame"),
                     ("res", "resolves, ms/frame"),

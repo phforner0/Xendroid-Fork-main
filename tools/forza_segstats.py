@@ -27,9 +27,21 @@ fence_re = re.compile(r"VkFences: per frame: polls=" + num + r" slow=" + num +
 park_re = re.compile(r"SpinPark: mode (\d+) \| waits/s=" + num + r" avg=" +
                      num + r"ms waiting=" + num + r"% \| parks/s=" + num +
                      r" parked=" + num + r"% woken_by_progress=" + num + r"%")
+# Frame intervals over 37 / 50 ms, counted per report (newer builds).
+long_re = re.compile(r"intervals >37ms=(\d+) >50ms=(\d+)")
 
 arms, cur = [], None
+in_config_dump = False
 for line in open(path, encoding="utf-8", errors="replace"):
+    # The startup config dump lists every option as "name = value", which
+    # matches the switch markers: it would open an "arm" spanning the menus
+    # and the loading screens (GPU ~17 ms/frame), skewing that value's mean.
+    if "----------- CONFIG DUMP" in line:
+        in_config_dump = True
+        continue
+    if in_config_dump:
+        in_config_dump = "END OF CONFIG DUMP" not in line
+        continue
     m = marker.search(line)
     if m:
         cur = {"value": m.group(1), "gf": [], "vk": [], "replay": [],
@@ -40,11 +52,15 @@ for line in open(path, encoding="utf-8", errors="replace"):
         continue
     if (m := gf_re.search(line)):
         w = wrm_re.search(line)
+        lg = long_re.search(line)
         cur["gf"].append((float(m.group(2)), float(m.group(4)),
                           float(m.group(5)), float(m.group(6)),
                           float(w.group(1)) if w else float("nan"),
                           float(w.group(2)) if w else float("nan"),
-                          float(m.group(7))))
+                          float(m.group(7)), float(m.group(3)),
+                          float(m.group(1)),
+                          float(lg.group(1)) if lg else float("nan"),
+                          float(lg.group(2)) if lg else float("nan")))
     elif (m := vk_re.search(line)):
         cur["vk"].append(float(m.group(2)) * float(m.group(3)))
         r = replay_re.search(line)
@@ -72,9 +88,15 @@ for i, a in enumerate(arms, 1):
     replay = a["replay"][skip:]
     park = a["park"][max(0, skip // 2):]
     interval = fmean(x[0] for x in gf)
+    frames = sum(x[8] for x in gf)
     rows.append({
         "arm": i, "value": a["value"], "reports": len(gf),
         "fps": 1000.0 / interval, "interval_ms": interval,
+        # Mean of the per-second worst frame, and the share of frames over
+        # 37 / 50 ms.
+        "max_ms": fmean(x[7] for x in gf),
+        "slow37_pct": 100.0 * sum(x[9] for x in gf) / frames,
+        "slow50_pct": 100.0 * sum(x[10] for x in gf) / frames,
         "gpu_ms": fmean(vk),
         "cp_exec_ms": fmean(x[1] for x in gf), "draws": fmean(x[2] for x in gf),
         "cp_draw_ms": fmean(x[3] for x in gf),
@@ -91,7 +113,8 @@ for i, a in enumerate(arms, 1):
         "parked_pct": fmean(x[4] for x in park),
         "woken_pct": fmean(x[5] for x in park),
     })
-cols = ["arm", "value", "reports", "fps", "interval_ms", "gpu_ms",
+cols = ["arm", "value", "reports", "fps", "interval_ms", "max_ms",
+        "slow37_pct", "slow50_pct", "gpu_ms",
         "cp_exec_ms", "draws", "cp_draw_ms", "swap_ms", "wrm_unmet",
         "wrm_waited_ms", "replay_ms", "fence_polls", "fence_slow",
         "fence_poll_ms", "fence_wait_ms", "gwait_pct", "gwait_avg_ms",
@@ -114,6 +137,10 @@ for v, rs in by_value.items():
     if "gwait_pct" in cols:
         extra += (f" guest_wait {fmean(r['gwait_pct'] for r in rs):.0f}%"
                   f" parked {fmean(r['parked_pct'] for r in rs):.0f}%")
+    if "slow37_pct" in cols:
+        extra += (f" max {fmean(r['max_ms'] for r in rs):.1f} ms"
+                  f" slow>37ms {fmean(r['slow37_pct'] for r in rs):.1f}%"
+                  f" >50ms {fmean(r['slow50_pct'] for r in rs):.2f}%")
     print(f"value {v}: fps {fmean(r['fps'] for r in rs):.2f} "
           f"gpu {fmean(r['gpu_ms'] for r in rs):.1f} ms "
           f"wrm_waited {fmean(r['wrm_waited_ms'] for r in rs):.2f} ms"
