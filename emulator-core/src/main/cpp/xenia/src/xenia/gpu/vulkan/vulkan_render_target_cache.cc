@@ -275,7 +275,9 @@ bool VulkanRenderTargetCache::IsMsaa4xHost2x() const {
 }
 
 std::string VulkanRenderTargetCache::TakeTransferStats(double frames) {
-  if (transfer_stats_.empty() || frames <= 0.0) {
+  uint64_t skipped_transfers, skipped_tiles;
+  TakeOverwrittenTransferSkips(skipped_transfers, skipped_tiles);
+  if ((transfer_stats_.empty() && !skipped_transfers) || frames <= 0.0) {
     transfer_stats_.clear();
     return std::string();
   }
@@ -292,6 +294,11 @@ std::string VulkanRenderTargetCache::TakeTransferStats(double frames) {
   }
   std::string stats = fmt::format("per frame: transfers={:.1f} tiles={:.0f}",
                                   transfers / frames, tiles / frames);
+  if (skipped_transfers) {
+    // skip_overwritten_transfers.
+    stats += fmt::format(" skipped as overwritten={:.1f} tiles={:.0f}",
+                         skipped_transfers / frames, skipped_tiles / frames);
+  }
   auto name = [](uint32_t key_value) {
     if (!key_value) {
       return std::string("(none)");

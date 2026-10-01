@@ -31,6 +31,19 @@ DEFINE_bool(
     "transfers. Disable for debugging render target transfer issues.",
     "GPU");
 
+DEFINE_bool(
+    skip_overwritten_transfers, false,
+    "Skip the EDRAM ownership transfers into a render target when the draw "
+    "they are made for overwrites all they would copy: a single rectangle "
+    "(its vertex shader run on the CPU) covering the transferred area and "
+    "writing every pixel and sample unconditionally - depth with the always "
+    "test and the stencil replaced in full, color with all components and no "
+    "blending, no alpha test, alpha to coverage, pixel kill or culling. The "
+    "clear quads of titles reusing the EDRAM for other formats are such "
+    "draws. Read per draw (debug.xendroid.skip_overwritten_transfers on "
+    "Android).",
+    "GPU");
+
 DEFINE_int32(
     edram_trace_frames, 0,
     "Diagnostics - log how the next N frames use the EDRAM (EdramTrace lines): "
@@ -658,6 +671,124 @@ void RenderTargetCache::EdramTraceNote(std::string_view text) {
   XELOGI("EdramTrace: {}", text);
 }
 
+void RenderTargetCache::SkipTransfersOverwrittenByDraw(
+    reg::RB_DEPTHCONTROL normalized_depth_control,
+    uint32_t normalized_color_mask, const Shader& vertex_shader,
+    const RenderTargetKey* rt_keys) {
+  const RegisterFile& regs = register_file();
+  if (draw_samples_as_pixels_ || draw_pixel_shader_kills_) {
+    return;
+  }
+  // Every covered pixel, and all its samples, reaches the output merger.
+  auto pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
+  if (pa_su_sc_mode_cntl.cull_front || pa_su_sc_mode_cntl.cull_back ||
+      pa_su_sc_mode_cntl.poly_mode == xenos::PolygonModeEnable::kDualMode) {
+    return;
+  }
+  auto rb_colorcontrol = regs.Get<reg::RB_COLORCONTROL>();
+  if ((rb_colorcontrol.alpha_test_enable &&
+       rb_colorcontrol.alpha_func != xenos::CompareFunction::kAlways) ||
+      rb_colorcontrol.alpha_to_mask_enable) {
+    return;
+  }
+  // The targets the draw overwrites whatever they hold: bit 0 - depth and
+  // stencil, 1 + i - color i.
+  uint32_t overwritten = 0;
+  if (!last_update_transfers_[0].empty() &&
+      normalized_depth_control.z_enable &&
+      normalized_depth_control.z_write_enable &&
+      normalized_depth_control.zfunc == xenos::CompareFunction::kAlways &&
+      normalized_depth_control.stencil_enable &&
+      normalized_depth_control.stencilfunc == xenos::CompareFunction::kAlways &&
+      normalized_depth_control.stencilzpass == xenos::StencilOp::kReplace &&
+      regs.Get<reg::RB_STENCILREFMASK>().stencilwritemask == 0xFF &&
+      (!normalized_depth_control.backface_enable ||
+       (normalized_depth_control.stencilfunc_bf ==
+            xenos::CompareFunction::kAlways &&
+        normalized_depth_control.stencilzpass_bf ==
+            xenos::StencilOp::kReplace &&
+        regs.Get<reg::RB_STENCILREFMASK>(XE_GPU_REG_RB_STENCILREFMASK_BF)
+                .stencilwritemask == 0xFF))) {
+    overwritten |= 1;
+  }
+  for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
+    if (last_update_transfers_[1 + i].empty() ||
+        ((normalized_color_mask >> (4 * i)) & 0b1111) != 0b1111) {
+      continue;
+    }
+    auto blend = regs.Get<reg::RB_BLENDCONTROL>(
+        reg::RB_BLENDCONTROL::rt_register_indices[i]);
+    if (blend.color_srcblend != xenos::BlendFactor::kOne ||
+        blend.color_destblend != xenos::BlendFactor::kZero ||
+        blend.color_comb_fcn != xenos::BlendOp::kAdd ||
+        blend.alpha_srcblend != xenos::BlendFactor::kOne ||
+        blend.alpha_destblend != xenos::BlendFactor::kZero ||
+        blend.alpha_comb_fcn != xenos::BlendOp::kAdd) {
+      continue;
+    }
+    overwritten |= uint32_t(1) << (1 + i);
+  }
+  if (!overwritten) {
+    return;
+  }
+  // The pixels the rectangle covers inside the scissor.
+  float left, top, right, bottom;
+  if (!draw_extent_estimator_.EstimateRectangle(vertex_shader, left, top,
+                                                right, bottom)) {
+    return;
+  }
+  draw_util::Scissor scissor;
+  draw_util::GetScissor(regs, scissor, false);
+  left = std::max(left, float(scissor.offset[0]));
+  top = std::max(top, float(scissor.offset[1]));
+  right = std::min(right, float(scissor.offset[0] + scissor.extent[0]));
+  bottom = std::min(bottom, float(scissor.offset[1] + scissor.extent[1]));
+  uint32_t rts_remaining = overwritten;
+  uint32_t rt_index;
+  while (xe::bit_scan_forward(rts_remaining, &rt_index)) {
+    rts_remaining &= ~(uint32_t(1) << rt_index);
+    const RenderTargetKey& key = rt_keys[rt_index];
+    std::vector<Transfer>& transfers = last_update_transfers_[rt_index];
+    transfers.erase(
+        std::remove_if(
+            transfers.begin(), transfers.end(),
+            [&](const Transfer& transfer) {
+              // Whole pixels of the destination, so all samples too.
+              Transfer::Rectangle
+                  rectangles[Transfer::kMaxRectanglesWithoutCutout];
+              uint32_t rectangle_count = transfer.GetRectangles(
+                  key.base_tiles, key.GetPitchTiles(), key.msaa_samples,
+                  key.Is64bpp(), rectangles);
+              if (!rectangle_count) {
+                return false;
+              }
+              for (uint32_t j = 0; j < rectangle_count; ++j) {
+                const Transfer::Rectangle& rectangle = rectangles[j];
+                if (float(rectangle.x_pixels) < left ||
+                    float(rectangle.y_pixels) < top ||
+                    float(rectangle.x_pixels + rectangle.width_pixels) >
+                        right ||
+                    float(rectangle.y_pixels + rectangle.height_pixels) >
+                        bottom) {
+                  return false;
+                }
+              }
+              ++overwritten_transfers_skipped_;
+              overwritten_tiles_skipped_ +=
+                  transfer.end_tiles - transfer.start_tiles;
+              if (edram_trace_frames_left_) {
+                EdramTraceNote(fmt::format(
+                    "skipped transfer [{}] -> [{}], tiles {}-{} (overwritten "
+                    "by the draw)",
+                    transfer.source->key().GetDebugName(), key.GetDebugName(),
+                    transfer.start_tiles, transfer.end_tiles));
+              }
+              return true;
+            }),
+        transfers.end());
+  }
+}
+
 void RenderTargetCache::EdramTraceTransfers(
     RenderTargetKey dest, const std::vector<Transfer>& transfers) {
   for (const Transfer& transfer : transfers) {
@@ -1062,6 +1193,17 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
   if (interlock_barrier_only) {
     // No copying transfers or render target bindings - only needed the barrier.
     return true;
+  }
+
+  if (cvars::skip_overwritten_transfers) {
+    for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+      if (!last_update_transfers_[i].empty()) {
+        SkipTransfersOverwrittenByDraw(normalized_depth_control,
+                                       normalized_color_mask, vertex_shader,
+                                       rt_keys);
+        break;
+      }
+    }
   }
 
   if (edram_trace_frames_left_) {

@@ -38,6 +38,15 @@ class DrawExtentEstimator {
   uint32_t EstimateMaxY(bool try_to_estimate_vertex_max_y,
                         const Shader& vertex_shader);
 
+  // For a draw of a single axis-aligned rectangle (a rectangle list of 3
+  // vertices) with a vertex shader the CPU can run: the area it covers in
+  // pixels of the render target - [left, right) x [top, bottom), pixel centers
+  // at +0.5 - clipped to the viewport when clipping is enabled, before the
+  // scissor. False for any other draw, or if the rectangle may be clipped by
+  // depth.
+  bool EstimateRectangle(const Shader& vertex_shader, float& left_out,
+                         float& top_out, float& right_out, float& bottom_out);
+
  private:
   class PositionYExportSink : public ShaderInterpreter::ExportSink {
    public:
@@ -45,19 +54,25 @@ class DrawExtentEstimator {
                 uint32_t value_mask) override;
 
     void Reset() {
+      position_x_.reset();
       position_y_.reset();
+      position_z_.reset();
       position_w_.reset();
       point_size_.reset();
       vertex_kill_.reset();
     }
 
+    const std::optional<float>& position_x() const { return position_x_; }
     const std::optional<float>& position_y() const { return position_y_; }
+    const std::optional<float>& position_z() const { return position_z_; }
     const std::optional<float>& position_w() const { return position_w_; }
     const std::optional<float>& point_size() const { return point_size_; }
     const std::optional<uint32_t>& vertex_kill() const { return vertex_kill_; }
 
    private:
+    std::optional<float> position_x_;
     std::optional<float> position_y_;
+    std::optional<float> position_z_;
     std::optional<float> position_w_;
     std::optional<float> point_size_;
     std::optional<uint32_t> vertex_kill_;

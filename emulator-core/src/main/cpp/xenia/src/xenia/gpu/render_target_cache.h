@@ -215,6 +215,20 @@ class RenderTargetCache {
     draw_samples_as_pixels_ = samples_as_pixels;
   }
   bool draw_samples_as_pixels() const { return draw_samples_as_pixels_; }
+  // For the current draw only: whether its pixel shader may leave covered
+  // pixels unwritten (kill) - such a draw never overwrites a whole area
+  // (skip_overwritten_transfers).
+  void SetDrawPixelShaderKills(bool kills) { draw_pixel_shader_kills_ = kills; }
+  // Ownership transfers skipped because the first draw of their destination
+  // overwrites what they would have copied (skip_overwritten_transfers),
+  // since the last call.
+  void TakeOverwrittenTransferSkips(uint64_t& transfers_out,
+                                    uint64_t& tiles_out) {
+    transfers_out = overwritten_transfers_skipped_;
+    tiles_out = overwritten_tiles_skipped_;
+    overwritten_transfers_skipped_ = 0;
+    overwritten_tiles_skipped_ = 0;
+  }
   // Whether the 4x MSAA render targets now created are stored with 2 samples
   // per pixel (RenderTargetKey::host_2x, msaa_4x_as_2x).
   virtual bool IsMsaa4xHost2x() const { return false; }
@@ -687,6 +701,17 @@ class RenderTargetCache {
   uint32_t draw_resolution_scale_x_;
   uint32_t draw_resolution_scale_y_;
   bool draw_samples_as_pixels_ = false;
+  bool draw_pixel_shader_kills_ = false;
+  uint64_t overwritten_transfers_skipped_ = 0;
+  uint64_t overwritten_tiles_skipped_ = 0;
+
+  // skip_overwritten_transfers: drops the transfers of the draw's targets
+  // that its first draw - a single rectangle covering them, writing every
+  // pixel and sample unconditionally - would overwrite anyway.
+  void SkipTransfersOverwrittenByDraw(
+      reg::RB_DEPTHCONTROL normalized_depth_control,
+      uint32_t normalized_color_mask, const Shader& vertex_shader,
+      const RenderTargetKey* rt_keys);
 
   DrawExtentEstimator draw_extent_estimator_;
 

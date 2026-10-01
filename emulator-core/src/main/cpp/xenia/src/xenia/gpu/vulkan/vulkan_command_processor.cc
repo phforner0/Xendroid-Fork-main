@@ -68,6 +68,7 @@ DECLARE_bool(vulkan_replay_stats);
 DECLARE_bool(vulkan_resolve_draw_barriers_at_resolve);
 DECLARE_int32(vulkan_debug_gpu_probe);
 DECLARE_int32(edram_trace_frames);
+DECLARE_bool(skip_overwritten_transfers);
 
 DEFINE_bool(
     msaa_4x_as_2x, false,
@@ -318,6 +319,10 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.resolve_draw_barriers",
                             "vulkan_resolve_draw_barriers_at_resolve",
                             cvars::vulkan_resolve_draw_barriers_at_resolve);
+  // Read per draw.
+  PollDebugPropertyOverride("debug.xendroid.skip_overwritten_transfers",
+                            "skip_overwritten_transfers",
+                            cvars::skip_overwritten_transfers);
   // Both texture load switches at once, for A/Bs of the load paths: 0 - the
   // original untiling into a buffer copied to the image, 1 - coalesced
   // untiling, 2 - coalesced straight into the image (which only has the
@@ -4541,6 +4546,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
 
   // The surface info of a 4x MSAA draw, before anything reads it.
   const bool depth_4x_as_1x = RewriteMsaa4xSurfaceInfoForDraw(pixel_shader);
+  // A pixel shader that may kill pixels leaves covered pixels unwritten
+  // (skip_overwritten_transfers).
+  render_target_cache_->SetDrawPixelShaderKills(pixel_shader &&
+                                                pixel_shader->kills_pixels());
 
   uint32_t ps_param_gen_pos = UINT32_MAX;
   uint32_t interpolator_mask =

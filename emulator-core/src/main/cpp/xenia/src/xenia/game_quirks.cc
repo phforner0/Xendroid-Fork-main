@@ -91,6 +91,12 @@ static const Quirk kQuirks[] = {
     // Only Turnip reads it; the pipeline cache file is separate per flags.
     {0x4D5309C9, "ir3_debug", "noearlypreamble",
      "no early shader preamble in the Turnip compiler"},
+    // The EDRAM is reused by targets that start with a clear quad: the
+    // transfers it overwrites are skipped - 11 of 49 transfers and 3.7 of 12.5
+    // thousand tiles per frame, GPU time -1.1 ms (-3.1%) at the 30 fps cap,
+    // the same image parked and over a drive (S24, 2026-10-01).
+    {0x4D5309C9, "skip_overwritten_transfers", true,
+     "no transfers into what the draw overwrites"},
 };
 
 // Same path/priority as a per-game config file.
