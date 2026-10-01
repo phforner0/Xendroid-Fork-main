@@ -98,6 +98,20 @@ DEFINE_bool(
     "GPU");
 
 DEFINE_bool(
+    vulkan_samples_as_pixels_simple_ps, false,
+    "With vulkan_depth_4x_as_1x: also render 4x MSAA draws whose pixel shader "
+    "reads no textures, gradients or position into the 1x surface of their "
+    "samples, and don't count their color as making a depth surface a "
+    "multisampled scene's. Titles mark stencil at a quarter of the pixels "
+    "this way and switch the same EDRAM between 4x and 1x several times a "
+    "frame (Forza Horizon: 4320 of its 8791 transferred tiles a frame). The "
+    "pixel shader runs per 1x pixel instead of per 4x pixel - the same "
+    "result for flat colors, interpolated values taken at the 1x pixel "
+    "centers otherwise. Can be switched at runtime "
+    "(debug.xendroid.samples_as_pixels_ps).",
+    "GPU");
+
+DEFINE_bool(
     render_area_dirty_extent, false,
     "Shrink each render pass's area to the region its draws actually touch.\n"
     "Host render targets span the whole EDRAM range for their pitch, so a "
@@ -315,6 +329,11 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.depth_4x_as_1x",
                             "vulkan_depth_4x_as_1x",
                             cvars::vulkan_depth_4x_as_1x);
+  // Read per draw; the surfaces classified as multisampled scenes are
+  // forgotten when it changes.
+  PollDebugPropertyOverride("debug.xendroid.samples_as_pixels_ps",
+                            "vulkan_samples_as_pixels_simple_ps",
+                            cvars::vulkan_samples_as_pixels_simple_ps);
   // Read per resolve.
   PollDebugPropertyOverride("debug.xendroid.resolve_draw_barriers",
                             "vulkan_resolve_draw_barriers_at_resolve",
@@ -2592,7 +2611,7 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
     }
     XELOGI("PipeUse frame {}: {} shader pairs/pass sizes, {} draws",
            bin_trace_.frame_number, uses.size(), total_draws);
-    for (size_t i = 0; i < std::min(uses.size(), size_t(60)); ++i) {
+    for (size_t i = 0; i < std::min(uses.size(), size_t(240)); ++i) {
       const auto& key = uses[i].first;
       const uint32_t* signs = uses[i].second.texture_signs;
       XELOGI(
@@ -4544,12 +4563,11 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     draw_util::AddMemExportRanges(regs, *pixel_shader, memexport_ranges_);
   }
 
-  // The surface info of a 4x MSAA draw, before anything reads it.
-  const bool depth_4x_as_1x = RewriteMsaa4xSurfaceInfoForDraw(pixel_shader);
-  // A pixel shader that may kill pixels leaves covered pixels unwritten
-  // (skip_overwritten_transfers).
+  // A pixel shader that may kill pixels leaves covered pixels unwritten, and
+  // only a pixel shader does the alpha test (skip_overwritten_transfers).
   render_target_cache_->SetDrawPixelShaderKills(pixel_shader &&
                                                 pixel_shader->kills_pixels());
+  render_target_cache_->SetDrawHasPixelShader(pixel_shader != nullptr);
 
   uint32_t ps_param_gen_pos = UINT32_MAX;
   uint32_t interpolator_mask =
@@ -4558,6 +4576,37 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
                           regs.Get<reg::SQ_PROGRAM_CNTL>(),
                           regs.Get<reg::SQ_CONTEXT_MISC>(), ps_param_gen_pos))
                    : 0;
+
+  // The surface info of a 4x MSAA draw, before anything reads it.
+  const bool depth_4x_as_1x = RewriteMsaa4xSurfaceInfoForDraw(
+      pixel_shader, ps_param_gen_pos != UINT32_MAX);
+  if (XE_UNLIKELY(render_target_cache_->IsEdramTraceActive())) {
+    // What decides whether the draw overwrites its targets or may run per
+    // sample, for the line of the first draw of a binding.
+    auto pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
+    auto rb_colorcontrol = regs.Get<reg::RB_COLORCONTROL>();
+    auto vgt_draw_initiator = regs.Get<reg::VGT_DRAW_INITIATOR>();
+    render_target_cache_->SetEdramTraceDrawInfo(fmt::format(
+        " | vs {:016X} ps {:016X}{}{}{}{}{}, alpha test {} func {} a2c {}, "
+        "cull {}{}, poly mode {}, primitive {} x{}",
+        vertex_shader->ucode_data_hash(),
+        pixel_shader ? pixel_shader->ucode_data_hash() : 0,
+        pixel_shader && pixel_shader->uses_texture_fetch_instruction_results()
+            ? " textures"
+            : "",
+        ps_param_gen_pos != UINT32_MAX ? " position" : "",
+        pixel_shader && pixel_shader->kills_pixels() ? " kill" : "",
+        pixel_shader && pixel_shader->writes_depth() ? " depth" : "",
+        depth_4x_as_1x ? ", samples as pixels" : "",
+        uint32_t(rb_colorcontrol.alpha_test_enable),
+        uint32_t(rb_colorcontrol.alpha_func),
+        uint32_t(rb_colorcontrol.alpha_to_mask_enable),
+        pa_su_sc_mode_cntl.cull_front ? "F" : "",
+        pa_su_sc_mode_cntl.cull_back ? "B" : "",
+        uint32_t(pa_su_sc_mode_cntl.poly_mode),
+        uint32_t(vgt_draw_initiator.prim_type),
+        uint32_t(vgt_draw_initiator.num_indices)));
+  }
 
   PrimitiveProcessor::ProcessingResult primitive_processing_result;
   SpirvShaderTranslator::Modification vertex_shader_modification;
@@ -5696,7 +5745,7 @@ uint32_t VulkanCommandProcessor::GetMsaa4xDepthSurface() const {
 }
 
 bool VulkanCommandProcessor::RewriteMsaa4xSurfaceInfoForDraw(
-    const Shader* pixel_shader) {
+    const Shader* pixel_shader, bool pixel_shader_uses_position) {
   if (!cvars::vulkan_depth_4x_as_1x ||
       render_target_cache_->GetPath() !=
           RenderTargetCache::Path::kHostRenderTargets) {
@@ -5710,16 +5759,35 @@ bool VulkanCommandProcessor::RewriteMsaa4xSurfaceInfoForDraw(
   if (surface_info.msaa_samples != xenos::MsaaSamples::k4X) {
     return false;
   }
+  // The scene classification depends on which pixel shaders may run per 1x
+  // pixel.
+  if (msaa_4x_scene_depth_surfaces_simple_ps_ !=
+      cvars::vulkan_samples_as_pixels_simple_ps) {
+    msaa_4x_scene_depth_surfaces_simple_ps_ =
+        cvars::vulkan_samples_as_pixels_simple_ps;
+    msaa_4x_scene_depth_surfaces_.clear();
+  }
+  // A pixel shader whose result doesn't depend on running per 4x pixel rather
+  // than per 1x pixel beyond the interpolation point: no textures or
+  // gradients (implicit derivatives would halve), no position, no memory
+  // export, no alpha to coverage (no samples at 1x).
+  const bool pixel_shader_simple =
+      pixel_shader && cvars::vulkan_samples_as_pixels_simple_ps &&
+      !pixel_shader->uses_texture_fetch_instruction_results() &&
+      !pixel_shader_uses_position && !pixel_shader->memexport_eM_written() &&
+      !regs.Get<reg::RB_COLORCONTROL>().alpha_to_mask_enable;
   const uint32_t color_mask =
       pixel_shader ? draw_util::GetNormalizedColorMask(
                          regs, pixel_shader->writes_color_targets())
                    : 0;
-  // A depth surface drawn with color at least once is a multisampled scene's.
-  // The others are depth-only - titles reinterpret their samples as the pixels
-  // of a 1x surface twice the size (Forza Horizon's shadow atlas).
+  // A depth surface drawn with color at least once (by a pixel shader that
+  // must run per 4x pixel) is a multisampled scene's. The others are depth-
+  // only or stencil marking - titles reinterpret their samples as the pixels
+  // of a 1x surface twice the size (Forza Horizon's shadow atlas, and the
+  // quarter-resolution stencil marking of its 1280x720 lighting).
   const uint32_t depth_surface = GetMsaa4xDepthSurface();
   bool scene;
-  if (color_mask) {
+  if (color_mask && !pixel_shader_simple) {
     msaa_4x_scene_depth_surfaces_.insert(depth_surface);
     scene = true;
   } else {
@@ -5728,9 +5796,9 @@ bool VulkanCommandProcessor::RewriteMsaa4xSurfaceInfoForDraw(
   if (scene) {
     return false;
   }
-  // Depth-only draws only (no pixel shader) - nothing then depends on the
-  // sample positions or on the pixel shader seeing 4x.
-  if (!cvars::vulkan_depth_4x_as_1x || pixel_shader ||
+  // Depth-only draws (no pixel shader) or simple pixel shaders - nothing then
+  // depends on the sample positions or on the pixel shader seeing 4x.
+  if ((pixel_shader && !pixel_shader_simple) ||
       texture_cache_->IsDrawResolutionScaled() ||
       uint32_t(surface_info.surface_pitch) * 2 >
           xenos::kTexture2DCubeMaxWidthHeight) {

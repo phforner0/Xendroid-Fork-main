@@ -1616,6 +1616,10 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
               sizeof(last_update_framebuffer_attachments_));
   last_update_framebuffer_ = VK_NULL_HANDLE;
 
+  // Draws without clipping clamp their depth (the pipeline cache sets
+  // depthClampEnable for them where the device supports it).
+  SetUnclippedDepthClamped(vulkan_device->properties().depthClamp);
+
   InitializeCommon();
   return true;
 }

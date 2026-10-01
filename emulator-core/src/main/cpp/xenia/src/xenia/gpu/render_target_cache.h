@@ -219,6 +219,24 @@ class RenderTargetCache {
   // pixels unwritten (kill) - such a draw never overwrites a whole area
   // (skip_overwritten_transfers).
   void SetDrawPixelShaderKills(bool kills) { draw_pixel_shader_kills_ = kills; }
+  // For the current draw only: whether it has a pixel shader - without one,
+  // there's no alpha to test or to convert to coverage, whatever the state
+  // says (skip_overwritten_transfers).
+  void SetDrawHasPixelShader(bool has_pixel_shader) {
+    draw_has_pixel_shader_ = has_pixel_shader;
+  }
+  // EdramTrace: whether frames are being traced, and what the backend knows
+  // about the current draw (shaders, state) to append to the line of the first
+  // draw of a binding.
+  bool IsEdramTraceActive() const { return edram_trace_frames_left_ != 0; }
+  void SetEdramTraceDrawInfo(std::string info) {
+    edram_trace_draw_info_ = std::move(info);
+  }
+  // Whether the host clamps the depth of draws without clipping rather than
+  // clipping it (a rectangle at any depth then covers its whole area).
+  void SetUnclippedDepthClamped(bool clamped) {
+    draw_extent_estimator_.SetUnclippedDepthClamped(clamped);
+  }
   // Ownership transfers skipped because the first draw of their destination
   // overwrites what they would have copied (skip_overwritten_transfers),
   // since the last call.
@@ -650,9 +668,8 @@ class RenderTargetCache {
   bool IsResolveSourceNativeOnly(uint32_t base, uint32_t row_length,
                                  uint32_t rows, uint32_t pitch) const;
 
-  // EDRAM usage trace (edram_trace_frames) - whether it is on, and a line of
-  // it, after the draw count of the binding before.
-  bool IsEdramTraceActive() const { return edram_trace_frames_left_ != 0; }
+  // EDRAM usage trace (edram_trace_frames) - a line of it, after the draw
+  // count of the binding before (IsEdramTraceActive says whether it is on).
   void EdramTraceNote(std::string_view text);
 
   // Sets up the needed render targets and transfers to perform a clear in a
@@ -702,6 +719,7 @@ class RenderTargetCache {
   uint32_t draw_resolution_scale_y_;
   bool draw_samples_as_pixels_ = false;
   bool draw_pixel_shader_kills_ = false;
+  bool draw_has_pixel_shader_ = true;
   uint64_t overwritten_transfers_skipped_ = 0;
   uint64_t overwritten_tiles_skipped_ = 0;
 
@@ -887,6 +905,7 @@ class RenderTargetCache {
   uint64_t edram_trace_seq_ = 0;
   std::unordered_map<uint32_t, uint64_t> edram_trace_last_clear_;
   std::unordered_map<uint32_t, uint64_t> edram_trace_last_draw_;
+  std::string edram_trace_draw_info_;
 };
 
 }  // namespace gpu

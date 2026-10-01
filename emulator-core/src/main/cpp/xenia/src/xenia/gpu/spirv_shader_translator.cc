@@ -128,6 +128,18 @@ DEFINE_bool(
     "GPU");
 
 DEFINE_bool(
+    spirv_texture_implicit_lod, false,
+    "Sample 2D textures with the LOD the host computes (implicit LOD plus "
+    "the guest's LOD bias) instead of passing coarse derivatives scaled by "
+    "2^bias as explicit gradients - the same LOD where the derivatives are "
+    "defined, but on Adreno each explicit-gradient fetch is 4 derivative "
+    "instructions plus a quad gradient sample (samgq), all on the texture "
+    "pipe, instead of one sample. Fetches with register gradients or per-axis "
+    "gradient exponent biases (texture_gradient_exp_bias) keep the "
+    "gradients. Read when shaders are translated (startup).",
+    "GPU");
+
+DEFINE_bool(
     host_alpha_to_coverage, false,
     "Host render target path: do the guest's alpha to coverage with the "
     "host's fixed function (Vulkan alphaToCoverageEnable) instead of "

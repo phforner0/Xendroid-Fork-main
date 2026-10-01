@@ -22,6 +22,7 @@
 
 DECLARE_bool(texture_integer_num_format);
 DECLARE_bool(spirv_texture_sign_branch);
+DECLARE_bool(spirv_texture_implicit_lod);
 
 namespace xe {
 namespace gpu {
@@ -1735,10 +1736,16 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
 
         // Cube auto-LOD without register gradients uses implicit LOD + bias to
         // work around wrong-mip explicit cube gradients on Vulkan. Other dims
-        // keep explicit gradients, matching the DXBC ground-truth path.
-        bool use_lod_bias = use_computed_lod &&
-                            !instr.attributes.use_register_gradients &&
-                            instr.dimension == xenos::FetchOpDimension::kCube;
+        // keep explicit gradients, matching the DXBC ground-truth path - except
+        // 2D with spirv_texture_implicit_lod, where the host's LOD plus the
+        // bias is the same as the coarse derivatives scaled by 2^bias, without
+        // the derivative instructions and the gradient sample.
+        bool use_lod_bias =
+            use_computed_lod && !instr.attributes.use_register_gradients &&
+            (instr.dimension == xenos::FetchOpDimension::kCube ||
+             (instr.dimension == xenos::FetchOpDimension::k2D &&
+              cvars::spirv_texture_implicit_lod &&
+              !cvars::texture_gradient_exp_bias));
 
         // Calculate the gradients for sampling the texture if needed.
         // 2D vectors for k1D (because 1D images are emulated as 2D arrays),
