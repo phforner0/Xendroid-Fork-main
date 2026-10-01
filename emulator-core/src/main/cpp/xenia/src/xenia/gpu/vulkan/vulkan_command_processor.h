@@ -819,6 +819,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
     // Render passes ended by barriers, by the PassEndReason scope that pushed
     // them (several per pass end if several did).
     uint64_t pass_ending_barrier_origins[size_t(PassEndReason::kCount)] = {};
+    // In-pass render target transfers inside an open native occlusion query
+    // segment, which was closed around them.
+    uint64_t zpd_transfer_suspends = 0;
     uint64_t last_report_ns = 0;
   };
   VkFrameSyncStats vk_frame_sync_stats_;

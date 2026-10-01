@@ -2761,6 +2761,12 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
         if (!transfer_stats.empty()) {
           XELOGI("VkXfer: {}", transfer_stats);
         }
+        if (s.zpd_transfer_suspends) {
+          XELOGI(
+              "VkZpd: per frame, occlusion query segments closed around "
+              "in-pass transfers: {:.1f}",
+              s.zpd_transfer_suspends / f);
+        }
       }
       // Per-render-pass-bucket GPU time (key: WxH, bit31 = ownership transfer).
       if (!pass_bucket_stats_.empty()) {
@@ -5393,6 +5399,18 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // way the transfers change pipeline / dynamic / binding state, so re-emit it
   // before the actual guest draw below.
   if (render_target_cache_->HasPendingDrawPassTransfers()) {
+    // An open native occlusion query of the guest would count the samples of
+    // the transfer draws too (FSI counter queries only count guest shaders) -
+    // close its segment around them, like a render pass end does.
+    const bool suspend_zpd_segment =
+        zpd_active_segment_.segment_active && !zpd_active_query_is_fsi_;
+    const uint32_t zpd_scale_area = zpd_active_segment_.scale_area;
+    if (suspend_zpd_segment) {
+      CloseQuerySegment();
+      if (cvars::log_gpu_frame_time_breakdown) {
+        ++vk_frame_sync_stats_.zpd_transfer_suspends;
+      }
+    }
     if (!render_target_cache_->EncodePendingDrawPassTransfers()) {
       if (!render_target_cache_->FlushPendingDrawPassTransfers()) {
         return false;
@@ -5400,6 +5418,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       SubmitBarriersAndEnterRenderTargetCacheRenderPass(
           render_target_cache_->last_update_render_pass(),
           render_target_cache_->last_update_framebuffer());
+    }
+    if (suspend_zpd_segment) {
+      OpenQuerySegment(false);
+      UpdateZPDScale(zpd_scale_area);
     }
     // Re-bind the guest pipeline (deferred, EDS-aware, with descriptor-set
     // invalidation) - the transfer draws bound their own external pipelines and
