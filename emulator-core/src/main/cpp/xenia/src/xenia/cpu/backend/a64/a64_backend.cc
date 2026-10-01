@@ -9,6 +9,7 @@
 
 #include "xenia/cpu/backend/a64/a64_backend.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstring>
 
@@ -660,6 +661,17 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
                 backend_context->current_stackpoint_depth,
                 static_cast<uint32_t>(guest_context->r[1]));
             if (sync_depth != 0) {
+              // Whether a title ever needs the synchronization (its cost is
+              // up to a quarter of hot call-heavy guest functions).
+              static std::atomic<uint32_t> reentries_logged{0};
+              if (reentries_logged.fetch_add(1, std::memory_order_relaxed) <
+                  16) {
+                XELOGI(
+                    "A64Backend: longjmp re-entry into {:08X} (stackpoint "
+                    "depth {} -> {})",
+                    static_cast<uint32_t>(target_address),
+                    backend_context->current_stackpoint_depth, sync_depth);
+              }
               backend_context->pending_stackpoint_sync_depth = sync_depth;
               return host_address;
             }
