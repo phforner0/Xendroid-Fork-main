@@ -67,6 +67,30 @@ static const Quirk kQuirks[] = {
     // sample positions; 2026-09-30).
     {0x4D5309C9, "vulkan_depth_4x_as_1x", true,
      "4x depth-only draws into the 1x surface of their samples"},
+    // The Direct3D wait for the GPU (only the code with this signature - its
+    // first 16 instructions - so another build is left alone) sleeps until
+    // the command processor makes progress instead of spinning: Guest CPU 0
+    // 97% -> 37% of a core, the same fps (AB3, AB5).
+    {0x4D5309C9, "spin_park_guest_functions", "829F04A8:B864F65007F969C0",
+     "the Direct3D GPU wait parks instead of spinning"},
+    {0x4D5309C9, "spin_park_mode", int64_t(1),
+     "the Direct3D GPU wait parks instead of spinning"},
+    // Forza Horizon never reads the 7e3 alpha: +3.1% fps, -3.5% GPU time
+    // (AB3), the same image in motion (AB5).
+    {0x4D5309C9, "render_target_7e3_as_r11g11b10", true,
+     "7e3 scene color in 32 bpp"},
+    // The clear of a resolve inside the game's own render pass: with the
+    // draw barriers moved to the resolve, render passes 205 -> ~133 per frame
+    // (AB8), the same GPU time at the 30 fps cap (S18, 2026-10-01). Every
+    // visual check since AB7 ran with it.
+    {0x4D5309C9, "vulkan_resolve_clear_in_guest_pass", true,
+     "resolve clears inside the game's render pass"},
+    // Turnip's early preamble costs every draw ~1.6 us of GPU time when the
+    // draws are small (one-primitive main pass draws 2.8 -> 1.2 us, S20); off,
+    // GPU time -0.8 ms (-2.4%) per frame at the 30 fps cap (S21, 2026-10-01).
+    // Only Turnip reads it; the pipeline cache file is separate per flags.
+    {0x4D5309C9, "ir3_debug", "noearlypreamble",
+     "no early shader preamble in the Turnip compiler"},
 };
 
 // Same path/priority as a per-game config file.

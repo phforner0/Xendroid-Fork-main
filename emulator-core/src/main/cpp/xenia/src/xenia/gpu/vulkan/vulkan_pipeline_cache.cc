@@ -9,10 +9,12 @@
 
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
 
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <set>
+#include <string>
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
@@ -21,6 +23,7 @@
 #include "xenia/base/shader_compile_counter.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
+#include "xenia/base/platform.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/xxhash.h"
 #include "xenia/gpu/draw_util.h"
@@ -122,6 +125,9 @@ DECLARE_bool(vulkan_dynamic_rendering);
 DECLARE_bool(spirv_disable_rounding_mode_rte);
 DECLARE_bool(precise_interpolation);
 DECLARE_bool(host_alpha_to_coverage);
+#if XE_PLATFORM_xendroid || XE_PLATFORM_ANDROID
+DECLARE_string(ir3_debug);
+#endif
 
 namespace xe {
 namespace gpu {
@@ -3179,9 +3185,22 @@ void VulkanPipelineCache::InitializeShaderStorage(
     std::error_code ec;
     std::filesystem::create_directories(shader_storage_local_root, ec);
   }
+  // Binaries built with other Turnip compiler flags (ir3_debug) go to their
+  // own file - a driver may return cached binaries by the shader alone.
+  std::string vk_pipeline_cache_name =
+      fmt::format("{:08X}", shader_storage_title_id_);
+#if XE_PLATFORM_xendroid || XE_PLATFORM_ANDROID
+  if (!cvars::ir3_debug.empty()) {
+    vk_pipeline_cache_name += '.';
+    for (char c : cvars::ir3_debug) {
+      vk_pipeline_cache_name += std::isalnum(static_cast<unsigned char>(c))
+                                    ? c
+                                    : '_';
+    }
+  }
+#endif
   vk_pipeline_cache_path_ =
-      shader_storage_local_root /
-      fmt::format("{:08X}.vk.bin", shader_storage_title_id_);
+      shader_storage_local_root / (vk_pipeline_cache_name + ".vk.bin");
 
   const ui::vulkan::VulkanDevice* const vulkan_device =
       command_processor_.GetVulkanDevice();
