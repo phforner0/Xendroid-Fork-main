@@ -230,6 +230,16 @@ class VulkanDevice {
     // VK_EXT_external_memory_host (#179). Alignment a host pointer must satisfy
     // to be imported. 0 if the extension is not enabled.
     VkDeviceSize minImportedHostPointerAlignment = 0;
+
+    // VK_KHR_fragment_shading_rate (#227), only requested with
+    // vulkan_fragment_shading_rate: the rate of the pipeline (set dynamically),
+    // and what may be used with a rate coarser than 1x1.
+    bool pipelineFragmentShadingRate = false;
+    bool fragmentShadingRateWithShaderDepthStencilWrites = false;
+    bool fragmentShadingRateWithSampleMask = false;
+    bool fragmentShadingRateWithShaderSampleMask = false;
+    VkSampleCountFlagBits maxFragmentShadingRateRasterizationSamples =
+        VK_SAMPLE_COUNT_1_BIT;
   };
 
   // Properties of the core API and enabled extensions, and enabled features.
@@ -284,6 +294,9 @@ class VulkanDevice {
     // VK_KHR_pipeline_executable_properties (#270), only requested with the
     // vulkan_pipeline_statistics diagnostics.
     bool ext_KHR_pipeline_executable_properties = false;
+    // VK_KHR_fragment_shading_rate (#227), only requested with
+    // vulkan_fragment_shading_rate.
+    bool ext_KHR_fragment_shading_rate = false;
   };
 
   const Extensions& extensions() const { return extensions_; }
@@ -307,6 +320,12 @@ class VulkanDevice {
   PFN_vkGetMemoryHostPointerPropertiesEXT vkGetMemoryHostPointerPropertiesEXT()
       const {
     return vkGetMemoryHostPointerPropertiesEXT_;
+  }
+
+  // VK_KHR_fragment_shading_rate entry point, or null unless the pipeline
+  // shading rate is enabled (properties().pipelineFragmentShadingRate).
+  PFN_vkCmdSetFragmentShadingRateKHR vkCmdSetFragmentShadingRateKHR() const {
+    return vkCmdSetFragmentShadingRateKHR_;
   }
 
   VkDevice device() const { return device_; }
@@ -485,6 +504,9 @@ class VulkanDevice {
       vkGetPipelineExecutableStatisticsKHR_ = nullptr;
   PFN_vkGetPipelineExecutableInternalRepresentationsKHR
       vkGetPipelineExecutableInternalRepresentationsKHR_ = nullptr;
+  // VK_KHR_fragment_shading_rate function pointer, loaded only with the
+  // pipeline shading rate enabled. Null otherwise.
+  PFN_vkCmdSetFragmentShadingRateKHR vkCmdSetFragmentShadingRateKHR_ = nullptr;
   // Set when LogFaultInfo() has already logged - prevents repeat logging from
   // multiple device-loss observers.
   std::atomic_flag fault_info_logged_ = ATOMIC_FLAG_INIT;

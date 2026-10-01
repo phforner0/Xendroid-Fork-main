@@ -616,6 +616,17 @@ class DeferredCommandBuffer {
                 sizeof(VkColorComponentFlags) * attachment_count);
   }
 
+  // VK_KHR_fragment_shading_rate: the rate of the pipeline, with the
+  // per-primitive and attachment rates (unused) not combined in. Only recorded
+  // with the pipeline shading rate enabled.
+  void CmdVkSetFragmentShadingRateKHR(uint32_t width, uint32_t height) {
+    auto& args = *reinterpret_cast<ArgsVkSetFragmentShadingRateKHR*>(
+        WriteCommand(Command::kVkSetFragmentShadingRateKHR,
+                     sizeof(ArgsVkSetFragmentShadingRateKHR)));
+    args.width = width;
+    args.height = height;
+  }
+
   // Debug marker support for RenderDoc/debug tools annotation.
   void CmdVkBeginDebugUtilsLabelEXT(const char* label_name) {
     size_t label_len = std::strlen(label_name);
@@ -692,6 +703,7 @@ class DeferredCommandBuffer {
     kVkSetColorBlendEnableEXT,
     kVkSetColorBlendEquationEXT,
     kVkSetColorWriteMaskEXT,
+    kVkSetFragmentShadingRateKHR,
     kVkBeginDebugUtilsLabelEXT,
     kVkEndDebugUtilsLabelEXT,
     kVkInsertDebugUtilsLabelEXT,
@@ -964,6 +976,11 @@ class DeferredCommandBuffer {
     VkPolygonMode polygon_mode;
   };
 
+  struct ArgsVkSetFragmentShadingRateKHR {
+    uint32_t width;
+    uint32_t height;
+  };
+
   struct ArgsVkSetColorBlendEnableEXT {
     uint32_t first_attachment;
     uint32_t attachment_count;
@@ -1003,7 +1020,7 @@ class DeferredCommandBuffer {
   // vulkan_replay_stats: what the replays sent to the driver, and how much of
   // it repeated the state already set in the same command buffer (the same
   // pipeline, descriptor sets, push constant bytes or dynamic state value).
-  static constexpr size_t kReplayStatCommandCount = 50;
+  static constexpr size_t kReplayStatCommandCount = 51;
   struct ReplayStats {
     uint64_t commands[kReplayStatCommandCount] = {};
     uint64_t redundant[kReplayStatCommandCount] = {};

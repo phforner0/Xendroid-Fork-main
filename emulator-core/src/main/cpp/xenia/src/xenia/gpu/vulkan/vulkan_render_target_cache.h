@@ -216,6 +216,10 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // Falls back to performing the queued transfers in their own render pass(es),
   // ending the active pass. Always clears the queue.
   bool FlushPendingDrawPassTransfers();
+  // The transfers the last Update() turned into clears of their destinations
+  // (transfer_cleared_sources_as_clears), recorded in the currently-active
+  // guest render pass - after the in-pass transfers, before the draw.
+  void EncodePendingDrawPassClears();
 
   // For VK_KHR_dynamic_rendering: fills in attachment info structures.
   // Returns the number of color attachments (may be less than max if trailing
@@ -1302,6 +1306,23 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
       pending_draw_pass_transfers_;
   uint32_t pending_draw_pass_transfer_mask_ = 0;
   uint32_t pending_draw_pass_full_overwrite_mask_ = 0;
+
+  // Transfers of only what a resolve clear left in their source, as clears of
+  // their destinations with that value (transfer_cleared_sources_as_clears),
+  // to record in the draw's pass (EncodePendingDrawPassClears).
+  std::array<std::vector<std::pair<Transfer, uint64_t>>,
+             1 + xenos::kMaxColorRenderTargets>
+      pending_draw_pass_clears_;
+  std::array<RenderTarget*, 1 + xenos::kMaxColorRenderTargets>
+      pending_draw_pass_clear_render_targets_ = {};
+  uint32_t pending_draw_pass_clear_mask_ = 0;
+  // A draw that never happened: in the last pass (or dropped if it can't be
+  // reopened).
+  void FlushPendingDrawPassClears();
+  void ClearPendingDrawPassClears();
+  // For TakeTransferStats.
+  uint64_t transfers_as_clears_ = 0;
+  uint64_t transfer_tiles_as_clears_ = 0;
 
   // Temporary storage for DumpRenderTargets.
   std::vector<ResolveCopyDumpRectangle> dump_rectangles_;

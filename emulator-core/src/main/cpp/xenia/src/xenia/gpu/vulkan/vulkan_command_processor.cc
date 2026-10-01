@@ -38,6 +38,7 @@
 #include "xenia/gpu/spirv_fsi_system_constants.h"
 #include "xenia/gpu/spirv_shader_translator.h"
 #include "xenia/gpu/texture_info.h"
+#include "xenia/gpu/texture_util.h"
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
 #include "xenia/gpu/vulkan/vulkan_render_target_cache.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
@@ -69,6 +70,18 @@ DECLARE_bool(vulkan_resolve_draw_barriers_at_resolve);
 DECLARE_int32(vulkan_debug_gpu_probe);
 DECLARE_int32(edram_trace_frames);
 DECLARE_bool(skip_overwritten_transfers);
+DECLARE_bool(skip_overwritten_transfers_cutout);
+DECLARE_bool(transfer_cleared_sources_as_clears);
+DECLARE_bool(host_alpha_to_coverage);
+DECLARE_bool(spirv_texture_sign_specialization);
+
+DEFINE_bool(
+    vulkan_texture_sign_classes, true,
+    "With spirv_texture_sign_specialization: give each draw's pipeline the "
+    "signs of the textures its pixel shader fetches (otherwise the shaders "
+    "handle them at runtime, as without the option). Read per draw "
+    "(debug.xendroid.texture_sign_classes on Android).",
+    "GPU");
 
 DEFINE_bool(
     msaa_4x_as_2x, false,
@@ -97,6 +110,16 @@ DEFINE_bool(
     "(debug.xendroid.depth_4x_as_1x).",
     "GPU");
 
+DEFINE_int32(
+    vulkan_shading_rate, 0,
+    "With vulkan_fragment_shading_rate: shade the draws of multisampled "
+    "render targets (the 3D scene, not the 1x post-processing and interface) "
+    "once per 0 - pixel, 1 - 2x1 pixels, 2 - 1x2 pixels, 3 - 2x2 pixels. "
+    "Coverage, depth and stencil stay per sample: edges keep their "
+    "antialiasing, textures and lighting inside triangles get coarser. Can be "
+    "switched at runtime (debug.xendroid.shading_rate).",
+    "GPU");
+
 DEFINE_bool(
     vulkan_samples_as_pixels_simple_ps, false,
     "With vulkan_depth_4x_as_1x: also render 4x MSAA draws whose pixel shader "
@@ -109,6 +132,17 @@ DEFINE_bool(
     "result for flat colors, interpolated values taken at the 1x pixel "
     "centers otherwise. Can be switched at runtime "
     "(debug.xendroid.samples_as_pixels_ps).",
+    "GPU");
+
+DEFINE_bool(
+    vulkan_samples_as_pixels_2x, false,
+    "With vulkan_depth_4x_as_1x: a 4x MSAA draw it would render into the 1x "
+    "surface of its samples, over EDRAM a 2x MSAA surface of the same pitch "
+    "owns, goes into that 2x surface twice as wide instead (the 2 columns of "
+    "samples of a 4x pixel are 2 pixels there, its vertical samples the 2x "
+    "ones) - no transfers to the 1x surface and back. Forza Horizon clears "
+    "its 256x256 2x reflection with a 4x quad (512 tiles a frame). Can be "
+    "switched at runtime (debug.xendroid.samples_as_pixels_2x).",
     "GPU");
 
 DEFINE_bool(
@@ -334,6 +368,9 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.samples_as_pixels_ps",
                             "vulkan_samples_as_pixels_simple_ps",
                             cvars::vulkan_samples_as_pixels_simple_ps);
+  PollDebugPropertyOverride("debug.xendroid.samples_as_pixels_2x",
+                            "vulkan_samples_as_pixels_2x",
+                            cvars::vulkan_samples_as_pixels_2x);
   // Read per resolve.
   PollDebugPropertyOverride("debug.xendroid.resolve_draw_barriers",
                             "vulkan_resolve_draw_barriers_at_resolve",
@@ -342,6 +379,15 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.skip_overwritten_transfers",
                             "skip_overwritten_transfers",
                             cvars::skip_overwritten_transfers);
+  PollDebugPropertyOverride("debug.xendroid.transfer_cutout",
+                            "skip_overwritten_transfers_cutout",
+                            cvars::skip_overwritten_transfers_cutout);
+  PollDebugPropertyOverride("debug.xendroid.cleared_transfers",
+                            "transfer_cleared_sources_as_clears",
+                            cvars::transfer_cleared_sources_as_clears);
+  PollDebugPropertyOverride("debug.xendroid.texture_sign_classes",
+                            "vulkan_texture_sign_classes",
+                            cvars::vulkan_texture_sign_classes);
   // Both texture load switches at once, for A/Bs of the load paths: 0 - the
   // original untiling into a buffer copied to the image, 1 - coalesced
   // untiling, 2 - coalesced straight into the image (which only has the
@@ -357,6 +403,18 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
       cvars::vulkan_texture_load_coalesced = mode >= 1;
       cvars::vulkan_texture_load_to_image = mode >= 2;
       XELOGI("debug.xendroid.texload_mode: texload_mode = {}", mode);
+    }
+  }
+  // The shading rate of the multisampled scene draws, read per draw.
+  char shading_rate_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.shading_rate",
+                            shading_rate_value) > 0 &&
+      shading_rate_value[0] >= '0' && shading_rate_value[0] <= '3' &&
+      !shading_rate_value[1]) {
+    const int32_t rate = shading_rate_value[0] - '0';
+    if (cvars::vulkan_shading_rate != rate) {
+      cvars::vulkan_shading_rate = rate;
+      XELOGI("debug.xendroid.shading_rate: vulkan_shading_rate = {}", rate);
     }
   }
   // Draws per mid-frame submission (0 = one submission per frame), read per
@@ -4392,6 +4450,7 @@ void VulkanCommandProcessor::BindExternalGraphicsPipeline(
   dynamic_color_blend_enable_update_needed_ = true;
   dynamic_color_blend_equation_update_needed_ = true;
   dynamic_color_write_mask_update_needed_ = true;
+  dynamic_shading_rate_update_needed_ = true;
   if (current_external_graphics_pipeline_ == pipeline) {
     return;
   }
@@ -4597,7 +4656,11 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         ps_param_gen_pos != UINT32_MAX ? " position" : "",
         pixel_shader && pixel_shader->kills_pixels() ? " kill" : "",
         pixel_shader && pixel_shader->writes_depth() ? " depth" : "",
-        depth_4x_as_1x ? ", samples as pixels" : "",
+        depth_4x_as_1x
+            ? (render_target_cache_->draw_samples_as_pixels_keep_vertical()
+                   ? ", samples as pixels at 2x"
+                   : ", samples as pixels")
+            : "",
         uint32_t(rb_colorcontrol.alpha_test_enable),
         uint32_t(rb_colorcontrol.alpha_func),
         uint32_t(rb_colorcontrol.alpha_to_mask_enable),
@@ -4930,6 +4993,30 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     }
   }
 
+  // The signs of the textures of the first fetch constants the pixel shader
+  // fetches, for the specialization constants of its pipeline
+  // (spirv_texture_sign_specialization) - from the fetch constants, like the
+  // swizzled signs the texture cache gives the shaders. Where it binds no
+  // texture (taking the signs as unsigned), the classes made known (unsigned
+  // or gamma) give the same zeros.
+  uint32_t texture_sign_classes = 0;
+  if (pixel_shader && cvars::spirv_texture_sign_specialization &&
+      cvars::vulkan_texture_sign_classes) {
+    for (const Shader::TextureBinding& texture_binding :
+         pixel_shader->texture_bindings()) {
+      const uint32_t fetch_constant = texture_binding.fetch_constant;
+      if (fetch_constant >=
+          SpirvShaderTranslator::kTextureSignClassFetchConstantCount) {
+        continue;
+      }
+      texture_sign_classes |=
+          SpirvShaderTranslator::GetTextureSignClass(texture_util::SwizzleSigns(
+              regs.GetTextureFetch(fetch_constant)))
+          << (2 * fetch_constant);
+    }
+  }
+  pipeline_cache_->SetTextureSignClasses(texture_sign_classes);
+
   // Create the pipeline (for this, need the render pass from the render target
   // cache), translating the shaders - doing this now to obtain the used
   // textures.
@@ -5148,9 +5235,14 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   {
     const xenos::MsaaSamples guest_msaa_samples =
         regs.Get<reg::RB_SURFACE_INFO>().msaa_samples;
+    // Into a 2x surface twice as wide: 2 host pixels of 2 samples.
     UpdateZPDScale(
         ((draw_resolution_scale_x * draw_resolution_scale_y) >>
-         (depth_4x_as_1x ? 2 : 0)) |
+         (depth_4x_as_1x
+              ? (render_target_cache_->draw_samples_as_pixels_keep_vertical()
+                     ? 1
+                     : 2)
+              : 0)) |
         (render_target_cache_->GetHostMsaaSamples(guest_msaa_samples) !=
                  guest_msaa_samples
              ? kZPDScaleHalfSamples
@@ -5176,6 +5268,28 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   gviargs.SetupRegisterValues(regs);
 
   draw_util::GetHostViewportInfo(&gviargs, viewport_info);
+  // vulkan_shading_rate: coarse shading of the multisampled scene's draws,
+  // where the rate is allowed with what the pixel shader writes.
+  draw_shading_rate_ = 0;
+  if (cvars::vulkan_shading_rate && pixel_shader &&
+      device_properties.pipelineFragmentShadingRate) {
+    const xenos::MsaaSamples guest_msaa_samples =
+        regs.Get<reg::RB_SURFACE_INFO>().msaa_samples;
+    if (guest_msaa_samples != xenos::MsaaSamples::k1X &&
+        (uint32_t(1) << uint32_t(render_target_cache_->GetHostMsaaSamples(
+             guest_msaa_samples))) <=
+            uint32_t(
+                device_properties.maxFragmentShadingRateRasterizationSamples) &&
+        (!pixel_shader->writes_depth() ||
+         device_properties.fragmentShadingRateWithShaderDepthStencilWrites) &&
+        // Alpha to coverage is the shader's sample mask unless done by the
+        // host's fixed function (color output 0 needed).
+        (!regs.Get<reg::RB_COLORCONTROL>().alpha_to_mask_enable ||
+         device_properties.fragmentShadingRateWithShaderSampleMask ||
+         (cvars::host_alpha_to_coverage && (normalized_color_mask & 0xF)))) {
+      draw_shading_rate_ = uint32_t(cvars::vulkan_shading_rate) & 3;
+    }
+  }
   // Update dynamic graphics pipeline state.
   UpdateDynamicState(viewport_info, primitive_polygonal,
                      normalized_depth_control, draw_resolution_scale_x,
@@ -5495,6 +5609,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       return false;
     }
   }
+  // Transfers of what a resolve clear left in their source - clears of the
+  // destinations in this pass, after the transfers (no state of the draw is
+  // changed by them).
+  render_target_cache_->EncodePendingDrawPassClears();
 
   // Track for device-lost diagnostics.
   ++submission_in_progress_.draw_count;
@@ -5804,12 +5922,48 @@ bool VulkanCommandProcessor::RewriteMsaa4xSurfaceInfoForDraw(
           xenos::kTexture2DCubeMaxWidthHeight) {
     return false;
   }
+  // Over EDRAM 2x MSAA surfaces of the same pitch own, the 2x surface twice
+  // as wide (vulkan_samples_as_pixels_2x) - 2 vertical samples per pixel at
+  // both 4x and 2x.
+  bool keep_vertical_samples = false;
+  if (cvars::vulkan_samples_as_pixels_2x) {
+    const uint32_t pitch_tiles_at_32bpp =
+        ((uint32_t(surface_info.surface_pitch) << 1) +
+         (xenos::kEdramTileWidthSamples - 1)) /
+        xenos::kEdramTileWidthSamples;
+    uint32_t bases_checked = 0;
+    bool all_owned_by_2x = true;
+    auto check_base = [&](uint32_t base_tiles) {
+      ++bases_checked;
+      xenos::MsaaSamples owner_msaa_samples;
+      uint32_t owner_pitch_tiles_at_32bpp;
+      if (!render_target_cache_->GetEdramTileOwner(
+              base_tiles, owner_msaa_samples, owner_pitch_tiles_at_32bpp) ||
+          owner_msaa_samples != xenos::MsaaSamples::k2X ||
+          owner_pitch_tiles_at_32bpp != pitch_tiles_at_32bpp) {
+        all_owned_by_2x = false;
+      }
+    };
+    const auto depth_control = regs.Get<reg::RB_DEPTHCONTROL>();
+    if (depth_control.z_enable || depth_control.stencil_enable) {
+      check_base(regs.Get<reg::RB_DEPTH_INFO>().depth_base);
+    }
+    for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
+      if ((color_mask >> (4 * i)) & 0b1111) {
+        check_base(regs.Get<reg::RB_COLOR_INFO>(
+                           reg::RB_COLOR_INFO::rt_register_indices[i])
+                       .color_base);
+      }
+    }
+    keep_vertical_samples = bases_checked && all_owned_by_2x;
+  }
   // The same EDRAM tiles as the 1x surface twice as wide (and tall): 2
   // horizontal samples per pixel at 4x, 1 at 1x.
-  surface_info.msaa_samples = xenos::MsaaSamples::k1X;
+  surface_info.msaa_samples = keep_vertical_samples ? xenos::MsaaSamples::k2X
+                                                    : xenos::MsaaSamples::k1X;
   surface_info.surface_pitch = surface_info.surface_pitch * 2;
   surface_info_value = surface_info.value;
-  render_target_cache_->SetDrawSamplesAsPixels(true);
+  render_target_cache_->SetDrawSamplesAsPixels(true, keep_vertical_samples);
   return true;
 }
 
@@ -7234,6 +7388,7 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
     dynamic_color_blend_enable_update_needed_ = true;
     dynamic_color_blend_equation_update_needed_ = true;
     dynamic_color_write_mask_update_needed_ = true;
+    dynamic_shading_rate_update_needed_ = true;
     current_render_pass_ = VK_NULL_HANDLE;
     current_framebuffer_ = nullptr;
     in_render_pass_ = false;
@@ -8277,6 +8432,19 @@ void VulkanCommandProcessor::UpdateDynamicState(
           }
         }
       }
+    }
+  }
+
+  // The shading rate (vulkan_shading_rate) - dynamic in every guest pipeline
+  // when the device has the pipeline shading rate.
+  if (GetVulkanDevice()->properties().pipelineFragmentShadingRate) {
+    dynamic_shading_rate_update_needed_ |=
+        dynamic_shading_rate_ != draw_shading_rate_;
+    if (dynamic_shading_rate_update_needed_) {
+      dynamic_shading_rate_ = draw_shading_rate_;
+      deferred_command_buffer_.CmdVkSetFragmentShadingRateKHR(
+          1 + (dynamic_shading_rate_ & 1), 1 + ((dynamic_shading_rate_ >> 1) & 1));
+      dynamic_shading_rate_update_needed_ = false;
     }
   }
 }

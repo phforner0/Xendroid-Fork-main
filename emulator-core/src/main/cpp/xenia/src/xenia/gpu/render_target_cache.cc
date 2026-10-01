@@ -45,6 +45,15 @@ DEFINE_bool(
     "Android).",
     "GPU");
 
+DEFINE_bool(
+    skip_overwritten_transfers_cutout, false,
+    "With skip_overwritten_transfers: a transfer the rectangle covers only in "
+    "part copies what's outside it alone, like around a resolve clear (the "
+    "EDRAM is claimed by whole rows of tiles, a draw often covers less). "
+    "Backends without cutouts transfer it whole. Read per draw "
+    "(debug.xendroid.transfer_cutout on Android).",
+    "GPU");
+
 DEFINE_int32(
     edram_trace_frames, 0,
     "Diagnostics - log how the next N frames use the EDRAM (EdramTrace lines): "
@@ -577,6 +586,7 @@ void RenderTargetCache::InitializeCommon() {
 void RenderTargetCache::DestroyAllRenderTargets(bool shutting_down) {
   ++ownership_ranges_version_;
   ownership_ranges_.clear();
+  resolve_cleared_render_targets_.clear();
   if (!shutting_down) {
     ownership_ranges_.emplace(
         std::piecewise_construct, std::forward_as_tuple(uint32_t(0)),
@@ -595,6 +605,8 @@ void RenderTargetCache::DestroyAllRenderTargets(bool shutting_down) {
 void RenderTargetCache::ShutdownCommon() { DestroyAllRenderTargets(true); }
 
 void RenderTargetCache::ClearCache() {
+  // Render targets may be recreated with new contents.
+  resolve_cleared_render_targets_.clear();
   // Keep only render targets currently owning any EDRAM data.
   if (!render_targets_.empty()) {
     std::unordered_set<RenderTargetKey, RenderTargetKey::Hasher>
@@ -670,6 +682,69 @@ void RenderTargetCache::EdramTraceFlushBinding() {
 void RenderTargetCache::EdramTraceNote(std::string_view text) {
   EdramTraceFlushBinding();
   XELOGI("EdramTrace: {}", text);
+}
+
+bool RenderTargetCache::GetEdramTileOwner(
+    uint32_t tile, xenos::MsaaSamples& msaa_samples_out,
+    uint32_t& pitch_tiles_at_32bpp_out) const {
+  auto it = ownership_ranges_.upper_bound(tile);
+  if (it == ownership_ranges_.cbegin()) {
+    return false;
+  }
+  --it;
+  const RenderTargetKey owner = it->second.render_target;
+  if (tile >= it->second.end_tiles || owner.IsEmpty()) {
+    return false;
+  }
+  msaa_samples_out = owner.msaa_samples;
+  pitch_tiles_at_32bpp_out = owner.pitch_tiles_at_32bpp;
+  return true;
+}
+
+void RenderTargetCache::RecordResolveClear(
+    const RenderTarget* render_target, uint64_t value,
+    const Transfer::Rectangle& rectangle) {
+  if (!render_target) {
+    return;
+  }
+  ResolveClearState& state =
+      resolve_cleared_render_targets_[render_target->key().key];
+  state.value = value;
+  state.rectangle = rectangle;
+}
+
+bool RenderTargetCache::IsTransferSourceResolveCleared(
+    const Transfer& transfer, uint64_t& value_out) const {
+  if (!transfer.source || resolve_cleared_render_targets_.empty()) {
+    return false;
+  }
+  const RenderTargetKey source_key = transfer.source->key();
+  auto it = resolve_cleared_render_targets_.find(source_key.key);
+  if (it == resolve_cleared_render_targets_.cend()) {
+    return false;
+  }
+  // The pixels of the source the transfer reads, all inside the clear.
+  Transfer::Rectangle rectangles[Transfer::kMaxRectanglesWithoutCutout];
+  uint32_t rectangle_count = transfer.GetRectangles(
+      source_key.base_tiles, source_key.GetPitchTiles(),
+      source_key.msaa_samples, source_key.Is64bpp(), rectangles);
+  if (!rectangle_count) {
+    return false;
+  }
+  const Transfer::Rectangle& cleared = it->second.rectangle;
+  for (uint32_t i = 0; i < rectangle_count; ++i) {
+    const Transfer::Rectangle& rectangle = rectangles[i];
+    if (rectangle.x_pixels < cleared.x_pixels ||
+        rectangle.y_pixels < cleared.y_pixels ||
+        rectangle.x_pixels + rectangle.width_pixels >
+            cleared.x_pixels + cleared.width_pixels ||
+        rectangle.y_pixels + rectangle.height_pixels >
+            cleared.y_pixels + cleared.height_pixels) {
+      return false;
+    }
+  }
+  value_out = it->second.value;
+  return true;
 }
 
 void RenderTargetCache::SkipTransfersOverwrittenByDraw(
@@ -795,11 +870,32 @@ void RenderTargetCache::SkipTransfersOverwrittenByDraw(
   if (draw_samples_as_pixels_) {
     // From the guest's 4x pixels to the pixels of the 1x surface of their
     // samples (rt_keys), 2x2 per 4x pixel - a whole 1x pixel inside the
-    // doubled rectangle has its center inside too.
+    // doubled rectangle has its center inside too. Or to the 2x surface, 2x1
+    // per 4x pixel.
     left *= 2.0f;
-    top *= 2.0f;
     right *= 2.0f;
-    bottom *= 2.0f;
+    if (!draw_samples_as_pixels_keep_vertical_) {
+      top *= 2.0f;
+      bottom *= 2.0f;
+    }
+  }
+  // The whole pixels of the destination inside the rectangle - the part of a
+  // transfer only partly covered by the draw not to transfer
+  // (skip_overwritten_transfers_cutout).
+  Transfer::Rectangle cutout = {};
+  bool cutout_valid = false;
+  if (cvars::skip_overwritten_transfers_cutout) {
+    const float cutout_left = std::ceil(std::max(left, 0.0f));
+    const float cutout_top = std::ceil(std::max(top, 0.0f));
+    const float cutout_right = std::floor(right);
+    const float cutout_bottom = std::floor(bottom);
+    if (cutout_right > cutout_left && cutout_bottom > cutout_top) {
+      cutout.x_pixels = uint32_t(cutout_left);
+      cutout.y_pixels = uint32_t(cutout_top);
+      cutout.width_pixels = uint32_t(cutout_right - cutout_left);
+      cutout.height_pixels = uint32_t(cutout_bottom - cutout_top);
+      cutout_valid = true;
+    }
   }
   uint32_t rts_remaining = overwritten;
   uint32_t rt_index;
@@ -807,6 +903,47 @@ void RenderTargetCache::SkipTransfersOverwrittenByDraw(
     rts_remaining &= ~(uint32_t(1) << rt_index);
     const RenderTargetKey& key = rt_keys[rt_index];
     std::vector<Transfer>& transfers = last_update_transfers_[rt_index];
+    if (cutout_valid) {
+      // Transfers partly covered: only what's outside the cutout. Those fully
+      // covered are dropped below.
+      for (Transfer& transfer : transfers) {
+        Transfer::Rectangle rectangles[Transfer::kMaxRectanglesWithoutCutout];
+        uint32_t rectangle_count = transfer.GetRectangles(
+            key.base_tiles, key.GetPitchTiles(), key.msaa_samples,
+            key.Is64bpp(), rectangles);
+        bool any_covered = false, any_outside = false;
+        for (uint32_t j = 0; j < rectangle_count; ++j) {
+          const Transfer::Rectangle& rectangle = rectangles[j];
+          const uint32_t x1 = rectangle.x_pixels + rectangle.width_pixels;
+          const uint32_t y1 = rectangle.y_pixels + rectangle.height_pixels;
+          if (rectangle.x_pixels < cutout.x_pixels + cutout.width_pixels &&
+              x1 > cutout.x_pixels &&
+              rectangle.y_pixels < cutout.y_pixels + cutout.height_pixels &&
+              y1 > cutout.y_pixels) {
+            any_covered = true;
+          }
+          if (rectangle.x_pixels < cutout.x_pixels ||
+              rectangle.y_pixels < cutout.y_pixels ||
+              x1 > cutout.x_pixels + cutout.width_pixels ||
+              y1 > cutout.y_pixels + cutout.height_pixels) {
+            any_outside = true;
+          }
+        }
+        if (any_covered && any_outside) {
+          transfer.draw_cutout = cutout;
+          transfer.has_draw_cutout = true;
+          ++overwritten_transfers_cut_;
+          if (edram_trace_frames_left_) {
+            EdramTraceNote(fmt::format(
+                "transfer cut: [{}] -> [{}], tiles {}-{}, without {},{} {}x{} "
+                "(overwritten by the draw)",
+                transfer.source->key().GetDebugName(), key.GetDebugName(),
+                transfer.start_tiles, transfer.end_tiles, cutout.x_pixels,
+                cutout.y_pixels, cutout.width_pixels, cutout.height_pixels));
+          }
+        }
+      }
+    }
     transfers.erase(
         std::remove_if(
             transfers.begin(), transfers.end(),
@@ -1101,7 +1238,9 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
       interlock_barrier_only
           ? cvars::execute_unclipped_draw_vs_on_cpu_for_psi_render_backend
           : true,
-      vertex_shader, draw_samples_as_pixels_ ? 2 : 1);
+      vertex_shader,
+      draw_samples_as_pixels_ && !draw_samples_as_pixels_keep_vertical_ ? 2
+                                                                         : 1);
   height_used = std::min(
       GetRenderTargetHeight(pitch_tiles_at_32bpp, msaa_samples), height_used);
 
@@ -1307,6 +1446,17 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
           edram_trace_draw_info_);
     }
     ++edram_trace_draws_;
+  }
+
+  // The draw writes its render targets - what their last resolve clear left
+  // isn't known to be there anymore. The sources of its transfers aren't
+  // among them and keep theirs for the backend to check after this.
+  if (!resolve_cleared_render_targets_.empty()) {
+    rts_remaining = depth_and_color_rts_used_bits;
+    while (xe::bit_scan_forward(rts_remaining, &rt_index)) {
+      rts_remaining &= ~(uint32_t(1) << rt_index);
+      resolve_cleared_render_targets_.erase(rt_keys[rt_index].key);
+    }
   }
 
   // If everything succeeded, update the used render targets.

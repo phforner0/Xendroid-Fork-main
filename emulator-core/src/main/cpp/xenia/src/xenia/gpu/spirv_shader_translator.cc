@@ -128,6 +128,19 @@ DEFINE_bool(
     "GPU");
 
 DEFINE_bool(
+    spirv_texture_sign_specialization, false,
+    "Pixel shaders take the signs of the textures of fetch constants 0-7 "
+    "(all unsigned, gamma color with linear alpha, all gamma) from "
+    "specialization constants their pipelines set from the fetch constants "
+    "of the draw, so the host compiler drops the runtime sign handling - the "
+    "branches around the unsigned and signed samples, the selects and the "
+    "branch on gamma - leaving one sample and the gamma conversion where "
+    "needed. Same results; more pipelines where a shader is used with "
+    "textures of different signs. Read when shaders are translated (startup); "
+    "vulkan_texture_sign_classes switches the specialization per draw.",
+    "GPU");
+
+DEFINE_bool(
     spirv_texture_implicit_lod, false,
     "Sample 2D textures with the LOD the host computes (implicit LOD plus "
     "the guest's LOD bias) instead of passing coarse derivatives scaled by "
@@ -384,6 +397,7 @@ void SpirvShaderTranslator::Reset() {
 
   sampler_bindings_.clear();
   texture_bindings_.clear();
+  texture_sign_class_spec_constants_.fill(spv::NoResult);
 
   main_interface_.clear();
   var_main_registers_ = spv::NoResult;
@@ -4854,6 +4868,24 @@ void SpirvShaderTranslator::StoreUint32ToSharedMemory(
   }
 
   binding_switch.makeEndSwitch();
+}
+
+spv::Id SpirvShaderTranslator::GetTextureSignClassSpecConstant(
+    uint32_t fetch_constant_index) {
+  assert_true(fetch_constant_index < kTextureSignClassFetchConstantCount);
+  spv::Id& spec_constant =
+      texture_sign_class_spec_constants_[fetch_constant_index];
+  if (spec_constant == spv::NoResult) {
+    spec_constant =
+        builder_->makeUintConstant(uint32_t(kTextureSignClassRuntime), true);
+    builder_->addName(
+        spec_constant,
+        fmt::format("xe_texture_sign_class_{}", fetch_constant_index).c_str());
+    builder_->addDecoration(
+        spec_constant, spv::DecorationSpecId,
+        int(kSpecIdTextureSignClassFirst + fetch_constant_index));
+  }
+  return spec_constant;
 }
 
 spv::Id SpirvShaderTranslator::PWLGammaToLinear(

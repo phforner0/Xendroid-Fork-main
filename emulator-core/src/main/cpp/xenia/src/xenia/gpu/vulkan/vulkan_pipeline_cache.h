@@ -263,6 +263,11 @@ class VulkanPipelineCache : public GuestSpirvShaderCache::Host {
       uint32_t normalized_color_mask,
       VulkanRenderTargetCache::RenderPassKey render_pass_key,
       bool use_interpreter, Pipeline** pipeline_out);
+  // The texture sign classes of the pixel shader of the next ConfigurePipeline
+  // calls (PipelineDescription::texture_sign_classes).
+  void SetTextureSignClasses(uint32_t texture_sign_classes) {
+    texture_sign_classes_ = texture_sign_classes;
+  }
 
   // True while this draw must be fed the ucode interpreter's inputs (full float
   // constants + ucode location). False once hot-swapped to the real VS.
@@ -387,6 +392,11 @@ class VulkanPipelineCache : public GuestSpirvShaderCache::Host {
     // fixed function (the pixel shaders don't emulate it then). Zero in
     // pipeline storages written before it, which is the emulated behavior.
     uint32_t alpha_to_coverage : 1;  // 12
+    // spirv_texture_sign_specialization: the sign class
+    // (SpirvShaderTranslator::TextureSignClass) of each of the fetch constants
+    // 0-7 the pixel shader fetches, 2 bits each - its specialization constants.
+    // Zero (handled at runtime) in pipeline storages written before it.
+    uint32_t texture_sign_classes : 16;  // 28
 
     // Filled only for the attachments present in the render pass object.
     PipelineRenderTarget render_targets[xenos::kMaxColorRenderTargets];
@@ -542,6 +552,9 @@ class VulkanPipelineCache : public GuestSpirvShaderCache::Host {
   const RegisterFile& register_file_;
   VulkanRenderTargetCache& render_target_cache_;
   VkShaderStageFlags guest_shader_vertex_stages_;
+
+  // SetTextureSignClasses.
+  uint32_t texture_sign_classes_ = 0;
 
   // Cached device features for geometry shader creation.
   unsigned int spirv_version_;

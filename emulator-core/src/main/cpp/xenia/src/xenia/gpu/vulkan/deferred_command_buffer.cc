@@ -577,6 +577,23 @@ void DeferredCommandBuffer::Execute(VkCommandBuffer command_buffer) {
                           alignof(VkColorComponentFlags))));
       } break;
 
+      case Command::kVkSetFragmentShadingRateKHR: {
+        auto& args =
+            *reinterpret_cast<const ArgsVkSetFragmentShadingRateKHR*>(stream);
+        PFN_vkCmdSetFragmentShadingRateKHR set_fragment_shading_rate =
+            command_processor_.GetVulkanDevice()
+                ->vkCmdSetFragmentShadingRateKHR();
+        if (set_fragment_shading_rate) {
+          const VkExtent2D fragment_size = {args.width, args.height};
+          // The pipeline's rate alone: keep it through both combiners.
+          const VkFragmentShadingRateCombinerOpKHR combiner_ops[2] = {
+              VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR,
+              VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR};
+          set_fragment_shading_rate(command_buffer, &fragment_size,
+                                    combiner_ops);
+        }
+      } break;
+
       case Command::kVkBeginDebugUtilsLabelEXT: {
         const ui::vulkan::VulkanInstance::Functions& ifn =
             command_processor_.GetVulkanDevice()
@@ -891,8 +908,8 @@ const char* DeferredCommandBuffer::GetReplayStatCommandName(size_t index) {
       "SetPrimitiveRestartEnable", "SetDepthTestEnable", "SetDepthWriteEnable",
       "SetDepthCompareOp", "SetStencilTestEnable", "SetStencilOp",
       "SetDepthClampEnable", "SetPolygonMode", "SetColorBlendEnable",
-      "SetColorBlendEquation", "SetColorWriteMask", "BeginDebugUtilsLabel",
-      "EndDebugUtilsLabel", "InsertDebugUtilsLabel",
+      "SetColorBlendEquation", "SetColorWriteMask", "SetFragmentShadingRate",
+      "BeginDebugUtilsLabel", "EndDebugUtilsLabel", "InsertDebugUtilsLabel",
   };
   static_assert(xe::countof(kNames) == kReplayStatCommandCount);
   return index < kReplayStatCommandCount ? kNames[index] : "?";

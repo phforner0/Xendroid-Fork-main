@@ -1,4 +1,4 @@
-# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9, a v5 e a reanálise v6)
+# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9, a v5, a reanálise v6 e o fechamento dela no AB11)
 
 **Data:** 2026-09-30. **Base:** reanálise de `ab2` a `ab8-results.md`, dos logs
 com timestamps do build 36 (`b36-depth1x-ts`), do perfil de CPU do build 42
@@ -175,14 +175,30 @@ S27 (código PPC/HIR/a64 das funções JIT mais quentes) e as sessões S28–S32
 | 1 | Draws 4x com pixel shader simples nas amostras como pixels (`vulkan_samples_as_pixels_simple_ps`) | achado 1 | **GPU −1,7 ms (−5,2%)** | médio | **feito, quirk (S28)** |
 | 2 | Mais casos em `skip_overwritten_transfers` e o interpretador corrigido | achado 2 | **GPU −1,4 ms** com o quirk ligado (S31) | pequeno | **feito** |
 | 3 | LOD implícito em fetch 2D (`spirv_texture_implicit_lod`) | achado 3 | nenhum além do ruído (S29) | pequeno | opção desligada |
-| 4 | Transferência parcial: recortar (*cutout*) a área que o quad cobre | achado 4 | ~200 tiles | médio | — |
-| 5 | Draw 4x desenhado na superfície 2x dona dos tiles (x dobrado) | achado 4 | 512 tiles | médio | — |
-| 6 | Transferência de fonte limpa vira clear com o valor convertido | achado 4 | ~900 tiles | médio | — |
-| 7 | Resolve com *exp bias* sem o caminho "full" (escala no shader rápido) | achado 5 | ~0,5 ms (2 por frame) | médio | — |
-| 8 | Variante por draw para gama/sinal (chave maior) ou gama por sRGB (opção de qualidade) | AB4: teto −12% do passe principal | −0,5 a −1 ms | grande | — |
-| 9 | Taxa de shading 2x1/2x2 (VRS) no passe principal como opção de desempenho | achado 6 | a medir | médio | — |
-| 10 | Juntar as 3 faixas do tiling predicado num passe | achado 8 | grande, incerto | grande | pesquisa |
-| 11 | JIT: promoção de registradores, CR mortos | achado 7 | energia | grande | baixa prioridade |
+| 4 | Transferência parcial: recortar (*cutout*) a área que o quad cobre | achado 4 | 9 recortes/frame, **GPU −0,1 a −0,2 ms** (S37) | médio | **feito, quirk** |
+| 5 | Draw 4x desenhado na superfície 2x dona dos tiles (x dobrado) | achado 4 | −512 tiles/frame, GPU igual (S38) | médio | opção desligada |
+| 6 | Transferência de fonte limpa vira clear com o valor convertido | achado 4 | −1092 tiles/frame, GPU igual (S37) | médio | opção desligada |
+| 7 | Resolve com *exp bias* sem o caminho "full" (escala no shader rápido) | achado 5 | não era *exp bias*: a gravação na textura (~0,08 ms, economiza 1,5 ms) e o formato (~0,09 ms) por resolve (S38) | médio | fechado |
+| 8 | Variante por draw para gama/sinal (chave maior) ou gama por sRGB (opção de qualidade) | teto −1,9 ms (S35) | variante exata por *specialization constants* (`spirv_texture_sign_specialization`): **GPU −1,9 ms (−7,9%)**, mesma imagem (S40) | grande | **feito, quirk** |
+| 9 | Taxa de shading 2x1/2x2 (VRS) no passe principal como opção de desempenho | achado 6 | 2x1 −0,7 ms, 2x2 −0,8 ms com blocos visíveis (S34) | médio | opção desligada |
+| 10 | Juntar as 3 faixas do tiling predicado num passe | achado 8 | teto −5,3 ms com áreas falsas (S38); real ~1–2 ms (áreas) ou ~3–4 ms (juntar) | grande | pesquisa concluída, próxima rodada |
+| 11 | JIT: promoção de registradores, CR mortos | achado 7 | energia | grande | não implementado (CPU não limita) |
+
+## Situação depois do AB11 e próximos passos (v7)
+
+O plano v6 terminou com o código validado no b63 (S39, só os quirks): 29,99
+fps, GPU 26,3 ms/frame no teto, 2314 tiles transferidos por frame (eram 8791
+no b54), 9 transferências recortadas, mesma imagem parado e dirigindo. Depois
+veio a especialização dos sinais das texturas (S40, GPU −1,9 ms; quirk no
+b65). O que sobrou de grande, por ordem:
+
+| # | Caminho | Evidência | Ganho | Esforço |
+|---|---|---|---|---|
+| 1 | Medir a especialização de sinais quente e dirigindo (cidade, noite, chuva) e decidir se vira padrão para todos os jogos | S40: −1,9 ms parado e frio | — | pequeno |
+| 2 | Gama das texturas pela unidade de textura (visões sRGB) como opção de qualidade | a especialização já levou o teto inteiro do S35: o que sobra da conversão PWL é pequeno | baixo | grande |
+| 3 | Desenhar as 3 faixas do tiling predicado num passe só ("EDRAM virtual" para essas faixas, resolves e clears por faixa nas linhas certas) | teto −5,3 ms com áreas falsas (S38); custo por draw do S36 | ~3–4 ms | muito grande |
+| 4 | Resolve MSAA de média pelo hardware nas faixas 4x | teto −0,7 ms (S33) | ≤ ~0,5 ms | médio |
+| 5 | Taxa de shading 2x1 como opção de desempenho no app (a interface Kotlin é do usuário) | −0,7 ms (S34), perda de nitidez | escolha do usuário | pequeno |
 
 ## Becos sem saída (não repetir sem fato novo)
 
@@ -199,4 +215,9 @@ do JIT (`a64_vmx_nan_fixup`, sincronização de pilha, folhas inline de 32 —
 nada além do ruído de ±20% entre lançamentos); comparar CPU por função entre
 lançamentos isolados. Do AB10: LOD implícito em fetch 2D (sem ganho além do
 ruído); stencil "não usado" no atlas de sombra (algum draw usa); orientação
-de listas de retângulos para *culling* (o host nunca as descarta).
+de listas de retângulos para *culling* (o host nunca as descarta). Do
+AB11: quad 4x na superfície 2x e transferência de fonte limpa como clear
+(exatos, sem ganho além do ruído: todas as transferências restantes custam
+~0,36 ms); taxa de shading 2x2 (blocos visíveis); a diferença de formato do
+resolve 2_10_10_10 (~0,09 ms por resolve); áreas reais do tiling continuam
+bloqueadas (teto agora −5,3 ms, ver a v7).
