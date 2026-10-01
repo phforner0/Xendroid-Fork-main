@@ -1269,6 +1269,11 @@ class VulkanCommandProcessor final : public CommandProcessor {
   bool dynamic_color_blend_enable_update_needed_;
   bool dynamic_color_blend_equation_update_needed_;
   bool dynamic_color_write_mask_update_needed_;
+  // vulkan_shading_rate: the rate the current draw wants and the one set in
+  // the command buffer - bit 0: 2 pixels wide, bit 1: 2 pixels tall.
+  uint32_t draw_shading_rate_ = 0;
+  uint32_t dynamic_shading_rate_ = 0;
+  bool dynamic_shading_rate_update_needed_ = true;
 
   // Currently used samplers.
   std::vector<std::pair<VulkanTextureCache::SamplerParameters, VkSampler>>

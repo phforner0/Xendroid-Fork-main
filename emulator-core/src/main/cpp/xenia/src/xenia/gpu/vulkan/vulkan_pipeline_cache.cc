@@ -2869,6 +2869,12 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
       }
     }
   }
+  // The coarse shading of vulkan_shading_rate, set per draw.
+  if (vulkan_device->properties().pipelineFragmentShadingRate &&
+      !edram_fragment_shader_interlock) {
+    dynamic_states[dynamic_state.dynamicStateCount++] =
+        VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR;
+  }
   assert_true(dynamic_state.dynamicStateCount <= dynamic_states.size());
 
   // Tessellation state (only used when tessellation is active).

@@ -37,6 +37,15 @@ DEFINE_bool(
     "created (PipeStats lines). Takes effect at startup.",
     "Vulkan");
 
+DEFINE_bool(
+    vulkan_fragment_shading_rate, false,
+    "Enable VK_KHR_fragment_shading_rate when the driver has it, with the "
+    "shading rate of the guest draws made dynamic, so vulkan_shading_rate can "
+    "shade multisampled scene draws once per 2x1 or 2x2 pixels. Changes every "
+    "pipeline (they are compiled again the first time). Takes effect at "
+    "startup.",
+    "Vulkan");
+
 namespace xe {
 namespace ui {
 namespace vulkan {
@@ -272,6 +281,12 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
         cvars::vulkan_pipeline_statistics) {
       XE_UI_VULKAN_STRUCT_EXTENSION(KHR_pipeline_executable_properties)
     }
+    // #227. Only for the coarse shading option.
+    if (get_physical_device_properties2_supported &&
+        properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 2, 0) &&
+        cvars::vulkan_fragment_shading_rate) {
+      XE_UI_VULKAN_STRUCT_EXTENSION(KHR_fragment_shading_rate)
+    }
   }
 
 #undef XE_UI_VULKAN_STRUCT_EXTENSION
@@ -440,6 +455,13 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR,
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR>
       features_KHR_pipeline_executable_properties;
+  VulkanFeatures<
+      VkPhysicalDeviceFragmentShadingRateFeaturesKHR,
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR>
+      features_KHR_fragment_shading_rate;
+  VkPhysicalDeviceFragmentShadingRatePropertiesKHR
+      properties_KHR_fragment_shading_rate = {
+          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_PROPERTIES_KHR};
 
   if (get_physical_device_properties2_supported) {
     if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 1, 0)) {
@@ -536,8 +558,47 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       features_KHR_pipeline_executable_properties.Link(supported_features_2,
                                                        device_create_info);
     }
+    if (device->extensions_.ext_KHR_fragment_shading_rate) {
+      features_KHR_fragment_shading_rate.Link(supported_features_2,
+                                              device_create_info);
+      properties_KHR_fragment_shading_rate.pNext = properties_2.pNext;
+      properties_2.pNext = &properties_KHR_fragment_shading_rate;
+    }
     ifn.vkGetPhysicalDeviceProperties2(physical_device, &properties_2);
     ifn.vkGetPhysicalDeviceFeatures2(physical_device, &supported_features_2);
+    if (device->extensions_.ext_KHR_fragment_shading_rate) {
+      // Only the rate of the pipeline - not per primitive or from an
+      // attachment.
+      features_KHR_fragment_shading_rate.enabled.pipelineFragmentShadingRate =
+          features_KHR_fragment_shading_rate.supported
+              .pipelineFragmentShadingRate;
+      if (features_KHR_fragment_shading_rate.supported
+              .pipelineFragmentShadingRate) {
+        const VkPhysicalDeviceFragmentShadingRatePropertiesKHR& fsr =
+            properties_KHR_fragment_shading_rate;
+        device->properties_.pipelineFragmentShadingRate = true;
+        device->properties_.fragmentShadingRateWithShaderDepthStencilWrites =
+            fsr.fragmentShadingRateWithShaderDepthStencilWrites != VK_FALSE;
+        device->properties_.fragmentShadingRateWithSampleMask =
+            fsr.fragmentShadingRateWithSampleMask != VK_FALSE;
+        device->properties_.fragmentShadingRateWithShaderSampleMask =
+            fsr.fragmentShadingRateWithShaderSampleMask != VK_FALSE;
+        device->properties_.maxFragmentShadingRateRasterizationSamples =
+            fsr.maxFragmentShadingRateRasterizationSamples;
+        XELOGI(
+            "Vulkan fragment shading rate: max fragment size {}x{}, max "
+            "samples {}, with shader depth/stencil writes {}, with sample mask "
+            "{}, with shader sample mask {}, non-trivial combiners {}",
+            fsr.maxFragmentSize.width, fsr.maxFragmentSize.height,
+            uint32_t(fsr.maxFragmentShadingRateRasterizationSamples),
+            fsr.fragmentShadingRateWithShaderDepthStencilWrites,
+            fsr.fragmentShadingRateWithSampleMask,
+            fsr.fragmentShadingRateWithShaderSampleMask,
+            fsr.fragmentShadingRateNonTrivialCombinerOps);
+      } else {
+        device->extensions_.ext_KHR_fragment_shading_rate = false;
+      }
+    }
     if (device->extensions_.ext_KHR_pipeline_executable_properties) {
       features_KHR_pipeline_executable_properties.enabled
           .pipelineExecutableInfo = features_KHR_pipeline_executable_properties
@@ -1226,6 +1287,17 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
         ifn.vkGetDeviceProcAddr(device->device_, "vkGetDeviceFaultInfoEXT"));
     if (!device->vkGetDeviceFaultInfoEXT_) {
       device->extensions_.ext_EXT_device_fault = false;
+    }
+  }
+
+  // Optional coarse shading - failing to load is not fatal.
+  if (device->properties_.pipelineFragmentShadingRate) {
+    device->vkCmdSetFragmentShadingRateKHR_ =
+        PFN_vkCmdSetFragmentShadingRateKHR(ifn.vkGetDeviceProcAddr(
+            device->device_, "vkCmdSetFragmentShadingRateKHR"));
+    if (!device->vkCmdSetFragmentShadingRateKHR_) {
+      device->properties_.pipelineFragmentShadingRate = false;
+      device->extensions_.ext_KHR_fragment_shading_rate = false;
     }
   }
 

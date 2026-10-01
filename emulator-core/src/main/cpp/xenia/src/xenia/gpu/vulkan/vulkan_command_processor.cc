@@ -69,6 +69,7 @@ DECLARE_bool(vulkan_resolve_draw_barriers_at_resolve);
 DECLARE_int32(vulkan_debug_gpu_probe);
 DECLARE_int32(edram_trace_frames);
 DECLARE_bool(skip_overwritten_transfers);
+DECLARE_bool(host_alpha_to_coverage);
 
 DEFINE_bool(
     msaa_4x_as_2x, false,
@@ -95,6 +96,16 @@ DEFINE_bool(
     "instead of at the 4x sample positions (up to 1/4 of a 1x pixel away). "
     "Not with resolution scaling. Can be switched at runtime "
     "(debug.xendroid.depth_4x_as_1x).",
+    "GPU");
+
+DEFINE_int32(
+    vulkan_shading_rate, 0,
+    "With vulkan_fragment_shading_rate: shade the draws of multisampled "
+    "render targets (the 3D scene, not the 1x post-processing and interface) "
+    "once per 0 - pixel, 1 - 2x1 pixels, 2 - 1x2 pixels, 3 - 2x2 pixels. "
+    "Coverage, depth and stencil stay per sample: edges keep their "
+    "antialiasing, textures and lighting inside triangles get coarser. Can be "
+    "switched at runtime (debug.xendroid.shading_rate).",
     "GPU");
 
 DEFINE_bool(
@@ -357,6 +368,18 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
       cvars::vulkan_texture_load_coalesced = mode >= 1;
       cvars::vulkan_texture_load_to_image = mode >= 2;
       XELOGI("debug.xendroid.texload_mode: texload_mode = {}", mode);
+    }
+  }
+  // The shading rate of the multisampled scene draws, read per draw.
+  char shading_rate_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.shading_rate",
+                            shading_rate_value) > 0 &&
+      shading_rate_value[0] >= '0' && shading_rate_value[0] <= '3' &&
+      !shading_rate_value[1]) {
+    const int32_t rate = shading_rate_value[0] - '0';
+    if (cvars::vulkan_shading_rate != rate) {
+      cvars::vulkan_shading_rate = rate;
+      XELOGI("debug.xendroid.shading_rate: vulkan_shading_rate = {}", rate);
     }
   }
   // Draws per mid-frame submission (0 = one submission per frame), read per
@@ -4392,6 +4415,7 @@ void VulkanCommandProcessor::BindExternalGraphicsPipeline(
   dynamic_color_blend_enable_update_needed_ = true;
   dynamic_color_blend_equation_update_needed_ = true;
   dynamic_color_write_mask_update_needed_ = true;
+  dynamic_shading_rate_update_needed_ = true;
   if (current_external_graphics_pipeline_ == pipeline) {
     return;
   }
@@ -5176,6 +5200,28 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   gviargs.SetupRegisterValues(regs);
 
   draw_util::GetHostViewportInfo(&gviargs, viewport_info);
+  // vulkan_shading_rate: coarse shading of the multisampled scene's draws,
+  // where the rate is allowed with what the pixel shader writes.
+  draw_shading_rate_ = 0;
+  if (cvars::vulkan_shading_rate && pixel_shader &&
+      device_properties.pipelineFragmentShadingRate) {
+    const xenos::MsaaSamples guest_msaa_samples =
+        regs.Get<reg::RB_SURFACE_INFO>().msaa_samples;
+    if (guest_msaa_samples != xenos::MsaaSamples::k1X &&
+        (uint32_t(1) << uint32_t(render_target_cache_->GetHostMsaaSamples(
+             guest_msaa_samples))) <=
+            uint32_t(
+                device_properties.maxFragmentShadingRateRasterizationSamples) &&
+        (!pixel_shader->writes_depth() ||
+         device_properties.fragmentShadingRateWithShaderDepthStencilWrites) &&
+        // Alpha to coverage is the shader's sample mask unless done by the
+        // host's fixed function (color output 0 needed).
+        (!regs.Get<reg::RB_COLORCONTROL>().alpha_to_mask_enable ||
+         device_properties.fragmentShadingRateWithShaderSampleMask ||
+         (cvars::host_alpha_to_coverage && (normalized_color_mask & 0xF)))) {
+      draw_shading_rate_ = uint32_t(cvars::vulkan_shading_rate) & 3;
+    }
+  }
   // Update dynamic graphics pipeline state.
   UpdateDynamicState(viewport_info, primitive_polygonal,
                      normalized_depth_control, draw_resolution_scale_x,
@@ -7234,6 +7280,7 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
     dynamic_color_blend_enable_update_needed_ = true;
     dynamic_color_blend_equation_update_needed_ = true;
     dynamic_color_write_mask_update_needed_ = true;
+    dynamic_shading_rate_update_needed_ = true;
     current_render_pass_ = VK_NULL_HANDLE;
     current_framebuffer_ = nullptr;
     in_render_pass_ = false;
@@ -8277,6 +8324,19 @@ void VulkanCommandProcessor::UpdateDynamicState(
           }
         }
       }
+    }
+  }
+
+  // The shading rate (vulkan_shading_rate) - dynamic in every guest pipeline
+  // when the device has the pipeline shading rate.
+  if (GetVulkanDevice()->properties().pipelineFragmentShadingRate) {
+    dynamic_shading_rate_update_needed_ |=
+        dynamic_shading_rate_ != draw_shading_rate_;
+    if (dynamic_shading_rate_update_needed_) {
+      dynamic_shading_rate_ = draw_shading_rate_;
+      deferred_command_buffer_.CmdVkSetFragmentShadingRateKHR(
+          1 + (dynamic_shading_rate_ & 1), 1 + ((dynamic_shading_rate_ >> 1) & 1));
+      dynamic_shading_rate_update_needed_ = false;
     }
   }
 }
