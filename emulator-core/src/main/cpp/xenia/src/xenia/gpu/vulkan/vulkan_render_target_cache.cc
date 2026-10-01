@@ -139,8 +139,8 @@ DEFINE_bool(
     "the upload that would read the same bytes back from guest memory (the "
     "texture cache tracks that every write to the memory since the image was "
     "uploaded stored the same texels into it). Unscaled resolves only: 32bpp "
-    "fast color and depth (with vulkan_direct_host_resolve_4px) and full color "
-    "to a 32bpp format. Also records the destinations of these resolves for "
+    "fast color and depth (always 4 pixels per thread) and full color to a "
+    "32bpp format. Also records the destinations of these resolves for "
     "texture promotion. Forza Horizon on an Adreno 825: texture uploads 3.0 -> "
     "0.75 ms per frame, GPU time -1.4 ms.",
     "Vulkan");
@@ -154,6 +154,9 @@ DEFINE_bool(
     "resolves of Forza Horizon on an Adreno 825; single-sampled sources are "
     "faster with 8, unless storing into a texture). Results are identical.",
     "Vulkan");
+// On since PR #7: configs saved earlier with the old default (false, kept by
+// test builds) move to it.
+UPDATE_from_bool(vulkan_direct_host_resolve_4px, 2026, 9, 30, 23, false);
 
 DEFINE_bool(
     render_target_7e3_as_r11g11b10, false,
@@ -2708,7 +2711,8 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
   // Resolve-to-texture: if a promoted texture holds the destination, the
   // resolve also stores the texels straight into it, so its upload can be
   // served from the resolve instead (vulkan_resolve_to_texture_serve). The
-  // fast color and depth variants doing it take 4 pixels per thread.
+  // fast color and depth variants doing it take 4 pixels per thread whatever
+  // vulkan_direct_host_resolve_4px says (the only variants that store).
   const uint32_t dest_base_unadjusted =
       resolve_info.copy_dest_base_unadjusted & 0x1FFFFFFF;
   VkImageView texture_view = VK_NULL_HANDLE;
@@ -2719,10 +2723,9 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
   VulkanTextureCache::ResolveDestTextureInfo texture_info;
   if (cvars::vulkan_direct_host_resolve_to_texture &&
       (IsDrawResolutionScaled() ||
-       !(copy_shader_is_full_color
-             ? copy_shader == draw_util::ResolveCopyShaderIndex::kFull32bpp
-             : four_pixels_allowed))) {
-    texture_refusal = "resolution scale, copy shader or 4px off";
+       (copy_shader_is_full_color &&
+        copy_shader != draw_util::ResolveCopyShaderIndex::kFull32bpp))) {
+    texture_refusal = "resolution scale or copy shader";
   } else if (cvars::vulkan_direct_host_resolve_to_texture) {
     // Only a texture reading the memory as the resolve writes it: same pitch,
     // format and endianness (the store is of the texels before the endian
@@ -2763,11 +2766,11 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
   // 4 pixels per thread pays off with multisampled sources (their reads are
   // heavier), not with 1x ones, except for storing into the texture.
   const bool four_pixels =
-      four_pixels_allowed &&
-      ((resolve_is_depth ? resolve_info.depth_edram_info.msaa_samples
+      texture_view != VK_NULL_HANDLE ||
+      (four_pixels_allowed &&
+       (resolve_is_depth ? resolve_info.depth_edram_info.msaa_samples
                          : resolve_info.color_edram_info.msaa_samples) >=
-           xenos::MsaaSamples::k2X ||
-       texture_view != VK_NULL_HANDLE);
+           xenos::MsaaSamples::k2X);
 
   uint64_t covered_tiles = 0;
   std::vector<DirectHostResolveSource> sources;

@@ -898,8 +898,10 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // GPU timestamps bracketing each render pass, bucketed CPU-side by
   // framebuffer extent (bit 31 = ownership-transfer pass). Same ring/readback
   // pattern; timestamps written OUTSIDE the pass (before begin / after end).
-  // Also holds the VkMiscTime regions (keys with kMiscTimestampKeyBit).
-  static constexpr uint32_t kPassTimestampPairsPerSubmission = 192;
+  // Also holds the VkMiscTime regions (keys with kMiscTimestampKeyBit). 192
+  // dropped ~10 pairs per frame of Forza Horizon (a submission can hold most
+  // of a frame's ~300 passes, resolves and loads).
+  static constexpr uint32_t kPassTimestampPairsPerSubmission = 512;
   static constexpr uint32_t kPassTimestampRingSubmissions = 32;
   VkQueryPool pass_timestamp_pool_ = VK_NULL_HANDLE;
   VkBuffer pass_timestamp_buffer_ = VK_NULL_HANDLE;
