@@ -213,6 +213,16 @@ DEFINE_int32(
     "(debug.xendroid.extra_pass_breaks on Android).",
     "Vulkan");
 
+DEFINE_int32(
+    vulkan_debug_draw_ceiling, 0,
+    "Diagnostics (breaks the image) - what the parts of the guest draws cost "
+    "the GPU, with the per-pass timestamps: 1 - rasterize nothing (a 1x1 "
+    "scissor), keeping the vertex work, the state and the passes; 2 - also "
+    "only the first primitive of each draw; 3 - no draw commands at all, "
+    "keeping everything around them. Read per draw (debug.xendroid.draw_ceiling "
+    "on Android).",
+    "Vulkan");
+
 DECLARE_bool(gpu_debug_markers);
 DECLARE_bool(submit_on_primary_buffer_end);
 DECLARE_bool(vulkan_placeholder_pipelines);
@@ -389,6 +399,38 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
           "debug.xendroid.extra_pass_breaks: vulkan_debug_extra_pass_breaks = "
           "{}",
           every);
+    }
+  }
+  // What the parts of the draws cost, read per draw.
+  char ceiling_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.draw_ceiling", ceiling_value) > 0 &&
+      ceiling_value[0] >= '0' && ceiling_value[0] <= '3') {
+    const int32_t mode = ceiling_value[0] - '0';
+    if (cvars::vulkan_debug_draw_ceiling != mode) {
+      cvars::vulkan_debug_draw_ceiling = mode;
+      XELOGI("debug.xendroid.draw_ceiling: vulkan_debug_draw_ceiling = {}",
+             mode);
+    }
+  }
+  // EDRAM usage trace of the next N frames, a new value starting a new trace.
+  char edram_trace_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.edram_trace", edram_trace_value) >
+          0 &&
+      edram_trace_value[0] >= '0' && edram_trace_value[0] <= '9') {
+    const int32_t frames = std::atoi(edram_trace_value);
+    if (cvars::edram_trace_frames != frames) {
+      cvars::edram_trace_frames = frames;
+      XELOGI("debug.xendroid.edram_trace: edram_trace_frames = {}", frames);
+    }
+  }
+  // The GPU work skipped to measure what it costs, read per resolve / draw.
+  char probe_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.gpu_probe", probe_value) > 0 &&
+      probe_value[0] >= '0' && probe_value[0] <= '9') {
+    const int32_t probe = std::atoi(probe_value);
+    if (cvars::vulkan_debug_gpu_probe != probe) {
+      cvars::vulkan_debug_gpu_probe = probe;
+      XELOGI("debug.xendroid.gpu_probe: vulkan_debug_gpu_probe = {}", probe);
     }
   }
   // Bounded fence collection (all Vulkan completion timelines), read per poll.
@@ -5422,12 +5464,28 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   submission_in_progress_.last_render_pass_key =
       render_target_cache_->last_update_render_pass_key().key;
 
+  // vulkan_debug_draw_ceiling: take parts of the draw away - the pixels (a 1x1
+  // scissor, restored for the next draw), also the vertices past the first
+  // primitive, or the draw command itself.
+  const int32_t draw_ceiling = cvars::vulkan_debug_draw_ceiling;
+  uint32_t host_draw_vertex_count =
+      primitive_processing_result.host_draw_vertex_count;
+  if (draw_ceiling == 1 || draw_ceiling == 2) {
+    const VkRect2D one_pixel = {{0, 0}, {1, 1}};
+    deferred_command_buffer_.CmdVkSetScissor(0, 1, &one_pixel);
+    dynamic_scissor_update_needed_ = true;
+    if (draw_ceiling == 2) {
+      host_draw_vertex_count = std::min(host_draw_vertex_count, uint32_t(3));
+    }
+  }
+
   // Draw.
-  if (primitive_processing_result.index_buffer_type ==
-          PrimitiveProcessor::ProcessedIndexBufferType::kNone ||
-      shader_32bit_index_dma) {
-    deferred_command_buffer_.CmdVkDraw(
-        primitive_processing_result.host_draw_vertex_count, 1, 0, 0);
+  if (draw_ceiling == 3) {
+    // Nothing drawn.
+  } else if (primitive_processing_result.index_buffer_type ==
+                 PrimitiveProcessor::ProcessedIndexBufferType::kNone ||
+             shader_32bit_index_dma) {
+    deferred_command_buffer_.CmdVkDraw(host_draw_vertex_count, 1, 0, 0);
   } else {
     std::pair<VkBuffer, VkDeviceSize> index_buffer;
     const VkIndexType index_type =
@@ -5468,9 +5526,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       current_index_buffer_offset_ = index_buffer.second;
       current_index_type_ = index_type;
     }
-    deferred_command_buffer_.CmdVkDrawIndexed(
-        primitive_processing_result.host_draw_vertex_count, 1, first_index, 0,
-        0);
+    deferred_command_buffer_.CmdVkDrawIndexed(host_draw_vertex_count, 1,
+                                              first_index, 0, 0);
   }
 
   // Pop debug marker for draw call.
@@ -7201,6 +7258,8 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
     primitive_processor_->BeginFrame();
 
     texture_cache_->BeginFrame();
+
+    render_target_cache_->EdramTraceBeginFrame();
   }
 
   return true;

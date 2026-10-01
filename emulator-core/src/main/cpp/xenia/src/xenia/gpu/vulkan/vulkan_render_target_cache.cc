@@ -159,6 +159,17 @@ DEFINE_bool(
 // test builds) move to it.
 UPDATE_from_bool(vulkan_direct_host_resolve_4px, 2026, 9, 30, 23, false);
 
+DEFINE_int32(
+    vulkan_debug_gpu_probe, 0,
+    "Diagnostics (breaks the image) - what parts of the GPU work cost, by "
+    "skipping them. Bits: 1 - the copies of resolves of at most 128x128; 2 - "
+    "the guest memory stores of resolves storing into a texture; 4 - all "
+    "render target ownership transfers; 8 - the transfers between a 4x MSAA "
+    "and a 1x surface at the same EDRAM base; 16 - the averaging of MSAA "
+    "samples in direct host resolves (only the first sample is read). Read "
+    "per resolve / draw (debug.xendroid.gpu_probe on Android).",
+    "Vulkan");
+
 DEFINE_bool(
     render_target_7e3_as_r11g11b10, false,
     "Store the guest k_2_10_10_10_FLOAT (7e3) color render target as "
@@ -3077,6 +3088,15 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
     push_constants.dest_base -=
         uint32_t(write_descriptor_set_dest_buffer_info.offset);
   }
+  // vulkan_debug_gpu_probe: what averaging the MSAA samples costs (what a
+  // hardware resolve could save at most) - only the first sample is read.
+  if ((cvars::vulkan_debug_gpu_probe & kGpuProbeSingleSampleResolves) &&
+      !xenos::IsSingleCopySampleSelected(
+          push_constants.dest_relative.dest_coordinate_info
+              .copy_sample_select)) {
+    push_constants.dest_relative.dest_coordinate_info.copy_sample_select =
+        xenos::CopySampleSelect::k0;
+  }
   VkPipelineLayout pipeline_layout =
       resolve_is_depth ? direct_host_resolve_pipeline_layout_depth_
                        : direct_host_resolve_pipeline_layout_color_;
@@ -3169,6 +3189,11 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
             uint32_t(int32_t(resolve_info.copy_dest_x0) + texture_delta_x);
         constants.texture_origin_y =
             uint32_t(int32_t(resolve_info.copy_dest_y0) + texture_delta_y);
+        if (cvars::vulkan_debug_gpu_probe & kGpuProbeTextureOnlyResolves) {
+          constants.flags |= source.is_depth
+                                 ? kDirectHostResolveDepthFlagTextureOnly
+                                 : kDirectHostResolveColorFlagTextureOnly;
+        }
       }
 
       VkBuffer constants_buffer;
@@ -3348,6 +3373,37 @@ bool VulkanRenderTargetCache::Resolve(
                                                                         : "R",
       uint32_t(resolve_info.coordinate_info.width_div_8) * 8,
       uint32_t(resolve_info.height_div_8) * 8);
+  if (IsEdramTraceActive()) {
+    std::string text = "resolve";
+    if (resolve_info.copy_dest_extent_length) {
+      const bool is_depth = resolve_info.IsCopyingDepth();
+      const draw_util::ResolveEdramInfo& edram_info =
+          is_depth ? resolve_info.depth_edram_info
+                   : resolve_info.color_edram_info;
+      text += fmt::format(
+          " copy {} @ {}t <{}t> {}x format {} samples {} -> {:08X} format {}",
+          is_depth ? "depth" : "color", uint32_t(edram_info.base_tiles),
+          uint32_t(edram_info.pitch_tiles),
+          uint32_t(1) << uint32_t(edram_info.msaa_samples),
+          uint32_t(edram_info.format),
+          uint32_t(resolve_info.copy_dest_coordinate_info.copy_sample_select),
+          resolve_info.copy_dest_base,
+          uint32_t(resolve_info.copy_dest_info.copy_dest_format));
+    }
+    text += fmt::format(
+        " rect {},{} {}x{}",
+        uint32_t(resolve_info.coordinate_info.edram_offset_x_div_8) << 3,
+        uint32_t(resolve_info.coordinate_info.edram_offset_y_div_8) << 3,
+        uint32_t(resolve_info.coordinate_info.width_div_8) << 3,
+        resolve_info.height_div_8 << 3);
+    if (resolve_info.IsClearingDepth()) {
+      text += " +clear depth";
+    }
+    if (resolve_info.IsClearingColor()) {
+      text += " +clear color";
+    }
+    EdramTraceNote(text);
+  }
 
   const ui::vulkan::VulkanDevice* const vulkan_device =
       command_processor_.GetVulkanDevice();
@@ -3361,7 +3417,13 @@ bool VulkanRenderTargetCache::Resolve(
   bool direct_host_used = false;
   // The copy read the source as an input attachment inside the guest pass.
   bool copied_in_pass = false;
-  if (resolve_info.copy_dest_extent_length) {
+  // vulkan_debug_gpu_probe: what the copies of the small resolves cost -
+  // skipped, the destination keeping its old contents.
+  const bool probe_skip_copy =
+      (cvars::vulkan_debug_gpu_probe & kGpuProbeSkipSmallResolves) &&
+      (uint32_t(resolve_info.coordinate_info.width_div_8) << 3) <= 128 &&
+      (uint32_t(resolve_info.height_div_8) << 3) <= 128;
+  if (resolve_info.copy_dest_extent_length && !probe_skip_copy) {
     if (command_processor_.debug_markers_enabled()) {
       char label[draw_util::kDebugMarkerLabelMaxLength];
       draw_util::FormatResolveCopyDebugMarker(label, sizeof(label),
@@ -4044,6 +4106,34 @@ bool VulkanRenderTargetCache::Update(
       // Determine whether there's any transfer work at all (the common
       // steady-state case has none, in which case nothing below runs).
       const std::vector<Transfer>* update_transfers = last_update_transfers();
+      // vulkan_debug_gpu_probe: what the ownership transfers cost - all of
+      // them, or those between a 4x MSAA and a 1x surface at the same EDRAM
+      // base, skipped (the destinations keep their old contents).
+      std::array<std::vector<Transfer>, 1 + xenos::kMaxColorRenderTargets>
+          probe_transfers;
+      const int32_t gpu_probe = cvars::vulkan_debug_gpu_probe;
+      if (gpu_probe &
+          (kGpuProbeSkipTransfers | kGpuProbeSkipSameBaseMsaaTransfers)) {
+        for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+          const RenderTarget* dest = depth_and_color_render_targets[i];
+          if ((gpu_probe & kGpuProbeSkipTransfers) || !dest) {
+            continue;
+          }
+          const RenderTargetKey dest_key = dest->key();
+          for (const Transfer& transfer : update_transfers[i]) {
+            if (transfer.source) {
+              const RenderTargetKey source_key = transfer.source->key();
+              if (source_key.base_tiles == dest_key.base_tiles &&
+                  (source_key.msaa_samples == xenos::MsaaSamples::k4X) !=
+                      (dest_key.msaa_samples == xenos::MsaaSamples::k4X)) {
+                continue;
+              }
+            }
+            probe_transfers[i].push_back(transfer);
+          }
+        }
+        update_transfers = probe_transfers.data();
+      }
       bool any_transfers = false;
       if (cvars::rt_cache_ownership_claim_memo) {
         for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {

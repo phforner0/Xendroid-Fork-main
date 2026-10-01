@@ -14,6 +14,8 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -229,6 +231,8 @@ class RenderTargetCache {
   virtual void ClearCache();
 
   virtual void BeginFrame();
+  // The frame boundary of the EDRAM usage trace (edram_trace_frames).
+  void EdramTraceBeginFrame();
 
   virtual bool Update(bool is_rasterization_done,
                       reg::RB_DEPTHCONTROL normalized_depth_control,
@@ -632,6 +636,11 @@ class RenderTargetCache {
   bool IsResolveSourceNativeOnly(uint32_t base, uint32_t row_length,
                                  uint32_t rows, uint32_t pitch) const;
 
+  // EDRAM usage trace (edram_trace_frames) - whether it is on, and a line of
+  // it, after the draw count of the binding before.
+  bool IsEdramTraceActive() const { return edram_trace_frames_left_ != 0; }
+  void EdramTraceNote(std::string_view text);
+
   // Sets up the needed render targets and transfers to perform a clear in a
   // resolve operation via a host render target clear. resolve_info is expected
   // to be obtained via draw_util::GetResolveInfo. Returns whether any clears
@@ -839,6 +848,20 @@ class RenderTargetCache {
   // consecutive in the array.
   std::vector<Transfer>
       last_update_transfers_[1 + xenos::kMaxColorRenderTargets];
+
+  // EDRAM usage trace (edram_trace_frames): frames left, the last requested
+  // value, the binding being drawn with and its draw count, and per render
+  // target key the sequence number of its last resolve clear and last draw.
+  void EdramTraceFlushBinding();
+  void EdramTraceTransfers(RenderTargetKey dest,
+                           const std::vector<Transfer>& transfers);
+  uint32_t edram_trace_frames_left_ = 0;
+  int32_t edram_trace_requested_ = 0;
+  uint32_t edram_trace_draws_ = 0;
+  RenderTargetKey edram_trace_binding_[1 + xenos::kMaxColorRenderTargets];
+  uint64_t edram_trace_seq_ = 0;
+  std::unordered_map<uint32_t, uint64_t> edram_trace_last_clear_;
+  std::unordered_map<uint32_t, uint64_t> edram_trace_last_draw_;
 };
 
 }  // namespace gpu

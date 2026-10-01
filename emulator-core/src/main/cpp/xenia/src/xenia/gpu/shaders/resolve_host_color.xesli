@@ -1107,6 +1107,10 @@ void XeResolveHostColorFullMain(
                   int(constant_xe(xe_resolve_host_color,
                                   xe_resolve_host_color_texture_origin_y))),
           pixel_index, packed);
+      if ((constant_xe(xe_resolve_host_color, xe_resolve_host_color_flags) &
+           XE_RESOLVE_HOST_COLOR_FLAG_TEXTURE_ONLY) != 0u) {
+        return;
+      }
     #endif
     byte_buffer_align16_store16_xe(
         xe_resolve_dest,
@@ -1473,6 +1477,10 @@ void XeResolveHostColorMain(
                   int(constant_xe(xe_resolve_host_color,
                                   xe_resolve_host_color_texture_origin_y))),
           pixel_index, pixels_0123);
+      if ((constant_xe(xe_resolve_host_color, xe_resolve_host_color_flags) &
+           XE_RESOLVE_HOST_COLOR_FLAG_TEXTURE_ONLY) != 0u) {
+        return;
+      }
     #endif
     uint dest_address = XeResolveDestPixelAddress(resolve_info, pixel_index,
                                                   2u);

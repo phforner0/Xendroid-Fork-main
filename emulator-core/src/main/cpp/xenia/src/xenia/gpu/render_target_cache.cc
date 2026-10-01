@@ -9,6 +9,7 @@
 
 #include "xenia/gpu/render_target_cache.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -28,6 +29,15 @@ DEFINE_bool(
     "fully owns, with no ownership mutation since), and skip the transfer/"
     "resolve-clear pass entirely when no draw produced any ownership "
     "transfers. Disable for debugging render target transfer issues.",
+    "GPU");
+
+DEFINE_int32(
+    edram_trace_frames, 0,
+    "Diagnostics - log how the next N frames use the EDRAM (EdramTrace lines): "
+    "each render target binding with its draw count, the ownership transfers "
+    "(and whether their source was cleared by a resolve after its last draw), "
+    "the resolves and their clears. Changing the value starts a new trace "
+    "(debug.xendroid.edram_trace on Android).",
     "GPU");
 
 DEFINE_bool(
@@ -610,6 +620,61 @@ void RenderTargetCache::ClearCache() {
 
 void RenderTargetCache::BeginFrame() { ResetAccumulatedRenderTargets(); }
 
+void RenderTargetCache::EdramTraceBeginFrame() {
+  if (cvars::edram_trace_frames != edram_trace_requested_) {
+    edram_trace_requested_ = cvars::edram_trace_frames;
+    EdramTraceFlushBinding();
+    edram_trace_frames_left_ = uint32_t(std::max(edram_trace_requested_, 0));
+    edram_trace_last_clear_.clear();
+    edram_trace_last_draw_.clear();
+    if (edram_trace_frames_left_) {
+      XELOGI("EdramTrace: start, {} frames", edram_trace_frames_left_);
+    }
+    return;
+  }
+  if (!edram_trace_frames_left_) {
+    return;
+  }
+  EdramTraceFlushBinding();
+  XELOGI("EdramTrace: {}", --edram_trace_frames_left_ ? "frame" : "end");
+}
+
+void RenderTargetCache::EdramTraceFlushBinding() {
+  if (!edram_trace_draws_) {
+    return;
+  }
+  std::string binding;
+  for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+    if (!edram_trace_binding_[i].IsEmpty()) {
+      binding += fmt::format(" [{}]", edram_trace_binding_[i].GetDebugName());
+    }
+  }
+  XELOGI("EdramTrace: draws {}:{}", edram_trace_draws_, binding);
+  edram_trace_draws_ = 0;
+}
+
+void RenderTargetCache::EdramTraceNote(std::string_view text) {
+  EdramTraceFlushBinding();
+  XELOGI("EdramTrace: {}", text);
+}
+
+void RenderTargetCache::EdramTraceTransfers(
+    RenderTargetKey dest, const std::vector<Transfer>& transfers) {
+  for (const Transfer& transfer : transfers) {
+    RenderTargetKey source_key = transfer.source->key();
+    auto clear_it = edram_trace_last_clear_.find(source_key.key);
+    auto draw_it = edram_trace_last_draw_.find(source_key.key);
+    bool source_cleared = clear_it != edram_trace_last_clear_.end() &&
+                          (draw_it == edram_trace_last_draw_.end() ||
+                           clear_it->second > draw_it->second);
+    EdramTraceNote(fmt::format(
+        "transfer [{}] -> [{}], tiles {}-{}{}{}", source_key.GetDebugName(),
+        dest.GetDebugName(), transfer.start_tiles, transfer.end_tiles,
+        transfer.host_depth_source ? ", with host depth" : "",
+        source_cleared ? ", source cleared after its last draw" : ""));
+  }
+}
+
 bool RenderTargetCache::IsScaleNativeForPitch(
     uint32_t pitch_tiles_at_32bpp, xenos::MsaaSamples msaa_samples) const {
   uint32_t threshold = cvars::draw_resolution_scale_threshold;
@@ -997,6 +1062,37 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
   if (interlock_barrier_only) {
     // No copying transfers or render target bindings - only needed the barrier.
     return true;
+  }
+
+  if (edram_trace_frames_left_) {
+    // The transfers come before this draw.
+    for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+      EdramTraceTransfers(rt_keys[i], last_update_transfers_[i]);
+    }
+    RenderTargetKey binding[1 + xenos::kMaxColorRenderTargets];
+    rts_remaining = depth_and_color_rts_used_bits;
+    while (xe::bit_scan_forward(rts_remaining, &rt_index)) {
+      rts_remaining &= ~(uint32_t(1) << rt_index);
+      binding[rt_index] = rt_keys[rt_index];
+      edram_trace_last_draw_[rt_keys[rt_index].key] = ++edram_trace_seq_;
+    }
+    if (std::memcmp(binding, edram_trace_binding_, sizeof(binding))) {
+      EdramTraceFlushBinding();
+      std::memcpy(edram_trace_binding_, binding, sizeof(binding));
+      // Whether the first draw replaces what was there (a clear by a quad)
+      // or depends on it.
+      auto rb_stencil_ref_mask = regs.Get<reg::RB_STENCILREFMASK>();
+      XELOGI(
+          "EdramTrace: first draw: depth test {} write {} func {}, stencil {} "
+          "write mask {:02X}, color mask {:08X}, {} rows",
+          uint32_t(normalized_depth_control.z_enable),
+          uint32_t(normalized_depth_control.z_write_enable),
+          uint32_t(normalized_depth_control.zfunc),
+          uint32_t(normalized_depth_control.stencil_enable),
+          uint32_t(rb_stencil_ref_mask.stencilwritemask),
+          normalized_color_mask, height_used);
+    }
+    ++edram_trace_draws_;
   }
 
   // If everything succeeded, update the used render targets.
@@ -1483,6 +1579,24 @@ bool RenderTargetCache::PrepareHostRenderTargetsResolveClear(
     ChangeOwnership(
         color_render_target_key, color_clear_start_tiles_base_relative,
         color_clear_length_tiles, &color_transfers_out, &clear_rectangle);
+  }
+  if (edram_trace_frames_left_) {
+    // The transfers of the parts of the tiles outside the cleared rectangle.
+    EdramTraceTransfers(depth_render_target_key, depth_transfers_out);
+    EdramTraceTransfers(color_render_target_key, color_transfers_out);
+    ++edram_trace_seq_;
+    std::string targets;
+    for (const RenderTargetKey& key :
+         {depth_render_target_key, color_render_target_key}) {
+      if (!key.IsEmpty()) {
+        targets += fmt::format(" [{}]", key.GetDebugName());
+        edram_trace_last_clear_[key.key] = edram_trace_seq_;
+      }
+    }
+    EdramTraceNote(fmt::format(
+        "clear{} rect {},{} {}x{}", targets, clear_rectangle.x_pixels,
+        clear_rectangle.y_pixels, clear_rectangle.width_pixels,
+        clear_rectangle.height_pixels));
   }
   return true;
 }
