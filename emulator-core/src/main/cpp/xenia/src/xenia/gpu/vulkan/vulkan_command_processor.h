@@ -465,26 +465,16 @@ class VulkanCommandProcessor final : public CommandProcessor {
                  IndexBufferInfo* index_buffer_info,
                  bool major_mode_explicit) override;
   bool IssueCopy() override;
-  // msaa_4x_as_2x and vulkan_depth_4x_as_1x: the guest's 4x MSAA surface info
-  // rewritten for the current draw or resolve (IssueDraw restores it) - 2x
-  // for the surfaces of multisampled scenes (depth surfaces drawn with color),
-  // and the 1x surface of the samples for depth-only draws into the others.
-  // pixel_shader is the one the draw uses (null for depth-only). Returns
-  // whether the draw renders the samples as pixels.
+  // vulkan_depth_4x_as_1x: the guest's 4x MSAA surface info rewritten for the
+  // current draw (IssueDraw restores it) to the 1x surface of the samples, for
+  // depth-only draws into surfaces never drawn with color (the depth surfaces
+  // of multisampled scenes are left alone). pixel_shader is the one the draw
+  // uses (null for depth-only). Returns whether the draw renders the samples
+  // as pixels.
   bool RewriteMsaa4xSurfaceInfoForDraw(const Shader* pixel_shader);
-  void RewriteMsaa4xSurfaceInfoForCopy();
   // The key of the current depth surface: depth base | pitch << 16.
   uint32_t GetMsaa4xDepthSurface() const;
   std::unordered_set<uint32_t> msaa_4x_scene_depth_surfaces_;
-  // msaa_4x_as_2x: records the 1x surfaces of a draw or resolve, or for a 4x
-  // one, returns whether it must stay 4x - a used surface of it is also used
-  // as 1x (its samples read as pixels), or drawn with one that is.
-  // used_render_targets: bit 0 - depth, 1 + i - color i.
-  bool TrackMsaa4xSurfacesReadAs1x(uint32_t used_render_targets);
-  // EDRAM base | pitch in tiles << 16 of the 1x surfaces seen, and of the 4x
-  // surfaces that must stay 4x (used as 1x, or drawn with one that is).
-  std::unordered_set<uint32_t> msaa_1x_surfaces_;
-  std::unordered_set<uint32_t> msaa_keep_4x_surfaces_;
 
   void InitializeTrace() override;
 
@@ -829,6 +819,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
     // Render passes ended by barriers, by the PassEndReason scope that pushed
     // them (several per pass end if several did).
     uint64_t pass_ending_barrier_origins[size_t(PassEndReason::kCount)] = {};
+    // In-pass render target transfers inside an open native occlusion query
+    // segment, which was closed around them.
+    uint64_t zpd_transfer_suspends = 0;
     uint64_t last_report_ns = 0;
   };
   VkFrameSyncStats vk_frame_sync_stats_;
@@ -898,8 +891,10 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // GPU timestamps bracketing each render pass, bucketed CPU-side by
   // framebuffer extent (bit 31 = ownership-transfer pass). Same ring/readback
   // pattern; timestamps written OUTSIDE the pass (before begin / after end).
-  // Also holds the VkMiscTime regions (keys with kMiscTimestampKeyBit).
-  static constexpr uint32_t kPassTimestampPairsPerSubmission = 192;
+  // Also holds the VkMiscTime regions (keys with kMiscTimestampKeyBit). 192
+  // dropped ~10 pairs per frame of Forza Horizon (a submission can hold most
+  // of a frame's ~300 passes, resolves and loads).
+  static constexpr uint32_t kPassTimestampPairsPerSubmission = 512;
   static constexpr uint32_t kPassTimestampRingSubmissions = 32;
   VkQueryPool pass_timestamp_pool_ = VK_NULL_HANDLE;
   VkBuffer pass_timestamp_buffer_ = VK_NULL_HANDLE;

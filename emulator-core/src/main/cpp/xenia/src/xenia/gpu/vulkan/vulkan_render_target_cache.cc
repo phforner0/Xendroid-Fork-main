@@ -37,6 +37,7 @@
 
 DECLARE_bool(accurate_resolve_number_formats);
 DECLARE_bool(log_gpu_frame_time_breakdown);
+DECLARE_bool(msaa_4x_as_2x);
 DECLARE_bool(vulkan_resolve_dest_diag);
 DECLARE_bool(rt_cache_ownership_claim_memo);
 DECLARE_bool(vulkan_dynamic_rendering);
@@ -139,8 +140,8 @@ DEFINE_bool(
     "the upload that would read the same bytes back from guest memory (the "
     "texture cache tracks that every write to the memory since the image was "
     "uploaded stored the same texels into it). Unscaled resolves only: 32bpp "
-    "fast color and depth (with vulkan_direct_host_resolve_4px) and full color "
-    "to a 32bpp format. Also records the destinations of these resolves for "
+    "fast color and depth (always 4 pixels per thread) and full color to a "
+    "32bpp format. Also records the destinations of these resolves for "
     "texture promotion. Forza Horizon on an Adreno 825: texture uploads 3.0 -> "
     "0.75 ms per frame, GPU time -1.4 ms.",
     "Vulkan");
@@ -153,6 +154,20 @@ DEFINE_bool(
     "store instruction covers whole cache lines (-22% for the 4x MSAA depth "
     "resolves of Forza Horizon on an Adreno 825; single-sampled sources are "
     "faster with 8, unless storing into a texture). Results are identical.",
+    "Vulkan");
+// On since PR #7: configs saved earlier with the old default (false, kept by
+// test builds) move to it.
+UPDATE_from_bool(vulkan_direct_host_resolve_4px, 2026, 9, 30, 23, false);
+
+DEFINE_int32(
+    vulkan_debug_gpu_probe, 0,
+    "Diagnostics (breaks the image) - what parts of the GPU work cost, by "
+    "skipping them. Bits: 1 - the copies of resolves of at most 128x128; 2 - "
+    "the guest memory stores of resolves storing into a texture; 4 - all "
+    "render target ownership transfers; 8 - the transfers between a 4x MSAA "
+    "and a 1x surface at the same EDRAM base; 16 - the averaging of MSAA "
+    "samples in direct host resolves (only the first sample is read). Read "
+    "per resolve / draw (debug.xendroid.gpu_probe on Android).",
     "Vulkan");
 
 DEFINE_bool(
@@ -254,8 +269,15 @@ std::string VulkanRenderTargetCache::GetLastUpdateRenderTargetsDebugName()
   return names.empty() ? std::string("(none)") : names;
 }
 
+bool VulkanRenderTargetCache::IsMsaa4xHost2x() const {
+  return cvars::msaa_4x_as_2x && path_ == Path::kHostRenderTargets &&
+         msaa_2x_attachments_supported_;
+}
+
 std::string VulkanRenderTargetCache::TakeTransferStats(double frames) {
-  if (transfer_stats_.empty() || frames <= 0.0) {
+  uint64_t skipped_transfers, skipped_tiles;
+  TakeOverwrittenTransferSkips(skipped_transfers, skipped_tiles);
+  if ((transfer_stats_.empty() && !skipped_transfers) || frames <= 0.0) {
     transfer_stats_.clear();
     return std::string();
   }
@@ -272,6 +294,11 @@ std::string VulkanRenderTargetCache::TakeTransferStats(double frames) {
   }
   std::string stats = fmt::format("per frame: transfers={:.1f} tiles={:.0f}",
                                   transfers / frames, tiles / frames);
+  if (skipped_transfers) {
+    // skip_overwritten_transfers.
+    stats += fmt::format(" skipped as overwritten={:.1f} tiles={:.0f}",
+                         skipped_transfers / frames, skipped_tiles / frames);
+  }
   auto name = [](uint32_t key_value) {
     if (!key_value) {
       return std::string("(none)");
@@ -2679,6 +2706,12 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
   constexpr uint32_t kDirectHostResolveDepthFlagHasStencil = 1u << 0;
   constexpr uint32_t kDirectHostResolveDepthFlagRoundDepth = 1u << 1;
   constexpr uint32_t kDirectHostResolveDepthFlagTextureFloat24 = 1u << 2;
+  // Diagnostics (vulkan_debug_gpu_probe): into the texture only.
+  constexpr uint32_t kDirectHostResolveDepthFlagTextureOnly = 1u << 3;
+  constexpr uint32_t kDirectHostResolveColorFlagTextureOnly = 1u << 0;
+  // A 4x MSAA source stored with 2 samples per pixel (RenderTargetKey::host_2x).
+  constexpr uint32_t kDirectHostResolveDepthFlagSourceHost2x = 1u << 4;
+  constexpr uint32_t kDirectHostResolveColorFlagSourceHost2x = 1u << 1;
 
   struct DirectHostResolveSource {
     RenderTargetKey key;
@@ -2708,7 +2741,8 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
   // Resolve-to-texture: if a promoted texture holds the destination, the
   // resolve also stores the texels straight into it, so its upload can be
   // served from the resolve instead (vulkan_resolve_to_texture_serve). The
-  // fast color and depth variants doing it take 4 pixels per thread.
+  // fast color and depth variants doing it take 4 pixels per thread whatever
+  // vulkan_direct_host_resolve_4px says (the only variants that store).
   const uint32_t dest_base_unadjusted =
       resolve_info.copy_dest_base_unadjusted & 0x1FFFFFFF;
   VkImageView texture_view = VK_NULL_HANDLE;
@@ -2719,10 +2753,9 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
   VulkanTextureCache::ResolveDestTextureInfo texture_info;
   if (cvars::vulkan_direct_host_resolve_to_texture &&
       (IsDrawResolutionScaled() ||
-       !(copy_shader_is_full_color
-             ? copy_shader == draw_util::ResolveCopyShaderIndex::kFull32bpp
-             : four_pixels_allowed))) {
-    texture_refusal = "resolution scale, copy shader or 4px off";
+       (copy_shader_is_full_color &&
+        copy_shader != draw_util::ResolveCopyShaderIndex::kFull32bpp))) {
+    texture_refusal = "resolution scale or copy shader";
   } else if (cvars::vulkan_direct_host_resolve_to_texture) {
     // Only a texture reading the memory as the resolve writes it: same pitch,
     // format and endianness (the store is of the texels before the endian
@@ -2763,11 +2796,11 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
   // 4 pixels per thread pays off with multisampled sources (their reads are
   // heavier), not with 1x ones, except for storing into the texture.
   const bool four_pixels =
-      four_pixels_allowed &&
-      ((resolve_is_depth ? resolve_info.depth_edram_info.msaa_samples
+      texture_view != VK_NULL_HANDLE ||
+      (four_pixels_allowed &&
+       (resolve_is_depth ? resolve_info.depth_edram_info.msaa_samples
                          : resolve_info.color_edram_info.msaa_samples) >=
-           xenos::MsaaSamples::k2X ||
-       texture_view != VK_NULL_HANDLE);
+           xenos::MsaaSamples::k2X);
 
   uint64_t covered_tiles = 0;
   std::vector<DirectHostResolveSource> sources;
@@ -2830,6 +2863,12 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
     }
     if (pipeline == VK_NULL_HANDLE) {
       return false;
+    }
+
+    if (key.host_2x) {
+      // A 4x source stored at 2x - the shaders map the samples.
+      source_flags |= resolve_is_depth ? kDirectHostResolveDepthFlagSourceHost2x
+                                       : kDirectHostResolveColorFlagSourceHost2x;
     }
 
     DirectHostResolveSource source;
@@ -3056,6 +3095,15 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
     push_constants.dest_base -=
         uint32_t(write_descriptor_set_dest_buffer_info.offset);
   }
+  // vulkan_debug_gpu_probe: what averaging the MSAA samples costs (what a
+  // hardware resolve could save at most) - only the first sample is read.
+  if ((cvars::vulkan_debug_gpu_probe & kGpuProbeSingleSampleResolves) &&
+      !xenos::IsSingleCopySampleSelected(
+          push_constants.dest_relative.dest_coordinate_info
+              .copy_sample_select)) {
+    push_constants.dest_relative.dest_coordinate_info.copy_sample_select =
+        xenos::CopySampleSelect::k0;
+  }
   VkPipelineLayout pipeline_layout =
       resolve_is_depth ? direct_host_resolve_pipeline_layout_depth_
                        : direct_host_resolve_pipeline_layout_color_;
@@ -3148,6 +3196,11 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
             uint32_t(int32_t(resolve_info.copy_dest_x0) + texture_delta_x);
         constants.texture_origin_y =
             uint32_t(int32_t(resolve_info.copy_dest_y0) + texture_delta_y);
+        if (cvars::vulkan_debug_gpu_probe & kGpuProbeTextureOnlyResolves) {
+          constants.flags |= source.is_depth
+                                 ? kDirectHostResolveDepthFlagTextureOnly
+                                 : kDirectHostResolveColorFlagTextureOnly;
+        }
       }
 
       VkBuffer constants_buffer;
@@ -3327,6 +3380,37 @@ bool VulkanRenderTargetCache::Resolve(
                                                                         : "R",
       uint32_t(resolve_info.coordinate_info.width_div_8) * 8,
       uint32_t(resolve_info.height_div_8) * 8);
+  if (IsEdramTraceActive()) {
+    std::string text = "resolve";
+    if (resolve_info.copy_dest_extent_length) {
+      const bool is_depth = resolve_info.IsCopyingDepth();
+      const draw_util::ResolveEdramInfo& edram_info =
+          is_depth ? resolve_info.depth_edram_info
+                   : resolve_info.color_edram_info;
+      text += fmt::format(
+          " copy {} @ {}t <{}t> {}x format {} samples {} -> {:08X} format {}",
+          is_depth ? "depth" : "color", uint32_t(edram_info.base_tiles),
+          uint32_t(edram_info.pitch_tiles),
+          uint32_t(1) << uint32_t(edram_info.msaa_samples),
+          uint32_t(edram_info.format),
+          uint32_t(resolve_info.copy_dest_coordinate_info.copy_sample_select),
+          resolve_info.copy_dest_base,
+          uint32_t(resolve_info.copy_dest_info.copy_dest_format));
+    }
+    text += fmt::format(
+        " rect {},{} {}x{}",
+        uint32_t(resolve_info.coordinate_info.edram_offset_x_div_8) << 3,
+        uint32_t(resolve_info.coordinate_info.edram_offset_y_div_8) << 3,
+        uint32_t(resolve_info.coordinate_info.width_div_8) << 3,
+        resolve_info.height_div_8 << 3);
+    if (resolve_info.IsClearingDepth()) {
+      text += " +clear depth";
+    }
+    if (resolve_info.IsClearingColor()) {
+      text += " +clear color";
+    }
+    EdramTraceNote(text);
+  }
 
   const ui::vulkan::VulkanDevice* const vulkan_device =
       command_processor_.GetVulkanDevice();
@@ -3340,7 +3424,13 @@ bool VulkanRenderTargetCache::Resolve(
   bool direct_host_used = false;
   // The copy read the source as an input attachment inside the guest pass.
   bool copied_in_pass = false;
-  if (resolve_info.copy_dest_extent_length) {
+  // vulkan_debug_gpu_probe: what the copies of the small resolves cost -
+  // skipped, the destination keeping its old contents.
+  const bool probe_skip_copy =
+      (cvars::vulkan_debug_gpu_probe & kGpuProbeSkipSmallResolves) &&
+      (uint32_t(resolve_info.coordinate_info.width_div_8) << 3) <= 128 &&
+      (uint32_t(resolve_info.height_div_8) << 3) <= 128;
+  if (resolve_info.copy_dest_extent_length && !probe_skip_copy) {
     if (command_processor_.debug_markers_enabled()) {
       char label[draw_util::kDebugMarkerLabelMaxLength];
       draw_util::FormatResolveCopyDebugMarker(label, sizeof(label),
@@ -3985,6 +4075,9 @@ bool VulkanRenderTargetCache::Update(
   // Needed even with the fragment shader interlock render backend for passing
   // the sample count to the pipeline cache.
   render_pass_key.msaa_samples = rb_surface_info.msaa_samples;
+  render_pass_key.host_2x =
+      uint32_t(GetHostMsaaSamples(rb_surface_info.msaa_samples) !=
+               rb_surface_info.msaa_samples);
 
   switch (GetPath()) {
     case Path::kHostRenderTargets: {
@@ -4020,6 +4113,34 @@ bool VulkanRenderTargetCache::Update(
       // Determine whether there's any transfer work at all (the common
       // steady-state case has none, in which case nothing below runs).
       const std::vector<Transfer>* update_transfers = last_update_transfers();
+      // vulkan_debug_gpu_probe: what the ownership transfers cost - all of
+      // them, or those between a 4x MSAA and a 1x surface at the same EDRAM
+      // base, skipped (the destinations keep their old contents).
+      std::array<std::vector<Transfer>, 1 + xenos::kMaxColorRenderTargets>
+          probe_transfers;
+      const int32_t gpu_probe = cvars::vulkan_debug_gpu_probe;
+      if (gpu_probe &
+          (kGpuProbeSkipTransfers | kGpuProbeSkipSameBaseMsaaTransfers)) {
+        for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
+          const RenderTarget* dest = depth_and_color_render_targets[i];
+          if ((gpu_probe & kGpuProbeSkipTransfers) || !dest) {
+            continue;
+          }
+          const RenderTargetKey dest_key = dest->key();
+          for (const Transfer& transfer : update_transfers[i]) {
+            if (transfer.source) {
+              const RenderTargetKey source_key = transfer.source->key();
+              if (source_key.base_tiles == dest_key.base_tiles &&
+                  (source_key.msaa_samples == xenos::MsaaSamples::k4X) !=
+                      (dest_key.msaa_samples == xenos::MsaaSamples::k4X)) {
+                continue;
+              }
+            }
+            probe_transfers[i].push_back(transfer);
+          }
+        }
+        update_transfers = probe_transfers.data();
+      }
       bool any_transfers = false;
       if (cvars::rt_cache_ownership_claim_memo) {
         for (uint32_t i = 0; i < 1 + xenos::kMaxColorRenderTargets; ++i) {
@@ -4423,9 +4544,11 @@ bool VulkanRenderTargetCache::PreflightPendingDrawPassTransfers(
                 : static_cast<VulkanRenderTarget*>(transfer.host_depth_source);
         TransferShaderKey shader_key;
         shader_key.dest_msaa_samples = dest_key.msaa_samples;
+        shader_key.dest_host_2x = dest_key.host_2x;
         shader_key.dest_color_rt_index = i ? i - 1 : 0;
         shader_key.dest_resource_format = dest_key.resource_format;
         shader_key.source_msaa_samples = source_vulkan_rt->key().msaa_samples;
+        shader_key.source_host_2x = source_vulkan_rt->key().host_2x;
         shader_key.source_resource_format =
             source_vulkan_rt->key().resource_format;
         bool host_depth_source_is_copy =
@@ -4434,6 +4557,10 @@ bool VulkanRenderTargetCache::PreflightPendingDrawPassTransfers(
             (host_depth_source_vulkan_rt && !host_depth_source_is_copy)
                 ? host_depth_source_vulkan_rt->key().msaa_samples
                 : xenos::MsaaSamples::k1X;
+        shader_key.host_depth_source_host_2x =
+            (host_depth_source_vulkan_rt && !host_depth_source_is_copy)
+                ? host_depth_source_vulkan_rt->key().host_2x
+                : 0;
         shader_key.mode = GetTransferMode(
             stencil_pass != 0, dest_key.is_depth,
             source_vulkan_rt->key().is_depth,
@@ -4591,7 +4718,7 @@ VkRenderPass VulkanRenderTargetCache::GetHostRenderTargetsRenderPass(
   }
 
   VkSampleCountFlagBits samples;
-  switch (key.msaa_samples) {
+  switch (key.GetHostMsaaSamples()) {
     case xenos::MsaaSamples::k1X:
       samples = VK_SAMPLE_COUNT_1_BIT;
       break;
@@ -4876,12 +5003,14 @@ RenderTargetCache::RenderTarget* VulkanRenderTargetCache::CreateRenderTarget(
   image_create_info.extent.depth = 1;
   image_create_info.mipLevels = 1;
   image_create_info.arrayLayers = 1;
-  if (key.msaa_samples == xenos::MsaaSamples::k2X &&
+  // A 4x surface stored at 2x (host_2x) keeps the 4x pixel dimensions.
+  const xenos::MsaaSamples host_msaa_samples = key.GetHostMsaaSamples();
+  if (host_msaa_samples == xenos::MsaaSamples::k2X &&
       !msaa_2x_attachments_supported_) {
     image_create_info.samples = VK_SAMPLE_COUNT_4_BIT;
   } else {
     image_create_info.samples =
-        VkSampleCountFlagBits(uint32_t(1) << uint32_t(key.msaa_samples));
+        VkSampleCountFlagBits(uint32_t(1) << uint32_t(host_msaa_samples));
   }
   image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
   image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -5849,6 +5978,16 @@ VkShaderModule VulkanRenderTargetCache::GetTransferShader(
       // Already uint.
       dest_sample_id = spec_const_sample_id;
     }
+    if (key.dest_host_2x) {
+      // A 4x destination stored at 2x: host sample h holds the guest's samples
+      // of one row - write the left one, (h ^ 1) << 1 (the host's top sample
+      // is 1), and everything below sees a 4x destination.
+      dest_sample_id = builder.createBinOp(
+          spv::OpShiftLeftLogical, type_uint,
+          builder.createBinOp(spv::OpBitwiseXor, type_uint, dest_sample_id,
+                              builder.makeUintConstant(1)),
+          builder.makeUintConstant(1));
+    }
   }
 
   // Transform the destination framebuffer pixel and sample coordinates into the
@@ -6316,6 +6455,20 @@ VkShaderModule VulkanRenderTargetCache::GetTransferShader(
       source_coordinates[1] =
           builder.createCompositeConstruct(type_int2, id_vector_temp);
       source_sample_ids_int[1] = source_sample_ids_int[0];
+    }
+  }
+  if (key.source_host_2x) {
+    // A 4x source stored at 2x: guest sample s is host sample (s >> 1) ^ 1
+    // (both samples of a row share one).
+    for (uint32_t i = 0; i < 2; ++i) {
+      if (source_sample_ids_int[i] != spv::NoResult) {
+        source_sample_ids_int[i] = builder.createBinOp(
+            spv::OpBitwiseXor, type_int,
+            builder.createBinOp(spv::OpShiftRightArithmetic, type_int,
+                                source_sample_ids_int[i],
+                                builder.makeIntConstant(1)),
+            builder.makeIntConstant(1));
+      }
     }
   }
   spv::Id source_color[2][4] = {};
@@ -7392,6 +7545,15 @@ VkShaderModule VulkanRenderTargetCache::GetTransferShader(
             host_depth_source_texture_parameters.coords =
                 builder.createCompositeConstruct(type_int2, id_vector_temp);
             if (key.host_depth_source_msaa_samples != xenos::MsaaSamples::k1X) {
+              if (key.host_depth_source_host_2x) {
+                // Stored at 2x: guest sample s is host sample (s >> 1) ^ 1.
+                host_depth_source_sample_id = builder.createBinOp(
+                    spv::OpBitwiseXor, type_uint,
+                    builder.createBinOp(spv::OpShiftRightLogical, type_uint,
+                                        host_depth_source_sample_id,
+                                        builder.makeUintConstant(1)),
+                    builder.makeUintConstant(1));
+              }
               host_depth_source_texture_parameters.sample =
                   builder.createUnaryOp(spv::OpBitcast, type_int,
                                         host_depth_source_sample_id);
@@ -7704,8 +7866,8 @@ VkPipeline VulkanRenderTargetCache::GetResolveInPassPipeline(
   rasterization_state.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
   rasterization_state.lineWidth = 1.0f;
 
-  uint32_t pass_sample_count = uint32_t(1)
-                               << uint32_t(render_pass_key.msaa_samples);
+  uint32_t pass_sample_count =
+      uint32_t(1) << uint32_t(render_pass_key.GetHostMsaaSamples());
   VkPipelineMultisampleStateCreateInfo multisample_state = {};
   multisample_state.sType =
       VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
@@ -7856,8 +8018,11 @@ VkPipeline const* VulkanRenderTargetCache::GetTransferPipelines(
 
   const TransferModeInfo& mode = kTransferModes[size_t(key.shader_key.mode)];
 
-  uint32_t dest_sample_count = uint32_t(1)
-                               << uint32_t(key.shader_key.dest_msaa_samples);
+  // The host's (a 4x destination stored at 2x has 2 samples).
+  uint32_t dest_sample_count =
+      key.shader_key.dest_host_2x
+          ? 2
+          : uint32_t(1) << uint32_t(key.shader_key.dest_msaa_samples);
   bool dest_is_masked_sample =
       dest_sample_count > 1 && !device_properties.sampleRateShading;
 
@@ -8702,6 +8867,7 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
       transfer_framebuffer = last_update_framebuffer_;
     } else {
       transfer_render_pass_key.msaa_samples = dest_rt_key.msaa_samples;
+      transfer_render_pass_key.host_2x = dest_rt_key.host_2x;
       if (dest_rt_key.is_depth) {
         transfer_render_pass_key.depth_and_color_used = 0b1;
         transfer_render_pass_key.depth_format = dest_rt_key.GetDepthFormat();
@@ -8750,6 +8916,7 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
       uint32_t rt_sort_index = 0;
       TransferShaderKey new_transfer_shader_key;
       new_transfer_shader_key.dest_msaa_samples = dest_rt_key.msaa_samples;
+      new_transfer_shader_key.dest_host_2x = dest_rt_key.host_2x;
       // In the reused guest pass the color output location is the RT's own
       // index; the standalone transfer pass always has a single attachment.
       new_transfer_shader_key.dest_color_rt_index =
@@ -8793,6 +8960,7 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
           RenderTargetKey source_rt_key = source_vulkan_rt.key();
           new_transfer_shader_key.source_msaa_samples =
               source_rt_key.msaa_samples;
+          new_transfer_shader_key.source_host_2x = source_rt_key.host_2x;
           new_transfer_shader_key.source_resource_format =
               source_rt_key.resource_format;
           new_transfer_shader_key.value_convert =
@@ -8809,6 +8977,10 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
               (host_depth_source_vulkan_rt && !host_depth_source_is_copy)
                   ? host_depth_source_vulkan_rt->key().msaa_samples
                   : xenos::MsaaSamples::k1X;
+          new_transfer_shader_key.host_depth_source_host_2x =
+              (host_depth_source_vulkan_rt && !host_depth_source_is_copy)
+                  ? host_depth_source_vulkan_rt->key().host_2x
+                  : 0;
           new_transfer_shader_key.mode = GetTransferMode(
               j != 0, dest_rt_key.is_depth, source_rt_key.is_depth,
               host_depth_source_vulkan_rt != nullptr, host_depth_source_is_copy);
@@ -8992,7 +9164,8 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
         uint32_t transfer_sample_pipeline_count =
             vulkan_device->properties().sampleRateShading
                 ? 1
-                : uint32_t(1) << uint32_t(dest_rt_key.msaa_samples);
+                : uint32_t(1)
+                      << uint32_t(dest_rt_key.GetHostMsaaSamples());
         bool transfer_is_stencil_bit =
             (transfer_pipeline_layout_info.used_push_constant_dwords &
              kTransferUsedPushConstantDwordStencilMaskBit) != 0;
@@ -9538,6 +9711,14 @@ VkPipeline VulkanRenderTargetCache::GetDumpPipeline(DumpPipelineKey key) {
           builder.createBinOp(spv::OpBitwiseAnd, type_uint, source_sample_x,
                               const_uint_1),
           source_sample_y, const_uint_1, const_uint_1);
+      if (key.host_2x) {
+        // Stored at 2x: guest sample s is host sample (s >> 1) ^ 1.
+        source_sample_id = builder.createBinOp(
+            spv::OpBitwiseXor, type_uint,
+            builder.createBinOp(spv::OpShiftRightLogical, type_uint,
+                                source_sample_id, const_uint_1),
+            const_uint_1);
+      }
     } else {
       // 2x MSAA source texture sample index - convert from the guest to
       // the Vulkan standard sample locations.
@@ -9882,6 +10063,7 @@ void VulkanRenderTargetCache::DumpRenderTargets(uint32_t dump_base,
     pipeline_key.is_depth = rt_key.is_depth;
     pipeline_key.source_scale_native = rt_key.scale_native;
     pipeline_key.native_layout = uint32_t(native_layout);
+    pipeline_key.host_2x = rt_key.host_2x;
     dump_invocations_.emplace_back(rectangle, pipeline_key);
   }
 

@@ -70,6 +70,12 @@ DEFINE_bool(use_dedicated_xma_thread, true,
             "better results, but decrease performance a bit.",
             "APU");
 
+DEFINE_bool(xma_worker_enabled_contexts_only, true,
+            "Have each pass of the XMA worker visit only the enabled (kicked) "
+            "contexts, from a mask, instead of all 320 - a pass runs for every "
+            "decoded packet while any context has work.",
+            "APU");
+
 DEFINE_string(
     xma_decoder, "new",
     "Decoder version used to process XMA audio.\n"
@@ -179,6 +185,8 @@ X_STATUS XmaDecoder::Setup(kernel::KernelState* kernel_state) {
     if (contexts_[i]->Setup(i, memory(), guest_ptr)) {
       assert_always();
     }
+    contexts_[i]->set_enabled_mask(&enabled_context_mask_[i / 64],
+                                   uint64_t(1) << (i % 64));
   }
   register_file_[XmaRegister::NextContextIndex] = 1;
   context_bitmap_.Resize(kContextCount);
@@ -231,7 +239,7 @@ void XmaDecoder::WorkerThreadMain() {
     const bool measure = cvars::apu_aaudio_log_stats;
     const auto pass_begin = measure ? std::chrono::steady_clock::now()
                                     : std::chrono::steady_clock::time_point{};
-    for (uint32_t n = 0; n < kContextCount; n++) {
+    auto visit = [&](uint32_t n) {
       bool worked = contexts_[n]->Work();
       if (!worked && contexts_[n]->is_enabled() &&
           !contexts_[n]->is_allocated()) {
@@ -247,6 +255,30 @@ void XmaDecoder::WorkerThreadMain() {
         }
       }
       did_work = did_work || worked;
+    };
+    if (cvars::xma_worker_enabled_contexts_only) {
+      for (uint32_t word = 0; word < kEnabledContextMaskWords; ++word) {
+        std::atomic<uint64_t>& mask = enabled_context_mask_[word];
+        uint64_t bits = mask.load(std::memory_order_seq_cst);
+        while (bits) {
+          const uint32_t bit = uint32_t(__builtin_ctzll(bits));
+          bits &= bits - 1;
+          const uint32_t n = word * 64 + bit;
+          visit(n);
+          // Done with it: drop it from the mask, then look again - an enable
+          // between the check and the clear set the bit before the clear.
+          if (!contexts_[n]->is_enabled()) {
+            mask.fetch_and(~(uint64_t(1) << bit), std::memory_order_seq_cst);
+            if (contexts_[n]->is_enabled()) {
+              mask.fetch_or(uint64_t(1) << bit, std::memory_order_seq_cst);
+            }
+          }
+        }
+      }
+    } else {
+      for (uint32_t n = 0; n < kContextCount; n++) {
+        visit(n);
+      }
     }
     if (measure) {
       ++passes;

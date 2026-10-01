@@ -285,6 +285,9 @@ class CommandProcessor {
     uint64_t wait_reg_mem_ns = 0;
     uint64_t interval_ns = 0;  // sum of swap-to-swap intervals
     uint64_t interval_max_ns = 0;
+    // Intervals over 37, 50 and 70 ms (1.1x, 1.5x and 2.1x the 33.3 ms of a
+    // 30 fps frame): the stutter an average hides.
+    uint64_t long_intervals[3] = {};
     uint64_t last_swap_ns = 0;
     uint64_t last_report_ns = 0;
   };
@@ -567,6 +570,9 @@ class CommandProcessor {
   // Splits the open segment when the draw scale changes so each segment
   // normalizes with one scale.
   void UpdateZPDScale(uint32_t scale_area);
+  // Or-ed into the scale area: the host passes half the samples the guest
+  // would (4x MSAA stored at 2x) - the count is doubled before the division.
+  static constexpr uint32_t kZPDScaleHalfSamples = UINT32_C(1) << 31;
 
   // Called by backends when a host query resolve completes.  Accumulates
   // the normalized sample count, and if all segments are done, commits the
