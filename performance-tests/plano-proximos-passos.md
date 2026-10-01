@@ -1,4 +1,4 @@
-# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9, a v5, a reanálise v6 e o fechamento dela no AB11)
+# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9, a v5, a reanálise v6, o fechamento dela no AB11 e a reanálise v7)
 
 **Data:** 2026-09-30. **Base:** reanálise de `ab2` a `ab8-results.md`, dos logs
 com timestamps do build 36 (`b36-depth1x-ts`), do perfil de CPU do build 42
@@ -184,21 +184,132 @@ S27 (código PPC/HIR/a64 das funções JIT mais quentes) e as sessões S28–S32
 | 10 | Juntar as 3 faixas do tiling predicado num passe | achado 8 | teto −5,3 ms com áreas falsas (S38); real ~1–2 ms (áreas) ou ~3–4 ms (juntar) | grande | pesquisa concluída, próxima rodada |
 | 11 | JIT: promoção de registradores, CR mortos | achado 7 | energia | grande | não implementado (CPU não limita) |
 
-## Situação depois do AB11 e próximos passos (v7)
+## Situação depois do AB11
 
 O plano v6 terminou com o código validado no b63 (S39, só os quirks): 29,99
 fps, GPU 26,3 ms/frame no teto, 2314 tiles transferidos por frame (eram 8791
 no b54), 9 transferências recortadas, mesma imagem parado e dirigindo. Depois
 veio a especialização dos sinais das texturas (S40, GPU −1,9 ms; quirk no
-b65). O que sobrou de grande, por ordem:
+b65; S41: 30,00 fps, GPU 22,8 ms/frame).
 
-| # | Caminho | Evidência | Ganho | Esforço |
+## Reanálise v7 (2026-10-01, b65; S42 pela rede)
+
+Base: S42 (b65, só os quirks) com timestamps por passe/resolve, as
+estatísticas do Turnip de cada pipeline (PipeStats) e o IR dos pixel shaders
+de 1000+ instruções, dois frames de `pm4_bin_trace` (PipeUse), um frame de
+rastreamento da EDRAM e de novo o custo por parte dos draws
+(`vulkan_debug_draw_ceiling`). Dados em `b65-diag`; comparação com o S26
+(`b54-diag`).
+
+### Achados
+
+1. **Mapa atual** (com timestamps, que somam ~0,7 ms): GPU 23,5 ms/frame.
+
+   | Parte | ms/frame | Antes (S36, b60) |
+   |---|---|---|
+   | pixels | 9,5 (40%) | 11,7 |
+   | vértices | 3,3 (14%) | 3,2 |
+   | custo fixo por draw (~2900 draws) | 3,5 (15%) | 3,7 |
+   | resto (resolves, transferências, clears, uploads, passes) | 7,2 (31%) | 7,7 |
+
+   Por passe: o principal (1280x512, ~1850 draws) tem pixels 5,6, vértices
+   2,8 e custo por draw 2,2 ms (**1,18 µs/draw**). Os passes com draws sem
+   pixel shader (1280x2048, atlas de sombra) ficam em **~0,87 µs/draw**.
+
+2. **O que a especialização fez nos shaders.** Instruções de FS ponderadas
+   pelos draws do passe principal: **−27%**. *Stalls* estimados de espera de
+   textura (SY) caíram à metade nos shaders grandes (300 → 153, 426 → 176).
+   O preâmbulo encolheu 30–40%.
+
+3. **O preâmbulo ainda pesa por draw.** Em média, ~170 instruções no pixel
+   shader e ~130 no vertex shader, rodando em série no início de cada draw
+   (sem *early preamble*, quirk do AB9).
+   - É sobretudo decodificação de fetch constants (largura/altura → float e
+     recíproco, *bias* de LOD → 2^bias, *exp adjust* → 2^exp, swizzle), mais
+     constantes e *prefetch* de descritores.
+   - No shader mais usado (388 draws/frame), o preâmbulo é 120 das 208
+     instruções.
+   - A diferença de custo por draw entre o passe principal e os passes sem
+     pixel shader (1,18 contra 0,87 µs) sugere ~0,3 µs/draw do preâmbulo do
+     FS.
+
+4. **A fetch constant 13 escapa da especialização.** 82 dos 91 shaders
+   grandes leem a fetch constant 13 (às vezes 8 ou 17). A especialização só
+   cobre as fetch constants 0–7, então essas buscas ainda têm desvios em volta
+   das amostras.
+
+5. **Pipe de textura.** Cada busca 2D são 4 derivadas + 1 amostra (os 5
+   *cat5* por textura). Ou seja, 80% das instruções do pipe de textura são
+   derivadas. O LOD implícito foi neutro no AB10, mas na época as amostras
+   ainda estavam presas em desvios.
+
+6. **Vertex shaders: a emulação de "0 × x = 0" do Shader Model 3.**
+   - Cada multiplicação vira `min(|a|,|b|)` + `cmps == 0` + `mul` + `sel`.
+   - Isso é ~35–40% das instruções dos VS do passe principal (500–1145
+     instruções).
+   - Sem só esse bit (sem FMA e sem mudar arredondamento), as posições ficam
+     idênticas para valores finitos; só o sinal do zero muda. A objeção de
+     *z-fighting* do AB7 valia para o pacote 11, que incluía FMA.
+   - Nos pixel shaders ela já está desligada (quirk `spirv_ps_relaxed_math`).
+
+7. **Resolves fora do caminho direto por um detalhe de formato.**
+   - Os formatos `k_2_10_10_10_FLOAT_AS_16_16_16_16` (12) e
+     `k_2_10_10_10_AS_10_10_10_10` (10) chegam crus em
+     `TryDirectHostResolveCopy`. A chave do render target guarda o formato
+     de armazenamento (3 e 2), e a comparação falha.
+   - São ~2,6 resolves por frame (faixas 4x 1280x256/1280x208 e um 1280x720)
+     que vão pelo dump da EDRAM e não gravam na textura promovida. As texturas
+     de destino são carregadas de novo (`texload k_2_10_10_10 2^20 gpu` 0,11
+     ms, entre outras).
+
+8. **Resolve 4x de cor: o caminho direto é o mais lento.** Por resolve
+   1280x256, ele custa ~0,47 ms de dispatch, contra ~0,40 ms do dump da EDRAM
+   + cópia. O shader direto lê as 4 amostras de cada pixel com pouca
+   eficiência; vale um shader melhor ou o resolve por hardware.
+
+9. **Uploads de memória escrita pela GPU que não foram servidos pelos
+   resolves:** ~0,5 ms/frame (8888 com 2^20 texels 0,16; 2_10_10_10 2^20 0,11;
+   2_10_10_10 2^19 com mips 0,19). Mais os `k_24_8` 2^20 "cpu" (0,28 ms; mapa
+   de sombra escrito em parte pela CPU, já conhecido).
+
+10. **A cadeia de passes e resolves minúsculos:**
+    - ~72 resolves ≤ 128x128 por frame (1,23 ms) e ~50 passes de 1 draw (0,71
+      ms);
+    - custo fixo de ~17 µs por resolve e ~14 µs por passe;
+    - teto das cópias no AB9: 0,8 ms.
+
+11. **Faixas do tiling** (b65): 456, 904 e 500 draws, ou seja, a faixa do
+    meio tem o dobro. O jogo já recorta por faixa parte dos draws (máscaras
+    `A`, `8`, `28`, `20`); o resto é repetido. Juntar as faixas tiraria ~860
+    execuções. Pelo custo atual (~1,2 µs fixo + ~1,5 µs de vértices por draw),
+    são **~2–2,5 ms**.
+
+12. **CPU:** a thread de comandos gasta ~3,7 µs por draw (11 ms/frame, ~44% de
+    um núcleo); o código do jogo ocupa ~2 núcleos. É energia e calor, não fps
+    no teto.
+
+### Caminhos (v7)
+
+| # | Caminho | Evidência | Ganho estimado | Esforço |
 |---|---|---|---|---|
-| 1 | Medir a especialização de sinais quente e dirigindo (cidade, noite, chuva) e decidir se vira padrão para todos os jogos | S40: −1,9 ms parado e frio | — | pequeno |
-| 2 | Gama das texturas pela unidade de textura (visões sRGB) como opção de qualidade | a especialização já levou o teto inteiro do S35: o que sobra da conversão PWL é pequeno | baixo | grande |
-| 3 | Desenhar as 3 faixas do tiling predicado num passe só ("EDRAM virtual" para essas faixas, resolves e clears por faixa nas linhas certas) | teto −5,3 ms com áreas falsas (S38); custo por draw do S36 | ~3–4 ms | muito grande |
-| 4 | Resolve MSAA de média pelo hardware nas faixas 4x | teto −0,7 ms (S33) | ≤ ~0,5 ms | médio |
-| 5 | Taxa de shading 2x1 como opção de desempenho no app (a interface Kotlin é do usuário) | −0,7 ms (S34), perda de nitidez | escolha do usuário | pequeno |
+| 1 | **LOD implícito de novo**, sobre a especialização: A/B com reinício da opção existente `spirv_texture_implicit_lod` | achado 5 | até ~1 ms se o pipe de textura limita; zero se não | mínimo |
+| 2 | **VS sem a emulação de "0 × x = 0"**: A/B com `spirv_vs_math_experiment = 1`; se ganhar, opção `spirv_vs_relaxed_math` + quirk, com checagem de *z-fighting* dirigindo | achado 6 | 0,3–1 ms | pequeno |
+| 3 | **Especialização pelas texturas usadas**, não pelas fetch constants 0–7: as 8 primeiras fetch constants distintas do shader, cobrindo a 13 | achado 4 | 0,2–0,5 ms | pequeno |
+| 4 | **Formatos 12 e 10 no caminho direto do resolve**: normalizar para o formato de armazenamento ao comparar com a chave | achado 7 | 0,2–0,4 ms (uploads e dumps) | pequeno |
+| 5 | **Decodificar as fetch constants na CPU**: valores prontos por draw nas constantes do sistema, com preâmbulos encolhidos | achado 3 | 0,5–1,5 ms (e para todo jogo) | médio/grande |
+| 6 | **Resolve 4x de cor mais rápido**: shader direto que leia as amostras em bloco, ou resolve por hardware + cópia 1x | achados 8 e S33 (teto 0,7 ms) | 0,2–0,6 ms | médio |
+| 7 | **Uploads de memória da GPU não servidos**: descobrir quem escreve cada um (8888 2^20, 2_10_10_10 2^19 com mips) | achado 9 | ≤ 0,5 ms | médio |
+| 8 | **Cadeia minúscula**: cópia no passe (com a conversão R11G11B10 → 7e3 no fragment shader) ou barreiras mais leves | achado 10 | ≤ 0,8 ms | médio |
+| 9 | **Juntar as 3 faixas do tiling** ("EDRAM virtual" para essas faixas, resolves e clears por faixa nas linhas certas, draws das faixas 1 e 2 pulados) | achado 11; teto −5,3 ms (S38) | ~2–2,5 ms | muito grande |
+| 10 | **Validação** quente e dirigindo (cidade, noite, chuva) e os quirks exatos como padrão para outros jogos depois de testar 2–3 títulos | — | sustentar 30 fps quente | pequeno |
+| 11 | **Opções de qualidade no app** (a interface Kotlin é do usuário): MSAA 4x lógico em 2x (−4,5 ms), taxa de shading 2x1 (−0,7 ms) | AB9, S34 | escolha do usuário | pequeno |
+| 12 | **CPU por draw** na thread de comandos (perfil novo com simpleperf) | achado 12 | energia | médio |
+
+Ordem sugerida:
+- primeiro os itens 1 a 4: pequenos, exatos (exceto o 2, que é exato para
+  valores finitos) e medidos com A/B com reinício;
+- depois o 5, que ataca o custo fixo por draw de todos os jogos;
+- o 9 é o maior ganho que resta, mas também o maior risco.
 
 ## Becos sem saída (não repetir sem fato novo)
 
