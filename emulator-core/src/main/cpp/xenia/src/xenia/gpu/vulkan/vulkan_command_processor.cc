@@ -38,6 +38,7 @@
 #include "xenia/gpu/spirv_fsi_system_constants.h"
 #include "xenia/gpu/spirv_shader_translator.h"
 #include "xenia/gpu/texture_info.h"
+#include "xenia/gpu/texture_util.h"
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
 #include "xenia/gpu/vulkan/vulkan_render_target_cache.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
@@ -72,6 +73,15 @@ DECLARE_bool(skip_overwritten_transfers);
 DECLARE_bool(skip_overwritten_transfers_cutout);
 DECLARE_bool(transfer_cleared_sources_as_clears);
 DECLARE_bool(host_alpha_to_coverage);
+DECLARE_bool(spirv_texture_sign_specialization);
+
+DEFINE_bool(
+    vulkan_texture_sign_classes, true,
+    "With spirv_texture_sign_specialization: give each draw's pipeline the "
+    "signs of the textures its pixel shader fetches (otherwise the shaders "
+    "handle them at runtime, as without the option). Read per draw "
+    "(debug.xendroid.texture_sign_classes on Android).",
+    "GPU");
 
 DEFINE_bool(
     msaa_4x_as_2x, false,
@@ -375,6 +385,9 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.cleared_transfers",
                             "transfer_cleared_sources_as_clears",
                             cvars::transfer_cleared_sources_as_clears);
+  PollDebugPropertyOverride("debug.xendroid.texture_sign_classes",
+                            "vulkan_texture_sign_classes",
+                            cvars::vulkan_texture_sign_classes);
   // Both texture load switches at once, for A/Bs of the load paths: 0 - the
   // original untiling into a buffer copied to the image, 1 - coalesced
   // untiling, 2 - coalesced straight into the image (which only has the
@@ -4979,6 +4992,30 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
       return false;
     }
   }
+
+  // The signs of the textures of the first fetch constants the pixel shader
+  // fetches, for the specialization constants of its pipeline
+  // (spirv_texture_sign_specialization) - from the fetch constants, like the
+  // swizzled signs the texture cache gives the shaders. Where it binds no
+  // texture (taking the signs as unsigned), the classes made known (unsigned
+  // or gamma) give the same zeros.
+  uint32_t texture_sign_classes = 0;
+  if (pixel_shader && cvars::spirv_texture_sign_specialization &&
+      cvars::vulkan_texture_sign_classes) {
+    for (const Shader::TextureBinding& texture_binding :
+         pixel_shader->texture_bindings()) {
+      const uint32_t fetch_constant = texture_binding.fetch_constant;
+      if (fetch_constant >=
+          SpirvShaderTranslator::kTextureSignClassFetchConstantCount) {
+        continue;
+      }
+      texture_sign_classes |=
+          SpirvShaderTranslator::GetTextureSignClass(texture_util::SwizzleSigns(
+              regs.GetTextureFetch(fetch_constant)))
+          << (2 * fetch_constant);
+    }
+  }
+  pipeline_cache_->SetTextureSignClasses(texture_sign_classes);
 
   // Create the pipeline (for this, need the render pass from the render target
   // cache), translating the shaders - doing this now to obtain the used

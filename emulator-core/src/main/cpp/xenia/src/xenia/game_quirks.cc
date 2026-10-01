@@ -108,6 +108,13 @@ static const Quirk kQuirks[] = {
     // 30 fps cap, the same image parked (S37, 2026-10-01).
     {0x4D5309C9, "skip_overwritten_transfers_cutout", true,
      "transfers skip the part the draw overwrites"},
+    // Exact: the texture signs (mostly gamma) as specialization constants of
+    // the pixel shader pipelines, no runtime branches around the samples - GPU
+    // time -1.9 ms (-7.9%) at the 30 fps cap, both restart A/B pairs within
+    // 0.1 ms, the same image parked (S40, 2026-10-01). The first launch after
+    // the change compiles the pixel shader pipelines again.
+    {0x4D5309C9, "spirv_texture_sign_specialization", true,
+     "texture signs known to the host compiler per pipeline"},
 };
 
 // Same path/priority as a per-game config file.
