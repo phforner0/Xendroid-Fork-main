@@ -1,4 +1,4 @@
-# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9 e a v5)
+# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9, a v5 e a reanálise v6)
 
 **Data:** 2026-09-30. **Base:** reanálise de `ab2` a `ab8-results.md`, dos logs
 com timestamps do build 36 (`b36-depth1x-ts`), do perfil de CPU do build 42
@@ -127,6 +127,63 @@ Os itens 1–3 vêm antes: são pequenos, e o 3 decide a ordem dos itens 4–8.
 | 4 | Validação visual ampla (cidade, noite, chuva, túneis, replays) com navegação manual ou automação nova | — | fidelidade | médio |
 | 5 | Expor `msaa_4x_as_2x` como opção de qualidade no app (o código Kotlin é do usuário) | −4,5 ms | escolha do usuário | pequeno |
 
+## Reanálise v6 (2026-10-01, builds 54–59, tudo pela rede; `ab10-results.md`)
+
+Base: S26 (estatísticas de pipeline, IR dos fragment shaders, uso de shaders
+por passe, rastreamento de EDRAM com o motivo de cada transferência mantida),
+S27 (código PPC/HIR/a64 das funções JIT mais quentes) e as sessões S28–S32.
+
+### Achados
+
+1. **O mesmo depth/stencil ia e voltava entre a vista 4x e a 1x várias vezes
+   por frame.** A iluminação de 1280x720 marca stencil em 640x360 4x entre
+   passes 1x: 4320 dos 8791 tiles transferidos por frame, mais 720 de cor.
+2. **"Pular transferências" deixava passar casos fáceis:**
+   - alfa sem pixel shader;
+   - amostras como pixels;
+   - *culling* em listas de retângulos (que o host nunca descarta);
+   - Z fora de 0..1 com *depth clamp*;
+   - altura de 722 linhas em vez de 720.
+   Além disso, o interpretador de vertex shader lia mal os formatos
+   compactados sem sinal.
+3. **Cada fetch de textura 2D custa 5 instruções no pipe de textura** (4
+   derivadas e um `samgq`). Trocar por LOD implícito não mudou o tempo além do
+   ruído: o passe principal não é limitado por isso.
+4. **O que resta de transferências (~2300 tiles/frame no b59, eram 8791 no
+   b54):**
+   - quads que cobrem só parte das fileiras de tiles que tomam;
+   - listas de 8 retângulos;
+   - vertex shaders com textura;
+   - o atlas de sombra (stencil em uso);
+   - a superfície 2x 256x256 limpa por um quad 4x (512 tiles);
+   - fontes limpas por resolve (~900 tiles).
+5. **Resolves:** o 1280x720 em 2_10_10_10 vai pelo shader "full" de conversão
+   (0,62 ms contra 0,38 ms do 8888 em cópia rápida), provavelmente por *exp
+   bias*.
+6. **Driver:** Turnip Gen8 V37 expõe `VK_KHR_fragment_shading_rate`,
+   `VK_EXT_multi_draw`, `VK_EXT_descriptor_buffer` e
+   `VK_EXT_rasterization_order_attachment_access`.
+7. **CPU:** thread de comandos 70% de um núcleo. O JIT grava o contexto a cada
+   instrução PPC e 3 bytes de CR por comparação. É energia, não GPU.
+8. **Passe principal:** 3 faixas de 1280x256 4x (tiling predicado), ~650
+   draws cada.
+
+### Caminhos (v6)
+
+| # | Caminho | Evidência | Ganho | Esforço | Situação |
+|---|---|---|---|---|---|
+| 1 | Draws 4x com pixel shader simples nas amostras como pixels (`vulkan_samples_as_pixels_simple_ps`) | achado 1 | **GPU −1,7 ms (−5,2%)** | médio | **feito, quirk (S28)** |
+| 2 | Mais casos em `skip_overwritten_transfers` e o interpretador corrigido | achado 2 | **GPU −1,4 ms** com o quirk ligado (S31) | pequeno | **feito** |
+| 3 | LOD implícito em fetch 2D (`spirv_texture_implicit_lod`) | achado 3 | nenhum além do ruído (S29) | pequeno | opção desligada |
+| 4 | Transferência parcial: recortar (*cutout*) a área que o quad cobre | achado 4 | ~200 tiles | médio | — |
+| 5 | Draw 4x desenhado na superfície 2x dona dos tiles (x dobrado) | achado 4 | 512 tiles | médio | — |
+| 6 | Transferência de fonte limpa vira clear com o valor convertido | achado 4 | ~900 tiles | médio | — |
+| 7 | Resolve com *exp bias* sem o caminho "full" (escala no shader rápido) | achado 5 | ~0,5 ms (2 por frame) | médio | — |
+| 8 | Variante por draw para gama/sinal (chave maior) ou gama por sRGB (opção de qualidade) | AB4: teto −12% do passe principal | −0,5 a −1 ms | grande | — |
+| 9 | Taxa de shading 2x1/2x2 (VRS) no passe principal como opção de desempenho | achado 6 | a medir | médio | — |
+| 10 | Juntar as 3 faixas do tiling predicado num passe | achado 8 | grande, incerto | grande | pesquisa |
+| 11 | JIT: promoção de registradores, CR mortos | achado 7 | energia | grande | baixa prioridade |
+
 ## Becos sem saída (não repetir sem fato novo)
 
 LRZ (AB3); extents reais no tiling predicado; thread de replay; estacionar todo
@@ -140,4 +197,6 @@ formatos do Forza). Do AB9: resolve só na textura (teto zero); resolves
 minúsculos no passe (teto 0,8 ms); `nopreamble` e `nouboopt` do ir3; opções
 do JIT (`a64_vmx_nan_fixup`, sincronização de pilha, folhas inline de 32 —
 nada além do ruído de ±20% entre lançamentos); comparar CPU por função entre
-lançamentos isolados.
+lançamentos isolados. Do AB10: LOD implícito em fetch 2D (sem ganho além do
+ruído); stencil "não usado" no atlas de sombra (algum draw usa); orientação
+de listas de retângulos para *culling* (o host nunca as descarta).
