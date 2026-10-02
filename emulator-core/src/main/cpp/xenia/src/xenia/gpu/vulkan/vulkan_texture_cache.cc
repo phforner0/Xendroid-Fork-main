@@ -2498,6 +2498,9 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryUpload(
         VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, false);
   }
 
+  command_processor_.NoteTextureLoad(uint64_t(width) * height *
+                                     std::max(depth_or_array_size, UINT32_C(1)));
+
   // GPU time of the load (VkMiscTime) by format, size and whether the source
   // was written by the GPU (a resolve) rather than the CPU. The load is
   // recorded outside render passes anyway; end the pass before the region.

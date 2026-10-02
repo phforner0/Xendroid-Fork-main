@@ -92,6 +92,16 @@ DEFINE_bool(
     "GPU");
 
 DEFINE_bool(
+    alpha_to_coverage_as_alpha_test, false,
+    "Host render target path, trading image quality for speed: draws with "
+    "alpha to coverage and no alpha test of their own pass or drop whole "
+    "pixels by an alpha test at 0.5 instead (hard edges on foliage and "
+    "fences, no partly covered pixels for the multisampled render targets "
+    "to blend and store). Can be switched at runtime "
+    "(debug.xendroid.a2c_as_test).",
+    "GPU");
+
+DEFINE_bool(
     msaa_4x_as_2x, false,
     "Host render target path, trading image quality for speed: store the "
     "guest's 4x MSAA render targets with 2 samples per pixel (2x MSAA "
@@ -280,6 +290,15 @@ DEFINE_int32(
     "on Android).",
     "Vulkan");
 
+DEFINE_int32(
+    vulkan_log_slow_submission_ms, 15,
+    "With log_gpu_frame_time_breakdown: log a VkSlowSubmission line for each "
+    "submission whose GPU time passes this many milliseconds, with the work "
+    "it carried (draws, resolves, texture loads and their texels, shared "
+    "memory upload bytes) - what the rare long frames are made of. 0 "
+    "disables.",
+    "Vulkan");
+
 DECLARE_bool(gpu_debug_markers);
 DECLARE_bool(submit_on_primary_buffer_end);
 DECLARE_bool(vulkan_placeholder_pipelines);
@@ -382,6 +401,10 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   // between the 4x and the 2x render targets like for any other key change.
   PollDebugPropertyOverride("debug.xendroid.msaa_4x_as_2x", "msaa_4x_as_2x",
                             cvars::msaa_4x_as_2x);
+  // Read per draw: the pipelines lose or regain the host's alpha to coverage.
+  PollDebugPropertyOverride("debug.xendroid.a2c_as_test",
+                            "alpha_to_coverage_as_alpha_test",
+                            cvars::alpha_to_coverage_as_alpha_test);
   // Read per draw, like msaa_4x_as_2x.
   PollDebugPropertyOverride("debug.xendroid.depth_4x_as_1x",
                             "vulkan_depth_4x_as_1x",
@@ -6084,6 +6107,7 @@ bool VulkanCommandProcessor::IssueCopy() {
   if (!BeginSubmission(true)) {
     return false;
   }
+  ++submission_work_.resolves;
 
   // Push debug marker for resolve operation.
   if (debug_markers_enabled_) {
@@ -7212,6 +7236,9 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
     while (!vk_submit_times_.empty() &&
            vk_submit_times_.front().submission <= completed) {
       const SubmitTimeRecord& record = vk_submit_times_.front();
+      // Set when the submission's GPU time passes
+      // vulkan_log_slow_submission_ms.
+      uint64_t slow_submission_exec_ns = 0;
       const uint64_t latency = t1 - record.submit_ns;
       vk_frame_sync_stats_.sub_latency_ns += latency;
       vk_frame_sync_stats_.sub_latency_max_ns =
@@ -7243,6 +7270,12 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
           vk_frame_sync_stats_.gpu_exec_max_ns =
               std::max(vk_frame_sync_stats_.gpu_exec_max_ns, exec_ns);
           vk_frame_sync_stats_.gpu_samples++;
+          if (cvars::vulkan_log_slow_submission_ms > 0 &&
+              exec_ns > uint64_t(cvars::vulkan_log_slow_submission_ms) *
+                            1000000) {
+            // Logged once its passes are read below.
+            slow_submission_exec_ns = exec_ns;
+          }
         }
         if (frame_timestamp_prev_end_ && ts_top > frame_timestamp_prev_end_) {
           vk_frame_sync_stats_.gpu_gap_ns +=
@@ -7283,6 +7316,14 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
             }
           }
         }
+        // The slow submission's longest passes and work outside passes.
+        struct SlowPart {
+          uint32_t key;
+          uint64_t ns;
+          uint32_t draws;
+        };
+        SlowPart slow_parts[4] = {};
+        uint64_t slow_pass_ns = 0;
         if (record.pass_pair_count && pass_timestamp_mapping_) {
           VkMappedMemoryRange pass_invalidate_range = {
               VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
@@ -7296,6 +7337,17 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
             const uint64_t p0 = pass_timestamp_mapping_[pair * 2];
             const uint64_t p1 = pass_timestamp_mapping_[pair * 2 + 1];
             if (p1 > p0) {
+              if (slow_submission_exec_ns) {
+                const uint64_t part_ns = uint64_t((p1 - p0) * period_ns);
+                slow_pass_ns += part_ns;
+                SlowPart part = {pass_ts_keys_[pair], part_ns,
+                                 pass_ts_draws_[pair]};
+                for (SlowPart& slot : slow_parts) {
+                  if (part.ns > slot.ns) {
+                    std::swap(part, slot);
+                  }
+                }
+              }
               auto& bucket = pass_bucket_stats_[pass_ts_keys_[pair]];
               bucket.ns += uint64_t((p1 - p0) * period_ns);
               bucket.passes++;
@@ -7310,6 +7362,33 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
                   bucket.max_viewport_h, pass_ts_viewport_[pair] & 0xFFFF);
             }
           }
+        }
+        if (slow_submission_exec_ns) {
+          const SubmissionWork& work = record.work;
+          std::string parts;
+          for (const SlowPart& part : slow_parts) {
+            if (!part.ns) {
+              continue;
+            }
+            if (part.key & kMiscTimestampKeyBit) {
+              parts += fmt::format(" misc{:08X} {:.1f}ms", part.key,
+                                   part.ns / 1e6);
+            } else {
+              parts += fmt::format(" {}{}x{} {:.1f}ms/{}d",
+                                   (part.key & 0x80000000u) ? "xfer " : "",
+                                   (part.key >> 16) & 0x7FFF,
+                                   part.key & 0xFFFF, part.ns / 1e6,
+                                   part.draws);
+            }
+          }
+          XELOGI(
+              "VkSlowSubmission: {} GPU {:.1f}ms | draws={} resolves={} "
+              "texture_loads={} texels={:.2f}M uploads={}KB | timed "
+              "{:.1f}ms, longest:{}",
+              record.submission, slow_submission_exec_ns / 1e6, work.draws,
+              work.resolves, work.texture_loads,
+              work.texture_load_texels / 1e6, work.upload_bytes >> 10,
+              slow_pass_ns / 1e6, parts);
         }
       }
       vk_submit_times_.pop_front();
@@ -7989,6 +8068,9 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
     }
 
     submission_open_ = false;
+    SubmissionWork submission_work = submission_work_;
+    submission_work.draws = draws_since_submission_;
+    submission_work_ = SubmissionWork();
     draws_since_submission_ = 0;
     vk_frame_sync_stats_.submissions++;
     if (cvars::log_gpu_frame_time_breakdown) {
@@ -8011,7 +8093,8 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
       }
       vk_submit_times_.push_back({submission_index, FrameStatsNow(),
                                   fs_timestamp_slot, resolve_base,
-                                  resolve_pairs, pass_base, pass_pairs});
+                                  resolve_pairs, pass_base, pass_pairs,
+                                  submission_work});
       resolve_ts_count_ = 0;
       pass_ts_count_ = 0;
     }
@@ -8676,6 +8759,13 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
   xenos::CompareFunction alpha_test_function =
       rb_colorcontrol.alpha_test_enable ? rb_colorcontrol.alpha_func
                                         : xenos::CompareFunction::kAlways;
+  // alpha_to_coverage_as_alpha_test: alpha to coverage without an alpha test
+  // of the draw's own becomes the test alpha >= 0.5.
+  if (cvars::alpha_to_coverage_as_alpha_test &&
+      rb_colorcontrol.alpha_to_mask_enable &&
+      alpha_test_function == xenos::CompareFunction::kAlways) {
+    alpha_test_function = xenos::CompareFunction::kGreaterEqual;
+  }
   flags |= uint32_t(alpha_test_function)
            << SpirvShaderTranslator::kSysFlag_AlphaPassIfLess_Shift;
   // Gamma writing. When gamma is stored as unorm16, the host render target
@@ -8925,14 +9015,23 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
     system_constants_.textures_resolved = textures_resolved;
   }
 
-  // Alpha test.
-  dirty |= system_constants_.alpha_test_reference != rb_alpha_ref;
-  system_constants_.alpha_test_reference = rb_alpha_ref;
+  // Alpha test (alpha_to_coverage_as_alpha_test: at 0.5 for the draws
+  // whose alpha to coverage it turns into the test).
+  const bool alpha_to_coverage_as_test =
+      cvars::alpha_to_coverage_as_alpha_test &&
+      rb_colorcontrol.alpha_to_mask_enable &&
+      (!rb_colorcontrol.alpha_test_enable ||
+       rb_colorcontrol.alpha_func == xenos::CompareFunction::kAlways);
+  const float alpha_test_reference =
+      alpha_to_coverage_as_test ? 0.5f : rb_alpha_ref;
+  dirty |= system_constants_.alpha_test_reference != alpha_test_reference;
+  system_constants_.alpha_test_reference = alpha_test_reference;
 
   // Alpha to coverage.
-  uint32_t alpha_to_mask = rb_colorcontrol.alpha_to_mask_enable
-                               ? (rb_colorcontrol.value >> 24) | (1 << 8)
-                               : 0;
+  uint32_t alpha_to_mask =
+      rb_colorcontrol.alpha_to_mask_enable && !alpha_to_coverage_as_test
+          ? (rb_colorcontrol.value >> 24) | (1 << 8)
+          : 0;
   dirty |= system_constants_.alpha_to_mask != alpha_to_mask;
   system_constants_.alpha_to_mask = alpha_to_mask;
 

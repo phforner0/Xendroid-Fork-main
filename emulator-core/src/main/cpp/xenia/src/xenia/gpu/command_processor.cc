@@ -16,7 +16,9 @@
 #include <set>
 
 #if defined(__ANDROID__)
+#include <dlfcn.h>
 #include <sys/system_properties.h>
+#include <unistd.h>
 #endif
 
 #include "xenia/base/cvar.h"
@@ -94,6 +96,15 @@ DEFINE_bool(
     "band is resolved from its rows - the vertex work and the fixed cost of "
     "the repeated draws are done once. Host render target path; read per "
     "frame.",
+    "GPU");
+
+DEFINE_bool(
+    gpu_performance_hint, false,
+    "Android: an ADPF performance hint session for the GPU command processor "
+    "thread, reporting each guest frame the time the thread worked (the frame "
+    "interval minus its waits for ring writes and WAIT_REG_MEM) against the "
+    "average frame interval as the target, so the platform can raise the "
+    "thread's clock when a frame runs late. Takes effect at startup.",
     "GPU");
 
 DEFINE_bool(
@@ -643,6 +654,83 @@ uint64_t CommandProcessor::FrameStatsBegin() {
   return cvars::log_gpu_frame_time_breakdown ? FrameStatsNow() : 0;
 }
 
+uint64_t CommandProcessor::FrameWaitBegin() {
+  return (cvars::log_gpu_frame_time_breakdown || cvars::gpu_performance_hint)
+             ? FrameStatsNow()
+             : 0;
+}
+
+void CommandProcessor::FrameHintEndFrame() {
+#if defined(__ANDROID__)
+  if (!cvars::gpu_performance_hint || frame_hint_failed_) {
+    return;
+  }
+  const uint64_t now = FrameStatsNow();
+  const uint64_t wait_ns = frame_hint_wait_ns_;
+  frame_hint_wait_ns_ = 0;
+  if (!frame_hint_last_swap_ns_) {
+    frame_hint_last_swap_ns_ = now;
+    return;
+  }
+  const uint64_t interval_ns = now - frame_hint_last_swap_ns_;
+  frame_hint_last_swap_ns_ = now;
+  frame_hint_interval_sum_ns_ += interval_ns;
+  ++frame_hint_interval_count_;
+  if (!frame_hint_session_) {
+    // Learn the frame interval first: it is the target.
+    if (frame_hint_interval_count_ < 60) {
+      return;
+    }
+    frame_hint_failed_ = true;
+    void* lib = dlopen("libandroid.so", RTLD_NOW | RTLD_NOLOAD);
+    if (!lib) {
+      return;
+    }
+    auto get_manager = reinterpret_cast<void* (*)()>(
+        dlsym(lib, "APerformanceHint_getManager"));
+    auto create_session =
+        reinterpret_cast<void* (*)(void*, const int32_t*, size_t, int64_t)>(
+            dlsym(lib, "APerformanceHint_createSession"));
+    frame_hint_report_ = reinterpret_cast<int (*)(void*, int64_t)>(
+        dlsym(lib, "APerformanceHint_reportActualWorkDuration"));
+    frame_hint_update_target_ = reinterpret_cast<int (*)(void*, int64_t)>(
+        dlsym(lib, "APerformanceHint_updateTargetWorkDuration"));
+    void* manager = get_manager ? get_manager() : nullptr;
+    if (!manager || !create_session || !frame_hint_report_ ||
+        !frame_hint_update_target_) {
+      XELOGW("GpuPerformanceHint: ADPF not available");
+      return;
+    }
+    const int32_t tid = int32_t(gettid());
+    const int64_t target_ns =
+        int64_t(frame_hint_interval_sum_ns_ / frame_hint_interval_count_);
+    frame_hint_session_ = create_session(manager, &tid, 1, target_ns);
+    if (!frame_hint_session_) {
+      XELOGW("GpuPerformanceHint: createSession failed");
+      return;
+    }
+    frame_hint_failed_ = false;
+    XELOGI("GpuPerformanceHint: session for the command thread, target "
+           "{:.1f} ms",
+           target_ns / 1e6);
+    frame_hint_interval_sum_ns_ = 0;
+    frame_hint_interval_count_ = 0;
+    return;
+  }
+  frame_hint_report_(frame_hint_session_,
+                     int64_t(interval_ns > wait_ns ? interval_ns - wait_ns
+                                                   : uint64_t(1)));
+  // Follow the guest's frame rate.
+  if (frame_hint_interval_count_ >= 120) {
+    frame_hint_update_target_(
+        frame_hint_session_,
+        int64_t(frame_hint_interval_sum_ns_ / frame_hint_interval_count_));
+    frame_hint_interval_sum_ns_ = 0;
+    frame_hint_interval_count_ = 0;
+  }
+#endif
+}
+
 void CommandProcessor::FrameStatsEndDraw(uint64_t begin_ns) {
   if (!begin_ns) {
     return;
@@ -655,8 +743,10 @@ void CommandProcessor::FrameStatsEndWaitRegMem(uint64_t begin_ns) {
   if (!begin_ns) {
     return;
   }
+  const uint64_t wait_ns = FrameStatsNow() - begin_ns;
   frame_time_stats_.wait_reg_mem_unmet++;
-  frame_time_stats_.wait_reg_mem_ns += FrameStatsNow() - begin_ns;
+  frame_time_stats_.wait_reg_mem_ns += wait_ns;
+  frame_hint_wait_ns_ += wait_ns;
 }
 
 void CommandProcessor::FrameStatsEndSwap(uint64_t begin_ns) {
@@ -815,11 +905,59 @@ void CommandProcessor::OnBinSelectWritten() {
     tiling_band_ = 0;
     ++tiling_band_sequence_;
     tiling_band_merge_ok_ = true;
-    tiling_band_draws_.clear();
+    ClearTilingBandDraws();
   } else if (select != tiling_band_select_) {
     ++tiling_band_;
   }
   tiling_band_select_ = select;
+}
+
+void CommandProcessor::ClearTilingBandDraws() {
+  tiling_band_draw_count_ = 0;
+  // Slots of older epochs read as empty; epoch 0 is the zero fill.
+  if (++tiling_band_draw_epoch_ == 0) {
+    std::fill(tiling_band_draw_slots_.begin(), tiling_band_draw_slots_.end(),
+              uint64_t(0));
+    tiling_band_draw_epoch_ = 1;
+  }
+}
+
+bool CommandProcessor::InsertTilingBandDraw(uint32_t key) {
+  if (!tiling_band_draw_epoch_) {
+    tiling_band_draw_epoch_ = 1;
+  }
+  const uint64_t epoch = tiling_band_draw_epoch_;
+  if ((size_t(tiling_band_draw_count_) + 1) * 2 >
+      tiling_band_draw_slots_.size()) {
+    // Grow at half load, keeping the current epoch's keys.
+    std::vector<uint64_t> old_slots;
+    old_slots.swap(tiling_band_draw_slots_);
+    tiling_band_draw_slots_.assign(
+        std::max(size_t(8192), old_slots.size() * 2), uint64_t(0));
+    tiling_band_draw_count_ = 0;
+    for (uint64_t slot : old_slots) {
+      if ((slot >> 32) == epoch) {
+        InsertTilingBandDraw(uint32_t(slot));
+      }
+    }
+  }
+  const size_t mask = tiling_band_draw_slots_.size() - 1;
+  // The top bits of a multiplicative hash (the keys are dword addresses, so
+  // the low bits of the product carry little).
+  size_t index =
+      size_t((uint64_t(key) * UINT64_C(0x9E3779B97F4A7C15)) >> 40) & mask;
+  for (;;) {
+    const uint64_t slot = tiling_band_draw_slots_[index];
+    if ((slot >> 32) != epoch) {
+      tiling_band_draw_slots_[index] = (epoch << 32) | key;
+      ++tiling_band_draw_count_;
+      return true;
+    }
+    if (uint32_t(slot) == key) {
+      return false;
+    }
+    index = (index + 1) & mask;
+  }
 }
 
 bool CommandProcessor::PrepareTilingBandDraw() {
@@ -831,7 +969,7 @@ bool CommandProcessor::PrepareTilingBandDraw() {
   }
   // The address right past the packet tells the draw apart (the bands replay
   // the same command buffers).
-  if (!tiling_band_draws_.insert(GuestReadPtrOffset()).second) {
+  if (!InsertTilingBandDraw(GuestReadPtrOffset())) {
     // Executed again within the first band (a buffer it replays itself) -
     // drawn, otherwise drawn in an earlier band.
     return tiling_band_ == 0;
@@ -1125,7 +1263,7 @@ void CommandProcessor::WorkerThreadMain() {
       // We've run out of commands to execute.
       // We spin here waiting for new ones, as the overhead of waiting on our
       // event is too high.
-      const uint64_t fs_stall_begin = FrameStatsBegin();
+      const uint64_t fs_stall_begin = FrameWaitBegin();
       PrepareForWait();
       uint32_t loop_count = 0;
       do {
@@ -1145,7 +1283,9 @@ void CommandProcessor::WorkerThreadMain() {
                 read_ptr_index_ == write_ptr_index));
       ReturnFromWait();
       if (fs_stall_begin) {
-        frame_time_stats_.stall_ns += FrameStatsNow() - fs_stall_begin;
+        const uint64_t stall_ns = FrameStatsNow() - fs_stall_begin;
+        frame_time_stats_.stall_ns += stall_ns;
+        frame_hint_wait_ns_ += stall_ns;
       }
       if (!worker_running_ ||
           has_pending_fns_.load(std::memory_order_acquire)) {

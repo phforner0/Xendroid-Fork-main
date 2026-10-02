@@ -302,6 +302,11 @@ enum Opcode {
   OPCODE_SPIN_BACKOFF,
   OPCODE_LOAD_BARRIER,
   OPCODE_CHECK_PREEMPT,
+  // lfs/stfs conversions keeping a signaling NaN signaling, as the PowerPC
+  // does: single bits (i32) -> double, double -> single bits (i32). The host
+  // converts quiet the NaN; the backend fixes the quiet bit out of line.
+  OPCODE_SINGLE_BITS_TO_DOUBLE,
+  OPCODE_DOUBLE_TO_SINGLE_BITS,
 
   __OPCODE_MAX_VALUE,  // Keep at end.
 };

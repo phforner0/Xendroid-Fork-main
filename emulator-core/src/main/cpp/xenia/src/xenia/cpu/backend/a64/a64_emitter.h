@@ -163,10 +163,16 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
 
   // ARM64 conditional branches (cbz/cbnz: ±1 MiB, tbz/tbnz: ±32 KiB,
   // b.cond: ±1 MiB) can fall short of their target in large guest functions.
-  // These shadows emit the safe pattern `<inverse> skip; b target; skip:`,
-  // routing the long branch through unconditional b (±128 MiB). The
-  // int64_t-immediate overloads remain available via the using-declarations
-  // for hand-tuned thunks that pass literal byte offsets.
+  // b.cond, cbz and cbnz are emitted direct while near_branches() - a guest
+  // function they don't reach across throws ERR_LABEL_IS_TOO_FAR and is
+  // emitted again without; otherwise these shadows emit the safe pattern
+  // `<inverse> skip; b target; skip:`, routing the long branch through
+  // unconditional b (±128 MiB), at an extra instruction and a taken branch on
+  // the path that doesn't branch. tbz/tbnz always take the safe pattern. A
+  // rarely taken branch to tail code is cheapest written as `b(cond, tail)`:
+  // direct, it falls through. The int64_t-immediate overloads remain
+  // available via the using-declarations for hand-tuned thunks that pass
+  // literal byte offsets.
   using Xbyak_aarch64::CodeGenerator::b;
   using Xbyak_aarch64::CodeGenerator::cbnz;
   using Xbyak_aarch64::CodeGenerator::cbz;
@@ -186,6 +192,8 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
   void tbnz(const Xbyak_aarch64::XReg& rt, uint32_t imm,
             const Xbyak_aarch64::Label& label);
 
+  bool near_branches() const { return near_branches_; }
+
   // Get or create a xbyak_aarch64 label for a HIR label ID.
   Xbyak_aarch64::Label& GetLabel(uint32_t label_id);
 
@@ -198,6 +206,8 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
   // path and a failed compile must run it, or stale labels carry over.
   void ResetPerFunctionState();
   bool Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info);
+  // Whether a guest function has to be emitted again with long-range branches.
+  bool IsNearBranchOutOfRange(const Xbyak_aarch64::Error& e) const;
 
  protected:
   Processor* processor_ = nullptr;
@@ -231,6 +241,9 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
 
   FPCRMode fpcr_mode_ = FPCRMode::Unknown;
   bool synchronize_stack_on_next_instruction_ = false;
+  // Set per attempt while a guest function is emitted (the helper thunks keep
+  // the long-range form).
+  bool near_branches_ = false;
 };
 
 }  // namespace a64

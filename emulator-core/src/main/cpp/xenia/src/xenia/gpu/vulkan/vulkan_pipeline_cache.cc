@@ -125,6 +125,7 @@ DECLARE_bool(vulkan_dynamic_rendering);
 DECLARE_bool(spirv_disable_rounding_mode_rte);
 DECLARE_bool(precise_interpolation);
 DECLARE_bool(host_alpha_to_coverage);
+DECLARE_bool(alpha_to_coverage_as_alpha_test);
 #if XE_PLATFORM_xendroid || XE_PLATFORM_ANDROID
 DECLARE_string(ir3_debug);
 #endif
@@ -1856,7 +1857,8 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
         (SpirvShaderTranslator::Modification(pixel_shader->modification())
              .pixel.color_targets_used &
          0b1) &&
-        regs.Get<reg::RB_COLORCONTROL>().alpha_to_mask_enable) {
+        regs.Get<reg::RB_COLORCONTROL>().alpha_to_mask_enable &&
+        !cvars::alpha_to_coverage_as_alpha_test) {
       description_out.alpha_to_coverage = 1;
     }
   }

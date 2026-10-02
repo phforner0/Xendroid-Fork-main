@@ -10,8 +10,17 @@
 #include "xenia/cpu/compiler/passes/simplification_pass.h"
 
 #include "xenia/base/byte_order.h"
+#include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/profiling.h"
+
+DEFINE_bool(hir_simplify_single_stores, true,
+            "Store single-precision floats (stfs) without the conversions an "
+            "exact copy doesn't need: a float stored as lfs loaded it keeps "
+            "its bits, and a single-precision result is stored from its "
+            "single-precision rounding.",
+            "CPU");
+
 namespace xe {
 namespace cpu {
 namespace compiler {
@@ -1080,6 +1089,9 @@ bool SimplificationPass::EliminateConversions(HIRBuilder* builder) {
         // This is pretty rare within the same basic block, but is in the
         // memcpy hot path and (probably) worth it. Maybe.
         result |= CheckByteSwap(i);
+      } else if (i->opcode == &OPCODE_DOUBLE_TO_SINGLE_BITS_info &&
+                 cvars::hir_simplify_single_stores) {
+        result |= CheckDoubleToSingleBits(i, builder);
       }
       i = i->next;
     }
@@ -1139,6 +1151,40 @@ bool SimplificationPass::CheckByteSwap(Instr* i) {
   }
   return false;
 }
+// stfs of what lfs loaded (a copy through a float register):
+//   v1.f64 = single_bits_to_double v0.i32
+//   v2.i32 = double_to_single_bits v1.f64
+// is v0 - the round trip is exact, a signaling NaN included. stfs of a
+// single-precision result:
+//   v1.f64 = to_single v0.f64
+//   v2.i32 = double_to_single_bits v1.f64
+// is the bits of v0 converted to f32 - the same rounding, and a NaN comes out
+// of to_single already quiet, as out of the convert.
+bool SimplificationPass::CheckDoubleToSingleBits(Instr* i,
+                                                 HIRBuilder* builder) {
+  auto def = i->src1.value->def;
+  while (def && def->opcode == &OPCODE_ASSIGN_info) {
+    def = def->src1.value->def;
+  }
+  if (!def) {
+    return false;
+  }
+  if (def->opcode == &OPCODE_SINGLE_BITS_TO_DOUBLE_info) {
+    i->Replace(&OPCODE_ASSIGN_info, 0);
+    i->set_src1(def->src1.value);
+    return true;
+  }
+  if (def->opcode == &OPCODE_TO_SINGLE_info &&
+      !def->src1.value->IsConstant()) {
+    Value* single = builder->Convert(def->src1.value, FLOAT32_TYPE);
+    single->def->MoveBefore(i);
+    i->Replace(&OPCODE_CAST_info, 0);
+    i->set_src1(single);
+    return true;
+  }
+  return false;
+}
+
 bool SimplificationPass::SimplifyAssignments(HIRBuilder* builder) {
   // Run over the instructions and rename assigned variables:
   //   v1 = v0

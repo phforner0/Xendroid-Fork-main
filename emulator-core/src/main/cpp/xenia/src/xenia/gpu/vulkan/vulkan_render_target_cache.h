@@ -142,6 +142,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   static constexpr int32_t kGpuProbeSkipSameBaseMsaaTransfers = 1 << 3;
   // Direct host resolves of averaged MSAA samples read only the first sample.
   static constexpr int32_t kGpuProbeSingleSampleResolves = 1 << 4;
+  // Direct host resolves of depth don't fetch the stencil (stored as 0).
+  static constexpr int32_t kGpuProbeSkipDepthResolveStencil = 1 << 5;
 
 
   // Called once per guest frame (from IssueSwap) to aggregate and, once per

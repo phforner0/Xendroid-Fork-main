@@ -152,7 +152,16 @@ class CommandProcessor {
   bool tiling_band_merge_ok_ = false;
   // The current draw is first executed in tiling_band_ > 0.
   bool tiling_band_draw_from_later_band_ = false;
-  std::unordered_set<uint32_t> tiling_band_draws_;
+  // The draw packets of the current band sequence, by the guest address right
+  // past each packet: open addressing with the sequence's epoch in each slot,
+  // so a new sequence clears it in O(1) (an unordered_set allocated a node per
+  // draw, ~2% of this thread's instructions at ~2900 draws per frame).
+  std::vector<uint64_t> tiling_band_draw_slots_;
+  uint32_t tiling_band_draw_count_ = 0;
+  uint32_t tiling_band_draw_epoch_ = 0;
+  // Returns whether the key wasn't in the current sequence yet.
+  bool InsertTilingBandDraw(uint32_t key);
+  void ClearTilingBandDraws();
 
  public:
   bool tiling_band_merge_active() const {
@@ -329,9 +338,24 @@ class CommandProcessor {
   static uint64_t FrameStatsNow();
   // Returns 0 (and skips the clock read) when the breakdown is disabled.
   uint64_t FrameStatsBegin();
+  // The same for the waits (for ring writes and WAIT_REG_MEM), also timed for
+  // gpu_performance_hint.
+  uint64_t FrameWaitBegin();
   void FrameStatsEndDraw(uint64_t begin_ns);
   void FrameStatsEndWaitRegMem(uint64_t begin_ns);
   void FrameStatsEndSwap(uint64_t begin_ns);
+
+  // gpu_performance_hint (Android ADPF): the command thread's work per guest
+  // frame - the frame interval minus its waits - reported at each swap.
+  void FrameHintEndFrame();
+  uint64_t frame_hint_wait_ns_ = 0;
+  uint64_t frame_hint_last_swap_ns_ = 0;
+  uint64_t frame_hint_interval_sum_ns_ = 0;
+  uint32_t frame_hint_interval_count_ = 0;
+  void* frame_hint_session_ = nullptr;
+  bool frame_hint_failed_ = false;
+  int (*frame_hint_report_)(void*, int64_t) = nullptr;
+  int (*frame_hint_update_target_)(void*, int64_t) = nullptr;
 
   // Predicated tiling diagnostics: `adb shell setprop debug.xendroid.
   // pm4_bin_trace N` logs how the next N guest frames use bin select / bin

@@ -228,6 +228,15 @@ class VulkanCommandProcessor final : public CommandProcessor {
   bool misc_timestamps_enabled() const {
     return pass_timestamp_mapping_ != nullptr;
   }
+  // Work counted per submission for VkSlowSubmission (a submission whose GPU
+  // time passes vulkan_log_slow_submission_ms, with the frame timestamps).
+  void NoteTextureLoad(uint64_t texels) {
+    ++submission_work_.texture_loads;
+    submission_work_.texture_load_texels += texels;
+  }
+  void NoteSharedMemoryUpload(uint64_t bytes) {
+    submission_work_.upload_bytes += bytes;
+  }
   bool OpenMiscTimestamp(uint32_t key);
   void CloseMiscTimestamp();
   // Called by the render target cache between the copy and the clear of a
@@ -835,6 +844,14 @@ class VulkanCommandProcessor final : public CommandProcessor {
   VkFrameSyncStats& vk_frame_sync_stats() { return vk_frame_sync_stats_; }
 
  private:
+  struct SubmissionWork {
+    uint32_t draws = 0;
+    uint32_t resolves = 0;
+    uint32_t texture_loads = 0;
+    uint64_t texture_load_texels = 0;
+    uint64_t upload_bytes = 0;
+  };
+  SubmissionWork submission_work_;
   struct SubmitTimeRecord {
     uint64_t submission;
     uint64_t submit_ns;
@@ -846,6 +863,7 @@ class VulkanCommandProcessor final : public CommandProcessor {
     // Render-pass timestamp pairs recorded in this submission.
     uint32_t pass_slot_base;
     uint32_t pass_pair_count;
+    SubmissionWork work;
   };
   std::deque<SubmitTimeRecord> vk_submit_times_;
   // GPU timestamps around each submission (2 per slot), copied in-buffer to
