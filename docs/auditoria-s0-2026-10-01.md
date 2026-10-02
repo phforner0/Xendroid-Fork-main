@@ -218,3 +218,11 @@ com comandos e resultados exatos.
       "… painted without a generated frame" só no aquecimento.
    d. Com o veredito "over budget" ou "late": registrar se a imagem engasga (os limiares do
       governador são hipótese; ele não age sozinho). Device, driver, jogo, Hz e temperatura.
+16. Lote 9 — modo Jogador (L02): Configurações → "Interface: Developer" → "Switch to Player":
+   a lista vira uma só categoria "Essentials" (19 itens); mudar o limite de FPS ali e voltar a
+   Developer: o mesmo valor aparece em GPU → Frame rate limit, e um ajuste avançado mudado
+   antes (ex.: Vulkan → Validation layers) continua com o valor dele. Abrir um jogo em Player:
+   no menu em jogo não aparecem Win-FG/LSFG, "Presenter ADPF hints", "Host submissions",
+   "Pause on background" nem "Sustained performance", e D-pad/LB/RB percorrem só o que
+   aparece. Voltar a Developer e abrir outro jogo: tudo volta. Configurações por jogo
+   (ficha → Settings) seguem o mesmo modo.

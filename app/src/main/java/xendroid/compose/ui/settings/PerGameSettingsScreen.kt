@@ -19,6 +19,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import xendroid.compose.settings.GameSettingsViewModel
 import xendroid.compose.settings.SettingsCategory
+import xendroid.compose.settings.SettingsSchema
+import xendroid.compose.settings.UiModeStore
+import androidx.compose.ui.platform.LocalContext
 
 /**
  * The per-game override editor: the same two-level INDEX -> DETAIL shape as
@@ -69,7 +72,7 @@ fun PerGameSettingsScreen(
     if (section == null) {
         PerGameIndex(
             gameName = gameName,
-            categories = vm.categories,
+            categories = SettingsSchema.categoriesFor(UiModeStore.read(LocalContext.current)),
             overriddenCountOf = { cat -> cat.settings.count { overrides.containsKey(it.key) } },
             onOpen = { selected = it },
             onBack = { vm.flush(); onBack() },

@@ -16,9 +16,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalContext
 import xendroid.compose.settings.SettingValue
 import xendroid.compose.settings.SettingsCategory
+import xendroid.compose.settings.SettingsSchema
 import xendroid.compose.settings.SettingsViewModel
+import xendroid.compose.settings.UiMode
+import xendroid.compose.settings.UiModeStore
 
 /**
  * Two-level settings: an INDEX of sections (the 124-entry schema is too long for one list), and
@@ -47,6 +51,9 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
     }
 
     var selected by remember { mutableStateOf<SettingsCategory?>(null) }
+    val context = LocalContext.current
+    var mode by remember { mutableStateOf(UiModeStore.read(context)) }
+    val categories = remember(mode) { SettingsSchema.categoriesFor(mode) }
     if (!ready) {
         ConfigLoadNotice(error, vm::onResume, onBack)
         return
@@ -62,11 +69,16 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
     val section = selected
     if (section == null) {
         SettingsIndex(
-            categories = vm.categories,
+            categories = categories,
             modifiedCountOf = { cat -> cat.settings.count { values[it.key]?.modified == true } },
             onOpen = { selected = it },
             onBack = { vm.flush(); onBack() },
             dataBundle = {
+                UiModeRow(mode) { next ->
+                    UiModeStore.write(context, next)
+                    mode = next
+                }
+                HorizontalDivider()
                 DataBundleSection(beforeImport = vm::flush, afterImport = vm::onResume)
                 UpdateChannelSection()
             },
@@ -75,11 +87,31 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
         BackHandler { selected = null }
         SettingsCategoryDetail(
             category = section,
+            categories = categories,
             values = values,
             vm = vm,
             onBack = { selected = null },
         )
     }
+}
+
+/** L02: Player shows the settings players change; Developer shows every engine setting. */
+@Composable
+internal fun UiModeRow(mode: UiMode, onChange: (UiMode) -> Unit) {
+    ListItem(
+        headlineContent = { Text("Interface: ${mode.label}") },
+        supportingContent = {
+            Text(if (mode == UiMode.PLAYER)
+                "Essential settings only. Developer shows every engine setting and the experimental options " +
+                    "(still limited to developer builds where they are). Hidden settings keep their values."
+            else "Every engine setting. Player keeps only what players change.")
+        },
+        trailingContent = {
+            TextButton(onClick = { onChange(if (mode == UiMode.PLAYER) UiMode.DEVELOPER else UiMode.PLAYER) }) {
+                Text(if (mode == UiMode.PLAYER) "Switch to Developer" else "Switch to Player")
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -133,6 +165,7 @@ private fun SettingsIndex(
 @Composable
 private fun SettingsCategoryDetail(
     category: SettingsCategory,
+    categories: List<SettingsCategory>,
     values: Map<String, SettingValue>,
     vm: SettingsViewModel,
     onBack: () -> Unit,
@@ -155,7 +188,7 @@ private fun SettingsCategoryDetail(
             singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         LazyColumn(Modifier.weight(1f)) {
             if (query.isNotBlank()) {
-                items(vm.categories.flatMap { it.settings }.filter {
+                items(categories.flatMap { it.settings }.filter {
                     it.title.contains(query, true) || it.name.contains(query, true) || it.desc.contains(query, true)
                 }, key = { it.key }) { setting ->
                     val sv = values[setting.key]

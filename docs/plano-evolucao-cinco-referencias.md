@@ -383,6 +383,12 @@ de deltas guest; registrar unavailable/stale e aquecimento. Referências [X2–X
 | L11 | Mods Xbox opt-in | Somente formatos suportados por Xenia/patch/override de arquivos; namespace separado, ordem e conflitos explícitos, não substituir um save/DLC; não portar mods/Workshop Steam |
 | L12 | Lixeira de dados gerenciados | Mover somente dados internos elegíveis para namespace isolado sob lease/journal; restauração com preview de conflitos, cota e limpeza explícita; remover referência da biblioteca não exclui ROM externa |
 
+**Estado L02 (2026-10-02, v1, Impl. + Local):** "Interface: Player/Developer" nas
+Configurações; Player mostra só "Essentials" (19 ajustes de jogador, também por jogo) e
+esconde do menu em jogo FG/LSFG, ADPF, contagem de submissões, política de fundo e modo
+sustentado; valores escondidos continuam valendo; nenhum gate de build muda. Padrão Developer
+até o assistente (L01) perguntar. Falta: validar no aparelho (roteiro 16).
+
 **Estado L08 (2026-10-02, v1):** "Back up or move settings" no topo de Configurações —
 exporta para um arquivo escolhido pelo usuário (SAF) o config global e os por jogo, o
 layout dos controles de toque, favoritos/ordenação e os relatos de compatibilidade

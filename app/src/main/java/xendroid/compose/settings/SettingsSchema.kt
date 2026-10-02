@@ -258,6 +258,29 @@ object SettingsSchema {
 
     val allSettings: List<Setting> = categories.flatMap { it.settings }
     val byKey: Map<String, Setting> = allSettings.associateBy { it.key }
+
+    /**
+     * L02, Player mode: the settings a player changes, in this order. Engine internals,
+     * accuracy hacks, logging and experiments stay in Developer mode; nothing is lost, the
+     * stored values of hidden settings are kept and still apply.
+     */
+    val playerKeys: List<String> = listOf(
+        "GPU|framerate_limit", "GPU|guest_display_refresh_cap",
+        "GPU|draw_resolution_scale_x", "GPU|draw_resolution_scale_y",
+        "Display|postprocess_scaling_and_sharpening", "Display|postprocess_antialiasing", "Display|present_letterbox",
+        "Console|widescreen", "Console|internal_display_resolution",
+        "Vulkan|vulkan_lib_path",
+        "HID|show_touch_overlay", "UI|android_soft_keyboard", "UI|android_message_box",
+        "UI|show_achievement_notification",
+        "Console|user_language", "Console|user_country",
+        "APU|mute", "General|apply_patches",
+        "Logging|dump_session_logs",
+    )
+
+    fun categoriesFor(mode: UiMode): List<SettingsCategory> = when (mode) {
+        UiMode.DEVELOPER -> categories
+        UiMode.PLAYER -> listOf(SettingsCategory("Essentials", playerKeys.mapNotNull(byKey::get)))
+    }
 }
 
 // user_country: values 1..109 with 17 and 94 skipped (107 entries). Order matches

@@ -383,6 +383,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // L02: the interface mode chosen in the library; read once per game process.
+        menuState.value = menuState.value.copy(
+            developer = xendroid.compose.settings.UiModeStore.read(this) == xendroid.compose.settings.UiMode.DEVELOPER)
         enterImmersiveMode()
 
         EmuProcessLink.bindToMainProcess(this)

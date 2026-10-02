@@ -171,9 +171,11 @@ fun InGameMenu(
                         }
                     } else {
                         if (state.page == InGamePage.GRAPHICS) {
-                            Text(presentation.label, style = MaterialTheme.typography.bodySmall)
-                            frameGenerationBudget?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                            Text("Experimental host interpolation; hardware cadence/latency remain unvalidated.", style = MaterialTheme.typography.bodySmall)
+                            if (state.developer) {
+                                Text(presentation.label, style = MaterialTheme.typography.bodySmall)
+                                frameGenerationBudget?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                Text("Experimental host interpolation; hardware cadence/latency remain unvalidated.", style = MaterialTheme.typography.bodySmall)
+                            }
                             Text("Frame limit · this session", style = MaterialTheme.typography.titleSmall)
                             Text("Live limit: ${fpsText(fpsLimit)}", style = MaterialTheme.typography.bodySmall)
                             Text(
@@ -188,7 +190,7 @@ fun InGameMenu(
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        inGamePageActions.getValue(state.page).forEachIndexed { index, action ->
+                        state.actions().forEachIndexed { index, action ->
                             GuestPanelOption(
                                 label = extensionLabels[action] ?: action.label(fpsLimit, performanceHud, compactHud, touchControls, adaptiveSticks, stretch, hudMetrics, presentation, fgPreset, volume),
                                 selected = index == state.selected,
@@ -213,7 +215,7 @@ fun InGameMenu(
                                 modifier = Modifier.padding(top = 14.dp),
                                 style = MaterialTheme.typography.bodySmall,
                             )
-                            if (!BuildConfig.DEBUG) Text("Frame generation remains gated to developer/debug builds pending hardware validation.", style = MaterialTheme.typography.bodySmall)
+                            if (!BuildConfig.DEBUG && state.developer) Text("Frame generation remains gated to developer/debug builds pending hardware validation.", style = MaterialTheme.typography.bodySmall)
                         }
                         if (state.page == InGamePage.HUD) {
                             Text("Vulkan submitted counts sends to the compositor, not measured display scanout.", style = MaterialTheme.typography.bodySmall)

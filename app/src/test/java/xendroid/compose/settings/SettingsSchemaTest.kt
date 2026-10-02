@@ -117,6 +117,21 @@ class SettingsSchemaTest {
         }
     }
 
+    /** L02: Player mode shows exactly the curated keys, all real settings, none twice. */
+    @Test fun player_mode_shows_only_the_curated_settings() {
+        val player = SettingsSchema.categoriesFor(UiMode.PLAYER)
+        assertEquals(1, player.size)
+        val keys = player.single().settings.map { it.key }
+        assertEquals(SettingsSchema.playerKeys, keys)
+        assertEquals(keys.toSet().size, keys.size)
+        assertEquals(SettingsSchema.categories, SettingsSchema.categoriesFor(UiMode.DEVELOPER))
+        // Engine internals and experiments stay in Developer.
+        listOf("Vulkan|vulkan_validation", "CPU|validate_hir", "Kernel|guest_scheduler", "GPU|readback_resolve")
+            .forEach { assert(it !in keys) { "$it should be Developer-only" } }
+        assertEquals(UiMode.PLAYER, UiMode.parse("PLAYER"))
+        assertEquals(null, UiMode.parse("player"))
+    }
+
     /** Every IntRange default must be in [min, max], else the slider silently coerces the
      *  persisted default to a different value (the texture-cache bug). */
     @Test fun int_range_defaults_within_bounds() {

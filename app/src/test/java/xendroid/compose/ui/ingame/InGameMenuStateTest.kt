@@ -27,6 +27,20 @@ class InGameMenuStateTest {
         assertFalse(graphics.hide().show(pause = false).pausedByMenu)
     }
 
+    @Test fun playerModeHidesDeveloperActionsFromNavigation() {
+        val player = InGameMenuState(developer = false).show(pause = true)
+        val graphics = player.actions(InGamePage.GRAPHICS)
+        assertTrue(graphics.none { it in developerActions })
+        assertTrue(InGameAction.WINFG !in graphics && InGameAction.PERFORMANCE_HINTS !in graphics)
+        assertTrue(InGameAction.FPS_60 in graphics && InGameAction.SCALING_EFFECT in graphics)
+        assertEquals(graphics.size, player.count)
+        // Wrapping navigation stays inside the shown actions.
+        assertEquals(graphics.last(), player.move(-1).action)
+        assertEquals(InGameMenuState().actions(InGamePage.GRAPHICS), inGamePageActions.getValue(InGamePage.GRAPHICS))
+        assertTrue(player.actions(InGamePage.HUD).none { it == InGameAction.HUD_HOST_SUBMISSIONS })
+        assertTrue(InGameAction.PHONE_CONTROLLERS in player.actions(InGamePage.CONTROLS))
+    }
+
     @Test fun quitConfirmationCannotSwitchTabsAndCanBeCancelled() {
         val menu = InGameMenuState().show(pause = true)
             .changePage(-1).move(2).askToQuit()

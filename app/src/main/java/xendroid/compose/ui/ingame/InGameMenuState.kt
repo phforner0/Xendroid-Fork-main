@@ -46,6 +46,13 @@ val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
         InGameAction.MUTE, InGameAction.VOLUME_DOWN, InGameAction.VOLUME_UP, InGameAction.BACKGROUND_POLICY),
 )
 
+/** L02: hidden in Player mode (engine internals and experiments); build gates still apply. */
+val developerActions: Set<InGameAction> = setOf(
+    InGameAction.WINFG, InGameAction.WINFG_PRESET, InGameAction.LSFG, InGameAction.IMPORT_LSFG_DLL,
+    InGameAction.CLEAR_LSFG_CACHE, InGameAction.LSFG_MULTIPLIER, InGameAction.PERFORMANCE_HINTS,
+    InGameAction.HUD_HOST_SUBMISSIONS, InGameAction.BACKGROUND_POLICY, InGameAction.SUSTAINED_PERFORMANCE,
+)
+
 /** Immutable navigation state shared by touch, Back, hardware buttons and hat axes. */
 data class InGameMenuState(
     val open: Boolean = false,
@@ -57,15 +64,21 @@ data class InGameMenuState(
     val logPicker: Boolean = false,
     val logCount: Int = 0,
     val logSelection: Int = 0,
+    /** Developer interface (L02); Player hides [developerActions]. */
+    val developer: Boolean = true,
 ) {
+    /** The page's actions as shown: what hardware navigation moves through. */
+    fun actions(page: InGamePage = this.page): List<InGameAction> =
+        inGamePageActions.getValue(page).let { all -> if (developer) all else all.filterNot { it in developerActions } }
+
     val selected: Int
         get() = if (confirmingQuit) confirmationSelection else if (logPicker) logSelection else selections[page.ordinal]
 
     val count: Int
-        get() = if (confirmingQuit) 2 else if (logPicker) logCount + 2 else inGamePageActions.getValue(page).size
+        get() = if (confirmingQuit) 2 else if (logPicker) logCount + 2 else actions().size
 
     val action: InGameAction?
-        get() = if (confirmingQuit || logPicker) null else inGamePageActions.getValue(page).getOrNull(selected)
+        get() = if (confirmingQuit || logPicker) null else actions().getOrNull(selected)
 
     fun show(pause: Boolean): InGameMenuState =
         copy(open = true, confirmingQuit = false, logPicker = false, pausedByMenu = pause)
