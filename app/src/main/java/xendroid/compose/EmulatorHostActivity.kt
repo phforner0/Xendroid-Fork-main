@@ -9,6 +9,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -984,6 +985,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 launch {
                                     while (isActive) {
                                         delay(50)
+                                        // U04: a stick or hat held on a menu keeps moving at the menu's pace.
+                                        val heldDirection = if (panelNavPrev) -1 else if (panelNavNext) 1 else 0
+                                        if (heldDirection != 0) panelNav()?.let { nav ->
+                                            if (navRepeat.press(heldDirection, SystemClock.uptimeMillis())) movePanelSelection(nav, heldDirection)
+                                        }
                                         val playing = foregroundState.value && !menuState.value.open && !session.isPaused()
                                         val phones = phoneControllers.host != null
                                         val controllerRumble = rumbleIntensity.value != xendroid.compose.gamepad.RumbleIntensity.OFF
@@ -1714,11 +1720,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (editorOpen.value && !hasGuestPrompt()) {
-            val code = when (event.keyCode) {
-                KeyEvent.KEYCODE_BUTTON_A -> KeyEvent.KEYCODE_DPAD_CENTER
-                KeyEvent.KEYCODE_BUTTON_B -> KeyEvent.KEYCODE_BACK
-                else -> return super.dispatchKeyEvent(event)
-            }
+            val code = xendroid.compose.gamepad.MenuButtons.frontendKey(event.keyCode, swapConfirm)
+                ?: return super.dispatchKeyEvent(event)
             return super.dispatchKeyEvent(KeyEvent(event.downTime, event.eventTime, event.action, code,
                 event.repeatCount, event.metaState, event.deviceId, event.scanCode, event.flags, event.source))
         }
@@ -1735,9 +1738,15 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (keyCode == KeyEvent.KEYCODE_BACK) return super.onKeyDown(keyCode, event)
 
         val identity = keyIdentity(event)
-        if (event.repeatCount > 0 && consumedMenuKeys.contains(identity) &&
-            keyCode !in setOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
-                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT)) return true
+        val direction = xendroid.compose.gamepad.MenuButtons.direction(keyCode)
+        if (event.repeatCount > 0 && consumedMenuKeys.contains(identity)) {
+            // U04: a held D-pad moves at a readable pace, not at the key repeat rate.
+            if (direction == 0 || !navRepeat.press(direction, event.eventTime)) return true
+        } else if (direction != 0 && event.repeatCount == 0) {
+            // A fresh press restarts the pace, even if the last release never arrived.
+            navRepeat.release()
+            navRepeat.press(direction, event.eventTime)
+        }
         if (keyCode == KeyEvent.KEYCODE_BUTTON_MODE && !hasGuestPrompt()) {
             if (event.repeatCount == 0) {
                 if (menuState.value.open) backMenu() else openMenu(pause = true)
@@ -1819,6 +1828,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     ): Boolean {
         if (editorOpen.value && !hasGuestPrompt()) return super.onKeyUp(keyCode, event)
         val identity = keyIdentity(event)
+        if (xendroid.compose.gamepad.MenuButtons.direction(keyCode) != 0) navRepeat.release()
         if (consumedMenuKeys.remove(identity)) return true
         val player = playerSlot(event.deviceId)
         if (player > 0 && slotInput.keyUp(player, identity)) return true
@@ -2715,51 +2725,38 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             else -> false
         }
 
+    /** U04: keys mean what [xendroid.compose.gamepad.MenuButtons] says (A/B may be swapped);
+     *  Esc used to activate the selection here (it was listed under confirm first). */
     private fun panelKeyDown(
         nav: PanelNav,
         keyCode: Int
     ): Boolean =
-        when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP,
-            KeyEvent.KEYCODE_DPAD_LEFT -> {
-                movePanelSelection(
-                    nav,
-                    -1
-                )
-
+        when (xendroid.compose.gamepad.MenuButtons.intentOf(keyCode, swapConfirm)) {
+            xendroid.compose.gamepad.MenuButtons.Intent.PREVIOUS -> {
+                movePanelSelection(nav, -1)
                 true
             }
-
-            KeyEvent.KEYCODE_DPAD_DOWN,
-            KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                movePanelSelection(
-                    nav,
-                    1
-                )
-
+            xendroid.compose.gamepad.MenuButtons.Intent.NEXT -> {
+                movePanelSelection(nav, 1)
                 true
             }
-
-            KeyEvent.KEYCODE_DPAD_CENTER,
-            KeyEvent.KEYCODE_ENTER,
-            KeyEvent.KEYCODE_ESCAPE,
-            KeyEvent.KEYCODE_BUTTON_A -> {
+            xendroid.compose.gamepad.MenuButtons.Intent.CONFIRM -> {
                 nav.activate(
                     if (menuState.value.open && !hasGuestPrompt()) menuState.value.selected
                     else panelSelectedState.intValue
                 )
-
                 true
             }
-
-            KeyEvent.KEYCODE_BUTTON_B,
-            KeyEvent.KEYCODE_ESCAPE -> {
+            xendroid.compose.gamepad.MenuButtons.Intent.CANCEL -> {
                 nav.cancel()
                 true
             }
-
             else -> false
         }
+
+    /** U04: the menu button layout (read once per game) and the pace of a held direction. */
+    private val swapConfirm by lazy { xendroid.compose.gamepad.MenuButtonPrefs.swapConfirm(this) }
+    private val navRepeat = xendroid.compose.gamepad.NavRepeat()
 
     private var panelNavPrev = false
     private var panelNavNext = false
@@ -2794,25 +2791,14 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
         if (prev != panelNavPrev) {
             panelNavPrev = prev
-
-            if (prev) {
-                movePanelSelection(
-                    nav,
-                    -1
-                )
-            }
+            if (prev && navRepeat.press(-1, SystemClock.uptimeMillis())) movePanelSelection(nav, -1)
         }
 
         if (next != panelNavNext) {
             panelNavNext = next
-
-            if (next) {
-                movePanelSelection(
-                    nav,
-                    1
-                )
-            }
+            if (next && navRepeat.press(1, SystemClock.uptimeMillis())) movePanelSelection(nav, 1)
         }
+        if (!panelNavPrev && !panelNavNext) navRepeat.release()
     }
 
     private fun movePanelSelection(

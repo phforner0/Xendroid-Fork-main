@@ -328,3 +328,9 @@ com comandos e resultados exatos.
    texto cortado nas opções de duas linhas; trocar para English: tudo em inglês. Com o TalkBack:
    tocar no "☰" anuncia "Abrir menu, botão"; navegar com o controle anuncia a opção destacada
    como selecionada. Fonte do sistema no máximo: o rodapé Continuar/Sair do jogo continua visível.
+29. Lote 10 — navegação por controle (U04): na biblioteca, A abre o jogo e B volta; em
+   Configurações → "Menus: A confirms…" → "Swap": agora B abre e A volta na hora. Abrir um jogo:
+   no menu em jogo, B ativa e A fecha/cancela; dentro do jogo os botões continuam os de sempre.
+   Segurar o D-pad (e depois o analógico) numa lista longa: move um, para um instante e segue
+   num ritmo legível; soltar para na hora. Com um teclado USB/Bluetooth: Enter ativa, Esc fecha o
+   menu e, na pergunta "Exit the game?" com "Exit game" destacado, Esc **cancela** (antes saía).

@@ -59,11 +59,9 @@ class MainActivity : ComponentActivity() {
     // implementation class RestrictTo, but overriding the platform callback is valid.
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val code = when (event.keyCode) {
-            KeyEvent.KEYCODE_BUTTON_A -> KeyEvent.KEYCODE_DPAD_CENTER
-            KeyEvent.KEYCODE_BUTTON_B -> KeyEvent.KEYCODE_BACK
-            else -> return super.dispatchKeyEvent(event)
-        }
+        // U04: A clicks and B goes back, or the other way round when the user swapped them.
+        val code = xendroid.compose.gamepad.MenuButtons.frontendKey(event.keyCode,
+            xendroid.compose.gamepad.MenuButtonPrefs.swapConfirm(this)) ?: return super.dispatchKeyEvent(event)
         val translated = KeyEvent(
             event.downTime, event.eventTime, event.action, code, event.repeatCount,
             event.metaState, event.deviceId, event.scanCode, event.flags, event.source,

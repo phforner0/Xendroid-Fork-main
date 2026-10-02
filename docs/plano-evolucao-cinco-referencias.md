@@ -488,6 +488,12 @@ devem preservar direct launch e [contrato de frontend externo](frontend-integrat
 | U10 | Prompts guest e teclado virtual | Reusar bridge XAM existente; navegação por toque/D-pad/stick, atalhos de cursor/páginas/confirmar, UTF-8 inválido e strings limitadas; foco/cancel devolvem input ao dono sem botões presos |
 | U11 | Perfis locais e sign-in | Iterar `ProfilesScreen`/viewmodel, GamerTag/idioma/país/avatar, indicação do perfil ativo e erros acionáveis; escolher perfil antes do boot, respeitar saves/XUID existentes e depois integrar atribuição P1–P4 |
 
+**Estado U04 (2026-10-02, v1, Impl. + Local):** `gamepad/MenuButtons.kt` para biblioteca,
+menu em jogo e editor: A/B trocáveis (Configurações), Enter/Esc fixos, ritmo de direção
+segurada (350 ms + 120 ms) também no analógico/hat; corrigido o Esc que ativava a opção no
+menu em jogo. Popups nativos e teclado virtual continuam com o U10. Falta: validação no
+aparelho (roteiro 29).
+
 **Estado U02 (2026-10-02, parte, Impl. + Local):** recursos en/pt-BR com o menu em jogo
 inteiro, `localeConfig` (idioma por app no Android 13+), descrição/papel do botão do menu e
 "selecionado" para o leitor de tela; teste que exige as mesmas chaves e marcadores nas duas

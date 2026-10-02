@@ -79,6 +79,8 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
                     mode = next
                 }
                 HorizontalDivider()
+                MenuButtonsRow()
+                HorizontalDivider()
                 DataBundleSection(beforeImport = vm::flush, afterImport = vm::onResume)
                 UpdateChannelSection()
             },
@@ -93,6 +95,28 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
             onBack = { selected = null },
         )
     }
+}
+
+/** U04: which controller button confirms in the app's menus (never in the game). */
+@Composable
+internal fun MenuButtonsRow() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var swap by androidx.compose.runtime.saveable.rememberSaveable {
+        androidx.compose.runtime.mutableStateOf(xendroid.compose.gamepad.MenuButtonPrefs.swapConfirm(context))
+    }
+    ListItem(
+        headlineContent = { Text(if (swap) "Menus: B confirms, A goes back" else "Menus: A confirms, B goes back") },
+        supportingContent = {
+            Text("For the library, the in-game menu and the layout editor; the game's own buttons never change. " +
+                "The in-game menu follows it from the next game you open.")
+        },
+        trailingContent = {
+            TextButton(onClick = {
+                swap = !swap
+                xendroid.compose.gamepad.MenuButtonPrefs.setSwapConfirm(context, swap)
+            }) { Text("Swap") }
+        },
+    )
 }
 
 /** L02: Player shows the settings players change; Developer shows every engine setting. */
