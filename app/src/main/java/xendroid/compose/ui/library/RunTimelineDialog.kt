@@ -1,5 +1,7 @@
 package xendroid.compose.ui.library
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
@@ -19,15 +21,15 @@ import xendroid.compose.sessions.describeEvent
 fun RunTimelineDialog(log: RunEventLog, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Last run timeline") },
+        title = { Text(stringResource(R.string.lib_timeline)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (log.dropped > 0) Text("${log.dropped} earlier events were not kept.", style = MaterialTheme.typography.bodySmall)
+                if (log.dropped > 0) Text(stringResource(R.string.timeline_dropped, log.dropped), style = MaterialTheme.typography.bodySmall)
                 log.events.forEach { Text(describeEvent(it), style = MaterialTheme.typography.bodySmall) }
                 Text("Saved every 30 s and on important events: after a crash the last seconds can be missing.",
                     style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }

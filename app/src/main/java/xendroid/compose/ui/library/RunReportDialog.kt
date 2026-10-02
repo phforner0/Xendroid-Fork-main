@@ -1,5 +1,7 @@
 package xendroid.compose.ui.library
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
@@ -19,15 +21,14 @@ import xendroid.compose.sessions.RunReports
 fun RunReportDialog(report: RunReport, busy: Boolean, onShare: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Share last run report") },
+        title = { Text(stringResource(R.string.lib_share_report)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 RunReports.preview(report).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-                Text("Paths, accounts and addresses are removed; logs are not included (Diagnostics shares those). " +
-                    "Nothing is sent until you pick where to share it.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.report_note), style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(enabled = !busy, onClick = onShare) { Text("Share") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(enabled = !busy, onClick = onShare) { Text(stringResource(R.string.common_share)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

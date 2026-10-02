@@ -1,5 +1,7 @@
 package xendroid.compose.ui.library
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,7 +42,7 @@ fun PlayAsDialog(
     var dontAsk by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Play as") },
+        title = { Text(stringResource(R.string.playas_title)) },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                 profiles.forEach { profile ->
@@ -51,17 +53,17 @@ fun PlayAsDialog(
                     }
                 }
                 otherPlayers[chosen.uppercase()]?.let { player ->
-                    Text("It plays as P$player now; choosing it here moves it to P1 and P$player signs in nobody.",
+                    Text(stringResource(R.string.playas_moves, player),
                         style = MaterialTheme.typography.bodySmall)
                 }
                 Row(Modifier.fillMaxWidth().clickable { dontAsk = !dontAsk }, verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = dontAsk, onCheckedChange = { dontAsk = it })
-                    Text("Don't ask again", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.playas_dont_ask), style = MaterialTheme.typography.bodyMedium)
                 }
-                Text("Each profile keeps its own saves.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.playas_note), style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(onClick = { onPlay(chosen, dontAsk) }) { Text("Play") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { onPlay(chosen, dontAsk) }) { Text(stringResource(R.string.lib_play)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

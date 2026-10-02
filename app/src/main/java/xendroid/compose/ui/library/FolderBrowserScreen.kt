@@ -1,5 +1,7 @@
 package xendroid.compose.ui.library
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.os.Build
 import android.os.Environment
@@ -101,7 +103,7 @@ fun FolderBrowserScreen(
             TopAppBar(
                 title = {
                     Text(
-                        current?.absolutePath ?: "Storage",
+                        current?.absolutePath ?: stringResource(R.string.browse_storage),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium,
@@ -124,7 +126,7 @@ fun FolderBrowserScreen(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription =
                                 if (atVolumeList || (atVolumeRoot && roots.size == 1))
-                                    "Cancel" else "Up",
+                                    stringResource(R.string.common_cancel) else stringResource(R.string.browse_up),
                         )
                     }
                 },
@@ -137,11 +139,11 @@ fun FolderBrowserScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.End,
             ) {
-                TextButton(onClick = onCancel) { Text("Cancel") }
+                TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
                 if (onFolderChosen != null && !atVolumeList) {
                     Spacer(Modifier.width(8.dp))
                     TextButton(onClick = { onFolderChosen(current!!.absolutePath) }) {
-                        Text("Use this folder")
+                        Text(stringResource(R.string.browse_use_folder))
                     }
                 }
             }
@@ -164,7 +166,7 @@ fun FolderBrowserScreen(
                             trailingContent = {
                                 Icon(
                                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = "Open",
+                                    contentDescription = stringResource(R.string.browse_open),
                                 )
                             },
                             modifier = Modifier.clickable { current = root.dir },
@@ -175,9 +177,9 @@ fun FolderBrowserScreen(
                 Column(Modifier.fillMaxSize().padding(24.dp)) {
                     Text(
                         if (onFolderChosen != null)
-                            "No sub-folders here. Use \"Use this folder\" to pick this directory."
+                            stringResource(R.string.browse_no_subfolders)
                         else
-                            "Nothing here. Go up and pick another folder.",
+                            stringResource(R.string.browse_nothing),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -191,7 +193,7 @@ fun FolderBrowserScreen(
                             trailingContent = {
                                 Icon(
                                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = "Open",
+                                    contentDescription = stringResource(R.string.browse_open),
                                 )
                             },
                             modifier = Modifier.clickable { current = dir },
@@ -216,7 +218,7 @@ fun FolderBrowserScreen(
 /** Primary storage plus mounted removable volumes (API 30+; primary-only below). */
 private fun enumerateStorageRoots(context: Context): List<StorageRoot> {
     val primary = Environment.getExternalStorageDirectory() ?: File("/")
-    val roots = mutableListOf(StorageRoot("Internal storage", primary))
+    val roots = mutableListOf(StorageRoot(context.getString(R.string.browse_internal), primary))
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         try {
             val sm = context.getSystemService(Context.STORAGE_SERVICE) as StorageManager

@@ -1,5 +1,7 @@
 package xendroid.compose.ui.library
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -66,26 +68,27 @@ fun FirstRunAssistant(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("Welcome to XenDroid", style = MaterialTheme.typography.headlineSmall)
-                Text("A few checks and choices. Everything can be changed later, and nothing here is sent anywhere.",
+                Text(stringResource(R.string.fr_welcome), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.fr_intro),
                     style = MaterialTheme.typography.bodyMedium)
 
-                Section("This phone")
+                Section(stringResource(R.string.fr_this_phone))
                 checks.forEach { CheckLine(it) }
 
-                Section("Your games")
+                Section(stringResource(R.string.fr_your_games))
                 CheckLine(FirstRun.folderCheck(folderReady, AllFilesAccess.isSupported))
                 if (!folderReady && AllFilesAccess.isSupported) {
-                    OutlinedButton(onClick = onChooseFolder) { Text("Choose game folder") }
+                    OutlinedButton(onClick = onChooseFolder) { Text(stringResource(R.string.fr_choose_folder)) }
                 }
 
-                Section("Language and region in games")
+                Section(stringResource(R.string.fr_locale))
                 if (locale.any) {
-                    Text("From this phone: " + listOfNotNull(locale.languageLabel?.let { "language $it" },
-                        locale.countryLabel?.let { "region $it" }).joinToString(" · "),
+                    val language = locale.languageLabel?.let { stringResource(R.string.fr_language, it) }
+                    val region = locale.countryLabel?.let { stringResource(R.string.fr_region, it) }
+                    Text(stringResource(R.string.fr_from_phone, listOfNotNull(language, region).joinToString(" · ")),
                         style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(onClick = {
-                        localeStatus = "Saving…"
+                        localeStatus = context.getString(R.string.fr_saving)
                         scope.launch {
                             val result = withContext(Dispatchers.IO) {
                                 runCatching {
@@ -96,44 +99,42 @@ fun FirstRunAssistant(
                                     }
                                 }
                             }
-                            localeStatus = result.fold({ "Games will use them from the next launch." },
-                                { "Could not save: ${it.message ?: it.javaClass.simpleName}" })
+                            localeStatus = result.fold({ context.getString(R.string.fr_locale_saved) },
+                                { context.getString(R.string.fr_locale_failed, it.message ?: it.javaClass.simpleName) })
                         }
-                    }) { Text("Use them for games") }
+                    }) { Text(stringResource(R.string.fr_use_locale)) }
                 } else {
-                    Text("This phone's language has no console equivalent; games keep English unless changed in Settings.",
+                    Text(stringResource(R.string.fr_no_locale),
                         style = MaterialTheme.typography.bodyMedium)
                 }
                 localeStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
-                Section("Profile")
-                Text("Games save to a profile (gamertag). One called \"XenDroid\" is created when none exists; " +
-                    "create or rename yours in Profiles.", style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = onOpenProfiles) { Text("Open Profiles") }
+                Section(stringResource(R.string.fr_profile))
+                Text(stringResource(R.string.fr_profile_note), style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(onClick = onOpenProfiles) { Text(stringResource(R.string.fr_open_profiles)) }
 
-                Section("GPU driver (optional)")
-                Text("The phone's own Vulkan driver is enough to start. A Turnip package can be installed later in " +
-                    "Settings → Custom Vulkan driver, and switched back at any time.", style = MaterialTheme.typography.bodyMedium)
+                Section(stringResource(R.string.fr_driver))
+                Text(stringResource(R.string.fr_driver_note), style = MaterialTheme.typography.bodyMedium)
 
-                Section("Interface")
+                Section(stringResource(R.string.fr_interface))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     UiMode.entries.forEach { option ->
                         FilterChip(selected = mode == option, onClick = {
                             mode = option
                             UiModeStore.write(context, option)
-                        }, label = { Text(if (option == UiMode.PLAYER) "Player (recommended)" else "Developer") })
+                        }, label = { Text(if (option == UiMode.PLAYER) stringResource(R.string.fr_player) else stringResource(R.string.fr_developer)) })
                     }
                 }
-                Text(if (mode == UiMode.DEVELOPER) "Every engine setting and the experimental options (debug builds only)."
-                    else "Essential settings only; Developer can be turned on in Settings at any time.",
+                Text(if (mode == UiMode.DEVELOPER) stringResource(R.string.fr_developer_note)
+                    else stringResource(R.string.fr_player_note),
                     style = MaterialTheme.typography.bodySmall)
 
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onClose) { Text("Skip") }
+                    TextButton(onClick = onClose) { Text(stringResource(R.string.fr_skip)) }
                     Button(onClick = {
                         if (mode == null) UiModeStore.write(context, UiMode.PLAYER)
                         onClose()
-                    }) { Text("Done") }
+                    }) { Text(stringResource(R.string.common_done)) }
                 }
             }
         }
@@ -143,6 +144,29 @@ fun FirstRunAssistant(
 @Composable
 private fun Section(title: String) {
     Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+}
+
+/** U02: the check as shown; the model keeps the English text for tests and logs. */
+@Composable
+private fun checkTitle(check: FirstRun.Check): String = when (check.kind) {
+    FirstRun.Kind.GPU_OK, FirstRun.Kind.GPU_NONE -> stringResource(R.string.fr_check_gpu)
+    FirstRun.Kind.ARM64_OK, FirstRun.Kind.ARM64_NONE -> stringResource(R.string.fr_check_arm64)
+    FirstRun.Kind.ANDROID_OK, FirstRun.Kind.ANDROID_OLD -> "Android"
+    FirstRun.Kind.FOLDER_SET, FirstRun.Kind.FOLDER_UNSUPPORTED, FirstRun.Kind.FOLDER_UNSET -> stringResource(R.string.fr_check_folder)
+    null -> check.title
+}
+
+@Composable
+private fun checkDetail(check: FirstRun.Check): String = when (check.kind) {
+    FirstRun.Kind.GPU_OK, FirstRun.Kind.ARM64_OK -> check.arg ?: check.detail
+    FirstRun.Kind.GPU_NONE -> stringResource(R.string.fr_check_gpu_none)
+    FirstRun.Kind.ARM64_NONE -> stringResource(R.string.fr_check_arm64_none)
+    FirstRun.Kind.ANDROID_OK -> stringResource(R.string.fr_check_android, check.arg.orEmpty())
+    FirstRun.Kind.ANDROID_OLD -> stringResource(R.string.fr_check_android_old, check.arg.orEmpty())
+    FirstRun.Kind.FOLDER_SET -> stringResource(R.string.fr_check_folder_set)
+    FirstRun.Kind.FOLDER_UNSUPPORTED -> stringResource(R.string.fr_check_folder_unsupported)
+    FirstRun.Kind.FOLDER_UNSET -> stringResource(R.string.fr_check_folder_unset)
+    null -> check.detail
 }
 
 @Composable
@@ -160,8 +184,8 @@ private fun CheckLine(check: FirstRun.Check) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(mark, color = color, style = MaterialTheme.typography.bodyLarge)
         Column {
-            Text(check.title, style = MaterialTheme.typography.bodyLarge)
-            Text(check.detail, style = MaterialTheme.typography.bodySmall)
+            Text(checkTitle(check), style = MaterialTheme.typography.bodyLarge)
+            Text(checkDetail(check), style = MaterialTheme.typography.bodySmall)
         }
     }
 }

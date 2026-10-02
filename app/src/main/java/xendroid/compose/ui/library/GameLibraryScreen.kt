@@ -1,5 +1,7 @@
 package xendroid.compose.ui.library
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.app.Activity
 import android.content.Context
 import android.util.Log
@@ -122,8 +124,8 @@ fun GameLibraryScreen(
         coverTarget = null
         if (uri != null && game != null) scope.launch {
             viewModel.setCustomCover(game, uri)
-                .onSuccess { Toast.makeText(context, "Cover changed", Toast.LENGTH_SHORT).show() }
-                .onFailure { Toast.makeText(context, "Could not use that image: ${it.message}", Toast.LENGTH_LONG).show() }
+                .onSuccess { Toast.makeText(context, context.getString(R.string.lib_cover_changed), Toast.LENGTH_SHORT).show() }
+                .onFailure { Toast.makeText(context, context.getString(R.string.lib_cover_failed, it.message), Toast.LENGTH_LONG).show() }
         }
     }
     var favoritesOnly by rememberSaveable { mutableStateOf(false) }
@@ -228,7 +230,7 @@ fun GameLibraryScreen(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 Log.w("GameLibrary", "Preparing launch failed", e)
-                Toast.makeText(context, "Could not prepare this game for launch", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, context.getString(R.string.lib_launch_prepare_failed), Toast.LENGTH_LONG).show()
             } finally { preparingLaunch = false }
         }
     }
@@ -242,7 +244,7 @@ fun GameLibraryScreen(
                 scope.launch {
                     runCatching { viewModel.playAs(xuid, dontAsk) }
                         .onSuccess { prepareAndLaunch(game) }
-                        .onFailure { Toast.makeText(context, "Could not sign that profile in: ${it.message}", Toast.LENGTH_LONG).show() }
+                        .onFailure { Toast.makeText(context, context.getString(R.string.lib_profile_signin_failed, it.message), Toast.LENGTH_LONG).show() }
                 }
             },
             onDismiss = { playAs = null },
@@ -253,7 +255,7 @@ fun GameLibraryScreen(
         if (preparingLaunch || playAs != null) return@start
         // The list may be last time's (L09) or older than a file manager's change.
         if (!java.io.File(game.launchUri).exists()) {
-            Toast.makeText(context, "${game.name} is not where it was; checking the folders again", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.getString(R.string.lib_game_moved, game.name), Toast.LENGTH_LONG).show()
             viewModel.refresh()
             return@start
         }
@@ -277,83 +279,83 @@ fun GameLibraryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Library") },
+                title = { Text(stringResource(R.string.lib_title)) },
                 actions = {
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.lib_settings))
                     }
                     var menuOpen by remember { mutableStateOf(false) }
                     IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "More")
+                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.lib_more))
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         // Only offered where All Files Access exists (API 30+); on API 29 the
                         // empty state explains why.
                         if (AllFilesAccess.isSupported) {
                             DropdownMenuItem(
-                                text = { Text("Add game folder") },
+                                text = { Text(stringResource(R.string.lib_menu_add_folder)) },
                                 onClick = { menuOpen = false; startRealPathMode() },
                             )
                             DropdownMenuItem(
-                                text = { Text("Game folders") },
+                                text = { Text(stringResource(R.string.lib_menu_folders)) },
                                 onClick = { menuOpen = false; viewModel.loadFolders(); foldersOpen = true },
                             )
                         }
                         if (missing.isNotEmpty()) {
                             DropdownMenuItem(
-                                text = { Text("Games no longer in the library (${missing.size})") },
+                                text = { Text(stringResource(R.string.lib_menu_missing, missing.size)) },
                                 onClick = { menuOpen = false; missingOpen = true },
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text("Install content") },
+                            text = { Text(stringResource(R.string.lib_menu_install_content)) },
                             onClick = { menuOpen = false; onOpenInstallContent() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Profiles") },
+                            text = { Text(stringResource(R.string.lib_menu_profiles)) },
                             onClick = { menuOpen = false; onOpenProfiles() },
                         )
-                        DropdownMenuItem(text = { Text("Diagnostics") }, onClick = {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.lib_menu_diagnostics)) }, onClick = {
                             menuOpen = false; onOpenDiagnostics(null)
                         })
                         DropdownMenuItem(
-                            text = { Text("Key mapping") },
+                            text = { Text(stringResource(R.string.lib_menu_keymap)) },
                             onClick = { menuOpen = false; onOpenKeymap() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Touch controls") },
+                            text = { Text(stringResource(R.string.lib_menu_touch)) },
                             onClick = { menuOpen = false; onOpenTouchControls() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Use this phone as a controller") },
+                            text = { Text(stringResource(R.string.lib_menu_phone_controller)) },
                             onClick = { menuOpen = false; onOpenPhoneController() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Test controllers") },
+                            text = { Text(stringResource(R.string.lib_menu_test_controllers)) },
                             onClick = { menuOpen = false; onOpenControllerTest() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Compare runs") },
+                            text = { Text(stringResource(R.string.lib_menu_compare_runs)) },
                             onClick = { menuOpen = false; onOpenBenchmark() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Setup assistant") },
+                            text = { Text(stringResource(R.string.lib_menu_setup)) },
                             onClick = { menuOpen = false; assistantOpen = true },
                         )
                         DropdownMenuItem(
-                            text = { Text("Open user data") },
+                            text = { Text(stringResource(R.string.lib_menu_user_data)) },
                             onClick = {
                                 menuOpen = false
                                 openUserData(context)
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("About") },
+                            text = { Text(stringResource(R.string.lib_menu_about)) },
                             onClick = { menuOpen = false; onOpenAbout() },
                         )
 
                         DropdownMenuItem(
-                            text = { Text("Check for Updates") },
+                            text = { Text(stringResource(R.string.lib_menu_updates)) },
                             onClick = {
                                 menuOpen = false
 
@@ -375,7 +377,7 @@ fun GameLibraryScreen(
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            val setFolderLabel = if (allFilesGranted) "Set game folder" else "Grant All Files Access"
+            val setFolderLabel = if (allFilesGranted) stringResource(R.string.lib_set_folder) else stringResource(R.string.lib_grant_access)
             when (val s = state) {
                 LibraryUiState.NoVulkan ->
                     NoVulkanDialog(onQuit = { (context as? Activity)?.finish() })
@@ -386,20 +388,20 @@ fun GameLibraryScreen(
                 // All Files Access is API 30+; on API 29 there is no games path at all.
                 LibraryUiState.NoFolder ->
                     if (AllFilesAccess.isSupported)
-                        EmptyMessage("No game folder set", setFolderLabel,
+                        EmptyMessage(stringResource(R.string.lib_no_folder), setFolderLabel,
                             onAction = startRealPathMode)
                     else
                         EmptyMessage(
-                            "Setting a game folder requires Android 11 or newer.",
-                            "OK", onAction = {})
+                            stringResource(R.string.lib_needs_android11),
+                            stringResource(R.string.common_ok), onAction = {})
                 LibraryUiState.PermissionLost ->
-                    EmptyMessage("Folder access lost", setFolderLabel,
+                    EmptyMessage(stringResource(R.string.lib_access_lost), setFolderLabel,
                         onAction = startRealPathMode)
                 is LibraryUiState.Error ->
-                    EmptyMessage(s.message, "Retry", onAction = { viewModel.refresh() })
+                    EmptyMessage(s.message, stringResource(R.string.common_retry), onAction = { viewModel.refresh() })
                 is LibraryUiState.Loaded ->
                     if (s.games.isEmpty())
-                        EmptyMessage("No games in this folder", "Choose another",
+                        EmptyMessage(stringResource(R.string.lib_no_games), stringResource(R.string.lib_choose_another),
                             onAction = startRealPathMode)
                     else {
                         val shownCollection = collectionFilter?.let { xendroid.compose.data.GameCollections.find(collections, it) }
@@ -424,27 +426,25 @@ fun GameLibraryScreen(
                             if (s.truncated) {
                                 TextButton(onClick = { viewModel.loadFolders(); foldersOpen = true },
                                     modifier = Modifier.padding(horizontal = 8.dp)) {
-                                    Text("The scan stopped after 100,000 files, so this list is partial: a game folder " +
-                                        "seems to hold more than games. Manage folders")
+                                    Text(stringResource(R.string.lib_scan_truncated))
                                 }
                             }
                             if (s.unavailableRoots.isNotEmpty()) {
                                 TextButton(onClick = { viewModel.loadFolders(); foldersOpen = true },
                                     modifier = Modifier.padding(horizontal = 8.dp)) {
-                                    Text("${s.unavailableRoots.size} game folder(s) not available now " +
-                                        "(SD card or permission?): their games are hidden. Manage folders")
+                                    Text(stringResource(R.string.lib_folders_unavailable, s.unavailableRoots.size))
                                 }
                             }
                             val gone = missing.count { it.reason != xendroid.compose.data.MissingTitles.Reason.FOLDER_AWAY }
                             if (gone > 0) {
                                 TextButton(onClick = { missingOpen = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                    Text("$gone game(s) you played or added are no longer in the library. Review")
+                                    Text(stringResource(R.string.lib_games_gone, gone))
                                 }
                             }
                             OutlinedTextField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },
-                                label = { Text("Search games or Title ID") },
+                                label = { Text(stringResource(R.string.lib_search)) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                                     .onFocusChanged { searchHasFocus = it.isFocused },
@@ -456,16 +456,16 @@ fun GameLibraryScreen(
                                     FilterChip(
                                         selected = favoritesOnly,
                                         onClick = { favoritesOnly = !favoritesOnly },
-                                        label = { Text("Favorites") },
+                                        label = { Text(stringResource(R.string.lib_favorites)) },
                                     )
                                     if (collections.isNotEmpty()) {
                                         var collectionMenu by remember { mutableStateOf(false) }
                                         Box {
                                             TextButton(onClick = { collectionMenu = true }) {
-                                                Text(shownCollection?.name ?: "All collections")
+                                                Text(shownCollection?.name ?: stringResource(R.string.lib_all_collections))
                                             }
                                             DropdownMenu(expanded = collectionMenu, onDismissRequest = { collectionMenu = false }) {
-                                                DropdownMenuItem(text = { Text("All games") }, onClick = {
+                                                DropdownMenuItem(text = { Text(stringResource(R.string.lib_all_games)) }, onClick = {
                                                     collectionFilter = null; collectionMenu = false
                                                 })
                                                 collections.forEach { collection ->
@@ -479,10 +479,10 @@ fun GameLibraryScreen(
                                 }
                                 var sortMenu by remember { mutableStateOf(false) }
                                 Box {
-                                    TextButton(onClick = { sortMenu = true }) { Text(sort.label) }
+                                    TextButton(onClick = { sortMenu = true }) { Text(sortText(sort)) }
                                     DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                                         LibrarySort.entries.forEach { option ->
-                                            DropdownMenuItem(text = { Text(option.label) }, onClick = {
+                                            DropdownMenuItem(text = { Text(sortText(option)) }, onClick = {
                                                 viewModel.setSort(option); sortMenu = false
                                             })
                                         }
@@ -492,7 +492,7 @@ fun GameLibraryScreen(
                             if (preparingLaunch) LinearProgressIndicator(Modifier.fillMaxWidth())
                             if (visibleGames.isEmpty()) {
                                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                    EmptyMessage("No games match your search", "Clear search") {
+                                    EmptyMessage(stringResource(R.string.lib_no_match), stringResource(R.string.lib_clear_search)) {
                                         searchQuery = ""
                                         favoritesOnly = false
                                         collectionFilter = null
@@ -549,22 +549,21 @@ fun GameLibraryScreen(
     pendingDiscInstall?.let { (game, count) ->
         AlertDialog(
             onDismissRequest = { pendingDiscInstall = null },
-            title = { Text("Install disc") },
+            title = { Text(stringResource(R.string.lib_install_disc_title)) },
             text = {
-                Text("This disc carries $count content package(s) the game installs before " +
-                     "it will run. Install them now, or boot the disc anyway?")
+                Text(stringResource(R.string.lib_install_disc_text, count))
             },
             confirmButton = {
                 TextButton(onClick = {
                     pendingDiscInstall = null
                     onInstallFromDisc(game.launchUri)
-                }) { Text("Install") }
+                }) { Text(stringResource(R.string.lib_install)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     pendingDiscInstall = null
                     launchGame(context, viewModel, game)
-                }) { Text("Boot anyway") }
+                }) { Text(stringResource(R.string.lib_boot_anyway)) }
             },
         )
     }
@@ -578,7 +577,7 @@ fun GameLibraryScreen(
         var ratingOpen by remember(game.identityKey) { mutableStateOf(false) }
         var collectionsOpen by remember(game.identityKey) { mutableStateOf(false) }
         if (collectionsOpen) {
-            val failed: (Throwable) -> Unit = { Toast.makeText(context, it.message ?: "Could not change collections", Toast.LENGTH_LONG).show() }
+            val failed: (Throwable) -> Unit = { Toast.makeText(context, it.message ?: context.getString(R.string.lib_collections_failed), Toast.LENGTH_LONG).show() }
             CollectionsDialog(
                 gameName = game.name,
                 gameKey = game.identityKey,
@@ -628,7 +627,7 @@ fun GameLibraryScreen(
                         report = null
                     } catch (e: Exception) {
                         if (e is kotlinx.coroutines.CancellationException) throw e
-                        Toast.makeText(context, "Could not create the run report", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, context.getString(R.string.lib_report_failed), Toast.LENGTH_LONG).show()
                     } finally {
                         reportBusy = false
                     }
@@ -646,7 +645,7 @@ fun GameLibraryScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Reading title id…")
+                            Text(stringResource(R.string.lib_reading_title_id))
                         }
                     })
                     is TitleIdState.Error -> ({ Text(st.message) })
@@ -657,7 +656,7 @@ fun GameLibraryScreen(
                     leadingContent = {
                         AsyncImage(
                             model = ImageRequest.Builder(context).data(cover).build(),
-                            contentDescription = "Cover",
+                            contentDescription = stringResource(R.string.lib_cover),
                             modifier = Modifier.size(72.dp),
                         )
                     },
@@ -665,7 +664,7 @@ fun GameLibraryScreen(
                         Text(game.name, style = MaterialTheme.typography.titleLarge)
                         if (game.isMultiDisc) {
                             Text(
-                                "Disc ${game.discNumber} of ${game.discCount}",
+                                stringResource(R.string.lib_disc_of, game.discNumber, game.discCount),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -674,13 +673,12 @@ fun GameLibraryScreen(
                     supportingContent = if (game.titleId != null || game.mediaId != null || statusContent != null) {
                         {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                game.titleId?.let { Text("Title ID: $it") }
-                                game.mediaId?.let { Text("Media ID: $it") }
+                                game.titleId?.let { Text(stringResource(R.string.lib_title_id, it)) }
+                                game.mediaId?.let { Text(stringResource(R.string.lib_media_id, it)) }
                                 game.titleId?.uppercase()?.let { activity[it] }?.let { played ->
-                                    Text("Last played " + java.text.DateFormat.getDateTimeInstance(
+                                    Text(stringResource(R.string.lib_last_played, java.text.DateFormat.getDateTimeInstance(
                                         java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
-                                        .format(java.util.Date(played.lastPlayedAt)) +
-                                        " · ${formatPlayTime(played.playedMs)} in ${played.runs} session(s)")
+                                        .format(java.util.Date(played.lastPlayedAt)), formatPlayTime(played.playedMs), played.runs))
                                 }
                                 statusContent?.invoke()
                             }
@@ -691,24 +689,24 @@ fun GameLibraryScreen(
                 )
 
                 ListItem(
-                    headlineContent = { Text("Play") },
-                    supportingContent = activeProfile?.let { name -> { Text("Signs in as $name") } },
+                    headlineContent = { Text(stringResource(R.string.lib_play)) },
+                    supportingContent = activeProfile?.let { name -> { Text(stringResource(R.string.lib_signs_in_as, name)) } },
                     modifier = Modifier.clickable(enabled = !preparingLaunch) { dismiss(); startGame(game) },
                 )
                 ListItem(
-                    headlineContent = { Text(if (isFavorite(game, favorites)) "Remove from favorites" else "Add to favorites") },
+                    headlineContent = { Text(if (isFavorite(game, favorites)) stringResource(R.string.lib_unfavorite) else stringResource(R.string.lib_favorite)) },
                     modifier = Modifier.clickable { viewModel.toggleFavorite(game) },
                 )
                 val inCollections = xendroid.compose.data.GameCollections.namesOf(collections, game.identityKey)
                 ListItem(
-                    headlineContent = { Text("Collections") },
-                    supportingContent = { Text(inCollections.joinToString(", ").ifEmpty { "Not in a collection" }) },
+                    headlineContent = { Text(stringResource(R.string.lib_collections)) },
+                    supportingContent = { Text(inCollections.joinToString(", ").ifEmpty { stringResource(R.string.lib_no_collection) }) },
                     modifier = Modifier.clickable { collectionsOpen = true },
                 )
                 if (xendroid.compose.data.CoverStore.normalize(game.titleId) != null) {
                     ListItem(
-                        headlineContent = { Text("Change cover") },
-                        supportingContent = { Text("Kept for this title on every disc, even if the file moves") },
+                        headlineContent = { Text(stringResource(R.string.lib_change_cover)) },
+                        supportingContent = { Text(stringResource(R.string.lib_change_cover_note)) },
                         modifier = Modifier.clickable {
                             coverTarget = game
                             pickCover.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -717,7 +715,7 @@ fun GameLibraryScreen(
                     val custom = remember(game.identityKey, coverRevision) { viewModel.hasCustomCover(game) }
                     if (custom) {
                         ListItem(
-                            headlineContent = { Text("Use the game's own icon") },
+                            headlineContent = { Text(stringResource(R.string.lib_own_icon)) },
                             modifier = Modifier.clickable { scope.launch { viewModel.clearCustomCover(game) } },
                         )
                     }
@@ -725,15 +723,15 @@ fun GameLibraryScreen(
                 details?.takeIf { it.identityKey == game.identityKey && it.titleId != null }?.let { info ->
                     val latest = info.compatibility?.latest
                     ListItem(
-                        headlineContent = { Text("Compatibility: ${latest?.status?.label ?: "not rated"}") },
+                        headlineContent = { Text(stringResource(R.string.lib_compatibility, latest?.status?.let { compatStatusText(it) } ?: stringResource(R.string.lib_not_rated))) },
                         supportingContent = {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 latest?.let { report ->
-                                    Text("Your result on " + java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM)
-                                        .format(java.util.Date(report.createdAt)) +
-                                        " · build ${report.build} · ${report.driverLabel ?: report.gpu}" +
-                                        listOfNotNull(report.mediaId?.let { "media $it" }, report.disc?.let { "disc $it" })
-                                            .joinToString("") { " · $it" })
+                                    val media = report.mediaId?.let { stringResource(R.string.lib_media_short, it) }
+                                    val disc = report.disc?.let { stringResource(R.string.lib_disc_short, it) }
+                                    Text(stringResource(R.string.lib_your_result, java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM)
+                                        .format(java.util.Date(report.createdAt)), report.build, report.driverLabel ?: report.gpu) +
+                                        listOfNotNull(media, disc).joinToString("") { " · $it" })
                                     if (report.note.isNotBlank()) Text(report.note)
                                 }
                                 info.lastRun?.let { run ->
@@ -756,7 +754,7 @@ fun GameLibraryScreen(
                                     }
                                     run.driver?.let { Text("Driver: ${it.label}") }
                                 }
-                                Text("Rate it yourself: results are kept per build and driver, never guessed.")
+                                Text(stringResource(R.string.lib_rate_note))
                             }
                         },
                         modifier = Modifier.clickable { ratingOpen = true },
@@ -764,15 +762,15 @@ fun GameLibraryScreen(
                     info.catalog?.let { catalog -> CatalogResultsItem(catalog) { viewModel.refreshCatalog(game) } }
                     info.lastRunEvents?.takeIf { it.events.isNotEmpty() }?.let { log ->
                         ListItem(
-                            headlineContent = { Text("Last run timeline") },
-                            supportingContent = { Text("${log.events.size} events: lifecycle, pauses, stalls, heat, controllers, errors") },
+                            headlineContent = { Text(stringResource(R.string.lib_timeline)) },
+                            supportingContent = { Text(stringResource(R.string.lib_timeline_note, log.events.size)) },
                             modifier = Modifier.clickable { timelineOpen = true },
                         )
                     }
                     info.lastRun?.let { run ->
                         ListItem(
-                            headlineContent = { Text("Share last run report") },
-                            supportingContent = { Text("Review what it contains first; you choose where it goes") },
+                            headlineContent = { Text(stringResource(R.string.lib_share_report)) },
+                            supportingContent = { Text(stringResource(R.string.lib_share_report_note)) },
                             modifier = Modifier.clickable {
                                 report = xendroid.compose.sessions.RunReports.build(run, info.lastRunEvents,
                                     info.compatibility?.reports.orEmpty(),
@@ -785,7 +783,7 @@ fun GameLibraryScreen(
 
                 val perGameEnabled = titleIdState !is TitleIdState.Loading
                 ListItem(
-                    headlineContent = { Text("Per-game settings") },
+                    headlineContent = { Text(stringResource(R.string.lib_per_game_settings)) },
                     colors = if (perGameEnabled) {
                         ListItemDefaults.colors()
                     } else {
@@ -801,9 +799,9 @@ fun GameLibraryScreen(
 
                 val shown = details?.takeIf { it.identityKey == game.identityKey }
                 ListItem(
-                    headlineContent = { Text("Game patches") },
+                    headlineContent = { Text(stringResource(R.string.lib_patches)) },
                     supportingContent = shown?.patchesTotal?.let { total ->
-                        { Text("${shown.patchesEnabled ?: 0} of $total enabled") }
+                        { Text(stringResource(R.string.lib_patches_enabled, shown.patchesEnabled ?: 0, total)) }
                     },
                     colors = if (perGameEnabled) {
                         ListItemDefaults.colors()
@@ -819,12 +817,12 @@ fun GameLibraryScreen(
                 )
 
                 ListItem(
-                    headlineContent = { Text("Manage content") },
+                    headlineContent = { Text(stringResource(R.string.lib_manage_content)) },
                     supportingContent = shown?.updates?.let { updates ->
                         {
                             Text(listOf(
-                                if (updates.isEmpty()) "No title update" else "Title update: ${updates.joinToString(", ")}",
-                                when (val dlc = shown.dlcCount ?: 0) { 0 -> "no DLC"; 1 -> "1 DLC"; else -> "$dlc DLC" },
+                                if (updates.isEmpty()) stringResource(R.string.lib_no_tu) else stringResource(R.string.lib_tu, updates.joinToString(", ")),
+                                when (val dlc = shown.dlcCount ?: 0) { 0 -> stringResource(R.string.lib_dlc_none); else -> stringResource(R.string.lib_dlc_count, dlc) },
                             ).joinToString(" · "))
                         }
                     },
@@ -842,15 +840,15 @@ fun GameLibraryScreen(
                 )
 
                 ListItem(
-                    headlineContent = { Text("Saves · backup and restore") },
+                    headlineContent = { Text(stringResource(R.string.lib_saves)) },
                     modifier = Modifier.clickable(enabled = perGameEnabled) { viewModel.requestSaves(game) },
                 )
-                ListItem(headlineContent = { Text("Last sessions · diagnostics") },
+                ListItem(headlineContent = { Text(stringResource(R.string.lib_sessions)) },
                     modifier = Modifier.clickable(enabled = perGameEnabled) { viewModel.requestDiagnostics(game) })
 
                 if (game.format == GameFormat.ISO) {
                     ListItem(
-                        headlineContent = { Text("Compress to .zar") },
+                        headlineContent = { Text(stringResource(R.string.lib_compress)) },
                         modifier = Modifier.clickable {
                             compressConfirmFor = game
                             pendingGame = null
@@ -861,7 +859,7 @@ fun GameLibraryScreen(
 
                 if (viewModel.canLaunchGames && viewModel.isPinShortcutSupported) {
                     ListItem(
-                        headlineContent = { Text("Create shortcut") },
+                        headlineContent = { Text(stringResource(R.string.lib_shortcut)) },
                         modifier = Modifier.clickable {
                             viewModel.createShortcut(game)
                             dismiss()
@@ -892,21 +890,18 @@ fun GameLibraryScreen(
     compressConfirmFor?.let { game ->
         AlertDialog(
             onDismissRequest = { compressConfirmFor = null },
-            title = { Text("Compress to .zar?") },
+            title = { Text(stringResource(R.string.lib_compress_title)) },
             text = {
-                Text(
-                    "This packs the disc into a smaller .zar. The original .iso is left alone " +
-                        "until the .zar is created and verified, and you are asked before it is " +
-                        "deleted. The game stays in your library.")
+                Text(stringResource(R.string.lib_compress_text))
             },
             confirmButton = {
                 TextButton(onClick = {
                     compressConfirmFor = null
                     compressVm.compress(game.launchUri)
-                }) { Text("Compress") }
+                }) { Text(stringResource(R.string.lib_compress_action)) }
             },
             dismissButton = {
-                TextButton(onClick = { compressConfirmFor = null }) { Text("Cancel") }
+                TextButton(onClick = { compressConfirmFor = null }) { Text(stringResource(R.string.common_cancel)) }
             },
         )
     }
@@ -922,10 +917,10 @@ fun GameLibraryScreen(
                             progress = { s.progress },
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        Text("${(s.progress * 100).toInt()}%  ·  this may take a while.")
+                        Text(stringResource(R.string.lib_compress_progress, (s.progress * 100).toInt()))
                     } else {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        Text("This may take a while.")
+                        Text(stringResource(R.string.lib_may_take_while))
                     }
                 }
             },
@@ -934,30 +929,28 @@ fun GameLibraryScreen(
         is CompressState.ConfirmDelete -> AlertDialog(
             // Dismissing keeps it: a stray tap outside must never delete the .iso.
             onDismissRequest = compressVm::keepIso,
-            title = { Text("Delete the original .iso?") },
+            title = { Text(stringResource(R.string.lib_delete_iso_title)) },
             text = {
-                Text(
-                    "“${s.zarName}” was created and verified. Deleting “${s.isoName}” " +
-                        "frees ${formatBytes(s.isoBytes)}.")
+                Text(stringResource(R.string.lib_delete_iso_text, s.zarName, s.isoName, formatBytes(s.isoBytes)))
             },
             confirmButton = {
-                TextButton(onClick = compressVm::deleteIso) { Text("Delete .iso") }
+                TextButton(onClick = compressVm::deleteIso) { Text(stringResource(R.string.lib_delete_iso)) }
             },
-            dismissButton = { TextButton(onClick = compressVm::keepIso) { Text("Keep it") } },
+            dismissButton = { TextButton(onClick = compressVm::keepIso) { Text(stringResource(R.string.lib_keep_it)) } },
         )
         is CompressState.Done -> AlertDialog(
             onDismissRequest = { compressVm.dismiss(); viewModel.refresh() },
-            title = { Text("Done") },
+            title = { Text(stringResource(R.string.common_done)) },
             text = { Text(s.message) },
             confirmButton = {
-                TextButton(onClick = { compressVm.dismiss(); viewModel.refresh() }) { Text("OK") }
+                TextButton(onClick = { compressVm.dismiss(); viewModel.refresh() }) { Text(stringResource(R.string.common_ok)) }
             },
         )
         is CompressState.Failed -> AlertDialog(
             onDismissRequest = compressVm::dismiss,
-            title = { Text("Failed") },
+            title = { Text(stringResource(R.string.common_failed)) },
             text = { Text(s.message) },
-            confirmButton = { TextButton(onClick = compressVm::dismiss) { Text("OK") } },
+            confirmButton = { TextButton(onClick = compressVm::dismiss) { Text(stringResource(R.string.common_ok)) } },
         )
         else -> {}
     }
@@ -1069,7 +1062,7 @@ private fun GameCell(
         // A set shares one title, so the tiles would otherwise be identical.
         if (game.isMultiDisc) {
             Text(
-                "Disc ${game.discNumber} of ${game.discCount}",
+                stringResource(R.string.lib_disc_of, game.discNumber, game.discCount),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -1096,16 +1089,16 @@ private fun ScanProgressRow(viewModel: GameLibraryViewModel) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
             when {
-                p.reading != null -> "Reading ${p.reading} (${p.checked + 1} of ${p.candidates})"
-                p.candidates > 0 -> "Checking ${p.checked} of ${p.candidates} files"
-                else -> "Looking through ${p.entries} files…"
+                p.reading != null -> stringResource(R.string.lib_scan_reading, p.reading, p.checked + 1, p.candidates)
+                p.candidates > 0 -> stringResource(R.string.lib_scan_checking, p.checked, p.candidates)
+                else -> stringResource(R.string.lib_scan_looking, p.entries)
             },
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
-        TextButton(onClick = viewModel::stopScan) { Text("Stop") }
+        TextButton(onClick = viewModel::stopScan) { Text(stringResource(R.string.lib_stop)) }
     }
 }
 
@@ -1126,9 +1119,9 @@ private fun EmptyMessage(
 private fun NoVulkanDialog(onQuit: () -> Unit) {
     AlertDialog(
         onDismissRequest = onQuit,
-        confirmButton = { TextButton(onClick = onQuit) { Text("Quit") } },
-        title = { Text("Unsupported device") },
-        text = { Text("This device has no Vulkan GPU; the emulator cannot run.") },
+        confirmButton = { TextButton(onClick = onQuit) { Text(stringResource(R.string.lib_quit)) } },
+        title = { Text(stringResource(R.string.lib_unsupported)) },
+        text = { Text(stringResource(R.string.lib_no_vulkan)) },
     )
 }
 
@@ -1173,33 +1166,52 @@ private fun launchGame(context: Context, viewModel: GameLibraryViewModel, game: 
     }
 }
 
+/** U02: the sort order as shown (the enum's own label stays the stable English name). */
+@Composable
+private fun sortText(sort: LibrarySort): String = when (sort) {
+    LibrarySort.NAME_ASC -> stringResource(R.string.lib_sort_name_asc)
+    LibrarySort.NAME_DESC -> stringResource(R.string.lib_sort_name_desc)
+    LibrarySort.FORMAT -> stringResource(R.string.lib_sort_format)
+    LibrarySort.RECENT -> stringResource(R.string.lib_sort_recent)
+}
+
+/** U02: a compatibility result as shown; reports keep the English label. */
+@Composable
+fun compatStatusText(status: xendroid.compose.compatibility.CompatStatus): String = when (status) {
+    xendroid.compose.compatibility.CompatStatus.NOTHING -> stringResource(R.string.compat_nothing)
+    xendroid.compose.compatibility.CompatStatus.BOOTS -> stringResource(R.string.compat_boots)
+    xendroid.compose.compatibility.CompatStatus.INTRO -> stringResource(R.string.compat_intro)
+    xendroid.compose.compatibility.CompatStatus.IN_GAME -> stringResource(R.string.compat_in_game)
+    xendroid.compose.compatibility.CompatStatus.PLAYABLE -> stringResource(R.string.compat_playable)
+}
+
 /** C04: what the signed catalog says about the game, one line per build/GPU/driver, this phone's first. */
 @Composable
 private fun CatalogResultsItem(catalog: GameLibraryViewModel.CatalogView, onRefresh: () -> Unit) {
     ListItem(
-        headlineContent = { Text("Catalog results") },
+        headlineContent = { Text(stringResource(R.string.lib_catalog)) },
         supportingContent = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 val copy = catalog.copy
                 if (copy == null) {
-                    Text("No catalog downloaded yet.")
+                    Text(stringResource(R.string.lib_catalog_none))
                 } else {
-                    Text("Signed catalog, publication ${copy.payload.sequence}, downloaded " +
-                        java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(copy.fetchedAt)) +
-                        if (copy.freshness == xendroid.compose.compatibility.CompatCatalog.Freshness.STALE) "; out of date, refresh it" else "")
-                    if (catalog.results.isEmpty()) Text("No results for this game.")
+                    Text(stringResource(R.string.lib_catalog_copy, copy.payload.sequence,
+                        java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(copy.fetchedAt))) +
+                        if (copy.freshness == xendroid.compose.compatibility.CompatCatalog.Freshness.STALE) stringResource(R.string.lib_catalog_stale) else "")
+                    if (catalog.results.isEmpty()) Text(stringResource(R.string.lib_catalog_empty))
                     catalog.results.take(4).forEach { setup ->
-                        Text((if (setup.thisSetup) "This build and GPU" else "Build ${setup.build} · ${setup.gpu}") +
+                        Text((if (setup.thisSetup) stringResource(R.string.lib_catalog_this) else stringResource(R.string.lib_catalog_setup, setup.build, setup.gpu)) +
                             (if (setup.driver.isNotEmpty()) " · ${setup.driver}" else "") + ": ${setup.summary} (${setup.latestDate})")
                     }
-                    if (catalog.results.size > 4) Text("${catalog.results.size - 4} other setup(s).")
-                    if (catalog.results.any { !it.thisSetup }) Text("Results of other builds, GPUs or drivers may not hold here.")
+                    if (catalog.results.size > 4) Text(stringResource(R.string.lib_catalog_more, catalog.results.size - 4))
+                    if (catalog.results.any { !it.thisSetup }) Text(stringResource(R.string.lib_catalog_note))
                 }
                 catalog.message?.let { Text(it) }
             }
         },
         trailingContent = {
-            TextButton(onClick = onRefresh, enabled = !catalog.refreshing) { Text(if (catalog.refreshing) "Downloading…" else "Refresh") }
+            TextButton(onClick = onRefresh, enabled = !catalog.refreshing) { Text(if (catalog.refreshing) stringResource(R.string.lib_catalog_downloading) else stringResource(R.string.common_refresh)) }
         },
     )
 }

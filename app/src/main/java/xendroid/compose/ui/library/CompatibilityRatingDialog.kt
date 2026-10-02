@@ -1,5 +1,7 @@
 package xendroid.compose.ui.library
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,7 +36,7 @@ fun CompatibilityRatingDialog(
     var note by rememberSaveable { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("How does it run on this build?") },
+        title = { Text(stringResource(R.string.rate_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 CompatStatus.entries.forEach { status ->
@@ -45,21 +47,21 @@ fun CompatibilityRatingDialog(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RadioButton(selected = selected == status, onClick = { selected = status })
-                        Text(status.label)
+                        Text(compatStatusText(status))
                     }
                 }
                 OutlinedTextField(
                     value = note,
                     onValueChange = { if (it.length <= 500) note = it },
-                    label = { Text("Notes (optional)") },
+                    label = { Text(stringResource(R.string.rate_notes)) },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Text("Saved on this device with the current build and the driver of the last run.")
+                Text(stringResource(R.string.rate_note))
             }
         },
         confirmButton = {
-            TextButton(enabled = selected != null, onClick = { selected?.let { onSave(it, note) } }) { Text("Save") }
+            TextButton(enabled = selected != null, onClick = { selected?.let { onSave(it, note) } }) { Text(stringResource(R.string.common_save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

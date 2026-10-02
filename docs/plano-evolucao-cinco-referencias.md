@@ -546,8 +546,9 @@ aparelho (roteiro 29).
 **Estado U02 (2026-10-02, parte, Impl. + Local):** recursos en/pt-BR com o menu em jogo
 inteiro, `localeConfig` (idioma por app no Android 13+), descrição/papel do botão do menu e
 "selecionado" para o leitor de tela; teste que exige as mesmas chaves e marcadores nas duas
-línguas. Falta: as demais telas (biblioteca, configurações, assistente…), textos de estado de
-outros componentes, RTL e texto grande conferidos no aparelho (roteiro 28).
+línguas. Lote 12h: biblioteca inteira, diálogos, assistente inicial e navegador de pastas. Falta:
+as demais telas (configurações, perfis, conteúdo/saves…), textos de estado de outros componentes,
+RTL e texto grande conferidos no aparelho (roteiro 28).
 
 **Estado U01 (2026-10-02, Impl. + Local):** abas Graphics (apresentação/FG), System
 (FPS/energia/HUD), Controls (layout/jogadores/gyro) e Session (pausa/som/logs/sair), com o

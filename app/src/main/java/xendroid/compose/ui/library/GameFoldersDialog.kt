@@ -1,5 +1,7 @@
 package xendroid.compose.ui.library
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,29 +32,28 @@ fun GameFoldersDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Game folders") },
+        title = { Text(stringResource(R.string.lib_menu_folders)) },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (folders.isEmpty()) Text("No folder yet.")
+                if (folders.isEmpty()) Text(stringResource(R.string.folders_none))
                 folders.forEachIndexed { index, folder ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(folder, style = MaterialTheme.typography.bodyMedium)
                             val notes = listOfNotNull(
-                                "installs go here".takeIf { index == 0 },
-                                "not available now".takeIf { folder in unavailable },
+                                stringResource(R.string.folders_installs_here).takeIf { index == 0 },
+                                stringResource(R.string.folders_unavailable).takeIf { folder in unavailable },
                             )
                             if (notes.isNotEmpty()) Text(notes.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
                         }
-                        TextButton(onClick = { onRemove(folder) }) { Text("Remove") }
+                        TextButton(onClick = { onRemove(folder) }) { Text(stringResource(R.string.common_remove)) }
                     }
                 }
-                Text("Removing a folder only stops scanning it; its files stay where they are. " +
-                    "A folder inside another one is scanned once.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.folders_note), style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(onClick = onAdd) { Text("Add folder") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onAdd) { Text(stringResource(R.string.folders_add)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }

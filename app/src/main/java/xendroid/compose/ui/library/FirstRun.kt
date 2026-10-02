@@ -12,25 +12,29 @@ import xendroid.compose.settings.SettingsSchema
 object FirstRun {
     enum class Status { OK, WARNING, BLOCKED }
 
-    data class Check(val title: String, val status: Status, val detail: String)
+    /** Which check and outcome, for the shown (translated) text; [title]/[detail] stay English. */
+    enum class Kind { GPU_OK, GPU_NONE, ARM64_OK, ARM64_NONE, ANDROID_OK, ANDROID_OLD, FOLDER_SET, FOLDER_UNSUPPORTED, FOLDER_UNSET }
+
+    data class Check(val title: String, val status: Status, val detail: String, val kind: Kind? = null, val arg: String? = null)
 
     /** This device, as far as running games goes. [gpuName] null = no Vulkan device found. */
     fun deviceChecks(gpuName: String?, abis: List<String>, sdk: Int): List<Check> = listOf(
-        if (gpuName != null) Check("Vulkan GPU", Status.OK, gpuName)
-        else Check("Vulkan GPU", Status.BLOCKED, "No Vulkan device found: games cannot run on this phone."),
-        if ("arm64-v8a" in abis) Check("64-bit ARM", Status.OK, "arm64-v8a")
-        else Check("64-bit ARM", Status.BLOCKED, "The emulator core is built for arm64-v8a only."),
+        if (gpuName != null) Check("Vulkan GPU", Status.OK, gpuName, Kind.GPU_OK, gpuName)
+        else Check("Vulkan GPU", Status.BLOCKED, "No Vulkan device found: games cannot run on this phone.", Kind.GPU_NONE),
+        if ("arm64-v8a" in abis) Check("64-bit ARM", Status.OK, "arm64-v8a", Kind.ARM64_OK, "arm64-v8a")
+        else Check("64-bit ARM", Status.BLOCKED, "The emulator core is built for arm64-v8a only.", Kind.ARM64_NONE),
         when {
-            sdk >= 30 -> Check("Android", Status.OK, "API $sdk")
+            sdk >= 30 -> Check("Android", Status.OK, "API $sdk", Kind.ANDROID_OK, "$sdk")
             else -> Check("Android", Status.WARNING,
-                "API $sdk: choosing a game folder needs Android 11 or newer; games launched from a frontend still work.")
+                "API $sdk: choosing a game folder needs Android 11 or newer; games launched from a frontend still work.",
+                Kind.ANDROID_OLD, "$sdk")
         },
     )
 
     fun folderCheck(ready: Boolean, supported: Boolean): Check = when {
-        ready -> Check("Game folder", Status.OK, "Set; the library scans it.")
-        !supported -> Check("Game folder", Status.WARNING, "Needs Android 11 or newer (All Files Access).")
-        else -> Check("Game folder", Status.WARNING, "Not set yet: choose the folder that holds your games.")
+        ready -> Check("Game folder", Status.OK, "Set; the library scans it.", Kind.FOLDER_SET)
+        !supported -> Check("Game folder", Status.WARNING, "Needs Android 11 or newer (All Files Access).", Kind.FOLDER_UNSUPPORTED)
+        else -> Check("Game folder", Status.WARNING, "Not set yet: choose the folder that holds your games.", Kind.FOLDER_UNSET)
     }
 
     /** The games' language and region (the console settings), proposed from the phone's locale. */

@@ -1,5 +1,7 @@
 package xendroid.compose.ui.library
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,11 +43,11 @@ fun MissingGamesDialog(
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Games no longer in the library") },
+        title = { Text(stringResource(R.string.missing_title)) },
         text = {
             Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (missing.isEmpty()) Text("Every game you played is in the library.")
+                if (missing.isEmpty()) Text(stringResource(R.string.missing_none))
                 missing.forEach { title ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -60,25 +62,25 @@ fun MissingGamesDialog(
                             Text(title.lastPath, style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                             activity[title.titleId]?.let { played ->
-                                Text("Played ${formatPlayTime(played.playedMs)} in ${played.runs} session(s) · " +
-                                    "Title ID ${title.titleId}", style = MaterialTheme.typography.bodySmall)
+                                Text(stringResource(R.string.missing_played, formatPlayTime(played.playedMs), played.runs, title.titleId),
+                                    style = MaterialTheme.typography.bodySmall)
                             }
                         }
-                        TextButton(onClick = { onRemove(title) }) { Text("Remove") }
+                        TextButton(onClick = { onRemove(title) }) { Text(stringResource(R.string.common_remove)) }
                     }
                 }
-                Text("Removing only hides a game here: its play time, compatibility notes, saves and " +
-                    "cover stay, and it comes back when the file is found again. No file is touched.",
+                Text(stringResource(R.string.missing_note),
                     style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-        dismissButton = { TextButton(onClick = onManageFolders) { Text("Game folders") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
+        dismissButton = { TextButton(onClick = onManageFolders) { Text(stringResource(R.string.lib_menu_folders)) } },
     )
 }
 
+@Composable
 private fun reasonText(reason: MissingTitles.Reason): String = when (reason) {
-    MissingTitles.Reason.FILE_GONE -> "File not found: moved, renamed or deleted"
-    MissingTitles.Reason.FOLDER_AWAY -> "Its game folder is not available now"
-    MissingTitles.Reason.OUTSIDE_FOLDERS -> "The file is outside your game folders"
+    MissingTitles.Reason.FILE_GONE -> stringResource(R.string.missing_file_gone)
+    MissingTitles.Reason.FOLDER_AWAY -> stringResource(R.string.missing_folder_away)
+    MissingTitles.Reason.OUTSIDE_FOLDERS -> stringResource(R.string.missing_outside)
 }

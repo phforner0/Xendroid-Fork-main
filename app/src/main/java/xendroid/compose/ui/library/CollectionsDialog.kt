@@ -1,5 +1,7 @@
 package xendroid.compose.ui.library
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,25 +45,25 @@ fun CollectionsDialog(
     confirmDelete?.let { name ->
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
-            title = { Text("Delete \"$name\"?") },
-            text = { Text("Only the collection goes; its games stay in the library and in other collections.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = null; onDelete(name) }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
+            title = { Text(stringResource(R.string.col_delete_title, name)) },
+            text = { Text(stringResource(R.string.col_delete_text)) },
+            confirmButton = { TextButton(onClick = { confirmDelete = null; onDelete(name) }) { Text(stringResource(R.string.common_delete)) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Collections · $gameName") },
+        title = { Text(stringResource(R.string.col_title, gameName)) },
         text = {
             Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (collections.isEmpty()) Text("No collection yet. Make one to group games your way.")
+                if (collections.isEmpty()) Text(stringResource(R.string.col_none))
                 collections.forEach { collection ->
                     val member = gameKey in collection.members
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = member, onCheckedChange = { onSetMember(collection.name, it) })
                         Text("${collection.name} (${collection.members.size})", Modifier.weight(1f))
-                        TextButton(onClick = { confirmDelete = collection.name }) { Text("Delete") }
+                        TextButton(onClick = { confirmDelete = collection.name }) { Text(stringResource(R.string.common_delete)) }
                     }
                 }
                 if (collections.size < GameCollections.MAX_COLLECTIONS) {
@@ -69,20 +71,19 @@ fun CollectionsDialog(
                         OutlinedTextField(
                             value = newName,
                             onValueChange = { newName = it.take(GameCollections.MAX_NAME) },
-                            label = { Text("New collection") },
+                            label = { Text(stringResource(R.string.col_new)) },
                             singleLine = true,
                             modifier = Modifier.weight(1f),
                         )
                         TextButton(enabled = GameCollections.cleanName(newName) != null, onClick = {
                             onCreate(newName)
                             newName = ""
-                        }) { Text("Create") }
+                        }) { Text(stringResource(R.string.col_create)) }
                     }
                 }
-                Text("A new collection starts with this game. Games are kept by Title ID, media and disc, " +
-                    "so a moved file stays in its collections.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.col_note), style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }

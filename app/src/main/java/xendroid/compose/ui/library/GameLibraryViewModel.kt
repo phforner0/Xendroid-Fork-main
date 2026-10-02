@@ -224,11 +224,11 @@ class GameLibraryViewModel(
                 when (val result = runCatching { store.refresh() }.getOrElse {
                     xendroid.compose.compatibility.CompatCatalogStore.Refresh.Failed(it.message ?: "error")
                 }) {
-                    is xendroid.compose.compatibility.CompatCatalogStore.Refresh.Updated -> "Catalog updated (publication ${result.sequence})."
-                    xendroid.compose.compatibility.CompatCatalogStore.Refresh.Unchanged -> "The catalog is up to date."
+                    is xendroid.compose.compatibility.CompatCatalogStore.Refresh.Updated -> appContext.getString(xendroid.compose.R.string.lib_catalog_updated, result.sequence)
+                    xendroid.compose.compatibility.CompatCatalogStore.Refresh.Unchanged -> appContext.getString(xendroid.compose.R.string.lib_catalog_current)
                     is xendroid.compose.compatibility.CompatCatalogStore.Refresh.Refused ->
-                        "Catalog not taken: ${result.reason}. The copy already here stays."
-                    is xendroid.compose.compatibility.CompatCatalogStore.Refresh.Failed -> "Could not download the catalog: ${result.reason}."
+                        appContext.getString(xendroid.compose.R.string.lib_catalog_refused, result.reason)
+                    is xendroid.compose.compatibility.CompatCatalogStore.Refresh.Failed -> appContext.getString(xendroid.compose.R.string.lib_catalog_failed, result.reason)
                 }
             }
             loadDetails(game, message)
@@ -371,7 +371,7 @@ class GameLibraryViewModel(
         job.cancel()
         _isRefreshing.value = false
         if (_state.value !is LibraryUiState.Loaded) {
-            _state.value = LibraryUiState.Error("Scan stopped. Tap Retry or pull down to scan again.")
+            _state.value = LibraryUiState.Error(appContext.getString(xendroid.compose.R.string.lib_scan_stopped))
         }
     }
 
@@ -434,7 +434,7 @@ class GameLibraryViewModel(
             }
         } catch (e: Throwable) {
             if (e is CancellationException) throw e
-            LibraryUiState.Error(e.message ?: "Failed to load library")
+            LibraryUiState.Error(e.message ?: appContext.getString(xendroid.compose.R.string.lib_load_failed))
         }
         // History before the list, so "Recently played" and the missing games match it.
         if (next is LibraryUiState.Loaded) refreshHistory(next) else _missing.value = emptyList()
@@ -501,9 +501,9 @@ class GameLibraryViewModel(
                 val tid = repo.readTitleId(appContext, game)
                 // 00000000 is the unknown/placeholder title id (no real game carries it).
                 if (tid.isNullOrBlank() || tid == "00000000")
-                    TitleIdState.Error(game, "Couldn't read this game's title id")
+                    TitleIdState.Error(game, appContext.getString(xendroid.compose.R.string.lib_title_id_unreadable))
                 else TitleIdState.Resolved(game, tid, action)
-            }.getOrElse { TitleIdState.Error(game, it.message ?: "Failed to read title id") }
+            }.getOrElse { TitleIdState.Error(game, it.message ?: appContext.getString(xendroid.compose.R.string.lib_title_id_unreadable)) }
         }
     }
 
@@ -556,8 +556,8 @@ class GameLibraryViewModel(
      *  back to the file name. */
     fun discLabelOf(game: Game): String = when {
         game.discNumber > 0 && game.discCount > 1 ->
-            "Disc ${game.discNumber} of ${game.discCount}"
-        game.discNumber > 0 -> "Disc ${game.discNumber}"
+            appContext.getString(xendroid.compose.R.string.lib_disc_of, game.discNumber, game.discCount)
+        game.discNumber > 0 -> appContext.getString(xendroid.compose.R.string.lib_disc, game.discNumber)
         else -> java.io.File(game.launchUri).name
     }
 
@@ -579,7 +579,7 @@ class GameLibraryViewModel(
      *  is). Bounded read, oriented and shrunk to [CoverPolicy.TARGET_SIDE] before it is stored. */
     suspend fun setCustomCover(game: Game, image: Uri): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val title = requireNotNull(CoverStore.normalize(game.titleId)) { "This game has no Title ID" }
+            val title = requireNotNull(CoverStore.normalize(game.titleId)) { appContext.getString(xendroid.compose.R.string.lib_no_title_id) }
             covers.setCustom(title, decodeCover(image))
             _coverRevision.update { it + 1 }
             Result.success(Unit)
@@ -610,11 +610,11 @@ class GameLibraryViewModel(
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             }
         } catch (e: ImageDecoder.DecodeException) {
-            throw IllegalArgumentException("The selected file is not a supported image", e)
+            throw IllegalArgumentException(appContext.getString(xendroid.compose.R.string.lib_not_an_image), e)
         }
         try {
             val out = java.io.ByteArrayOutputStream()
-            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) { "Could not encode the cover" }
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) { appContext.getString(xendroid.compose.R.string.lib_cover_encode_failed) }
             return out.toByteArray()
         } finally {
             bitmap.recycle()
