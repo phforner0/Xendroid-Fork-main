@@ -5,8 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.graphics.drawable.Icon
+import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
@@ -18,11 +21,15 @@ import xendroid.compose.core.ContentPaths
 import java.io.File
 import xendroid.compose.core.GameMetadataSource
 import xendroid.compose.core.ProfileBootstrap
+import xendroid.compose.archive.ArchiveFiles
+import xendroid.compose.data.CoverPolicy
+import xendroid.compose.data.CoverStore
 import xendroid.compose.data.Game
 import xendroid.compose.data.GameFormat
 import xendroid.compose.data.GameLibraryRepository
 import xendroid.compose.data.IconCache
 import xendroid.compose.data.PreferencesStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -69,6 +77,7 @@ sealed interface TitleIdState {
 class GameLibraryViewModel(
     private val repo: GameLibraryRepository,
     private val iconCache: IconCache,
+    private val covers: CoverStore,
     private val appContext: Context,
 ) : ViewModel() {
 
@@ -312,12 +321,64 @@ class GameLibraryViewModel(
         else -> java.io.File(game.launchUri).name
     }
 
-    /** Coil model for a game's icon: the cached PNG File when present, else the
-     *  app_icon drawable resource id. Kept here so the View carries no IconCache dep. */
-    fun iconFileOrFallback(game: Game): Any {
-        val file = game.iconCacheName?.let { iconCache.fileFor(it) }
-        return if (file != null && file.exists()) file
-        else R.drawable.app_icon
+    /** Coil model for a game's tile: the user's cover, else the icon extracted from this file,
+     *  else the copy kept by Title ID (L05), else the app_icon drawable resource id. Kept here so
+     *  the View carries no IconCache dep. */
+    fun iconFileOrFallback(game: Game): Any = coverFile(game) ?: R.drawable.app_icon
+
+    private fun coverFile(game: Game): File? =
+        covers.displayCover(game.titleId, game.iconCacheName?.let { iconCache.fileFor(it) })
+
+    /** Bumped when a cover changes, so tiles drop the model they remembered. */
+    private val _coverRevision = MutableStateFlow(0)
+    val coverRevision: StateFlow<Int> = _coverRevision.asStateFlow()
+
+    fun hasCustomCover(game: Game): Boolean = covers.customFor(game.titleId) != null
+
+    /** L05: the picked image becomes the cover of [game]'s title (every disc, wherever the file
+     *  is). Bounded read, oriented and shrunk to [CoverPolicy.TARGET_SIDE] before it is stored. */
+    suspend fun setCustomCover(game: Game, image: Uri): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val title = requireNotNull(CoverStore.normalize(game.titleId)) { "This game has no Title ID" }
+            covers.setCustom(title, decodeCover(image))
+            _coverRevision.update { it + 1 }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w("GameLibrary", "Changing the cover failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun clearCustomCover(game: Game) {
+        withContext(Dispatchers.IO) {
+            runCatching { covers.clearCustom(game.titleId) }
+                .onFailure { Log.w("GameLibrary", "Removing the cover failed", it) }
+        }
+        _coverRevision.update { it + 1 }
+    }
+
+    private fun decodeCover(image: Uri): ByteArray {
+        val bytes = appContext.contentResolver.openInputStream(image)?.use {
+            ArchiveFiles.readBounded(it, CoverPolicy.MAX_INPUT_BYTES)
+        } ?: error("Cannot read the selected image")
+        // ImageDecoder applies the EXIF orientation; the size is checked before any pixel is decoded.
+        val bitmap = try {
+            ImageDecoder.decodeBitmap(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) { decoder, info, _ ->
+                val (width, height) = CoverPolicy.scaledSize(info.size.width, info.size.height)
+                decoder.setTargetSize(width, height)
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            }
+        } catch (e: ImageDecoder.DecodeException) {
+            throw IllegalArgumentException("The selected file is not a supported image", e)
+        }
+        try {
+            val out = java.io.ByteArrayOutputStream()
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) { "Could not encode the cover" }
+            return out.toByteArray()
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     val isPinShortcutSupported: Boolean
@@ -339,9 +400,7 @@ class GameLibraryViewModel(
         val intent = buildLaunchIntent(game).apply { action = Intent.ACTION_VIEW }
         // No resolving host yet; don't pin a shortcut that goes nowhere.
         if (intent.resolveActivity(appContext.packageManager) == null) return
-        val icon = game.iconCacheName
-            ?.let { iconCache.fileFor(it) }
-            ?.takeIf { it.exists() }
+        val icon = coverFile(game)
             ?.let { BitmapFactory.decodeFile(it.absolutePath) }
             ?.let { Icon.createWithBitmap(it) }
             ?: Icon.createWithResource(appContext, R.drawable.app_icon)

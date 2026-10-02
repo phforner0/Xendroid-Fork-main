@@ -21,6 +21,7 @@ class GameLibraryRepository(
     private val metadata: GameMetadataSource,
     private val iconCache: IconCache,
     private val metadataCache: GameMetadataCache,
+    private val covers: CoverStore,
 ) {
     private val tag = "GameLibraryRepo"
 
@@ -150,7 +151,18 @@ class GameLibraryRepository(
         val away = missing.map { it.trimEnd('/') + "/" }
         metadataCache.retainOnly(unique.mapTo(HashSet()) { it.launchUri }) { key -> away.any(key::startsWith) }
         metadataCache.save()
+        keepCovers(unique)
         return ScanResult.Games(unique, missing)
+    }
+
+    /** L05: a copy of each title's own icon outside cacheDir, keyed by Title ID, so the tile
+     *  keeps it after a cache clear or a move. A failure only costs that copy. */
+    private fun keepCovers(games: List<Game>) {
+        for (game in games) {
+            val icon = game.iconCacheName?.let(iconCache::fileFor) ?: continue
+            runCatching { covers.rememberExtracted(game.titleId, icon) }
+                .onFailure { Log.w(tag, "Keeping the cover of ${game.titleId} failed", it) }
+        }
     }
 
     /** Classify [children], then descend into every subdirectory that is not itself a game.

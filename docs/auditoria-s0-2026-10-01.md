@@ -242,3 +242,13 @@ com comandos e resultados exatos.
    interna continuam; recolocar e atualizar: voltam sem demora de extração. "Remove" numa
    pasta: os jogos dela somem da lista e os arquivos continuam no lugar (conferir no
    gerenciador de arquivos).
+19. Lote 9 — capas (L05): toque longo num jogo: a ficha mostra a capa ao lado do nome.
+   "Change cover" → escolher uma foto grande (ex.: 4000×3000) e, noutro jogo, uma foto
+   vertical da câmera (girada pelo EXIF): o tile e a ficha mudam na hora, na orientação certa,
+   e `files/covers/<TITLEID>.custom.png` tem no máximo 512 px no lado maior (`run-as
+   xendroid.compose.debug ls -l files/covers`). Num jogo de dois discos, os dois tiles mudam.
+   Renomear a ISO (ou movê-la para outra pasta da biblioteca) e atualizar: a capa continua.
+   Configurações do Android → app → "Limpar cache" e reabrir: a capa escolhida continua e os
+   outros jogos mostram o próprio ícone. "Create shortcut": o atalho usa a capa escolhida.
+   "Use the game's own icon": volta o ícone do jogo. Escolher um arquivo que não é imagem (ou
+   um PNG corrompido): "Could not use that image: …" e nada muda. Nenhum acesso à rede.

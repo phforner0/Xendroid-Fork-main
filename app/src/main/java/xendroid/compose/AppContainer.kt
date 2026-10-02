@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import xendroid.compose.core.GameMetadataSource
+import xendroid.compose.data.CoverStore
 import xendroid.compose.data.GameLibraryRepository
 import xendroid.compose.data.GameMetadataCache
 import xendroid.compose.data.IconCache
@@ -38,8 +39,10 @@ class AppContainer(context: Context) {
     // Per-game extraction-result cache, stored alongside game_icons/ in cacheDir so an
     // OS cache-clear wipes the metadata cache AND the icon files together (stay consistent).
     private val metadataCache = GameMetadataCache(appContext.cacheDir)
+    // L05: covers by Title ID live in filesDir, so a cache clear or a moved file keeps them.
+    private val covers = CoverStore(java.io.File(appContext.filesDir, "covers"))
     val repository =
-        GameLibraryRepository(appContext, prefs, metadataSource, iconCache, metadataCache)
+        GameLibraryRepository(appContext, prefs, metadataSource, iconCache, metadataCache, covers)
 
     // ConfigStore is a stateless factory and is safe to share; the SettingsRepository
     // (which owns a single-use ConfigHandle) is built FRESH per ViewModel so one
@@ -53,7 +56,7 @@ class AppContainer(context: Context) {
                 require(modelClass == GameLibraryViewModel::class.java) {
                     "Unknown ViewModel ${modelClass.name}"
                 }
-                return GameLibraryViewModel(repository, iconCache, appContext) as T
+                return GameLibraryViewModel(repository, iconCache, covers, appContext) as T
             }
         }
 

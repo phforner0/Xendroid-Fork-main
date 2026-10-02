@@ -383,6 +383,14 @@ de deltas guest; registrar unavailable/stale e aquecimento. Referências [X2–X
 | L11 | Mods Xbox opt-in | Somente formatos suportados por Xenia/patch/override de arquivos; namespace separado, ordem e conflitos explícitos, não substituir um save/DLC; não portar mods/Workshop Steam |
 | L12 | Lixeira de dados gerenciados | Mover somente dados internos elegíveis para namespace isolado sob lease/journal; restauração com preview de conflitos, cota e limpeza explícita; remover referência da biblioteca não exclui ROM externa |
 
+**Estado L05 (2026-10-02, v1 local, Impl. + Local):** capa por Title ID em `files/covers`
+(`data/CoverStore.kt`), fora do cache e do URI: cópia do ícone do próprio jogo feita na
+varredura e capa escolhida pelo usuário na ficha (leitura limitada, tamanho conferido antes
+de decodificar, EXIF, ≤ 512 px, PNG atômico), que vence até "Use the game's own icon"; serve
+a todos os discos e sobrevive a mover/renomear o arquivo e à limpeza de cache. Falta: fonte
+remota opcional (chave no Keystore, limites/backoff, offline) — sem provedor escolhido, nada
+é baixado; validação no aparelho (roteiro 19).
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

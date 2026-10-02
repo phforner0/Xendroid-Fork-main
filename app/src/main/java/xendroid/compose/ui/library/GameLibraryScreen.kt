@@ -5,6 +5,9 @@ import android.content.Context
 import android.util.Log
 import android.widget.Toast
 import android.view.KeyEvent as AndroidKeyEvent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -106,6 +109,18 @@ fun GameLibraryScreen(
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val sort by viewModel.sort.collectAsStateWithLifecycle()
     val activity by viewModel.activity.collectAsStateWithLifecycle()
+    val coverRevision by viewModel.coverRevision.collectAsStateWithLifecycle()
+    // L05: the game whose cover is being picked; a result after a recreation has none and is dropped.
+    var coverTarget by remember { mutableStateOf<Game?>(null) }
+    val pickCover = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val game = coverTarget
+        coverTarget = null
+        if (uri != null && game != null) scope.launch {
+            viewModel.setCustomCover(game, uri)
+                .onSuccess { Toast.makeText(context, "Cover changed", Toast.LENGTH_SHORT).show() }
+                .onFailure { Toast.makeText(context, "Could not use that image: ${it.message}", Toast.LENGTH_LONG).show() }
+        }
+    }
     var favoritesOnly by rememberSaveable { mutableStateOf(false) }
     var lastFocusedId by rememberSaveable { mutableStateOf<String?>(null) }
     var focusRestoreTick by remember { mutableIntStateOf(0) }
@@ -367,6 +382,7 @@ fun GameLibraryScreen(
                                 GameGrid(
                                     games = visibleGames,
                                     viewModel = viewModel,
+                                    coverRevision = coverRevision,
                                     modifier = Modifier.weight(1f),
                                     gridState = gridState,
                                     favorites = favorites,
@@ -489,7 +505,15 @@ fun GameLibraryScreen(
                     is TitleIdState.Error -> ({ Text(st.message) })
                     else -> null
                 }
+                val cover = remember(game.identityKey, coverRevision) { viewModel.iconFileOrFallback(game) }
                 ListItem(
+                    leadingContent = {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context).data(cover).build(),
+                            contentDescription = "Cover",
+                            modifier = Modifier.size(72.dp),
+                        )
+                    },
                     headlineContent = {
                         Text(game.name, style = MaterialTheme.typography.titleLarge)
                         if (game.isMultiDisc) {
@@ -527,6 +551,23 @@ fun GameLibraryScreen(
                     headlineContent = { Text(if (isFavorite(game, favorites)) "Remove from favorites" else "Add to favorites") },
                     modifier = Modifier.clickable { viewModel.toggleFavorite(game) },
                 )
+                if (xendroid.compose.data.CoverStore.normalize(game.titleId) != null) {
+                    ListItem(
+                        headlineContent = { Text("Change cover") },
+                        supportingContent = { Text("Kept for this title on every disc, even if the file moves") },
+                        modifier = Modifier.clickable {
+                            coverTarget = game
+                            pickCover.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
+                    )
+                    val custom = remember(game.identityKey, coverRevision) { viewModel.hasCustomCover(game) }
+                    if (custom) {
+                        ListItem(
+                            headlineContent = { Text("Use the game's own icon") },
+                            modifier = Modifier.clickable { scope.launch { viewModel.clearCustomCover(game) } },
+                        )
+                    }
+                }
                 details?.takeIf { it.identityKey == game.identityKey && it.titleId != null }?.let { info ->
                     val latest = info.compatibility?.latest
                     ListItem(
@@ -760,6 +801,7 @@ fun GameLibraryScreen(
 private fun GameGrid(
     games: List<Game>,
     viewModel: GameLibraryViewModel,
+    coverRevision: Int,
     onLaunch: (Game) -> Unit,
     onLongPress: (Game) -> Unit,
     gridState: LazyGridState,
@@ -792,6 +834,7 @@ private fun GameGrid(
         items(games, key = { it.stableId }) { game ->
             GameCell(game, viewModel, onLaunch, onLongPress,
                 favorite = isFavorite(game, favorites),
+                coverRevision = coverRevision,
                 focusRequester = requesters.getValue(game.stableId),
                 onFocused = { onFocused(game.stableId) })
         }
@@ -806,13 +849,14 @@ private fun GameCell(
     onLaunch: (Game) -> Unit,
     onLongPress: (Game) -> Unit,
     favorite: Boolean,
+    coverRevision: Int,
     focusRequester: FocusRequester,
     onFocused: () -> Unit,
 ) {
     val context = LocalContext.current
-    // Once per cell: the File.exists() stat must not run on every recomposition while
-    // scrolling.
-    val iconModel = remember(game.stableId) { viewModel.iconFileOrFallback(game) }
+    // Once per cell (and per cover change): the File stats must not run on every
+    // recomposition while scrolling.
+    val iconModel = remember(game.stableId, coverRevision) { viewModel.iconFileOrFallback(game) }
     var focused by remember { mutableStateOf(false) }
     Column(
         Modifier
