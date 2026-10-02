@@ -22,6 +22,8 @@
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
 
+DECLARE_bool(merge_tiling_bands);
+
 DEFINE_bool(
     rt_cache_ownership_claim_memo, true,
     "Skip EDRAM ownership-map walks for render target claims that provably "
@@ -745,6 +747,66 @@ bool RenderTargetCache::IsTransferSourceResolveCleared(
   }
   value_out = it->second.value;
   return true;
+}
+
+bool RenderTargetCache::DrawReplacesArea(
+    bool depth, reg::RB_DEPTHCONTROL normalized_depth_control,
+    uint32_t normalized_color_mask, const Shader& vertex_shader,
+    uint32_t width, uint32_t height) {
+  const RegisterFile& regs = register_file();
+  // The same conditions as SkipTransfersOverwrittenByDraw.
+  if (draw_pixel_shader_kills_) {
+    return false;
+  }
+  auto rb_colorcontrol = regs.Get<reg::RB_COLORCONTROL>();
+  if (draw_has_pixel_shader_ &&
+      ((rb_colorcontrol.alpha_test_enable &&
+        rb_colorcontrol.alpha_func != xenos::CompareFunction::kAlways) ||
+       rb_colorcontrol.alpha_to_mask_enable)) {
+    return false;
+  }
+  if (depth) {
+    auto rb_stencilrefmask = regs.Get<reg::RB_STENCILREFMASK>();
+    auto rb_stencilrefmask_bf =
+        regs.Get<reg::RB_STENCILREFMASK>(XE_GPU_REG_RB_STENCILREFMASK_BF);
+    if (!normalized_depth_control.z_enable ||
+        !normalized_depth_control.z_write_enable ||
+        normalized_depth_control.zfunc != xenos::CompareFunction::kAlways ||
+        !normalized_depth_control.stencil_enable ||
+        normalized_depth_control.stencilfunc !=
+            xenos::CompareFunction::kAlways ||
+        normalized_depth_control.stencilzpass != xenos::StencilOp::kReplace ||
+        rb_stencilrefmask.stencilwritemask != 0xFF ||
+        (normalized_depth_control.backface_enable &&
+         (normalized_depth_control.stencilfunc_bf !=
+              xenos::CompareFunction::kAlways ||
+          normalized_depth_control.stencilzpass_bf !=
+              xenos::StencilOp::kReplace ||
+          rb_stencilrefmask_bf.stencilwritemask != 0xFF))) {
+      return false;
+    }
+  } else {
+    if ((normalized_color_mask & 0b1111) != 0b1111) {
+      return false;
+    }
+    auto blend = regs.Get<reg::RB_BLENDCONTROL>(
+        reg::RB_BLENDCONTROL::rt_register_indices[0]);
+    if (blend.color_srcblend != xenos::BlendFactor::kOne ||
+        blend.color_destblend != xenos::BlendFactor::kZero ||
+        blend.color_comb_fcn != xenos::BlendOp::kAdd ||
+        blend.alpha_srcblend != xenos::BlendFactor::kOne ||
+        blend.alpha_destblend != xenos::BlendFactor::kZero ||
+        blend.alpha_comb_fcn != xenos::BlendOp::kAdd) {
+      return false;
+    }
+  }
+  float left, top, right, bottom;
+  if (!draw_extent_estimator_.EstimateRectangle(vertex_shader, left, top,
+                                                right, bottom)) {
+    return false;
+  }
+  return left <= 0.0f && top <= 0.0f && right >= float(width) &&
+         bottom >= float(height);
 }
 
 void RenderTargetCache::SkipTransfersOverwrittenByDraw(
@@ -1569,6 +1631,15 @@ uint32_t RenderTargetCache::GetRenderTargetHeight(
   // addressing period.
   uint32_t tile_rows = (xenos::kEdramTileCount + (pitch_tiles_at_32bpp - 1)) /
                        pitch_tiles_at_32bpp;
+  // merge_tiling_bands: multisampled render targets (the ones split into
+  // bands) tall enough for a whole 720-line screen - the rows past the EDRAM
+  // are never owned, only drawn into while the bands are merged.
+  if (cvars::merge_tiling_bands && msaa_samples >= xenos::MsaaSamples::k2X) {
+    tile_rows = std::max(
+        tile_rows, (kMergedTilingBandsHeight * 2 +
+                    (xenos::kEdramTileHeightSamples - 1)) /
+                       xenos::kEdramTileHeightSamples);
+  }
   // Clamp to the guest limit (tile padding should exceed it) and to the host
   // limit (tile padding mustn't exceed it).
   static_assert(

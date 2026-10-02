@@ -651,6 +651,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
                                                value);
         }
         bin_select_ = (bin_select_ & 0xFFFFFFFF00000000ull) | value;
+        COMMAND_PROCESSOR::OnBinSelectWritten();
         if (XE_UNLIKELY(bin_trace_.frames_left)) {
           COMMAND_PROCESSOR::BinTraceSetBin(
               true, COMMAND_PROCESSOR::GuestReadPtrOffset(-8));
@@ -1560,6 +1561,12 @@ bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
 
   if (XE_UNLIKELY(bin_trace_.frames_left)) {
     COMMAND_PROCESSOR::BinTraceDraw((packet & 1) != 0, true);
+  }
+
+  // merge_tiling_bands: draws of an earlier band aren't repeated.
+  if (draw_succeeded && XE_UNLIKELY(tiling_band_ >= 0) &&
+      !COMMAND_PROCESSOR::PrepareTilingBandDraw()) {
+    return true;
   }
 
   if (draw_succeeded) {

@@ -86,6 +86,17 @@ DEFINE_bool(clear_memory_page_state, false,
 UPDATE_from_bool(clear_memory_page_state, 2026, 8, 1, 12, true);
 
 DEFINE_bool(
+    merge_tiling_bands, false,
+    "Draw the bands of predicated tiling (the scene split into horizontal "
+    "bands that fit the EDRAM, each drawn by replaying the same command "
+    "buffer) as one: every draw is executed only in the first band it's "
+    "predicated into, into render targets as tall as the screen, and each "
+    "band is resolved from its rows - the vertex work and the fixed cost of "
+    "the repeated draws are done once. Host render target path; read per "
+    "frame.",
+    "GPU");
+
+DEFINE_bool(
     log_gpu_frame_time_breakdown, false,
     "Log a once-per-second breakdown of where the GPU command processor "
     "thread spends each guest frame (swap-to-swap): PM4 execution, draw "
@@ -790,6 +801,45 @@ void CommandProcessor::BinTraceOpcode(uint32_t opcode) {
   }
 }
 
+void CommandProcessor::OnBinSelectWritten() {
+  if (!cvars::merge_tiling_bands) {
+    tiling_band_ = -1;
+    return;
+  }
+  const uint32_t select = uint32_t(bin_select_);
+  if (select == UINT32_MAX) {
+    tiling_band_ = -1;
+    return;
+  }
+  if (tiling_band_ < 0) {
+    tiling_band_ = 0;
+    ++tiling_band_sequence_;
+    tiling_band_merge_ok_ = true;
+    tiling_band_draws_.clear();
+  } else if (select != tiling_band_select_) {
+    ++tiling_band_;
+  }
+  tiling_band_select_ = select;
+}
+
+bool CommandProcessor::PrepareTilingBandDraw() {
+  tiling_band_draw_from_later_band_ = false;
+  if (tiling_band_ < 0 || !tiling_band_merge_ok_ ||
+      register_file_->Get<reg::RB_MODECONTROL>().edram_mode ==
+          xenos::EdramMode::kCopy) {
+    return true;
+  }
+  // The address right past the packet tells the draw apart (the bands replay
+  // the same command buffers).
+  if (!tiling_band_draws_.insert(GuestReadPtrOffset()).second) {
+    // Executed again within the first band (a buffer it replays itself) -
+    // drawn, otherwise drawn in an earlier band.
+    return tiling_band_ == 0;
+  }
+  tiling_band_draw_from_later_band_ = tiling_band_ > 0;
+  return true;
+}
+
 void CommandProcessor::BinTraceSetBin(bool is_select,
                                       uint32_t packet_guest_address) {
   auto& t = bin_trace_;
@@ -828,6 +878,25 @@ void CommandProcessor::BinTraceDraw(bool predicated, bool executed) {
       return;
     }
     BinTraceCount(t.draws_by_mask, bin_mask_);
+  }
+  // The state of the first draw under each bin select of the first frame:
+  // where the tiling bands are placed (window offset, scissors, surfaces).
+  if (t.frame_number == 0 && !t.draws_since_select) {
+    const RegisterFile& regs = *register_file_;
+    XELOGI(
+        "BinTrace band state: sel={:X} mask={:X} window_offset={:08X} "
+        "window_scissor={:08X}-{:08X} screen_scissor={:08X}-{:08X} "
+        "surface_info={:08X} color_info={:08X} depth_info={:08X} "
+        "modecontrol={:08X} vport_y={}*y+{}",
+        bin_select_, bin_mask_, regs[XE_GPU_REG_PA_SC_WINDOW_OFFSET],
+        regs[XE_GPU_REG_PA_SC_WINDOW_SCISSOR_TL],
+        regs[XE_GPU_REG_PA_SC_WINDOW_SCISSOR_BR],
+        regs[XE_GPU_REG_PA_SC_SCREEN_SCISSOR_TL],
+        regs[XE_GPU_REG_PA_SC_SCREEN_SCISSOR_BR],
+        regs[XE_GPU_REG_RB_SURFACE_INFO], regs[XE_GPU_REG_RB_COLOR_INFO],
+        regs[XE_GPU_REG_RB_DEPTH_INFO], regs[XE_GPU_REG_RB_MODECONTROL],
+        regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YSCALE),
+        regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YOFFSET));
   }
   ++t.draws;
   ++t.draws_since_select;

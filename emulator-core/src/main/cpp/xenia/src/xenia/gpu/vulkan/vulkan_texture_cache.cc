@@ -1530,7 +1530,7 @@ VkImageView VulkanTextureCache::GetResolveDestStorageView(
 VkImageView VulkanTextureCache::GetResolveDestStorageViewForCompute(
     uint32_t base, uint32_t pitch_div_32, xenos::TextureFormat format,
     bool is_depth, uint32_t endian, uint32_t* base_delta_out,
-    ResolveDestTextureInfo* info_out) const {
+    ResolveDestTextureInfo* info_out, bool depth_into_8888) const {
   if (endian >= 4 ||
       (is_depth && format != xenos::TextureFormat::k_24_8 &&
        format != xenos::TextureFormat::k_24_8_FLOAT)) {
@@ -1548,8 +1548,10 @@ VkImageView VulkanTextureCache::GetResolveDestStorageViewForCompute(
     const TextureKey& key = texture->key();
     uint32_t texture_size = std::max(texture->GetGuestBaseSize(), uint32_t(1));
     if (base < pair.first || base >= pair.first + texture_size ||
-        key.pitch != pitch_div_32 || key.format != format ||
-        uint32_t(key.endianness) != endian) {
+        key.pitch != pitch_div_32 || uint32_t(key.endianness) != endian ||
+        (key.format != format &&
+         !(is_depth && depth_into_8888 &&
+           key.format == xenos::TextureFormat::k_8_8_8_8))) {
       continue;
     }
     if (!best || pair.first > best_base) {

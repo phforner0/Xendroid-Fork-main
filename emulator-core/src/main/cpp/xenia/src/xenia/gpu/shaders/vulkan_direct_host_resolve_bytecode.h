@@ -3,7 +3,7 @@
 // XenDroid replaces upstream's build-time generated
 // vulkan_direct_host_resolve_bytecode.h (emitted by the gpu/vulkan
 // CMakeLists xenia-shader-cc rules, which can't run in the arm64 NDK
-// cross-build) with this committed header. The 123 included headers are
+// cross-build) with this committed header. The 155 included headers are
 // produced by tools/build/gen_android_spirv.py (the host Python + glslang
 // toolchain) at configure time, like the other resolve_* bytecode headers.
 // Included inside namespace shaders in vulkan_render_target_cache.cc.
@@ -134,3 +134,39 @@
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_1xmsaa_4px_tex_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_2xmsaa_4px_tex_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_4xmsaa_4px_tex_cs.h"
+// Full color of 7e3 in the EDRAM to 2_10_10_10
+// (vulkan_direct_host_resolve_7e3_variant).
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_full_7e3_32bpp_1xmsaa_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_full_7e3_32bpp_1xmsaa_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_full_7e3_32bpp_2xmsaa_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_full_7e3_32bpp_2xmsaa_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_full_7e3_32bpp_4xmsaa_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_full_7e3_32bpp_4xmsaa_tex_cs.h"
+// One EDRAM format known when compiled
+// (vulkan_direct_host_resolve_format_variants).
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_1xmsaa_4px_8888_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_1xmsaa_4px_8888_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_1xmsaa_4px_2101010_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_1xmsaa_4px_2101010_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_1xmsaa_4px_d24s8_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_1xmsaa_4px_d24s8_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_1xmsaa_4px_d24fs8_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_1xmsaa_4px_d24fs8_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_2xmsaa_4px_8888_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_2xmsaa_4px_8888_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_2xmsaa_4px_2101010_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_2xmsaa_4px_2101010_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_2xmsaa_4px_d24s8_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_2xmsaa_4px_d24s8_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_2xmsaa_4px_d24fs8_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_2xmsaa_4px_d24fs8_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_4xmsaa_4px_8888_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_4xmsaa_4px_8888_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_4xmsaa_4px_2101010_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_color_32bpp_4xmsaa_4px_2101010_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_4xmsaa_4px_d24s8_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_4xmsaa_4px_d24s8_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_4xmsaa_4px_d24fs8_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_4xmsaa_4px_d24fs8_tex_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_1xmsaa_d24s8_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/resolve_host_depth_32bpp_1xmsaa_d24fs8_cs.h"
