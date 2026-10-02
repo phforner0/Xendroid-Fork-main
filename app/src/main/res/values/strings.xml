@@ -111,4 +111,9 @@
     <string name="menu_touch_camera">Touch camera · free right side: %1$s</string>
     <string name="menu_mark_scene">Mark scene for a comparison · %1$d so far</string>
     <string name="menu_touch_camera_note">Touch camera: on the right side, away from the buttons, slide a finger to turn the camera; it stops when the finger rests or lifts.</string>
+    <string name="menu_driver">Driver: %1$s</string>
+    <string name="menu_driver_unknown">Driver: not reported yet</string>
+    <string name="menu_driver_fallback">Driver: %1$s (the selected custom driver did not load)</string>
+    <string name="menu_driver_next">Driver: %1$s (another driver is selected for the next start)</string>
+    <string name="menu_driver_note">Choose the driver in Settings → Custom Vulkan driver (or in this game\'s settings); it applies when a game starts.</string>
 </resources>

@@ -111,4 +111,9 @@
     <string name="menu_touch_camera">Câmera por toque · lado direito livre: %1$s</string>
     <string name="menu_mark_scene">Marcar cena para comparar · %1$d até agora</string>
     <string name="menu_touch_camera_note">Câmera por toque: no lado direito, longe dos botões, deslize o dedo para girar a câmera; ela para quando o dedo para ou sai.</string>
+    <string name="menu_driver">Driver: %1$s</string>
+    <string name="menu_driver_unknown">Driver: ainda não informado</string>
+    <string name="menu_driver_fallback">Driver: %1$s (o driver personalizado escolhido não carregou)</string>
+    <string name="menu_driver_next">Driver: %1$s (outro driver está escolhido para a próxima abertura)</string>
+    <string name="menu_driver_note">Escolha o driver em Configurações → Driver Vulkan personalizado (ou nos ajustes deste jogo); ele vale quando um jogo abre.</string>
 </resources>

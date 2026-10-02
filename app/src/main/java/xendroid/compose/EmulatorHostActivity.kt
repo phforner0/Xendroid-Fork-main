@@ -318,6 +318,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val generationCap = xendroid.compose.core.GenerationCap()
     private val audioVolume = mutableIntStateOf(100)
     private val gpuLabel = mutableStateOf("")
+    /** U01: the driver setting when the game started, and the Graphics tab's driver line. */
+    private val driverAtBoot = mutableStateOf<String?>(null)
+    private val driverLine = mutableStateOf(xendroid.compose.driver.DriverIdentity.InGame.UNKNOWN to "")
     private var volumeBeforeMute = 100
     private val backgroundPolicy = mutableStateOf(BackgroundPolicy.AUTO)
     private val gyroEnabled = mutableStateOf(false)
@@ -1040,12 +1043,17 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             if (activeRun != null) runCatching { xendroid.compose.sessions.SessionRuns.store().running(activeRun, activeTitle, driver) }
                                                 .onFailure { Log.w(TAG, "Recording the running title failed", it) }
                                         }
-                                        // C07: the vblank cap this run booted with, for comparisons.
+                                        // C07: the vblank cap this run booted with, for comparisons; U01: the
+                                        // driver setting it started with, for the Graphics tab.
                                         if (activeTitle != null) lifecycleScope.launch {
                                             withContext(Dispatchers.IO) {
                                                 runCatching { inGameConfig.guestRefreshCap(activeTitle) }
                                                     .onFailure { Log.w(TAG, "Reading the vblank cap failed", it) }.getOrNull()
                                             }?.let { runPerformance.guestRefreshCap(it) }
+                                            driverAtBoot.value = withContext(Dispatchers.IO) {
+                                                runCatching { inGameConfig.driverPath(activeTitle) }
+                                                    .onFailure { Log.w(TAG, "Reading the driver setting failed", it) }.getOrNull()
+                                            }
                                         }
                                         adaptiveSticks.value = activeTitle != null &&
                                             getSharedPreferences("touch_options", MODE_PRIVATE)
@@ -1214,6 +1222,14 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             InGameAction.PHONE_CONTROLLERS to phoneControllersLabel.value,
                                             InGameAction.TOUCH_CAMERA to stringResource(R.string.menu_touch_camera, if (touchCamera.value) on else off),
                                             InGameAction.MARK_SCENE to stringResource(R.string.menu_mark_scene, sceneMarkers.intValue),
+                                            InGameAction.DRIVER_INFO to driverLine.value.let { (state, label) ->
+                                                when (state) {
+                                                    xendroid.compose.driver.DriverIdentity.InGame.UNKNOWN -> stringResource(R.string.menu_driver_unknown)
+                                                    xendroid.compose.driver.DriverIdentity.InGame.AS_SELECTED -> stringResource(R.string.menu_driver, label)
+                                                    xendroid.compose.driver.DriverIdentity.InGame.CUSTOM_DID_NOT_LOAD -> stringResource(R.string.menu_driver_fallback, label)
+                                                    xendroid.compose.driver.DriverIdentity.InGame.OTHER_FOR_NEXT_START -> stringResource(R.string.menu_driver_next, label)
+                                                }
+                                            },
                                         ),
                                         phoneControllers = phoneControllersDetails.value,
                                         frameGenerationBudget = fgBudgetLabel.value,
@@ -2336,6 +2352,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         presentationState.value = session.presentationState()
         menuState.value = menuState.value.show(pausedHere)
         refreshFpsConfig()
+        refreshDriverLine()
         lifecycleScope.launch {
             lsfgCache.value = withContext(Dispatchers.IO) { runCatching { LsfgAssets.cache(applicationContext)?.path }.getOrNull() }
         }
@@ -2599,6 +2616,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 getSharedPreferences("touch_options", MODE_PRIVATE).edit()
                     .putBoolean("adaptive_$title", enabled).apply()
             }
+            InGameAction.DRIVER_INFO -> Toast.makeText(this, getString(R.string.menu_driver_note), Toast.LENGTH_LONG).show()
             InGameAction.MARK_SCENE -> {
                 sceneMarkers.intValue++
                 recordEvent("marker", "scene ${sceneMarkers.intValue}", flush = true)
@@ -2616,6 +2634,16 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             }
             InGameAction.QUIT -> menuState.value = menuState.value.askToQuit()
             else -> Unit
+        }
+    }
+
+    /** U01: what loaded (from the presenter) against the driver setting then and now. */
+    private fun refreshDriverLine() {
+        val active = session.activeDriverIdentity()
+        val title = session.activeTitleId()
+        lifecycleScope.launch {
+            val now = withContext(Dispatchers.IO) { runCatching { inGameConfig.driverPath(title) }.getOrNull() }
+            driverLine.value = xendroid.compose.driver.DriverIdentity.inGame(driverAtBoot.value, now, active) to (active?.label ?: "")
         }
     }
 

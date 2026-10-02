@@ -51,6 +51,23 @@ class DriverIdentityTest {
         assertNull(DriverIdentity.parse("$line;loader=system;library=/x/$sha/libvulkan.so")!!.packageSha256)
     }
 
+    @Test fun theInGameLineComparesWhatLoadedWithTheSettingThenAndNow() {
+        val sha = "ab".repeat(32)
+        val selected = "/data/x/$sha/libvulkan_freedreno.so"
+        val custom = DriverIdentity.parse("$line;loader=custom;library=$selected")!!
+        val system = DriverIdentity.parse("$line;loader=system;library=")!!
+        assertEquals(DriverIdentity.InGame.UNKNOWN, DriverIdentity.inGame(selected, selected, null))
+        assertEquals(DriverIdentity.InGame.AS_SELECTED, DriverIdentity.inGame(selected, selected, custom))
+        assertEquals(DriverIdentity.InGame.AS_SELECTED, DriverIdentity.inGame("", "", system))
+        // Custom chosen at start, system loaded: the fallback is said, whatever is selected now.
+        assertEquals(DriverIdentity.InGame.CUSTOM_DID_NOT_LOAD, DriverIdentity.inGame(selected, "", system))
+        // Changed while playing: applies at the next start.
+        assertEquals(DriverIdentity.InGame.OTHER_FOR_NEXT_START, DriverIdentity.inGame("", selected, system))
+        assertEquals(DriverIdentity.InGame.OTHER_FOR_NEXT_START, DriverIdentity.inGame(selected, "", custom))
+        // Settings not read: only what loaded is shown.
+        assertEquals(DriverIdentity.InGame.AS_SELECTED, DriverIdentity.inGame(null, null, custom))
+    }
+
     @Test fun requestedDriverIsComparedWithWhatTheLastRunLoaded() {
         val sha = "ab".repeat(32)
         val custom = DriverIdentity.parse("$line;loader=custom;library=/data/x/$sha/libvulkan_freedreno.so")!!

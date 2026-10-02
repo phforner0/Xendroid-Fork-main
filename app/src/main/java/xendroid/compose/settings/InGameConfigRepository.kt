@@ -36,6 +36,17 @@ class InGameConfigRepository(private val store: ConfigStore) {
         return try { global.getBool("GPU", "guest_display_refresh_cap", true) } finally { global.closeDiscard() }
     }
 
+    /** U01: the Vulkan driver setting for [titleId] ("" = the system driver): its own, else the global one. */
+    fun driverPath(titleId: String?): String {
+        val game = titleId?.let { id ->
+            val handle = store.openGameConfig(id)
+            try { handle.getString("Vulkan", "vulkan_lib_path") } finally { handle.closeDiscard() }
+        }
+        if (game != null) return game
+        val global = store.openLiveSnapshot()
+        return try { global.getString("Vulkan", "vulkan_lib_path").orEmpty() } finally { global.closeDiscard() }
+    }
+
     fun saveGameFps(titleId: String, limit: Int) {
         require(limit >= 0)
         store.editGameConfig(titleId) { it.putInt("GPU", "framerate_limit", limit) }

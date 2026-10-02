@@ -46,7 +46,30 @@ data class DriverIdentity(
             return (if (gpu.isBlank()) driver else "$driver · $gpu") + source
         }
 
+    /** U01: what the in-game Graphics tab says about the driver of the running game. */
+    enum class InGame {
+        /** The presenter has not reported a driver yet. */
+        UNKNOWN,
+        /** The driver that loaded is the one the game started with. */
+        AS_SELECTED,
+        /** A custom driver was selected when the game started but the system one loaded. */
+        CUSTOM_DID_NOT_LOAD,
+        /** Another driver was selected while playing: it applies at the next start. */
+        OTHER_FOR_NEXT_START,
+    }
+
     companion object {
+        /**
+         * U01: [active] is what the presenter loaded; [requestedAtBoot] the driver setting
+         * ("" = system) when the game started, [requestedNow] what it says now (null = not read).
+         */
+        fun inGame(requestedAtBoot: String?, requestedNow: String?, active: DriverIdentity?): InGame = when {
+            active == null -> InGame.UNKNOWN
+            !requestedAtBoot.isNullOrBlank() && active.loader == "system" -> InGame.CUSTOM_DID_NOT_LOAD
+            requestedAtBoot != null && requestedNow != null && requestedNow != requestedAtBoot -> InGame.OTHER_FOR_NEXT_START
+            else -> InGame.AS_SELECTED
+        }
+
         /**
          * U03, requested vs effective: what the configured driver ([requestedPath], "" =
          * system) actually was in the latest run that recorded a driver. A run started

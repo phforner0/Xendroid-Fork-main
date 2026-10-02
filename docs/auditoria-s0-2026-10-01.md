@@ -315,7 +315,10 @@ com comandos e resultados exatos.
    abrindo. Ligar um patch do catálogo e um seu que escrevam no mesmo endereço: aparece o aviso
    de conflito com o endereço; desligar um: some. "Remove": o arquivo sai da pasta `patches`.
 27. Lote 10 — menu em jogo (U01): abrir o menu num jogo: abas Graphics · System · Controls ·
-   Session. Graphics mostra modos de tela, escala, TV e (Developer) FG; System mostra o limite de
+   Session. Graphics mostra modos de tela, escala, TV, (Developer) FG e (lote 12b) "Driver: <driver
+   carregado>" — com um driver personalizado que não carrega, "(the selected custom driver did not
+   load)"; trocando o driver nos ajustes com o jogo aberto, "(another driver is selected for the
+   next start)"; A no item mostra onde trocar. System mostra o limite de
    FPS com "Live limit/Next launch", HUD e taxa de atualização. Com controle: LB/RB troca de aba,
    D-pad desce até "More options (N)", A abre — a seleção fica no item, que vira "Fewer options",
    e os avançados aparecem abaixo; trocar de aba e voltar: continua aberto naquela aba. Em

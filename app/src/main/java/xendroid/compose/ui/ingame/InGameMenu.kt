@@ -336,6 +336,7 @@ private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: 
         InGameAction.MORE_OPTIONS -> stringResource(R.string.menu_fewer_options)
         InGameAction.TOUCH_CAMERA -> stringResource(R.string.menu_touch_camera, onOff(false))
         InGameAction.MARK_SCENE -> stringResource(R.string.menu_mark_scene, 0)
+        InGameAction.DRIVER_INFO -> stringResource(R.string.menu_driver_unknown)
     }
 }
 

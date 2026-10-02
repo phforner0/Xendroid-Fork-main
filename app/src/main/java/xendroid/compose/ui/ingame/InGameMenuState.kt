@@ -1,6 +1,6 @@
 package xendroid.compose.ui.ingame
 
-/** U01: Graphics = presentation and frame generation; System = frame rate, power and HUD;
+/** U01: Graphics = presentation, frame generation and driver; System = frame rate, power and HUD;
  *  Controls = layout, players and gyro; Session = pause, sound, logs and exit. */
 enum class InGamePage { GRAPHICS, SYSTEM, CONTROLS, SESSION }
 
@@ -27,6 +27,8 @@ enum class InGameAction {
     TOUCH_CAMERA,
     /** C07: a numbered scene marker in the run's timeline, to line A/B runs up. */
     MARK_SCENE,
+    /** U01: the driver the game runs on, against the one selected (read-only). */
+    DRIVER_INFO,
 }
 
 /** Every option once, on the tab it belongs to (U01), most used first. */
@@ -34,7 +36,7 @@ val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
     InGamePage.GRAPHICS to listOf(
         InGameAction.DISPLAY_FIT, InGameAction.DISPLAY_FILL, InGameAction.DISPLAY_STRETCH, InGameAction.DISPLAY_INTEGER,
         InGameAction.SCALING_EFFECT, InGameAction.EXTERNAL_DISPLAY,
-        InGameAction.WINFG, InGameAction.WINFG_PRESET, InGameAction.LSFG,
+        InGameAction.WINFG, InGameAction.WINFG_PRESET, InGameAction.LSFG, InGameAction.DRIVER_INFO,
         InGameAction.STRETCH, InGameAction.COLOR_FILTER,
         InGameAction.LSFG_MULTIPLIER, InGameAction.IMPORT_LSFG_DLL, InGameAction.CLEAR_LSFG_CACHE,
     ),

@@ -34,7 +34,8 @@ class InGameMenuStateTest {
         assertEquals(InGameAction.entries.toSet() - InGameAction.MORE_OPTIONS, placed.toSet())
         assertTrue(advancedActions.all { it in placed })
         // The tabs hold what the plan gives them.
-        assertTrue(inGamePageActions.getValue(InGamePage.GRAPHICS).containsAll(listOf(InGameAction.DISPLAY_FIT, InGameAction.WINFG)))
+        assertTrue(inGamePageActions.getValue(InGamePage.GRAPHICS).containsAll(listOf(InGameAction.DISPLAY_FIT, InGameAction.WINFG,
+            InGameAction.DRIVER_INFO)))
         assertTrue(inGamePageActions.getValue(InGamePage.SYSTEM).containsAll(listOf(InGameAction.FPS_60,
             InGameAction.SUSTAINED_PERFORMANCE, InGameAction.PERFORMANCE_HUD)))
         assertTrue(inGamePageActions.getValue(InGamePage.CONTROLS).containsAll(listOf(InGameAction.EDIT_TOUCH_LAYOUT,
@@ -69,7 +70,7 @@ class InGameMenuStateTest {
         val graphics = player.actions(InGamePage.GRAPHICS)
         assertTrue(graphics.none { it in developerActions })
         assertTrue(InGameAction.WINFG !in graphics && InGameAction.PERFORMANCE_HINTS !in graphics)
-        assertTrue(InGameAction.DISPLAY_FIT in graphics && InGameAction.SCALING_EFFECT in graphics)
+        assertTrue(InGameAction.DISPLAY_FIT in graphics && InGameAction.SCALING_EFFECT in graphics && InGameAction.DRIVER_INFO in graphics)
         assertEquals(graphics.size, player.count)
         // Wrapping navigation stays inside the shown actions.
         assertEquals(graphics.last(), player.move(-1).action)

@@ -548,7 +548,8 @@ outros componentes, RTL e texto grande conferidos no aparelho (roteiro 28).
 **Estado U01 (2026-10-02, Impl. + Local):** abas Graphics (apresentação/FG), System
 (FPS/energia/HUD), Controls (layout/jogadores/gyro) e Session (pausa/som/logs/sair), com o
 avançado de cada aba atrás de "More options" (abre no lugar, por aba, sem opções de dev no
-Player). Falta: linha do driver na aba Graphics e validação no aparelho (roteiro 27).
+Player). Lote 12b: linha do driver na aba Graphics (carregado × ajuste no início e agora).
+Falta: validação no aparelho (roteiro 27).
 
 **Estado 2026-10-02:** U03 (parte) — driver pedido × carregado na linha do driver,
 pela identidade gravada no run, sem falso alarme para runs anteriores à troca. U06 v1 —
