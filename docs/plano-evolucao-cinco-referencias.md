@@ -488,6 +488,12 @@ devem preservar direct launch e [contrato de frontend externo](frontend-integrat
 | U10 | Prompts guest e teclado virtual | Reusar bridge XAM existente; navegação por toque/D-pad/stick, atalhos de cursor/páginas/confirmar, UTF-8 inválido e strings limitadas; foco/cancel devolvem input ao dono sem botões presos |
 | U11 | Perfis locais e sign-in | Iterar `ProfilesScreen`/viewmodel, GamerTag/idioma/país/avatar, indicação do perfil ativo e erros acionáveis; escolher perfil antes do boot, respeitar saves/XUID existentes e depois integrar atribuição P1–P4 |
 
+**Estado U05 (2026-10-02, v1, Impl. + Local):** "Test controllers" na biblioteca
+(`ui/controllertest/`, `gamepad/ControllerTest.kt`): botões com checklist, analógicos sobre a
+zona morta com o valor que o jogo recebe, gatilhos, hat, giroscópio do controle (API 31+),
+vibração só por toque, reconexão pelo descritor; eventos crus capturados só nessa tela. Falta:
+mostrar o slot P1–P4 que o controle terá no jogo e validação no aparelho (roteiro 30).
+
 **Estado U04 (2026-10-02, v1, Impl. + Local):** `gamepad/MenuButtons.kt` para biblioteca,
 menu em jogo e editor: A/B trocáveis (Configurações), Enter/Esc fixos, ritmo de direção
 segurada (350 ms + 120 ms) também no analógico/hat; corrigido o Esc que ativava a opção no

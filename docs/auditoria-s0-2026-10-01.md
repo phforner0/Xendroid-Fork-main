@@ -334,3 +334,11 @@ com comandos e resultados exatos.
    Segurar o D-pad (e depois o analógico) numa lista longa: move um, para um instante e segue
    num ritmo legível; soltar para na hora. Com um teclado USB/Bluetooth: Enter ativa, Esc fecha o
    menu e, na pergunta "Exit the game?" com "Exit game" destacado, Esc **cancela** (antes saía).
+30. Lote 10 — teste de controles (U05): ⋮ → "Test controllers" com um controle Bluetooth:
+   aparece o cartão com nome e vendor:product; cada botão acende enquanto segura e fica com ✓;
+   mover os analógicos: o ponto anda sobre o círculo e, dentro do círculo pequeno (zona morta),
+   "Game gets" mostra 0; puxar LT até a metade: "(pressed)". Desligar o controle: "disconnected"
+   e nada fica aceso; religar: "reconnected" e os ✓ continuam. "Vibrate 0.3 s" vibra só ao tocar
+   (anotar se o controle não vibra pelo Android). Com DualSense/Switch Pro (Android 12+): linha do
+   giroscópio muda ao mexer. Apertar B não volta (é teste); segurar B por 1 s sai; o gesto de
+   voltar do telefone também sai.

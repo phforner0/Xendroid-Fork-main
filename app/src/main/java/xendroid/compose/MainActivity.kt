@@ -59,6 +59,8 @@ class MainActivity : ComponentActivity() {
     // implementation class RestrictTo, but overriding the platform callback is valid.
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // U05: the controller test sees controllers raw and alone.
+        if (xendroid.compose.gamepad.GamepadCapture.listener?.invoke(event) == true) return true
         // U04: A clicks and B goes back, or the other way round when the user swapped them.
         val code = xendroid.compose.gamepad.MenuButtons.frontendKey(event.keyCode,
             xendroid.compose.gamepad.MenuButtonPrefs.swapConfirm(this)) ?: return super.dispatchKeyEvent(event)
@@ -67,6 +69,11 @@ class MainActivity : ComponentActivity() {
             event.metaState, event.deviceId, event.scanCode, event.flags, event.source,
         )
         return super.dispatchKeyEvent(translated)
+    }
+
+    override fun dispatchGenericMotionEvent(event: android.view.MotionEvent): Boolean {
+        if (xendroid.compose.gamepad.GamepadCapture.listener?.invoke(event) == true) return true
+        return super.dispatchGenericMotionEvent(event)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
