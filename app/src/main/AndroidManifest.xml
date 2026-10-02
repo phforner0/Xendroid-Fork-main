@@ -85,6 +85,19 @@
         <receiver
             android:name="xendroid.compose.updater.UpdateInstallReceiver"
             android:exported="false" />
+        <!-- L07: user data in the system file manager. Same class name and authority as
+             before (it lived in :emulator-core), so grants already given keep working. Only
+             the system DocumentsUI (MANAGE_DOCUMENTS) calls it; apps get per-folder grants. -->
+        <provider
+            android:name="xendroid.compose.DocumentsProvider"
+            android:authorities="${applicationId}.DocumentsProvider"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.share"

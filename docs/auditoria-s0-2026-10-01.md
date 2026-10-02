@@ -54,6 +54,8 @@ Linha de base desta sessão, antes de qualquer mudança: `:app:testDebugUnitTest
 | PRF-02 (A09) | defeito por leitura (médio) | `writeAvatar`: decode sem limite (OOM), PNG gravado direto, falha do avatar relatada como falha do perfil já criado, imagem inválida ignorada em silêncio. | **Corrigido**: leitura ≤32 MB, bounds-only + `inSampleSize`, decode antes de criar o perfil, gravação atômica, mensagem distinta para avatar. |
 | PRF-03 | defeito por leitura (médio) | `setActive()` não tratava exceção do config → crash no `viewModelScope`. | **Corrigido**. |
 | PRF-04 | defeito por leitura (baixo) | `ProfileBootstrap` criava perfil sem lease e gravava config sem lock. | **Corrigido**. |
+| STO-01 (L07, 2026-10-02) | defeito por leitura (alto) | `DocumentsProvider` (então em `:emulator-core`): o id de documento é o caminho absoluto e `getFileForDocId` fazia só `new File(docId)`; `isChildDocument` comparava texto (`startsWith(parent + "/")`). Um app com permissão numa pasta do provider podia pedir `<raiz>/../../…` (ou seguir um link) e ler/gravar qualquer arquivo do app, inclusive o armazenamento interno; também expunha os caches do emulador (shaders derivados de jogos) e mudava saves com o jogo aberto. | **Corrigido**: provider reescrito em `:app` com o mesmo nome e autoridade; `UserDataFiles` aceita só a raiz e o que está dentro dela com `..`/links resolvidos, comparação por segmento, nomes de um só segmento, nada substituído, caches e controles internos escondidos, toda mudança (e escrita aberta, até fechar) sob o lease; testado na JVM. |
+| STO-02 (2026-10-02) | defeito reproduzido (alto) | `ContentLease.acquire` abria o arquivo de trava e, ao falhar (lease já do mesmo processo), fechava-o: fechar qualquer descritor de um arquivo solta todas as travas POSIX do processo, então a primeira lease deixava de valer para o processo do jogo. Reproduzido no contêiner (Java + `fcntl` de outro processo: "other process: GOT the lock"). | **Corrigido**: lista em memória das travas do processo, recusa antes de abrir o arquivo; `close` idempotente. Teste `aRefusedSecondLeaseInTheSameProcessDoesNotFreeTheFirst` falha no código antigo ("expected busy but was free") e passa no novo. |
 
 ### 2.3 Sessão, lifecycle e IPC
 
@@ -289,3 +291,12 @@ com comandos e resultados exatos.
    jogo aberto (outro processo), tentar mover: "Close the running game first.". Matar o app
    (`am kill`/forçar parada) logo após tocar em "Move to trash" com uma TU grande: ao reabrir o
    gerenciador, a TU está ou instalada ou na lixeira, nunca sumida.
+24. Lote 9 — dados no gerenciador de arquivos (L07): ⋮ → "Open user data": o app de arquivos
+   do sistema mostra a raiz "XenDroid" com config, `content`, `patches`, logs, e **não** mostra
+   `cache`, `cache0`, `cache1` nem `content/.xendroid-trash`. Copiar um patch `.toml` para
+   `patches/`: aparece; copiar de novo: vira "… (1).toml" (nada é substituído). Renomear e
+   apagar um arquivo de teste: funcionam. Com um jogo aberto, tentar copiar/apagar algo:
+   falha com erro (o arquivo continua); fechar o jogo e repetir: funciona. Abrir `xe.log` com
+   o jogo aberto: lê. Num app de terceiros que pede uma pasta (ex.: um editor de texto com
+   "abrir pasta"), conceder a raiz do XenDroid e conferir que ele só vê o mesmo conteúdo.
+   Depois de atualizar o APK, um atalho/permissão antiga para a pasta continua abrindo.

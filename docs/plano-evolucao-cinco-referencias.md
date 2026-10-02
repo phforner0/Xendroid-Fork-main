@@ -383,6 +383,14 @@ de deltas guest; registrar unavailable/stale e aquecimento. Referências [X2–X
 | L11 | Mods Xbox opt-in | Somente formatos suportados por Xenia/patch/override de arquivos; namespace separado, ordem e conflitos explícitos, não substituir um save/DLC; não portar mods/Workshop Steam |
 | L12 | Lixeira de dados gerenciados | Mover somente dados internos elegíveis para namespace isolado sob lease/journal; restauração com preview de conflitos, cota e limpeza explícita; remover referência da biblioteca não exclui ROM externa |
 
+**Estado L07 (2026-10-02, v1, Impl. + Local):** o provider que já existia foi endurecido e
+movido para `:app` (`DocumentsProvider.kt` + `userdata/UserDataFiles.kt`): só a raiz de dados
+do usuário e o que está dentro dela (links e `..` resolvidos), caches do emulador e controles
+internos fora, nomes limpos sem substituir, mudanças e escritas sob o lease (achados STO-01 e
+STO-02 da auditoria). A DLL do LSFG e o cache dele ficam no armazenamento interno, fora da
+raiz. Falta: visão "por jogo" (saves/config de um título) e snapshots read-only enquanto o
+jogo roda (hoje a escrita é recusada); validação no aparelho (roteiro 24).
+
 **Estado L12 (2026-10-02, v1, Impl. + Local):** lixeira para DLC/TU removidos
 (`saves/ContentTrash.kt`), com lease, journal por nome de pasta (`.partial`/`.restoring`) e
 recuperação, restauração com prévia de conflito, cota de 4 GiB e limpeza só explícita; perfis

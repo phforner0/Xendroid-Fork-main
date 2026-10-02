@@ -159,18 +159,37 @@ fun <T> withDirectoryLock(dir: File, block: () -> T): T {
 }
 
 /** Storage operations and a running guest are mutually exclusive across processes. */
-class ContentLease private constructor(val root: File, private val file: RandomAccessFile) : AutoCloseable {
+class ContentLease private constructor(
+    val root: File,
+    private val file: RandomAccessFile,
+    private val key: String,
+) : AutoCloseable {
     private val lock = file.channel.tryLock() ?: error("Content is in use")
-    override fun close() { try { lock.release() } finally { file.close() } }
+    private val closed = java.util.concurrent.atomic.AtomicBoolean()
+
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        try { lock.release() } finally { try { file.close() } finally { held.remove(key) } }
+    }
 
     companion object {
+        /**
+         * Lock files this process holds a lease on. A second lease in the same process must fail
+         * BEFORE opening the file: closing any descriptor of a file drops every POSIX lock the
+         * process holds on it, so the failed attempt's close would silently free the first
+         * lease for the other process (reproduced on Linux; see FileLock's docs).
+         */
+        private val held: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
         fun acquire(root: File): ContentLease {
             check(root.isDirectory || root.mkdirs())
             require(!Files.isSymbolicLink(root.toPath()))
             val lockPath = ArchiveFiles.resolve(root, ".content-session.lock")
-            val file = RandomAccessFile(lockPath, "rw")
-            return try { ContentLease(root.canonicalFile, file) } catch (e: Exception) {
-                file.close(); throw ContentBusyException(e)
+            val key = lockPath.canonicalPath
+            if (!held.add(key)) throw ContentBusyException()
+            val file = try { RandomAccessFile(lockPath, "rw") } catch (e: Exception) { held.remove(key); throw e }
+            return try { ContentLease(root.canonicalFile, file, key) } catch (e: Exception) {
+                file.close(); held.remove(key); throw ContentBusyException(e)
             }
         }
     }

@@ -46,6 +46,36 @@ class ArchiveFilesTest {
         ContentLease.acquire(root).use { }
     }
 
+    /** Tries the lease's lock file from ANOTHER process (fcntl, the same locks the JVM uses on
+     *  Linux): "busy", "free", or null when python3 is not there to try. */
+    private fun otherProcessTries(lockFile: java.io.File): String? = runCatching {
+        val process = ProcessBuilder("python3", "-c",
+            "import fcntl,sys\nf=open(sys.argv[1],'r+')\ntry:\n  fcntl.lockf(f, fcntl.LOCK_EX|fcntl.LOCK_NB)\n" +
+                "  print('free')\nexcept OSError:\n  print('busy')", lockFile.path)
+            .redirectErrorStream(true).start()
+        check(process.waitFor(20, java.util.concurrent.TimeUnit.SECONDS))
+        process.inputStream.bufferedReader().readText().trim()
+    }.getOrNull()?.takeIf { it == "busy" || it == "free" }
+
+    @Test fun aRefusedSecondLeaseInTheSameProcessDoesNotFreeTheFirst() {
+        val root = folder.newFolder()
+        val lockFile = java.io.File(root, ".content-session.lock")
+        val first = ContentLease.acquire(root)
+        val whileHeld = try {
+            // Each refused attempt used to open and close the lock file, and closing any descriptor
+            // drops every POSIX lock of the process: the game process could then take the lease.
+            repeat(3) { assertThrows(ContentBusyException::class.java) { ContentLease.acquire(root) } }
+            otherProcessTries(lockFile)
+        } finally {
+            first.close()
+        }
+        org.junit.Assume.assumeTrue("python3 is needed to try the lock from another process", whileHeld != null)
+        assertEquals("busy", whileHeld)
+        assertEquals("free", otherProcessTries(lockFile))
+        first.close()                                       // closing twice is harmless
+        ContentLease.acquire(root).use { }
+    }
+
     @Test fun busyLeaseIsRetriedUntilReleasedWithoutBusyWaiting() = kotlinx.coroutines.test.runTest {
         var clock = 0L
         val sleeps = mutableListOf<Long>()
