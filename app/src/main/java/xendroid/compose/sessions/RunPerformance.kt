@@ -61,6 +61,13 @@ data class RunPerformance(
     /** Synthetic output slots the schedule offered (F02): late skips + painted; of the painted
      *  ones, [syntheticSubmissions] became synthetic frames on screen. */
     val syntheticSlots: Long? = null,
+    /** Pacing of the sampled seconds (C07): FPS limits (0 = unlimited) and display refresh
+     *  rates (rounded Hz) in the order first seen, more than one = it changed during the run;
+     *  and whether the guest vblank was capped at 50/60 Hz (the config the run booted with,
+     *  null = not known). Empty/null in older records. */
+    val fpsLimits: List<Int> = emptyList(),
+    val displayHz: List<Int> = emptyList(),
+    val guestRefreshCap: Boolean? = null,
 ) {
     val sampledSeconds: Int get() = fpsHistogram.sum()
     val frames: Long get() = frameTimeHistogramMs.sum()
@@ -257,6 +264,12 @@ class RunPerformanceAccumulator(private val maxFps: Int = 240) {
     private var generationLatest: LongArray? = null
     private var fgCountersBaseline: LongArray? = null
     private var fgCountersLatest: LongArray? = null
+    private val fpsLimits = LinkedHashSet<Int>()
+    private val displayHz = LinkedHashSet<Int>()
+    private var guestRefreshCap: Boolean? = null
+
+    /** The guest vblank cap the run booted with (C07). */
+    fun guestRefreshCap(capped: Boolean) { guestRefreshCap = capped }
 
     /**
      * Cumulative native frame-generation figures: the GPU histogram with the untimed count
@@ -328,7 +341,7 @@ class RunPerformanceAccumulator(private val maxFps: Int = 240) {
      * submissions when it is unknown) is idle whatever [guestFps] says.
      */
     fun sample(running: Boolean, guestFps: Double, presentCount: Long, generatedCount: Long, frameGenerationActive: Boolean,
-               guestFrames: Long? = null) {
+               guestFrames: Long? = null, fpsLimit: Int? = null, displayHz: Float? = null) {
         val previousPresents = lastPresents
         val previousGenerated = lastGenerated
         val previousFrames = lastGuestFrames
@@ -344,6 +357,12 @@ class RunPerformanceAccumulator(private val maxFps: Int = 240) {
             return
         }
         histogram[guestFps.roundToInt().coerceIn(0, maxFps)]++
+        // The pacing of counted seconds only: a limit changed in the menu while paused is
+        // recorded once it applies.
+        if (fpsLimit != null && fpsLimit >= 0 && fpsLimits.size < MAX_PACING_VALUES) fpsLimits += fpsLimit
+        if (displayHz != null && displayHz.isFinite() && displayHz > 0f && this.displayHz.size < MAX_PACING_VALUES) {
+            this.displayHz += displayHz.roundToInt()
+        }
         presents += presentDelta
         synthetic += generatedDelta
         if (frameGenerationActive) fgSeconds++
@@ -391,6 +410,9 @@ class RunPerformanceAccumulator(private val maxFps: Int = 240) {
         audioConcealedBlocks = audioDelta(2),
         // OpenSL ES reports no xruns: absent, not zero.
         audioDeviceXruns = audioDelta(3)?.takeIf { audioLatest?.get(0) == 1L },
+        fpsLimits = fpsLimits.toList(),
+        displayHz = displayHz.toList(),
+        guestRefreshCap = guestRefreshCap,
     )
 
     private fun compileDelta(index: Int): Long? {
@@ -403,5 +425,10 @@ class RunPerformanceAccumulator(private val maxFps: Int = 240) {
         val latest = frameLatest ?: return emptyList()
         val baseline = frameBaseline ?: return emptyList()
         return latest.indices.map { (latest[it] - baseline[it]).coerceAtLeast(0) }.dropLastWhile { it == 0L }
+    }
+
+    private companion object {
+        /** Distinct FPS limits / refresh rates kept per run: more says "it kept changing". */
+        const val MAX_PACING_VALUES = 8
     }
 }

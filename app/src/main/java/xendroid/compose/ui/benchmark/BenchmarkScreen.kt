@@ -65,7 +65,8 @@ fun BenchmarkScreen(onBack: () -> Unit) {
                         val markers = store.events(run.runId)?.events?.count { it.kind == "marker" } ?: 0
                         Candidate(run, BenchRun(' ', run.startedAt, perf.fpsPercentile(0.5) ?: 0, perf.fpsPercentile(0.05) ?: 0,
                             perf.frameTimeUpperMs(0.99), perf.sampledSeconds, run.driver?.label,
-                            perf.frameGenerationSeconds > 0, perf.batteryStartC, markers))
+                            perf.frameGenerationSeconds > 0, perf.batteryStartC, markers,
+                            perf.fpsLimits, perf.displayHz, perf.guestRefreshCap))
                     }
                     .groupBy { it.run.titleId!!.uppercase() }
             }.getOrDefault(emptyMap())
@@ -85,8 +86,8 @@ fun BenchmarkScreen(onBack: () -> Unit) {
         LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
-                Text("Play the same scene with one change (driver, frame generation, a setting), closing the game " +
-                    "between runs, in the order A B B A. Mark a scene from the in-game menu (Session → Mark scene) to " +
+                Text("Play the same scene with one change (driver, frame generation, FPS limit, a setting), closing the " +
+                    "game between runs, in the order A B B A. Mark a scene from the in-game menu (Session → Mark scene) to " +
                     "line runs up. FPS here are the game's own frames.", style = MaterialTheme.typography.bodySmall)
             }
             if (selected == null) {
@@ -125,6 +126,9 @@ private fun RunRow(candidate: Candidate, label: Char?, onLabel: (Char?) -> Unit)
             Text("median ${b.medianFps} FPS · 5th pct ${b.lowFps} · 99% of frames ${b.frameTimeP99Ms?.let { "< $it ms" } ?: "n/a"} · " +
                 "${b.sampledSeconds} s · ${b.driver ?: "driver ?"}${if (b.frameGeneration) " · FG" else ""}" +
                 (b.batteryStartC?.let { " · started %.0f °C".format(it) } ?: "") +
+                (if (b.fpsLimits.isNotEmpty()) " · limit " + b.fpsLimits.joinToString("/") { if (it == 0) "off" else "$it" } else "") +
+                (b.refreshCap?.let { if (it) " · vblank capped" else " · vblank uncapped" } ?: "") +
+                (if (b.displayHz.isNotEmpty()) " · " + b.displayHz.joinToString("/") + " Hz" else "") +
                 (if (b.markers > 0) " · ${b.markers} marker(s)" else ""))
         },
         trailingContent = {
@@ -143,6 +147,7 @@ private fun ResultCard(result: Benchmark.Result) {
             Text(result.verdict, style = MaterialTheme.typography.titleSmall)
             if (result.order.isNotEmpty()) Text("Order: ${result.order}${if (result.balanced) " (balanced)" else ""}",
                 style = MaterialTheme.typography.bodySmall)
+            if (result.changed.size == 1) Text("What changed: ${result.changed.single()}", style = MaterialTheme.typography.bodySmall)
             result.warnings.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
             listOf("A" to result.a, "B" to result.b).forEach { (name, side) ->
                 side?.let {

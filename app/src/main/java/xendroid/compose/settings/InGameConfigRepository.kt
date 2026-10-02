@@ -23,6 +23,19 @@ class InGameConfigRepository(private val store: ConfigStore) {
         return FpsConfigSnapshot(titleId, globalLimit, gameLimit)
     }
 
+    /** Whether guest vblanks are capped at 50/60 Hz for [titleId]: its own setting, else the
+     *  global one (on by default). Read when a run starts, as the core read it at boot. */
+    fun guestRefreshCap(titleId: String?): Boolean {
+        val game = titleId?.let { id ->
+            val handle = store.openGameConfig(id)
+            try { handle.getString("GPU", "guest_display_refresh_cap")?.let { ConfigValueShape.parseBool(it, true) } }
+            finally { handle.closeDiscard() }
+        }
+        if (game != null) return game
+        val global = store.openLiveSnapshot()
+        return try { global.getBool("GPU", "guest_display_refresh_cap", true) } finally { global.closeDiscard() }
+    }
+
     fun saveGameFps(titleId: String, limit: Int) {
         require(limit >= 0)
         store.editGameConfig(titleId) { it.putInt("GPU", "framerate_limit", limit) }

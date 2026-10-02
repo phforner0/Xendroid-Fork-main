@@ -15,14 +15,19 @@ data class BenchRun(
     val frameGeneration: Boolean,
     val batteryStartC: Float?,
     val markers: Int = 0,
+    /** Pacing the run recorded (empty/null in older runs: not checked). */
+    val fpsLimits: List<Int> = emptyList(),
+    val displayHz: List<Int> = emptyList(),
+    val refreshCap: Boolean? = null,
 )
 
 /**
  * C07: an A/B comparison of runs of one title the player ran on purpose (same scene, one thing
  * changed). It checks what makes the result trustworthy before giving one: the order (ABBA
- * cancels the phone warming up over the session), what should have stayed fixed (driver, frame
- * generation, starting temperature) and whether every run sampled enough; then it pairs runs
- * in time order and gives B − A per pair, calling a difference only when every pair agrees.
+ * cancels the phone warming up over the session), that each side ran one setup (driver, frame
+ * generation, FPS limit, vblank cap, display refresh) and A and B differ in one of them at
+ * most, the starting temperature and whether every run sampled enough; then it pairs runs in
+ * time order and gives B − A per pair, calling a difference only when every pair agrees.
  */
 object Benchmark {
     /** Shorter runs say little: a scene with loading in it, a menu. */
@@ -41,6 +46,25 @@ object Benchmark {
         /** B − A median FPS of each time-ordered pair. */
         val pairDeltas: List<Int>,
         val verdict: String,
+        /** What the runs recorded as different between A and B: "driver (X → Y)". */
+        val changed: List<String> = emptyList(),
+    )
+
+    /** Something a run records that has to be the same in every run of a side; null = not recorded. */
+    private class Dimension(val name: String, val value: (BenchRun) -> String?)
+
+    private fun pacing(values: List<Int>, unit: (Int) -> String): String? = when (values.size) {
+        0 -> null
+        1 -> unit(values.single())
+        else -> "changing (${values.joinToString(" / ", transform = unit)})"
+    }
+
+    private val dimensions = listOf(
+        Dimension("driver") { it.driver ?: "unknown driver" },
+        Dimension("frame generation") { if (it.frameGeneration) "on" else "off" },
+        Dimension("FPS limit") { r -> pacing(r.fpsLimits) { if (it == 0) "unlimited" else "$it FPS" } },
+        Dimension("vblank cap") { r -> r.refreshCap?.let { if (it) "capped" else "uncapped" } },
+        Dimension("display refresh") { r -> pacing(r.displayHz) { "$it Hz" } },
     )
 
     /** The suggested order of [runs] runs: A B B A A B B A… */
@@ -64,13 +88,21 @@ object Benchmark {
         ordered.filter { it.sampledSeconds < MIN_SECONDS }.forEach {
             warnings += "A ${it.label} run sampled only ${it.sampledSeconds} s (at least $MIN_SECONDS s of the same scene)."
         }
-        val drivers = ordered.map { it.driver ?: "unknown driver" }.distinct()
-        if (drivers.size > 1) warnings += "Drivers differ (${drivers.joinToString(" / ")}): compare one change at a time."
-        for (side in listOf(a, b)) {
-            if (side.map { it.frameGeneration }.distinct().size > 1) {
-                warnings += "Frame generation was on in some ${side.first().label} runs and off in others."
-            }
+        ordered.filter { it.fpsLimits.size > 1 || it.displayHz.size > 1 }.forEach {
+            warnings += "The FPS limit or the display refresh changed during a run (${it.label}); keep both fixed while measuring."
         }
+        val changed = ArrayList<String>()
+        for (dimension in dimensions) {
+            if (ordered.any { dimension.value(it) == null }) continue      // not recorded by every run
+            val sides = listOf(a, b).map { side -> side.map { dimension.value(it)!! }.distinct() }
+            sides.forEachIndexed { i, values ->
+                if (values.size > 1) {
+                    warnings += "The ${dimension.name} differs among the ${"AB"[i]} runs (${values.joinToString(" / ")}): each side needs one setup."
+                }
+            }
+            if (sides.all { it.size == 1 } && sides[0] != sides[1]) changed += "${dimension.name} (${sides[0].single()} → ${sides[1].single()})"
+        }
+        if (changed.size > 1) warnings += "A and B differ in more than one thing: ${changed.joinToString("; ")}. Change one at a time."
         val temps = ordered.mapNotNull { it.batteryStartC }
         if (temps.size >= 2 && temps.max() - temps.min() > MAX_START_DELTA_C) {
             warnings += "Runs started %.0f °C apart; let the phone cool to the same temperature first.".format(temps.max() - temps.min())
@@ -85,7 +117,7 @@ object Benchmark {
             deltas.all { it == 0 } -> "No difference in median FPS."
             else -> "Pairs disagree (${deltas.joinToString { if (it > 0) "+$it" else "$it" }}): no difference shown; run more pairs."
         }
-        return Result(order, balanced, warnings, side(a), side(b), deltas, verdict)
+        return Result(order, balanced, warnings, side(a), side(b), deltas, verdict, changed)
     }
 
     /** ABBA-like: in every prefix the counts of A and B never drift apart by more than one

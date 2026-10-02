@@ -363,8 +363,9 @@ Testes JVM cobrem finalização concorrente, reconciliação e poda.
 - **Estado C07 (2026-10-02, v1, Impl. + Local):** "Compare runs" (`sessions/Benchmark.kt`,
   `ui/benchmark/`): runs marcados A/B, checagem de ordem ABBA, duração mínima, driver, FG e
   temperatura inicial antes de qualquer número, diferenças por par com veredito só quando todos
-  concordam; marcador de cena no menu em jogo. Falta: fixar/registrar limite de FPS e Hz no run
-  (hoje não são gravados) e uso no aparelho (roteiro 34).
+  concordam; marcador de cena no menu em jogo. Lote 12a: o run grava limite de FPS, taxa da
+  tela e cap de VBlank; cada lado precisa de um só setup e A/B mudam no máximo uma dimensão
+  (corrige o aviso de driver que impedia comparar drivers). Falta: uso no aparelho (roteiro 34).
 - **Estado C05 (2026-10-02, Parcial: mecanismo Impl. + Local):** perfis de ajustes por jogo
   (`compatibility/SettingsProfiles.kt`, `SettingsProfileStore.kt`, cartão em Ajustes do jogo):
   lista permitida de chaves e valores, pré-requisitos de GPU/driver/fabricante/modelo/API/build com

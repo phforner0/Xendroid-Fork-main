@@ -368,7 +368,10 @@ com comandos e resultados exatos.
    temperatura; em cada um, Session → "Mark scene…" no começo da cena. ⋮ → "Compare runs" → o jogo:
    marcar os runs A/B: sem avisos, "B − A per pair" com dois números e o veredito. Marcar na ordem
    AABB (ou trocar o driver num run): aparecem os avisos e "Fix the warnings first". Anotar o
-   resultado no relatório de FG (é a forma de A/B que o plano pede).
+   resultado no relatório de FG (é a forma de A/B que o plano pede). Lote 12a: repetir com o
+   driver como única mudança (A sistema, B Turnip): sem avisos e "What changed: driver (…)"; mudar
+   também o limite de FPS no B: "A and B differ in more than one thing". Cada run da lista mostra
+   "limit … · vblank capped · … Hz"; mudar o limite no meio de um run gera o aviso de ritmo.
 35. Lote 11 — perfis recomendados (C05): com o Files app (ou `adb push` para
    `/sdcard/Android/data/<pacote>/files/compose/settings-profiles/`), pôr um arquivo
    `teste.json` com `{"format":"xendroid-settings-profiles","version":1,"profiles":[{"id":"teste-30",

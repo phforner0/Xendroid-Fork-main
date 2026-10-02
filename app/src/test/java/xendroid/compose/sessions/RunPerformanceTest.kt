@@ -26,6 +26,22 @@ class RunPerformanceTest {
         assertEquals(31, perf.fpsHistogram.size)   // trailing empty buckets dropped
     }
 
+    @Test fun pacingIsWhatTheCountedSecondsRanWith() {
+        val acc = RunPerformanceAccumulator()
+        assertTrue(acc.snapshot().fpsLimits.isEmpty())
+        assertNull(acc.snapshot().guestRefreshCap)
+        acc.sample(true, 30.0, presentCount = 0, generatedCount = 0, frameGenerationActive = false, fpsLimit = 60, displayHz = 119.88f)
+        acc.sample(true, 30.0, presentCount = 30, generatedCount = 0, frameGenerationActive = false, fpsLimit = 60, displayHz = 119.88f)
+        // Changed in the menu while paused: recorded only once a counted second ran with it.
+        acc.sample(false, 30.0, presentCount = 30, generatedCount = 0, frameGenerationActive = false, fpsLimit = 30, displayHz = 60f)
+        acc.sample(true, 30.0, presentCount = 60, generatedCount = 0, frameGenerationActive = false, fpsLimit = 0, displayHz = 120f)
+        acc.guestRefreshCap(true)
+        val perf = acc.snapshot()
+        assertEquals(listOf(60, 0), perf.fpsLimits)
+        assertEquals(listOf(120), perf.displayHz)
+        assertEquals(true, perf.guestRefreshCap)
+    }
+
     @Test fun guestFramesDecideIdleSecondsWhenKnown() {
         val acc = RunPerformanceAccumulator()
         acc.sample(true, 30.0, presentCount = 0, generatedCount = 0, frameGenerationActive = false, guestFrames = 0)

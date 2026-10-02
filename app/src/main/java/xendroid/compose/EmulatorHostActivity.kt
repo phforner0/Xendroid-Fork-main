@@ -1040,6 +1040,13 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             if (activeRun != null) runCatching { xendroid.compose.sessions.SessionRuns.store().running(activeRun, activeTitle, driver) }
                                                 .onFailure { Log.w(TAG, "Recording the running title failed", it) }
                                         }
+                                        // C07: the vblank cap this run booted with, for comparisons.
+                                        if (activeTitle != null) lifecycleScope.launch {
+                                            withContext(Dispatchers.IO) {
+                                                runCatching { inGameConfig.guestRefreshCap(activeTitle) }
+                                                    .onFailure { Log.w(TAG, "Reading the vblank cap failed", it) }.getOrNull()
+                                            }?.let { runPerformance.guestRefreshCap(it) }
+                                        }
                                         adaptiveSticks.value = activeTitle != null &&
                                             getSharedPreferences("touch_options", MODE_PRIVATE)
                                                 .getBoolean("adaptive_$activeTitle", false)
@@ -1057,6 +1064,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         generatedCount = fgNow.generated,
                                         frameGenerationActive = fgNow.requested && fgNow.state == 2,
                                         guestFrames = guestFrames,
+                                        fpsLimit = session.fpsLimit(),
+                                        displayHz = currentOutputHz(),
                                     )
                                     runPerformance.frameTimes(frameTimes)
                                     runPerformance.frameGeneration(session.frameGenerationGpuHistogram(), fgNow.lateSkips, fgNow.dropped, fgNow.syntheticSlots)
