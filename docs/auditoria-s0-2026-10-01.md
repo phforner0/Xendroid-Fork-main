@@ -394,3 +394,9 @@ com comandos e resultados exatos.
    yet" → Refresh → "This build and GPU: Playable ×1". Modo avião: a cópia continua. Publicar com
    `sequence` 0: "Catalog not taken: older than the copy…". Mudar um byte do payload sem reassinar:
    "the signature does not match". A chave privada nunca entra no repositório.
+37. Lote 11 — VBlank do guest (K11): num jogo que roda a 30 ou 60 FPS travados com "Cap guest
+   display refresh" ligado, jogar 5 min a mesma cena que um run anterior (outra build) e comparar na
+   ficha a mediana e o 5º percentil de FPS e o limite de 99% dos quadros: iguais ou melhores (nunca
+   uma queda para a metade). Ir para a Home por ~10 s e voltar: o jogo segue sem acelerar para
+   "recuperar" o tempo, e o `xe.log` tem uma linha "Guest vblank resynced after a stall (1 so far, …)".
+   Com o cap desligado, o comportamento ilimitado não muda.

@@ -780,6 +780,15 @@ guest. Especificar workloads CPU-bound e GPU-bound separados e uma matriz de
 portabilidade (driver de sistema/Turnip customizado, Adreno6xx/7xx/8xx, outros
 somente se suportados). K11 trata pacing do guest; F02 trata a fila de apresentação.
 
+**Estado K11 (2026-10-02, Parcial: Impl. + Local):** o laço de VBlank do Android já usava prazos
+absolutos; a decisão saiu para `xenia/gpu/vblank_pacer.h` (relógio do guest, separado do
+presenter/FG) com testes de relógio controlável em `tools/test-native-logic.sh`: cadência exata
+(resto carregado: 60 VBlanks por segundo do guest), atraso sem deslocar a fase, travada > 1
+intervalo = um VBlank e recomeço (sem rajada), troca de taxa a partir do último prazo, relógio para
+trás e taxa zero sem travar; linha de log a cada recomeço em potência de 2. Pausa: `MarkVblank` já
+não entrega VBlank pausado e o recomeço evita rajada na volta. Falta: A/B no aparelho (roteiro 37)
+e ligar timers/áudio do guest à mesma referência, se o A/B mostrar desvio.
+
 ## 11. O que não entra como funcionalidade Xbox
 
 - Runtime Proton/Wine/Steam/FEX/Box64, proot, Flatpak, gamescope e desktop LXQt:
