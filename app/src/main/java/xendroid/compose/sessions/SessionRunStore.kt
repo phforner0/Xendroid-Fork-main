@@ -37,6 +37,9 @@ data class SessionRun(
     val driver: xendroid.compose.driver.DriverIdentity? = null,
     /** Latest summary written by the host (heartbeat or finish); absent for older runs. */
     val performance: RunPerformance? = null,
+    /** L06: the XUID of P1's profile when the title started (the library names it); never
+     *  part of a shared report. */
+    val profileXuid: String? = null,
 ) {
     /** Time the title was actually running; null until it started. */
     val playedMs: Long? get() = runningAt?.let { start -> ((endedAt ?: lastSeenAt) - start).coerceAtLeast(0) }
@@ -70,6 +73,7 @@ class SessionRunStore(
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val idPattern = Regex("[0-9a-f-]{36}")
     private val titlePattern = Regex("[0-9A-F]{8}")
+    private val xuidPattern = Regex("[0-9A-F]{16}")
 
     private fun file(runId: String): File {
         require(idPattern.matches(runId)) { "Invalid run id" }
@@ -118,12 +122,15 @@ class SessionRunStore(
 
     /** First observation of the running title (from the core). Later calls only refresh lastSeenAt
      * and fill in the driver if it was not known yet. */
-    fun running(runId: String, titleId: String, driver: xendroid.compose.driver.DriverIdentity? = null): SessionRun? =
+    fun running(runId: String, titleId: String, driver: xendroid.compose.driver.DriverIdentity? = null,
+                profileXuid: String? = null): SessionRun? =
         transition(runId) { run, now ->
             require(titlePattern.matches(titleId)) { "Invalid Title ID" }
+            val profile = profileXuid?.trim()?.uppercase()?.takeIf { xuidPattern.matches(it) }
             if (run.state == RunState.BEGIN) {
-                run.copy(state = RunState.RUNNING, titleId = titleId, runningAt = now, lastSeenAt = now, driver = driver)
-            } else run.copy(lastSeenAt = now, driver = run.driver ?: driver)
+                run.copy(state = RunState.RUNNING, titleId = titleId, runningAt = now, lastSeenAt = now, driver = driver,
+                    profileXuid = profile)
+            } else run.copy(lastSeenAt = now, driver = run.driver ?: driver, profileXuid = run.profileXuid ?: profile)
         }
 
     fun heartbeat(runId: String, performance: RunPerformance? = null,

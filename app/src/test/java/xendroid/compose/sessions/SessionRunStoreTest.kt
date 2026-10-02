@@ -19,7 +19,10 @@ class SessionRunStoreTest {
         val run = store.begin("library", "/storage/x/Forza.iso", "77011a0c+local.abc", pid = 42)
         assertEquals(RunState.BEGIN, run.state)
         now += 5_000
-        assertEquals(RunState.RUNNING, store.running(run.runId, "4D5309C9")!!.state)
+        assertEquals(RunState.RUNNING, store.running(run.runId, "4D5309C9", profileXuid = " e03000002b7c4d1a ")!!.state)
+        assertEquals("E03000002B7C4D1A", store.runs().single().profileXuid)          // L06: P1 when it started
+        store.running(run.runId, "4D5309C9", profileXuid = "E030000000000099")
+        assertEquals("E03000002B7C4D1A", store.runs().single().profileXuid)          // the first one stays
         now += 60_000
         store.heartbeat(run.runId)
         now += 1_000

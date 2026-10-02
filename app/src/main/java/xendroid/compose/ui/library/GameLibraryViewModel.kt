@@ -155,6 +155,8 @@ class GameLibraryViewModel(
         val patchesTotal: Int? = null,
         /** C04: the catalog's results for the game; null when this build has no catalog. */
         val catalog: CatalogView? = null,
+        /** L06: the gamertag [lastRun] started with as P1, while that profile still exists. */
+        val lastProfile: String? = null,
     )
 
     /** C04: the kept catalog copy (null = never downloaded) and the game's results by setup. */
@@ -188,9 +190,13 @@ class GameLibraryViewModel(
                     val patches = runCatching { patchesOf(title) }
                         .onFailure { Log.w("GameLibrary", "Reading patches failed", it) }.getOrNull()
                     val gpu = lastRun?.driver?.gpu?.ifBlank { null } ?: EmulatorRuntime.gpuDeviceName
+                    val lastProfile = lastRun?.profileXuid?.let { xuid ->
+                        runCatching { localProfiles() }.getOrDefault(emptyList())
+                            .firstOrNull { it.xuid.equals(xuid, ignoreCase = true) }?.gamertag?.ifBlank { null }
+                    }
                     GameDetails(game.identityKey, title, compatibilityStore.get(title), lastRun,
                         lastRun?.let { runs.events(it.runId) }, content?.first, content?.second,
-                        patches?.first, patches?.second, catalogView(title, gpu, catalogMessage))
+                        patches?.first, patches?.second, catalogView(title, gpu, catalogMessage), lastProfile)
                 }.onFailure { Log.w("GameLibrary", "Reading game details failed", it) }.getOrNull()
             }
             if (loaded != null && _details.value?.identityKey == game.identityKey) _details.value = loaded

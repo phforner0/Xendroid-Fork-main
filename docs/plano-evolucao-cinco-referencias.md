@@ -453,8 +453,8 @@ tira da lista sem apagar tempo de jogo, relatos, saves ou capa, e o jogo volta s
 reaparecer. Coleções do usuário (`data/GameCollections.kt`) na ficha e como filtro, também no
 pacote do L08; a ficha mostra TU instalada, número de DLC e patches ligados, ao lado de título,
 discos, Title/Media ID, último resultado, linha do tempo, saves, diagnóstico, atalho e
-favorito. Falta: perfil usado por jogo (depende de U11) e validação no aparelho (roteiros 20
-e 21).
+favorito. Lote 12p: o perfil usado por jogo ("Jogado por último como …", gravado no run e
+fora do relatório compartilhado). Falta: validação no aparelho (roteiros 20 e 21).
 
 **Estado L05 (2026-10-02, v1 local, Impl. + Local):** capa por Title ID em `files/covers`
 (`data/CoverStore.kt`), fora do cache e do URI: cópia do ícone do próprio jogo feita na

@@ -19,6 +19,7 @@ class RunReportTest {
         pid = 4242, startedAt = 1_000, titleId = "4D5309C9", runningAt = 2_000, lastSeenAt = 62_000, endedAt = 62_000,
         endReason = "fatal error: could not open /storage/emulated/0/Android/data/x/cache.bin",
         performance = RunPerformance(fpsHistogram = List(31) { if (it == 30) 60 else 0 }),
+        profileXuid = "E03000002B7C4D1A",
     )
     private val events = RunEventLog(events = listOf(
         RunEvent(0, "boot", "run started"),
@@ -33,6 +34,7 @@ class RunReportTest {
         assertEquals("[email] wrote to [storage-path]", report.events!!.events[1].detail)
         assertEquals("ok, ask me at [email]", report.compatibility.single().note)
         assertEquals("4D5309C9", report.run.titleId)
+        assertEquals(null, report.run.profileXuid)                          // who played stays on the device
         // Unknown formats and content URIs keep no name either.
         assertEquals("[game file]", RunReports.build(run.copy(gamePath = "/x/game"), null, emptyList(), device, 0).run.gamePath)
         assertEquals("[game file].zar", RunReports.build(run.copy(

@@ -271,6 +271,9 @@ com comandos e resultados exatos.
    da biblioteca e atualizar: continua na coleção. "Delete" na coleção: confirma, a coleção some
    e os jogos continuam. Exportar o pacote de dados (Configurações), apagar a coleção, importar:
    a prévia diz "Collections: 1 new, …" e ela volta.
+   Lote 12p: jogar com o perfil A ("Play as"), voltar à biblioteca: a ficha diz "Last played as A"
+   (pt-BR: "Jogado por último como A"); jogar com B: passa a dizer B; apagar o perfil B: a linha
+   some. "Share last run report" desse jogo não contém o XUID do perfil.
 22. Lote 9 — varredura (L09): (a) com uma biblioteca grande (centenas de jogos), fechar o app
    pelo multitarefa e abrir: a grade aparece na hora com a lista anterior e o indicador de
    atualização; a lista final substitui sem pular. (b) Limpar o cache do app e abrir: aparece

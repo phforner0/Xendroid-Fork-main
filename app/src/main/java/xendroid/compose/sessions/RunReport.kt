@@ -55,6 +55,7 @@ object RunReports {
             device = device,
             run = run.copy(
                 gamePath = "[game file]" + (format?.let { ".$it" } ?: ""),
+                profileXuid = null,
                 endReason = run.endReason?.let(LogRedactor::redact),
             ),
             events = events?.copy(events = events.events.map { it.copy(detail = LogRedactor.redact(it.detail)) }),

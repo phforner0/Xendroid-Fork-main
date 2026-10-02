@@ -734,6 +734,7 @@ fun GameLibraryScreen(
                                         listOfNotNull(media, disc).joinToString("") { " · $it" })
                                     if (report.note.isNotBlank()) Text(report.note)
                                 }
+                                info.lastProfile?.let { Text(stringResource(R.string.lib_last_profile, it)) }
                                 info.lastRun?.let { run ->
                                     Text("Last run: ${describeRun(run)}")
                                     run.performance?.let { perf ->

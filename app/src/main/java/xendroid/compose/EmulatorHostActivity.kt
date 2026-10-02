@@ -698,6 +698,15 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (slot != null && slot > 0) session.setSlotConnected(slot, true, "Controller ${slot + 1}")
     }
 
+    /** L06: P1's profile as the config names it (the core signed it in at boot); null = nobody. */
+    private fun firstPlayerXuid(): String? {
+        val handle = xendroid.compose.settings.ConfigStore(applicationContext).openLiveSnapshot()
+        return try {
+            handle.getString(xendroid.compose.data.ProfileSlots.SECTION, xendroid.compose.data.ProfileSlots.key(0))
+                ?.trim()?.ifEmpty { null }
+        } finally { handle.closeDiscard() }
+    }
+
     /** The player a device plays as; anything not assigned (keyboards, unknown devices) is P1, as before. */
     private fun playerSlot(deviceId: Int): Int =
         controllerKeys[deviceId]?.let { controllerSlots.slotOf(it) } ?: 0
@@ -1078,7 +1087,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         if (activeTitle != null) lifecycleScope.launch(Dispatchers.IO) {
                                             runCatching { SessionLogs.noteTitle(activeTitle, BuildConfig.VERSION_NAME) }
                                                 .onFailure { Log.w(TAG, "Writing diagnostic session context failed", it) }
-                                            if (activeRun != null) runCatching { xendroid.compose.sessions.SessionRuns.store().running(activeRun, activeTitle, driver) }
+                                            val profile = runCatching { firstPlayerXuid() }
+                                                .onFailure { Log.w(TAG, "Reading P1's profile failed", it) }.getOrNull()
+                                            if (activeRun != null) runCatching { xendroid.compose.sessions.SessionRuns.store().running(activeRun, activeTitle, driver, profile) }
                                                 .onFailure { Log.w(TAG, "Recording the running title failed", it) }
                                         }
                                         // C07: the vblank cap this run booted with, for comparisons; U01: the

@@ -354,7 +354,7 @@
     <string name="set_achievements">Show achievement notification</string>
     <string name="set_achievements_desc">Shows a pop-up notification on screen when you unlock an achievement</string>
     <string name="set_language">User language</string>
-    <string name="set_language_desc">Console language ID reported to games (1=English, 2=Japanese, 3=German, ...)</string>
+    <string name="set_language_desc">Console language ID reported to games (1=English, 2=Japanese, 3=German, …)</string>
     <string name="set_country">User country</string>
     <string name="set_country_desc">Console country/region ID reported to games</string>
     <string name="set_mute">Mute</string>
@@ -487,7 +487,7 @@
     <string name="pf_avatar">Avatar</string>
     <string name="pf_pick_avatar">Pick avatar</string>
     <string name="pf_gamertag">Gamertag</string>
-    <string name="pf_gamertag_rule">1-15 letters/digits; must start with a letter.</string>
+    <string name="pf_gamertag_rule">1–15 letters/digits; must start with a letter.</string>
     <string name="pf_language">Language</string>
     <string name="pf_region">Region</string>
     <string name="pf_other_players">Other players</string>
@@ -502,7 +502,7 @@
     <string name="pf_ask_off">Games sign in as the active profile.</string>
     <string name="pf_no_emulator">Emulator not loaded.</string>
     <string name="pf_read_failed">Couldn\'t read profiles.</string>
-    <string name="pf_bad_gamertag">Enter a valid gamertag (1-15 characters).</string>
+    <string name="pf_bad_gamertag">Enter a valid gamertag (1–15 characters).</string>
     <string name="pf_creating">Creating profile…</string>
     <string name="pf_create_failed_short">Couldn\'t create the profile.</string>
     <string name="pf_created">Created “%1$s”.</string>
@@ -946,4 +946,5 @@
     <string name="ct_no_slot">In a game started now: no free player (P1–P4 taken)</string>
     <string name="ge_camera_speed">Touch camera speed: %1$d%%</string>
     <string name="ge_camera_area">Touch camera area: right %1$d%% of the screen</string>
+    <string name="lib_last_profile">Last played as %1$s</string>
 </resources>
