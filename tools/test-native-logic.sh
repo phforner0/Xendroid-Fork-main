@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Pure-logic native tests (no Vulkan): presentation policy, frame-generation
-# schedule, the pipeline cache file store and the guest vblank pacer. They need
-# only a C++20 compiler.
+# schedule, the pipeline cache file store, the guest vblank pacer and the native
+# crash record (written from a real fault handler). They need only a C++20 compiler.
 #
 # Compiler: $CXX (default c++). On a host without one (no libstdc++/glibc headers,
 # as in a bare WSL), set XENDROID_NDK to an NDK root: the tests are then built as
@@ -15,13 +15,18 @@ test="$root/emulator-core/src/test/cpp"
 if [[ -n "${XENDROID_NDK:-}" ]]; then
     cxx=("$XENDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android29-clang++" -static)
     export TMPDIR="${TMPDIR:-/tmp}"
+    dl=()
 else
     cxx=("${CXX:-c++}")
+    dl=(-ldl)   # dladdr/dl_iterate_phdr before glibc 2.34
 fi
 flags=(-std=c++20 -O1 -Wall -I "$cpp" -I "$cpp/xenia" -I "$cpp/xenia/src" -I "$test/stubs")
 for name in presentation_runtime_test pipeline_cache_file_test vblank_pacer_test; do
     "${cxx[@]}" "${flags[@]}" "$test/$name.cc" -o "$build/$name"
 done
+# C01: the crash record is a source file of its own (signal-handler code).
+"${cxx[@]}" "${flags[@]}" "$test/crash_record_test.cc" "$cpp/xe_crash_record.cpp" -o "$build/crash_record_test" "${dl[@]}"
 "$build/presentation_runtime_test"
 "$build/pipeline_cache_file_test" "$build/pipeline-cache-scratch"
 "$build/vblank_pacer_test"
+"$build/crash_record_test" "$build/crash-record-scratch"

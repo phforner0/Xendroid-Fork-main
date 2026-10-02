@@ -38,6 +38,10 @@ constexpr size_t kMaxHandlerCount = 8;
 // Executed in order.
 std::pair<ExceptionHandler::Handler, void*> handlers_[kMaxHandlerCount];
 
+// Told about a fault no handler resolved, before the previous handler runs.
+static std::atomic<ExceptionHandler::UnhandledFaultHook> unhandled_fault_hook_{
+    nullptr};
+
 static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
                                      void* signal_context) {
   if (signal_number == SIGSEGV &&
@@ -412,6 +416,20 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
   // the kernel re-execute the faulting instruction, which faults again
   // immediately -> an infinite fault->handler->return loop that pegs the thread
   // at 100% CPU and looks like a hang / black screen instead of a crash.
+  if (ExceptionHandler::UnhandledFaultHook hook =
+          unhandled_fault_hook_.load(std::memory_order_acquire)) {
+#if XE_ARCH_AMD64
+    const uintptr_t pc = uintptr_t(thread_context.rip);
+#elif XE_ARCH_ARM64
+    const uintptr_t pc = uintptr_t(thread_context.pc);
+#else
+    const uintptr_t pc = 0;
+#endif
+    hook(signal_number, signal_info ? signal_info->si_code : 0,
+         reinterpret_cast<uintptr_t>(signal_info ? signal_info->si_addr
+                                                 : nullptr),
+         pc);
+  }
   const struct sigaction* previous_handler = nullptr;
   switch (signal_number) {
     case SIGSEGV:
@@ -443,6 +461,10 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
   // faulting instruction terminates the process at the real fault site,
   // producing an accurate tombstone.
   signal(signal_number, SIG_DFL);
+}
+
+void ExceptionHandler::SetUnhandledFaultHook(UnhandledFaultHook hook) {
+  unhandled_fault_hook_.store(hook, std::memory_order_release);
 }
 
 void ExceptionHandler::Install(Handler fn, void* data) {

@@ -455,3 +455,11 @@ com comandos e resultados exatos.
    segundo fica desabilitado. Num jogo com vibração e os dois controles como P1/P2: só o P1 vibra; o
    menu (Controls) mostra "… · P1 (High), P2 (Off)". Mudar o padrão no menu não altera esses dois.
    Desconectar e reconectar o primeiro: continua High.
+42. Lote 12n — linha do crash nativo (C01): build debug com um jogo rodando, provocar a falha com
+   `adb shell run-as xendroid.compose.debug kill -SEGV $(adb shell pidof xendroid.compose.debug:emu)`
+   (no release, `xendroid.compose`/`xendroid.compose:emu` não aceitam run-as: usar um crash real). O jogo
+   fecha com tombstone do Android; ao voltar à biblioteca, a ficha mostra "Last run: failed …: native
+   crash: SIGSEGV (code 0) at 0x…, thread '…', pc 0x…" (o kill vem de fora, então o código é 0 e o pc
+   costuma estar fora do libe.so). Num crash real dentro do core, o "pc libe.so+0x…" da linha bate com o
+   "#00 pc …  …/libe.so" do tombstone. Um erro fatal do core (ex.: GPU device lost) continua com as
+   palavras do core ("fatal error: …"), não com a linha do crash.

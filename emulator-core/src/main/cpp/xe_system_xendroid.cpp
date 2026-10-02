@@ -14,7 +14,9 @@
 
 #include <unistd.h>
 
+#include "xe_crash_record.h"
 #include "xe_fatal_report.h"
+#include "xenia/base/exception_handler.h"
 #include "xenia/base/system.h"
 
 namespace xe {
@@ -24,6 +26,10 @@ namespace xe {
     }  // namespace
 
     void SetFatalReportPath(std::string path) {
+        // C01: a native crash nobody handled leaves its line in the same file
+        // (xe_crash_record.h), unless a fatal error's message is already there.
+        SetCrashRecordPath(path.c_str());
+        ExceptionHandler::SetUnhandledFaultHook(path.empty() ? nullptr : &RecordNativeCrash);
         std::lock_guard<std::mutex> lock(fatal_report_mutex);
         fatal_report_path = std::move(path);
     }

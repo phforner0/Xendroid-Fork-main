@@ -189,7 +189,8 @@ class SessionRunStore(
                 process.crashed -> RunState.FAILED
                 else -> RunState.INTERRUPTED
             }
-            val reason = fatal?.let { "fatal error: $it" } ?: run.endReason ?: process.reason
+            // A native crash's own line (xe_crash_record.h) already says what it is.
+            val reason = fatal?.let { if (it.startsWith(NATIVE_CRASH)) it else "fatal error: $it" } ?: run.endReason ?: process.reason
                 ?: "process ended without finishing the run"
             run.copy(state = state, endedAt = run.lastSeenAt, endReason = reason).also(::write)
         }
@@ -222,6 +223,7 @@ class SessionRunStore(
     private companion object {
         const val EVENTS = ".events"
         const val FATAL = ".fatal"
+        const val NATIVE_CRASH = "native crash: "
     }
 }
 

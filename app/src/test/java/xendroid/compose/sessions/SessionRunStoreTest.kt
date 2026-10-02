@@ -72,12 +72,19 @@ class SessionRunStoreTest {
         store.ending(exiting.runId, "user exit")
         store.fatalReportFile(exiting.runId).writeText("x".repeat(500))
         val plain = store.begin("library", "/c.iso", "v", pid = 300)
+        // C01: the line the fault handler left for a crash nobody handled (xe_crash_record.h).
+        val crashed = store.begin("library", "/d.iso", "v", pid = 500)
+        store.fatalReportFile(crashed.runId).writeText(
+            "native crash: SIGSEGV (SEGV_MAPERR) at 0x0000000000000010, thread 'GPU Commands', pc libe.so+0x1a2b3c\n")
         val finalized = store.reconcile { ProcessFate(alive = false, crashed = true, reason = "native crash") }.associateBy { it.pid }
         assertEquals(RunState.FAILED, finalized.getValue(100).state)
         assertEquals("fatal error: Graphics device lost (probably due to an internal error)", finalized.getValue(100).endReason)
         assertEquals(RunState.FAILED, finalized.getValue(200).state)
         assertEquals("fatal error: " + "x".repeat(180), finalized.getValue(200).endReason)
         assertEquals("native crash", finalized.getValue(300).endReason)    // no report: the platform's reason
+        assertEquals(RunState.FAILED, finalized.getValue(500).state)
+        assertEquals("native crash: SIGSEGV (SEGV_MAPERR) at 0x0000000000000010, thread 'GPU Commands', pc libe.so+0x1a2b3c",
+            finalized.getValue(500).endReason)
         assertThrows(IllegalArgumentException::class.java) { store.fatalReportFile("../x") }
         assertEquals(plain.runId, finalized.getValue(300).runId)
     }

@@ -336,8 +336,11 @@ Testes JVM cobrem finalização concorrente, reconciliação e poda.
   ocultados porque o emulador atrasou, mais xruns do stream AAudio) no resumo e como
   rajadas na linha do tempo; erro fatal do core (ex.: GPU device lost, que aborta sem
   UI) gravado em `<run>.fatal` antes do abort e usado como causa do run na
-  reconciliação. Falta: despejo do anel nativo após crash por sinal (SIGSEGV etc. ficam
-  como "native crash" com o tombstone do Android nos logs de sessão).
+  reconciliação. Lote 12n: uma falha nativa que nenhum tratador do core resolve deixa no
+  `.fatal` a linha "native crash: SIGSEGV (…) at …, thread '…', pc libe.so+0x…", gravada de
+  dentro do tratador (async-signal-safe, sem sobrescrever o erro fatal do core) e usada como
+  motivo do run. Falta: um anel de eventos nativos para despejar junto (hoje só o anel do host)
+  e a validação no aparelho (roteiro 42).
 - **C06 v1 (lote 4):** "Share last run report" na ficha do jogo — prévia do conteúdo,
   ZIP com JSON + linha do tempo, redação de caminhos/contas/endereços, caminho do jogo
   reduzido ao formato, sem logs; sai só pela folha de compartilhamento escolhida pelo
