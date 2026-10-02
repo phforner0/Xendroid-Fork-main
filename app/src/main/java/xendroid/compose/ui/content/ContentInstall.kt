@@ -1,5 +1,8 @@
 package xendroid.compose.ui.content
 
+import android.content.Context
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,29 +28,28 @@ sealed interface ContentInstallState {
 }
 
 /** Native install_content status -> human message. Shared by both VMs. */
-fun installReasonFor(status: Int): String = when (status) {
-    -1 -> "Emulator not loaded."
-    0xC000000D.toInt() -> "The package is corrupt or unsupported."   // X_STATUS_INVALID_PARAMETER
-    0xC0000022.toInt() -> "Couldn't write to the content folder."    // X_STATUS_ACCESS_DENIED
-    0xC000007F.toInt() -> "Not enough free space to install."        // X_STATUS_DISK_FULL
-    else -> "Install failed (0x${status.toUInt().toString(16)})."
+fun installReasonFor(context: Context, status: Int): String = when (status) {
+    -1 -> context.getString(R.string.pf_no_emulator)
+    0xC000000D.toInt() -> context.getString(R.string.ci_corrupt)          // X_STATUS_INVALID_PARAMETER
+    0xC0000022.toInt() -> context.getString(R.string.ci_write_failed)     // X_STATUS_ACCESS_DENIED
+    0xC000007F.toInt() -> context.getString(R.string.ci_disk_full)        // X_STATUS_DISK_FULL
+    else -> context.getString(R.string.ci_failed_code, status.toUInt().toString(16))
 }
 
 /** Free-space pre-flight against the volume [target] lives on; 1.1x mirrors the native
  *  guard. Null when it fits or the size/free space is unknown (defer to the native guard). */
-fun storageShortfallOn(target: File, requiredBytes: Long): String? {
+fun storageShortfallOn(context: Context, target: File, requiredBytes: Long): String? {
     if (requiredBytes <= 0L) return null
     val probe = if (target.exists()) target else (target.parentFile ?: target)
     val free = probe.usableSpace.takeIf { it > 0L } ?: return null
     val needed = (requiredBytes * 11) / 10
     if (free >= needed) return null
-    return "Not enough free space: this needs about ${formatBytes(needed)} " +
-        "but only ${formatBytes(free)} is free. Free up space and try again."
+    return context.getString(R.string.ci_shortfall, formatBytes(needed), formatBytes(free))
 }
 
 /** Free-space check for the content root (the native install volume), shared by both VMs. */
-fun storageShortfall(requiredBytes: Long): String? =
-    storageShortfallOn(ContentPaths.contentRoot(), requiredBytes)
+fun storageShortfall(context: Context, requiredBytes: Long): String? =
+    storageShortfallOn(context, ContentPaths.contentRoot(), requiredBytes)
 
 private fun formatBytes(b: Long): String {
     if (b < 1024) return "$b B"
@@ -76,10 +78,10 @@ fun ContentInstallDialogs(
                             progress = { s.progress },
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        Text("${(s.progress * 100).toInt()}%  ·  this may take a while.")
+                        Text(stringResource(R.string.lib_compress_progress, (s.progress * 100).toInt()))
                     } else {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        Text("This may take a while.")
+                        Text(stringResource(R.string.lib_may_take_while))
                     }
                 }
             },
@@ -87,26 +89,26 @@ fun ContentInstallDialogs(
         )
         is ContentInstallState.ConfirmOverwrite -> AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("Already installed") },
-            text = { Text("“${s.displayName}” is already installed. Overwrite it?") },
+            title = { Text(stringResource(R.string.ci_already_title)) },
+            text = { Text(stringResource(R.string.ci_already_text, s.displayName)) },
             confirmButton = {
                 TextButton(onClick = { onConfirmOverwrite(s.srcPath, s.displayName) }) {
-                    Text("Overwrite")
+                    Text(stringResource(R.string.ci_overwrite))
                 }
             },
-            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
         )
         is ContentInstallState.Done -> AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("Done") },
+            title = { Text(stringResource(R.string.common_done)) },
             text = { Text(s.message) },
-            confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
+            confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_ok)) } },
         )
         is ContentInstallState.Failed -> AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("Couldn't complete") },
+            title = { Text(stringResource(R.string.pf_failed)) },
             text = { Text(s.message) },
-            confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
+            confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_ok)) } },
         )
         ContentInstallState.Idle -> {}
     }

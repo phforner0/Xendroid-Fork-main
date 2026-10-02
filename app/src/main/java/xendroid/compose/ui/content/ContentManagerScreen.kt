@@ -1,5 +1,7 @@
 package xendroid.compose.ui.content
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -48,19 +50,19 @@ fun ContentManagerScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (gameName.isNotBlank()) "Content · $gameName" else "Content",
+                        if (gameName.isNotBlank()) stringResource(R.string.cm_title_game, gameName) else stringResource(R.string.cm_title),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { picking = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "Install content")
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.lib_menu_install_content))
                     }
                 },
             )
@@ -68,7 +70,7 @@ fun ContentManagerScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             val trashCount = (listState as? ListState.Loaded)?.trashed?.size ?: 0
-            val tabs = listOf("DLC", "Updates", if (trashCount > 0) "Trash ($trashCount)" else "Trash")
+            val tabs = listOf("DLC", stringResource(R.string.cm_tab_updates), if (trashCount > 0) stringResource(R.string.cm_tab_trash_n, trashCount) else stringResource(R.string.cm_tab_trash))
             TabRow(selectedTabIndex = selectedTab) {
                 tabs.forEachIndexed { index, label ->
                     Tab(
@@ -88,8 +90,8 @@ fun ContentManagerScreen(
                         val items = if (selectedTab == 0) s.dlc else s.updates
                         if (items.isEmpty()) {
                             Text(
-                                if (selectedTab == 0) "No DLC installed."
-                                else "No title updates installed.",
+                                if (selectedTab == 0) stringResource(R.string.cm_no_dlc)
+                                else stringResource(R.string.cm_no_tu),
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.padding(24.dp),
                             )
@@ -111,43 +113,40 @@ fun ContentManagerScreen(
     when (val s = deleteState) {
         is DeleteState.Confirm -> AlertDialog(
             onDismissRequest = vm::dismiss,
-            title = { Text("Remove content?") },
+            title = { Text(stringResource(R.string.cm_remove_title)) },
             text = {
-                Text("Move “${s.item.displayName}” to the trash? The game stops seeing it; you can restore " +
-                    "it from the Trash tab, or delete it for good there.")
+                Text(stringResource(R.string.cm_remove_text, s.item.displayName))
             },
-            confirmButton = { TextButton(onClick = { vm.delete(s.item) }) { Text("Move to trash") } },
-            dismissButton = { TextButton(onClick = vm::dismiss) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { vm.delete(s.item) }) { Text(stringResource(R.string.pf_trash)) } },
+            dismissButton = { TextButton(onClick = vm::dismiss) { Text(stringResource(R.string.common_cancel)) } },
         )
         is DeleteState.TrashFull -> AlertDialog(
             onDismissRequest = vm::dismiss,
-            title = { Text("The trash is full") },
+            title = { Text(stringResource(R.string.cm_trash_full)) },
             text = {
-                Text("The trash holds ${humanReadableSize(s.used)} of ${humanReadableSize(s.quota)}, so " +
-                    "“${s.item.displayName}” does not fit. Empty the trash (every game's) first, or delete this " +
-                    "one for good now: that cannot be undone.")
+                Text(stringResource(R.string.cm_trash_full_text, humanReadableSize(s.used), humanReadableSize(s.quota), s.item.displayName))
             },
-            confirmButton = { TextButton(onClick = { vm.deleteForGood(s.item) }) { Text("Delete for good") } },
+            confirmButton = { TextButton(onClick = { vm.deleteForGood(s.item) }) { Text(stringResource(R.string.cm_delete_for_good)) } },
             dismissButton = {
                 Row {
-                    TextButton(onClick = vm::requestEmptyTrash) { Text("Empty trash") }
-                    TextButton(onClick = vm::dismiss) { Text("Cancel") }
+                    TextButton(onClick = vm::requestEmptyTrash) { Text(stringResource(R.string.cm_empty_trash)) }
+                    TextButton(onClick = vm::dismiss) { Text(stringResource(R.string.common_cancel)) }
                 }
             },
         )
         is DeleteState.ConfirmPurge -> AlertDialog(
             onDismissRequest = vm::dismiss,
-            title = { Text("Delete for good?") },
-            text = { Text("“${s.entry.displayName}” (${humanReadableSize(s.entry.bytes)}) will be deleted. This cannot be undone.") },
-            confirmButton = { TextButton(onClick = { vm.purge(s.entry) }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = vm::dismiss) { Text("Cancel") } },
+            title = { Text(stringResource(R.string.cm_delete_for_good_title)) },
+            text = { Text(stringResource(R.string.cm_delete_for_good_text, s.entry.displayName, humanReadableSize(s.entry.bytes))) },
+            confirmButton = { TextButton(onClick = { vm.purge(s.entry) }) { Text(stringResource(R.string.common_delete)) } },
+            dismissButton = { TextButton(onClick = vm::dismiss) { Text(stringResource(R.string.common_cancel)) } },
         )
         DeleteState.ConfirmEmptyTrash -> AlertDialog(
             onDismissRequest = vm::dismiss,
-            title = { Text("Empty the trash?") },
-            text = { Text("Every package in the trash, of every game, will be deleted. This cannot be undone.") },
-            confirmButton = { TextButton(onClick = { vm.purge(null) }) { Text("Empty trash") } },
-            dismissButton = { TextButton(onClick = vm::dismiss) { Text("Cancel") } },
+            title = { Text(stringResource(R.string.cm_empty_title)) },
+            text = { Text(stringResource(R.string.cm_empty_text)) },
+            confirmButton = { TextButton(onClick = { vm.purge(null) }) { Text(stringResource(R.string.cm_empty_trash)) } },
+            dismissButton = { TextButton(onClick = vm::dismiss) { Text(stringResource(R.string.common_cancel)) } },
         )
         DeleteState.Idle -> Unit
     }
@@ -164,32 +163,31 @@ private fun TrashList(
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             ListItem(
-                headlineContent = { Text("Trash: ${humanReadableSize(state.trashUsed)} of ${humanReadableSize(state.trashQuota)}") },
+                headlineContent = { Text(stringResource(R.string.cm_trash_usage, humanReadableSize(state.trashUsed), humanReadableSize(state.trashQuota))) },
                 supportingContent = {
-                    Text("Removed DLC and title updates wait here until you restore them or delete them for good. " +
-                        "Nothing is deleted on its own.")
+                    Text(stringResource(R.string.cm_trash_note))
                 },
                 trailingContent = if (state.trashUsed > 0) {
-                    { TextButton(onClick = onEmpty) { Text("Empty") } }
+                    { TextButton(onClick = onEmpty) { Text(stringResource(R.string.cm_empty)) } }
                 } else null,
             )
             HorizontalDivider()
         }
         if (state.trashed.isEmpty()) {
-            item { Text("Nothing of this game is in the trash.", Modifier.padding(24.dp)) }
+            item { Text(stringResource(R.string.cm_trash_none), Modifier.padding(24.dp)) }
         }
         items(state.trashed, key = { it.id }) { entry ->
             ListItem(
                 headlineContent = { Text(entry.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 supportingContent = {
-                    Text((if (entry.contentType == xendroid.compose.core.ContentPaths.TU_CONTENT_TYPE) "Title update" else "DLC") +
-                        " · ${humanReadableSize(entry.bytes)} · removed " +
-                        java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(entry.deletedAt)))
+                    Text(stringResource(R.string.cm_trash_entry, if (entry.contentType == xendroid.compose.core.ContentPaths.TU_CONTENT_TYPE) "Title update" else "DLC",
+                        humanReadableSize(entry.bytes),
+                        java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(entry.deletedAt))))
                 },
                 trailingContent = {
                     Row {
-                        TextButton(onClick = { onRestore(entry) }) { Text("Restore") }
-                        TextButton(onClick = { onPurge(entry) }) { Text("Delete") }
+                        TextButton(onClick = { onRestore(entry) }) { Text(stringResource(R.string.prof_restore)) }
+                        TextButton(onClick = { onPurge(entry) }) { Text(stringResource(R.string.common_delete)) }
                     }
                 },
             )
@@ -212,7 +210,7 @@ private fun ContentList(
                 supportingContent = { Text(humanReadableSize(item.size)) },
                 trailingContent = {
                     IconButton(onClick = { onDelete(item) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Remove")
+                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_remove))
                     }
                 },
             )

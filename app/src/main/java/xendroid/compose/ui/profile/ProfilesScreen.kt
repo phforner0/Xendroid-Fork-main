@@ -1,5 +1,7 @@
 package xendroid.compose.ui.profile
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -76,15 +78,15 @@ fun ProfilesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Profiles") },
+                title = { Text(stringResource(R.string.lib_menu_profiles)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { editing = Editing.Create }) {
-                        Icon(Icons.Default.Add, contentDescription = "Create profile")
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.pf_create))
                     }
                 },
             )
@@ -96,7 +98,7 @@ fun ProfilesScreen(
                 is ListState.Error -> Text(s.message, Modifier.padding(24.dp))
                 is ListState.Loaded ->
                     if (s.profiles.isEmpty() && trash.isEmpty()) {
-                        Text("No profiles yet. Tap + to create one.",
+                        Text(stringResource(R.string.pf_none),
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.padding(24.dp))
                     } else {
@@ -139,25 +141,24 @@ fun ProfilesScreen(
     purgeTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { purgeTarget = null },
-            title = { Text("Remove permanently?") },
-            text = { Text("The trashed profile ${target.xuid} and every save stored with it will be " +
-                "deleted from this device. This cannot be undone.") },
+            title = { Text(stringResource(R.string.pf_purge_title)) },
+            text = { Text(stringResource(R.string.pf_purge_text, target.xuid)) },
             confirmButton = {
-                TextButton(onClick = { purgeTarget = null; vm.purge(target.id) }) { Text("Remove permanently") }
+                TextButton(onClick = { purgeTarget = null; vm.purge(target.id) }) { Text(stringResource(R.string.pf_purge)) }
             },
-            dismissButton = { TextButton(onClick = { purgeTarget = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { purgeTarget = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 
     when (val s = opState) {
         is OpState.ConfirmDelete -> AlertDialog(
             onDismissRequest = vm::dismiss,
-            title = { Text("Move profile to the trash?") },
+            title = { Text(stringResource(R.string.pf_trash_title)) },
             text = { Text(deleteSummaryText(s.entry, s.summary)) },
             confirmButton = {
-                TextButton(onClick = { vm.delete(s.entry.xuid) }) { Text("Move to trash") }
+                TextButton(onClick = { vm.delete(s.entry.xuid) }) { Text(stringResource(R.string.pf_trash)) }
             },
-            dismissButton = { TextButton(onClick = vm::dismiss) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = vm::dismiss) { Text(stringResource(R.string.common_cancel)) } },
         )
         is OpState.Busy -> AlertDialog(
             onDismissRequest = {},
@@ -167,31 +168,29 @@ fun ProfilesScreen(
         )
         is OpState.Done -> AlertDialog(
             onDismissRequest = vm::dismiss,
-            title = { Text("Done") },
+            title = { Text(stringResource(R.string.common_done)) },
             text = { Text(s.message) },
-            confirmButton = { TextButton(onClick = vm::dismiss) { Text("OK") } },
+            confirmButton = { TextButton(onClick = vm::dismiss) { Text(stringResource(R.string.common_ok)) } },
         )
         is OpState.Failed -> AlertDialog(
             onDismissRequest = vm::dismiss,
-            title = { Text("Couldn't complete") },
+            title = { Text(stringResource(R.string.pf_failed)) },
             text = { Text(s.message) },
-            confirmButton = { TextButton(onClick = vm::dismiss) { Text("OK") } },
+            confirmButton = { TextButton(onClick = vm::dismiss) { Text(stringResource(R.string.common_ok)) } },
         )
         OpState.Idle -> {}
     }
 }
 
+@Composable
 private fun deleteSummaryText(entry: ProfileEntry, summary: ProfileContentSummary): String {
     val name = entry.gamertag.ifBlank { entry.xuid }
     val games = summary.gameTitles
     val megabytes = "%.1f".format(summary.bytes / (1024.0 * 1024.0))
-    val detail = if (games.isEmpty()) "It has no game saves stored on this device."
-    else "This also removes the saved data of ${games.size} game(s): " +
-        "${games.joinToString(", ") { it.titleId }} (${summary.files} files, $megabytes MB including the profile)."
-    val partial = if (summary.truncated) " The folder is very large; the totals above are partial." else ""
-    return "“$name” disappears from the profile list and from every game. $detail$partial " +
-        "Everything stays in the trash on this device until you remove it permanently, " +
-        "and can be restored from this screen."
+    val detail = if (games.isEmpty()) stringResource(R.string.pf_del_no_saves)
+    else stringResource(R.string.pf_del_saves, games.size, games.joinToString(", ") { it.titleId }, summary.files, megabytes)
+    return listOfNotNull(stringResource(R.string.pf_del_name, name), detail,
+        stringResource(R.string.pf_del_partial).takeIf { summary.truncated }, stringResource(R.string.pf_del_trash)).joinToString(" ")
 }
 
 @Composable
@@ -215,8 +214,8 @@ private fun ProfileList(
                     Text(p.gamertag.ifBlank { p.xuid },
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
-                supportingContent = (if (p.isActive) "Active · P1" else
-                    xendroid.compose.data.ProfileSlots.otherPlayerOf(slots, p.xuid)?.let { "Signs in as P$it" })
+                supportingContent = (if (p.isActive) stringResource(R.string.pf_active_p1) else
+                    xendroid.compose.data.ProfileSlots.otherPlayerOf(slots, p.xuid)?.let { stringResource(R.string.pf_signs_in_as_p, it) })
                     ?.let { label -> { Text(label) } },
                 trailingContent = { RowMenu(p, onRename, onDelete) },
                 modifier = Modifier.clickable { onSelect(p.xuid) },
@@ -226,7 +225,7 @@ private fun ProfileList(
         if (profiles.size > 1) item(key = "players") { OtherPlayersSection(profiles, slots, onPlayer) }
         if (trash.isNotEmpty()) {
             item(key = "trash-header") {
-                Text("Trash · restorable with their saves",
+                Text(stringResource(R.string.pf_trash_header),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 4.dp))
             }
@@ -234,13 +233,13 @@ private fun ProfileList(
                 ListItem(
                     headlineContent = { Text(t.xuid) },
                     supportingContent = {
-                        Text("Removed " + java.text.DateFormat.getDateTimeInstance(
-                            java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(t.deletedAt)))
+                        Text(stringResource(R.string.pf_removed_on, java.text.DateFormat.getDateTimeInstance(
+                            java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(t.deletedAt))))
                     },
                     trailingContent = {
                         Row {
-                            TextButton(onClick = { onRestore(t) }) { Text("Restore") }
-                            TextButton(onClick = { onPurge(t) }) { Text("Remove") }
+                            TextButton(onClick = { onRestore(t) }) { Text(stringResource(R.string.prof_restore)) }
+                            TextButton(onClick = { onPurge(t) }) { Text(stringResource(R.string.common_remove)) }
                         }
                     },
                 )
@@ -268,7 +267,7 @@ private fun ProfileAvatar(p: ProfileEntry) {
         if (p.isActive) {
             Icon(
                 Icons.Default.CheckCircle,
-                contentDescription = "Active",
+                contentDescription = stringResource(R.string.pf_active),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(16.dp).align(Alignment.BottomEnd),
             )
@@ -284,15 +283,15 @@ private fun RowMenu(
 ) {
     var open by remember { mutableStateOf(false) }
     IconButton(onClick = { open = true }) {
-        Icon(Icons.Default.MoreVert, contentDescription = "More")
+        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.lib_more))
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
         DropdownMenuItem(
-            text = { Text("Edit") },
+            text = { Text(stringResource(R.string.pf_edit)) },
             onClick = { open = false; onRename(p) },
         )
         DropdownMenuItem(
-            text = { Text("Delete") },
+            text = { Text(stringResource(R.string.common_delete)) },
             onClick = { open = false; onDelete(p) },
         )
     }
@@ -319,7 +318,7 @@ private fun ProfileForm(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "Create profile" else "Edit profile") },
+        title = { Text(if (initial == null) stringResource(R.string.pf_create) else stringResource(R.string.pf_edit_title)) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -332,7 +331,7 @@ private fun ProfileForm(
                     if (current != null) {
                         AsyncImage(
                             model = ImageRequest.Builder(ctx).data(current).build(),
-                            contentDescription = "Avatar",
+                            contentDescription = stringResource(R.string.pf_avatar),
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.size(72.dp).clip(CircleShape).clickable {
                                 pickAvatar.launch(PickVisualMediaRequest(
@@ -348,7 +347,7 @@ private fun ProfileForm(
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(Icons.Default.Person, contentDescription = "Pick avatar",
+                            Icon(Icons.Default.Person, contentDescription = stringResource(R.string.pf_pick_avatar),
                                 Modifier.size(48.dp))
                         }
                     }
@@ -356,23 +355,23 @@ private fun ProfileForm(
                 OutlinedTextField(
                     value = gamertag,
                     onValueChange = { if (it.length <= 15) gamertag = it },
-                    label = { Text("Gamertag") },
+                    label = { Text(stringResource(R.string.pf_gamertag)) },
                     singleLine = true,
                     isError = showError,
-                    supportingText = if (showError) ({ Text("1-15 letters/digits; must start with a letter.") }) else null,
+                    supportingText = if (showError) ({ Text(stringResource(R.string.pf_gamertag_rule)) }) else null,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                ChoiceField("Language", LANGUAGE_OPTIONS, language) { language = it }
-                ChoiceField("Region", COUNTRY_OPTIONS, country) { country = it }
+                ChoiceField(stringResource(R.string.pf_language), LANGUAGE_OPTIONS, language) { language = it }
+                ChoiceField(stringResource(R.string.pf_region), COUNTRY_OPTIONS, country) { country = it }
             }
         },
         confirmButton = {
             TextButton(
                 enabled = valid,
                 onClick = { onSubmit(gamertag, language, country, avatar) },
-            ) { Text(if (initial == null) "Create" else "Save") }
+            ) { Text(if (initial == null) stringResource(R.string.col_create) else stringResource(R.string.common_save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -422,7 +421,7 @@ private fun ChoiceField(
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { open = false }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 }
@@ -432,20 +431,20 @@ private fun ChoiceField(
 private fun OtherPlayersSection(profiles: List<ProfileEntry>, slots: List<String?>, onPlayer: (Int, String?) -> Unit) {
     var picking by remember { mutableStateOf<Int?>(null) }
     Column {
-        Text("Other players", style = MaterialTheme.typography.titleSmall,
+        Text(stringResource(R.string.pf_other_players), style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 4.dp))
         for (slot in 1 until xendroid.compose.data.ProfileSlots.COUNT) {
             val xuid = slots.getOrNull(slot)
             ListItem(
-                headlineContent = { Text("Player ${slot + 1}") },
+                headlineContent = { Text(stringResource(R.string.pf_player_n, slot + 1)) },
                 supportingContent = {
                     Text(profiles.firstOrNull { it.xuid.equals(xuid, ignoreCase = true) }?.gamertag?.ifBlank { null } ?: xuid
-                        ?: "Nobody signs in")
+                        ?: stringResource(R.string.pf_nobody_signs_in))
                 },
                 modifier = Modifier.clickable { picking = slot },
             )
         }
-        Text("A profile signs in for one player at a time; the controller of each player uses it. Applies on the next game launch.",
+        Text(stringResource(R.string.pf_players_note),
             style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
         HorizontalDivider(Modifier.padding(top = 8.dp))
     }
@@ -453,22 +452,22 @@ private fun OtherPlayersSection(profiles: List<ProfileEntry>, slots: List<String
         val p1 = slots.getOrNull(0)
         AlertDialog(
             onDismissRequest = { picking = null },
-            title = { Text("Player ${slot + 1} signs in as") },
+            title = { Text(stringResource(R.string.pf_player_signs_in_as, slot + 1)) },
             text = {
                 Column {
-                    ListItem(headlineContent = { Text("Nobody") },
+                    ListItem(headlineContent = { Text(stringResource(R.string.pf_nobody)) },
                         modifier = Modifier.clickable { picking = null; onPlayer(slot, null) })
                     profiles.filterNot { it.xuid.equals(p1, ignoreCase = true) }.forEach { p ->
                         val other = xendroid.compose.data.ProfileSlots.otherPlayerOf(slots, p.xuid)?.takeIf { it != slot + 1 }
                         ListItem(
                             headlineContent = { Text(p.gamertag.ifBlank { p.xuid }) },
-                            supportingContent = other?.let { { Text("Moves from player $it") } },
+                            supportingContent = other?.let { { Text(stringResource(R.string.pf_moves_from, it)) } },
                             modifier = Modifier.clickable { picking = null; onPlayer(slot, p.xuid) },
                         )
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { picking = null }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { picking = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 }
@@ -480,8 +479,8 @@ private fun AskBeforePlayingRow() {
     val prefs = remember { context.getSharedPreferences(xendroid.compose.data.ProfilePick.PREFS, android.content.Context.MODE_PRIVATE) }
     var ask by remember { mutableStateOf(prefs.getBoolean(xendroid.compose.data.ProfilePick.ASK, true)) }
     ListItem(
-        headlineContent = { Text("Ask who plays before each game") },
-        supportingContent = { Text(if (ask) "The library asks which profile signs in." else "Games sign in as the active profile.") },
+        headlineContent = { Text(stringResource(R.string.pf_ask)) },
+        supportingContent = { Text(if (ask) stringResource(R.string.pf_ask_on) else stringResource(R.string.pf_ask_off)) },
         trailingContent = {
             androidx.compose.material3.Switch(checked = ask, onCheckedChange = {
                 ask = it

@@ -1,5 +1,6 @@
 package xendroid.compose.ui.profile
 
+import xendroid.compose.R
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -80,7 +81,7 @@ class ProfileManagerViewModel(
         _listState.value = withContext(Dispatchers.IO) {
             EmulatorRuntime.ensureLoaded()
             val emu = EmulatorRuntime.emulator
-                ?: return@withContext ListState.Error("Emulator not loaded.")
+                ?: return@withContext ListState.Error(appContext.getString(R.string.pf_no_emulator))
             val root = ContentPaths.contentRoot().absolutePath
             try {
                 val listed = emu.list_profiles(root)
@@ -99,10 +100,10 @@ class ProfileManagerViewModel(
                         isActive = it.xuid.equals(active, ignoreCase = true),
                     )
                 }?.sortedBy { it.gamertag.lowercase() }
-                    ?: return@withContext ListState.Error("Couldn't read profiles.")
+                    ?: return@withContext ListState.Error(appContext.getString(R.string.pf_read_failed))
                 ListState.Loaded(profiles, slots)
             } catch (t: RuntimeException) {
-                ListState.Error(t.message ?: "Couldn't read profiles.")
+                ListState.Error(t.message ?: appContext.getString(R.string.pf_read_failed))
             }
         }
         _trash.value = withContext(Dispatchers.IO) { runCatching { profileTrash.list() }.getOrDefault(emptyList()) }
@@ -110,27 +111,27 @@ class ProfileManagerViewModel(
 
     fun create(gamertag: String, language: Int, country: Int, avatarUri: Uri?) = viewModelScope.launch {
         if (!Gamertag.isValid(gamertag)) {
-            _opState.value = OpState.Failed("Enter a valid gamertag (1-15 characters).")
+            _opState.value = OpState.Failed(appContext.getString(R.string.pf_bad_gamertag))
             return@launch
         }
-        _opState.value = OpState.Busy("Creating profile…")
+        _opState.value = OpState.Busy(appContext.getString(R.string.pf_creating))
         _opState.value = withContext(Dispatchers.IO) {
             try {
                 // An unusable image fails here, before any profile file exists.
                 val tiles = avatarUri?.let(::decodeAvatar)
                 EmulatorRuntime.ensureLoaded()
-                val emu = EmulatorRuntime.emulator ?: return@withContext OpState.Failed("Emulator not loaded.")
+                val emu = EmulatorRuntime.emulator ?: return@withContext OpState.Failed(appContext.getString(R.string.pf_no_emulator))
                 StorageAccess.acquire().use {
                     val xuid = emu.create_profile(
                         ContentPaths.contentRoot().absolutePath, gamertag, language, country)
-                        ?: return@withContext OpState.Failed("Couldn't create the profile.")
+                        ?: return@withContext OpState.Failed(appContext.getString(R.string.pf_create_failed_short))
                     val avatarError = tiles?.let { runCatching { writeAvatar(xuid, it) }.exceptionOrNull() }
-                    if (avatarError == null) OpState.Done("Created “$gamertag”.")
-                    else OpState.Done("Created “$gamertag”, but the avatar could not be saved: ${avatarError.message}")
+                    if (avatarError == null) OpState.Done(appContext.getString(R.string.pf_created, gamertag))
+                    else OpState.Done(appContext.getString(R.string.pf_created_no_avatar, gamertag, avatarError.message))
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                OpState.Failed(reason("Couldn't create the profile", e))
+                OpState.Failed(reason(appContext.getString(R.string.pf_create_failed), e))
             }
         }
         refresh()
@@ -139,26 +140,26 @@ class ProfileManagerViewModel(
     fun rename(xuid: String, gamertag: String, language: Int, country: Int, avatarUri: Uri?) =
         viewModelScope.launch {
             if (!Gamertag.isValid(gamertag)) {
-                _opState.value = OpState.Failed("Enter a valid gamertag (1-15 characters).")
+                _opState.value = OpState.Failed(appContext.getString(R.string.pf_bad_gamertag))
                 return@launch
             }
-            _opState.value = OpState.Busy("Saving…")
+            _opState.value = OpState.Busy(appContext.getString(R.string.fr_saving))
             _opState.value = withContext(Dispatchers.IO) {
                 try {
                     val tiles = avatarUri?.let(::decodeAvatar)
                     EmulatorRuntime.ensureLoaded()
-                    val emu = EmulatorRuntime.emulator ?: return@withContext OpState.Failed("Emulator not loaded.")
+                    val emu = EmulatorRuntime.emulator ?: return@withContext OpState.Failed(appContext.getString(R.string.pf_no_emulator))
                     StorageAccess.acquire().use {
                         val status = emu.rename_profile(
                             ContentPaths.contentRoot().absolutePath, xuid, gamertag, language, country)
                         if (status != 0) return@withContext OpState.Failed(renameReasonFor(status))
                         val avatarError = tiles?.let { runCatching { writeAvatar(xuid, it) }.exceptionOrNull() }
-                        if (avatarError == null) OpState.Done("Saved “$gamertag”.")
-                        else OpState.Done("Saved “$gamertag”, but the avatar could not be saved: ${avatarError.message}")
+                        if (avatarError == null) OpState.Done(appContext.getString(R.string.pf_saved, gamertag))
+                        else OpState.Done(appContext.getString(R.string.pf_saved_no_avatar, gamertag, avatarError.message))
                     }
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
-                    OpState.Failed(reason("Couldn't save the profile", e))
+                    OpState.Failed(reason(appContext.getString(R.string.pf_save_failed), e))
                 }
             }
             refresh()
@@ -166,10 +167,10 @@ class ProfileManagerViewModel(
 
     fun setActive(xuid: String) = viewModelScope.launch {
         _opState.value = runCatching { withContext(Dispatchers.IO) { writeActiveXuid(xuid.uppercase()) } }
-            .fold({ OpState.Done("Active profile set. Applies on next game launch.") }, {
+            .fold({ OpState.Done(appContext.getString(R.string.pf_active_set)) }, {
                 if (it is CancellationException) throw it
                 Log.w(TAG, "Setting the active profile failed", it)
-                OpState.Failed(reason("Couldn't set the active profile; the configuration was kept", it))
+                OpState.Failed(reason(appContext.getString(R.string.pf_active_failed), it))
             })
         refresh()
     }
@@ -182,70 +183,70 @@ class ProfileManagerViewModel(
             withContext(Dispatchers.IO) {
                 val before = readSlots()
                 if (xuid != null && before[0].equals(xuid, ignoreCase = true)) {
-                    return@withContext OpState.Failed("That profile plays as P1. Pick another one, or make another profile active first.")
+                    return@withContext OpState.Failed(appContext.getString(R.string.pf_is_p1))
                 }
                 writeSlots(before, ProfileSlots.assign(before, slot, xuid))
-                OpState.Done(if (xuid == null) "P${slot + 1} will not sign in. Applies on next game launch."
-                    else "P${slot + 1} profile set. Applies on next game launch.")
+                OpState.Done(if (xuid == null) appContext.getString(R.string.pf_player_cleared, slot + 1)
+                    else appContext.getString(R.string.pf_player_set, slot + 1))
             }
         }.getOrElse {
             if (it is CancellationException) throw it
             Log.w(TAG, "Setting a player's profile failed", it)
-            OpState.Failed(reason("Couldn't set that player's profile; the configuration was kept", it))
+            OpState.Failed(reason(appContext.getString(R.string.pf_player_failed), it))
         }
         refresh()
     }
 
     /** First step of a delete: measure what content/<XUID> holds so the dialog can say it. */
     fun requestDelete(entry: ProfileEntry) = viewModelScope.launch {
-        _opState.value = OpState.Busy("Checking the profile's saved data…")
+        _opState.value = OpState.Busy(appContext.getString(R.string.pf_checking))
         _opState.value = withContext(Dispatchers.IO) {
             runCatching { OpState.ConfirmDelete(entry, profileTrash.summarize(entry.xuid)) }
-                .getOrElse { OpState.Failed(reason("Couldn't read the profile's data", it)) }
+                .getOrElse { OpState.Failed(reason(appContext.getString(R.string.pf_data_failed), it)) }
         }
     }
 
     /** Moves the whole profile folder (account + every game's saves) to the trash. */
     fun delete(xuid: String) = viewModelScope.launch {
-        _opState.value = OpState.Busy("Moving the profile to the trash…")
+        _opState.value = OpState.Busy(appContext.getString(R.string.pf_trashing))
         _opState.value = withContext(Dispatchers.IO) {
             try {
                 StorageAccess.acquire().use { lease ->
                     profileTrash.moveToTrash(lease, xuid)
                     if (activeXuid().equals(xuid, ignoreCase = true)) writeActiveXuid("")
                 }
-                OpState.Done("Profile moved to the trash. Restore it from this screen, or remove it permanently.")
+                OpState.Done(appContext.getString(R.string.pf_trashed))
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                OpState.Failed(reason("Couldn't remove the profile; nothing was deleted", e))
+                OpState.Failed(reason(appContext.getString(R.string.pf_trash_failed), e))
             }
         }
         refresh()
     }
 
     fun restore(trashId: String) = viewModelScope.launch {
-        _opState.value = OpState.Busy("Restoring the profile…")
+        _opState.value = OpState.Busy(appContext.getString(R.string.pf_restoring))
         _opState.value = withContext(Dispatchers.IO) {
             runCatching { StorageAccess.acquire().use { profileTrash.restore(it, trashId) } }
-                .fold({ OpState.Done("Profile restored with its saves.") },
-                    { OpState.Failed(reason("Couldn't restore the profile", it)) })
+                .fold({ OpState.Done(appContext.getString(R.string.pf_restored)) },
+                    { OpState.Failed(reason(appContext.getString(R.string.pf_restore_failed), it)) })
         }
         refresh()
     }
 
     fun purge(trashId: String) = viewModelScope.launch {
-        _opState.value = OpState.Busy("Removing permanently…")
+        _opState.value = OpState.Busy(appContext.getString(R.string.pf_purging))
         _opState.value = withContext(Dispatchers.IO) {
             runCatching { StorageAccess.acquire().use { profileTrash.purge(it, trashId) } }
-                .fold({ OpState.Done("Removed permanently.") },
-                    { OpState.Failed(reason("Couldn't remove the trashed profile", it)) })
+                .fold({ OpState.Done(appContext.getString(R.string.pf_purged)) },
+                    { OpState.Failed(reason(appContext.getString(R.string.pf_purge_failed), it)) })
         }
         refresh()
     }
 
     private fun reason(action: String, e: Throwable): String = when (e) {
-        is ContentBusyException -> "$action: a game or another save/content operation is running. Close it and try again."
-        else -> "$action: ${e.message ?: e.javaClass.simpleName}"
+        is ContentBusyException -> appContext.getString(R.string.pf_reason_busy, action)
+        else -> appContext.getString(R.string.pf_reason, action, e.message ?: e.javaClass.simpleName)
     }
 
     private fun activeXuid(): String = readSlots()[0].orEmpty()
@@ -279,14 +280,14 @@ class ProfileManagerViewModel(
     private fun decodeAvatar(uri: Uri): AvatarTiles {
         val bytes = appContext.contentResolver.openInputStream(uri)?.use {
             ArchiveFiles.readBounded(it, AvatarPolicy.MAX_INPUT_BYTES)
-        } ?: error("Cannot read the selected image")
+        } ?: error(appContext.getString(R.string.pf_image_unreadable))
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         val options = BitmapFactory.Options().apply {
             inSampleSize = AvatarPolicy.sampleSize(bounds.outWidth, bounds.outHeight)
         }
         val src = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-            ?: error("The selected file is not a supported image")
+            ?: error(appContext.getString(R.string.lib_not_an_image))
         try {
             val square = centerCropSquare(src)
             try {
@@ -326,11 +327,11 @@ class ProfileManagerViewModel(
     }
 
     private fun renameReasonFor(status: Int): String = when (status) {
-        -1 -> "Emulator not loaded."
-        0xC000000D.toInt() -> "Enter a valid gamertag (1-15 characters)."
-        0xC0000034.toInt() -> "That profile no longer exists."
-        0xC0000022.toInt() -> "Couldn't write the profile files."
-        else -> "Save failed (0x${status.toUInt().toString(16)})."
+        -1 -> appContext.getString(R.string.pf_no_emulator)
+        0xC000000D.toInt() -> appContext.getString(R.string.pf_bad_gamertag)
+        0xC0000034.toInt() -> appContext.getString(R.string.pf_gone)
+        0xC0000022.toInt() -> appContext.getString(R.string.pf_write_failed)
+        else -> appContext.getString(R.string.pf_save_failed_code, status.toUInt().toString(16))
     }
 
     private companion object { const val TAG = "ProfileManager" }

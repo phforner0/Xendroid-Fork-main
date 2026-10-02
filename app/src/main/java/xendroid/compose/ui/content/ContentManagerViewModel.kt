@@ -82,15 +82,15 @@ class ContentManagerViewModel(
         _listState.value = withContext(Dispatchers.IO) {
             EmulatorRuntime.ensureLoaded()
             val emu = EmulatorRuntime.emulator
-                ?: return@withContext ListState.Error("Emulator not loaded.")
+                ?: return@withContext ListState.Error(appContext.getString(xendroid.compose.R.string.pf_no_emulator))
             // Settle a removal or restore a killed process left half done, before listing.
             runCatching { StorageAccess.acquire().use { trash.recover(it) } }
             val root = ContentPaths.contentRoot().absolutePath
             try {
                 val dlc = emu.list_content(root, titleId, ContentPaths.DLC_CONTENT_TYPE)
-                    ?: return@withContext ListState.Error("Couldn't read installed content.")
+                    ?: return@withContext ListState.Error(appContext.getString(xendroid.compose.R.string.cm_read_failed))
                 val updates = emu.list_content(root, titleId, ContentPaths.TU_CONTENT_TYPE)
-                    ?: return@withContext ListState.Error("Couldn't read installed content.")
+                    ?: return@withContext ListState.Error(appContext.getString(xendroid.compose.R.string.cm_read_failed))
                 val trashed = runCatching { trash.list() }.getOrDefault(emptyList())
                 ListState.Loaded(
                     dlc = dlc.toEntries(ContentPaths.DLC_CONTENT_TYPE),
@@ -100,7 +100,7 @@ class ContentManagerViewModel(
                     trashQuota = trash.quotaBytes,
                 )
             } catch (t: RuntimeException) {
-                ListState.Error(t.message ?: "Couldn't read installed content.")
+                ListState.Error(t.message ?: appContext.getString(xendroid.compose.R.string.cm_read_failed))
             }
         }
     }
@@ -111,7 +111,7 @@ class ContentManagerViewModel(
 
     /** [srcPath] = absolute host path to the picked package. */
     fun install(srcPath: String) = viewModelScope.launch {
-        _state.value = ContentInstallState.Busy("Preparing…")
+        _state.value = ContentInstallState.Busy(appContext.getString(xendroid.compose.R.string.cm_preparing))
         val pre = withContext(Dispatchers.IO) { validate(srcPath) }
         when (pre) {
             is PreCheck.Reject -> _state.value = ContentInstallState.Failed(pre.message)
@@ -130,14 +130,14 @@ class ContentManagerViewModel(
     /** L12: to the trash (restorable). A full trash asks what to do instead of deleting. */
     fun delete(item: ContentEntry) = viewModelScope.launch {
         _deleteState.value = DeleteState.Idle
-        _state.value = ContentInstallState.Busy("Moving to the trash…")
+        _state.value = ContentInstallState.Busy(appContext.getString(xendroid.compose.R.string.cm_trashing))
         val result = withContext(Dispatchers.IO) {
             runCatching {
                 StorageAccess.acquire().use { trash.moveToTrash(it, titleId, item.contentType, item.pkgDir, item.displayName) }
             }
         }
         result.onSuccess {
-            _state.value = ContentInstallState.Done("Moved “${item.displayName}” to the trash. Restore it from the Trash tab.")
+            _state.value = ContentInstallState.Done(appContext.getString(xendroid.compose.R.string.cm_trashed, item.displayName))
             refresh()
         }.onFailure { e ->
             if (e is TrashFullException) {
@@ -145,20 +145,20 @@ class ContentManagerViewModel(
                 _deleteState.value = DeleteState.TrashFull(item, e.usedBytes, e.quotaBytes)
             } else {
                 _state.value = ContentInstallState.Failed(
-                    if (e is xendroid.compose.archive.ContentBusyException) "Close the running game first." else "Couldn't move it to the trash: ${e.message}")
+                    if (e is xendroid.compose.archive.ContentBusyException) appContext.getString(xendroid.compose.R.string.cm_close_game) else appContext.getString(xendroid.compose.R.string.cm_trash_failed, e.message))
             }
         }
     }
 
     fun restore(entry: TrashedContent) = viewModelScope.launch {
-        _state.value = ContentInstallState.Busy("Restoring…")
+        _state.value = ContentInstallState.Busy(appContext.getString(xendroid.compose.R.string.cm_restoring))
         val result = withContext(Dispatchers.IO) {
             runCatching { StorageAccess.acquire().use { trash.restore(it, entry.id) } }
         }
         result.onSuccess {
-            _state.value = ContentInstallState.Done("Restored “${entry.displayName}”.")
+            _state.value = ContentInstallState.Done(appContext.getString(xendroid.compose.R.string.cm_restored, entry.displayName))
             refresh()
-        }.onFailure { _state.value = ContentInstallState.Failed(it.message ?: "Couldn't restore it.") }
+        }.onFailure { _state.value = ContentInstallState.Failed(it.message ?: appContext.getString(xendroid.compose.R.string.cm_restore_failed)) }
     }
 
     fun requestPurge(entry: TrashedContent) { _deleteState.value = DeleteState.ConfirmPurge(entry) }
@@ -167,7 +167,7 @@ class ContentManagerViewModel(
     /** Deletes trashed packages for good: one, or ([entry] null) the whole trash, every game's. */
     fun purge(entry: TrashedContent?) = viewModelScope.launch {
         _deleteState.value = DeleteState.Idle
-        _state.value = ContentInstallState.Busy("Deleting…")
+        _state.value = ContentInstallState.Busy(appContext.getString(xendroid.compose.R.string.cm_deleting))
         val result = withContext(Dispatchers.IO) {
             runCatching {
                 StorageAccess.acquire().use { lease ->
@@ -176,15 +176,15 @@ class ContentManagerViewModel(
             }
         }
         result.onSuccess { count ->
-            _state.value = ContentInstallState.Done(if (entry == null) "Emptied the trash ($count item(s))." else "Deleted “${entry.displayName}” for good.")
+            _state.value = ContentInstallState.Done(if (entry == null) appContext.getString(xendroid.compose.R.string.cm_emptied, count) else appContext.getString(xendroid.compose.R.string.cm_deleted, entry.displayName))
             refresh()
-        }.onFailure { _state.value = ContentInstallState.Failed(it.message ?: "Couldn't delete it.") }
+        }.onFailure { _state.value = ContentInstallState.Failed(it.message ?: appContext.getString(xendroid.compose.R.string.cm_delete_failed)) }
     }
 
     /** Skips the trash: the package's files are deleted now (asked when the trash is full). */
     fun deleteForGood(item: ContentEntry) = viewModelScope.launch {
         _deleteState.value = DeleteState.Idle
-        _state.value = ContentInstallState.Busy("Removing…")
+        _state.value = ContentInstallState.Busy(appContext.getString(xendroid.compose.R.string.cm_removing))
         val status = withContext(Dispatchers.IO) {
             val emu = EmulatorRuntime.emulator ?: return@withContext -1
             runCatching { StorageAccess.acquire().use { emu.delete_content(
@@ -192,7 +192,7 @@ class ContentManagerViewModel(
                 item.contentType, item.pkgDir) } }.getOrDefault(0xC0000022.toInt())
         }
         if (status == 0) {
-            _state.value = ContentInstallState.Done("Removed “${item.displayName}”.")
+            _state.value = ContentInstallState.Done(appContext.getString(xendroid.compose.R.string.cm_removed, item.displayName))
             refresh()
         } else {
             _state.value = ContentInstallState.Failed(deleteReasonFor(status))
@@ -207,33 +207,32 @@ class ContentManagerViewModel(
 
     private suspend fun validate(srcPath: String): PreCheck {
         EmulatorRuntime.ensureLoaded()
-        if (!File(srcPath).isFile) return PreCheck.Reject("Couldn't open the package file.")
+        if (!File(srcPath).isFile) return PreCheck.Reject(appContext.getString(xendroid.compose.R.string.ci_open_failed))
         val meta = metadata.readContentHeader(srcPath)
-            ?: return PreCheck.Reject("Not a recognized content package (need CON/LIVE/PIRS).")
+            ?: return PreCheck.Reject(appContext.getString(xendroid.compose.R.string.ci_not_package))
         if (meta.contentType != ContentPaths.DLC_CONTENT_TYPE &&
             meta.contentType != ContentPaths.TU_CONTENT_TYPE)
             return PreCheck.Reject(
-                "This package has content type 0x${meta.contentType.toUInt().toString(16)}. " +
-                    "Only DLC or title updates can be installed.")
+                appContext.getString(xendroid.compose.R.string.cm_wrong_type, meta.contentType.toUInt().toString(16)))
         if (meta.titleId == null || !meta.titleId.equals(titleId, ignoreCase = true))
             return PreCheck.Reject(
-                "This package is for title ${meta.titleId ?: "unknown"}, " +
-                    "not this game ($titleId).")
+                appContext.getString(xendroid.compose.R.string.cm_wrong_title, meta.titleId ?: "?", titleId))
         val name = meta.displayName.ifBlank { File(srcPath).name }
-        storageShortfall(meta.contentSize)?.let { return PreCheck.Reject(it) }
+        storageShortfall(appContext, meta.contentSize)?.let { return PreCheck.Reject(it) }
         val pkgDir = File(ContentPaths.contentDir(titleId, meta.contentType), File(srcPath).name)
         return if (pkgDir.exists()) PreCheck.Overwrite(name) else PreCheck.Ok(name)
     }
 
     private suspend fun runInstall(srcPath: String, name: String) {
-        _state.value = ContentInstallState.Busy("Installing…", 0f)
+        val installing = appContext.getString(xendroid.compose.R.string.ci_installing)
+        _state.value = ContentInstallState.Busy(installing, 0f)
         // Poll native install progress while the VFS walk blocks an IO thread (the
         // getter reads file-static atomics, so concurrent reads are safe).
         val poll = viewModelScope.launch {
             while (isActive) {
                 val p = EmulatorRuntime.emulator?.installProgress() ?: 0f
                 (_state.value as? ContentInstallState.Busy)
-                    ?.takeIf { it.message == "Installing…" }
+                    ?.takeIf { it.message == installing }
                     ?.let { _state.value = it.copy(progress = p.coerceIn(0f, 1f)) }
                 delay(200)
             }
@@ -247,18 +246,18 @@ class ContentManagerViewModel(
         poll.cancel()
         if (status == 0) {
             _state.value = ContentInstallState.Done(
-                "Installed “$name”. It'll be available next time the game boots.")
+                appContext.getString(xendroid.compose.R.string.cm_installed, name))
             refresh()
         } else {
-            _state.value = ContentInstallState.Failed(installReasonFor(status))
+            _state.value = ContentInstallState.Failed(installReasonFor(appContext, status))
         }
     }
 
     private fun deleteReasonFor(status: Int): String = when (status) {
-        -1 -> "Emulator not loaded."
-        0xC000000D.toInt() -> "Invalid package name."                    // X_STATUS_INVALID_PARAMETER
-        0xC0000034.toInt() -> "Already removed."                         // X_STATUS_OBJECT_NAME_NOT_FOUND
-        0xC0000022.toInt() -> "Couldn't delete the files."               // X_STATUS_ACCESS_DENIED
-        else -> "Delete failed (0x${status.toUInt().toString(16)})."
+        -1 -> appContext.getString(xendroid.compose.R.string.pf_no_emulator)
+        0xC000000D.toInt() -> appContext.getString(xendroid.compose.R.string.cm_bad_name)            // X_STATUS_INVALID_PARAMETER
+        0xC0000034.toInt() -> appContext.getString(xendroid.compose.R.string.cm_already_removed)     // X_STATUS_OBJECT_NAME_NOT_FOUND
+        0xC0000022.toInt() -> appContext.getString(xendroid.compose.R.string.cm_delete_files_failed) // X_STATUS_ACCESS_DENIED
+        else -> appContext.getString(xendroid.compose.R.string.cm_delete_failed_code, status.toUInt().toString(16))
     }
 }

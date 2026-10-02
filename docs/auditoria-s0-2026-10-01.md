@@ -337,6 +337,9 @@ com comandos e resultados exatos.
    Lote 12i: Configurações e ajustes do jogo em português (seções, os 19 ajustes do modo Jogador
    com descrição no toque longo, "Salvo para todos os jogos · vale na próxima abertura…", gerenciador
    de drivers, pacote de dados, atualizações, ajustes recomendados); buscar "tela" acha "Tela larga".
+   Lote 12j: Perfis (criar, editar, lixeira, outros jogadores), Saves (exportar, importar, restaurar)
+   e Conteúdo (instalar um DLC, mandar para a lixeira, lixeira cheia) em português, inclusive as
+   mensagens de erro.
 29. Lote 10 — navegação por controle (U04): na biblioteca, A abre o jogo e B volta; em
    Configurações → "Menus: A confirms…" → "Swap": agora B abre e A volta na hora. Abrir um jogo:
    no menu em jogo, B ativa e A fecha/cancela; dentro do jogo os botões continuam os de sempre.

@@ -43,17 +43,17 @@ class SaveManagerViewModel(context: Context, val titleId: String) : ViewModel() 
     }
     fun synchronize() {
         if (_operation.value is Operation.Busy) return
-        _operation.value = Operation.Busy("Copying verified backup to the selected provider…")
+        _operation.value = Operation.Busy(context.getString(xendroid.compose.R.string.sv_publishing))
         viewModelScope.launch {
             try {
                 val name = BackupSync.publish(context, titleId)
-                _operation.value = Operation.Result("Backup verified in the selected folder: $name", true)
+                _operation.value = Operation.Result(context.getString(xendroid.compose.R.string.sv_published, name), true)
             } catch (e: Exception) { error(e) }
         }
     }
     private fun error(e: Throwable) {
         if (e is CancellationException) throw e
-        _operation.value = Operation.Result(e.message ?: "Save operation failed", false)
+        _operation.value = Operation.Result(e.message ?: context.getString(xendroid.compose.R.string.sv_failed), false)
     }
     fun dismiss() {
         val preview = prepared
@@ -64,7 +64,7 @@ class SaveManagerViewModel(context: Context, val titleId: String) : ViewModel() 
 
     fun export(uri: Uri, xuids: List<String>, includeProfiles: Boolean) {
         if (_operation.value is Operation.Busy) return
-        _operation.value = Operation.Busy("Backing up saves…")
+        _operation.value = Operation.Busy(context.getString(xendroid.compose.R.string.sv_backing_up))
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
@@ -74,17 +74,17 @@ class SaveManagerViewModel(context: Context, val titleId: String) : ViewModel() 
                         store.export(titleId, xuids, temporary, includeProfiles) { coroutine.ensureActive() }
                         context.contentResolver.openOutputStream(uri)?.use { output ->
                             temporary.inputStream().use { it.copyTo(output) }
-                        } ?: error("Cannot write backup document")
+                        } ?: error(context.getString(xendroid.compose.R.string.sv_write_failed))
                     } finally { temporary.delete() }
                 }
-                _operation.value = Operation.Result("Backup created with original XUIDs and save headers.", true)
+                _operation.value = Operation.Result(context.getString(xendroid.compose.R.string.sv_backed_up), true)
             } catch (e: Exception) { error(e) }
         }
     }
 
     fun import(uri: Uri) {
         if (_operation.value is Operation.Busy) return
-        _operation.value = Operation.Busy("Validating backup…")
+        _operation.value = Operation.Busy(context.getString(xendroid.compose.R.string.sv_validating))
         viewModelScope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
@@ -102,7 +102,7 @@ class SaveManagerViewModel(context: Context, val titleId: String) : ViewModel() 
                                 require(bytes <= 512L * 1024 * 1024) { "Backup archive too large" }
                                 output.write(buffer, 0, n)
                             }
-                        } } ?: error("Cannot read backup document")
+                        } } ?: error(context.getString(xendroid.compose.R.string.sv_read_failed))
                         store.prepare(temporary, titleId) { coroutine.ensureActive() }
                     } finally { temporary.delete() }
                 }
@@ -115,7 +115,7 @@ class SaveManagerViewModel(context: Context, val titleId: String) : ViewModel() 
     fun restore(overwriteProfiles: Boolean) {
         val preview = prepared ?: return
         if (_operation.value is Operation.Busy) return
-        _operation.value = Operation.Busy("Restoring saves…")
+        _operation.value = Operation.Busy(context.getString(xendroid.compose.R.string.sv_restoring))
         viewModelScope.launch {
             try {
                 val backup = withContext(Dispatchers.IO) {
@@ -123,7 +123,7 @@ class SaveManagerViewModel(context: Context, val titleId: String) : ViewModel() 
                     store.restore(preview, overwrite = true, overwriteProfiles = overwriteProfiles) { coroutine.ensureActive() }
                 }
                 prepared = null
-                _operation.value = Operation.Result("Saves restored. Original directories were retained in ${backup.name} for recovery.", true)
+                _operation.value = Operation.Result(context.getString(xendroid.compose.R.string.sv_restored, backup.name), true)
                 refresh()
             } catch (e: Exception) { prepared = null; error(e) }
         }
