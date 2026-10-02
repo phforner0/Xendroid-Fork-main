@@ -383,6 +383,13 @@ de deltas guest; registrar unavailable/stale e aquecimento. Referências [X2–X
 | L11 | Mods Xbox opt-in | Somente formatos suportados por Xenia/patch/override de arquivos; namespace separado, ordem e conflitos explícitos, não substituir um save/DLC; não portar mods/Workshop Steam |
 | L12 | Lixeira de dados gerenciados | Mover somente dados internos elegíveis para namespace isolado sob lease/journal; restauração com preview de conflitos, cota e limpeza explícita; remover referência da biblioteca não exclui ROM externa |
 
+**Estado L09 (2026-10-02, v1, Impl. + Local):** `data/LibraryWalker.kt` com cota (100.000
+entradas → lista parcial avisada), profundidade, cancelamento ("Stop") e progresso; lista da
+última varredura na abertura; extração só de entradas novas/modificadas, agora também
+reaproveitada quando o arquivo só mudou de pasta. Teste de 10.000 arquivos (e o de mover/apagar)
+na JVM; o de 1k/10k no aparelho (FUSE é bem mais lento que o disco do contêiner) fica no
+roteiro 22.
+
 **Estado L06 (2026-10-02, v1, Impl. + Local):** jogos que saíram da biblioteca ficam
 indicados com o motivo (arquivo não encontrado, pasta indisponível, fora das pastas), a partir
 de um registro de títulos (`data/TitleRegistry.kt`) e do caminho da última sessão; "Remove"

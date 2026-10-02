@@ -269,3 +269,15 @@ com comandos e resultados exatos.
    da biblioteca e atualizar: continua na coleção. "Delete" na coleção: confirma, a coleção some
    e os jogos continuam. Exportar o pacote de dados (Configurações), apagar a coleção, importar:
    a prévia diz "Collections: 1 new, …" e ela volta.
+22. Lote 9 — varredura (L09): (a) com uma biblioteca grande (centenas de jogos), fechar o app
+   pelo multitarefa e abrir: a grade aparece na hora com a lista anterior e o indicador de
+   atualização; a lista final substitui sem pular. (b) Limpar o cache do app e abrir: aparece
+   "Looking through N files…" e depois "Reading <jogo> (i of N)"; "Stop" no meio: a tela
+   mostra "Scan stopped…", e "Retry" continua mais rápido (o já extraído ficou). (c) Mover uma
+   pasta com jogos para outra pasta da biblioteca (gerenciador de arquivos) e atualizar: os
+   jogos voltam sem "Reading…" (sem nova extração). (d) Adicionar como pasta de jogos o
+   armazenamento interno inteiro: a varredura para em 100.000 entradas com o aviso de lista
+   parcial; remover essa pasta. (e) Anotar o tempo da varredura quente de 1k e 10k arquivos
+   (cronômetro do "Looking through…") no aparelho. (f) Apagar uma ISO pelo gerenciador com o
+   app em segundo plano e, ao voltar, tocar nela antes de a varredura terminar: aviso "…is not
+   where it was…" e nova varredura, sem abrir o emulador.

@@ -46,10 +46,14 @@ class GameMetadataCache(cacheDir: File) {
     /** In-memory working copy, populated by [load]. Guarded by [lock]. */
     private val entries = HashMap<String, Entry>()
 
+    /** L09: the loaded entries by (file name, size, mtime), built on the first [movedFrom]. */
+    private var byIdentity: Map<String, Entry>? = null
+
     /** Load the persisted cache into memory (call once at scan start). Replaces the
      *  current working set. A missing/corrupt file loads as empty (cold cache). */
     fun load() = synchronized(lock) {
         entries.clear()
+        byIdentity = null
         if (!file.exists()) return@synchronized
         val loaded = runCatching {
             json.decodeFromString(Snapshot.serializer(), file.readText())
@@ -58,8 +62,37 @@ class GameMetadataCache(cacheDir: File) {
         entries.putAll(loaded.entries)
     }
 
+    /** The persisted entries, read without touching the working set a running scan uses (L09:
+     *  the library's instant list on a cold start). Missing or corrupt: empty. */
+    fun peek(): Map<String, Entry> {
+        if (!file.isFile) return emptyMap()
+        return runCatching { json.decodeFromString(Snapshot.serializer(), file.readText()).entries }
+            .onFailure { warn("metadata cache peek failed", it) }
+            .getOrDefault(emptyMap())
+    }
+
     /** The cached entry for [launchUri], or null if absent. */
     fun get(launchUri: String): Entry? = synchronized(lock) { entries[launchUri] }
+
+    /**
+     * L09: the entry of a file with the same name, size and modification time under another
+     * path: the same file after a move or a folder rename (a move keeps both), so its
+     * extraction can be reused instead of read again. default.xex also needs the same folder
+     * name. Null for an untrustworthy signature.
+     */
+    fun movedFrom(launchUri: String, signature: Signature): Entry? = synchronized(lock) {
+        if (!signature.cacheable) return@synchronized null
+        val index = byIdentity ?: entries.entries
+            .associate { (path, e) -> identityOf(path, e.sizeBytes, e.lastModified) to e }
+            .also { byIdentity = it }
+        index[identityOf(launchUri, signature.sizeBytes, signature.lastModified)]
+    }
+
+    private fun identityOf(path: String, size: Long, lastModified: Long): String {
+        val file = File(path)
+        val name = if (file.name.equals("default.xex", ignoreCase = true)) "${file.parentFile?.name}/${file.name}" else file.name
+        return "${name.lowercase()}|$size|$lastModified"
+    }
 
     /** Record an extraction result. A non-cacheable signature (see [Signature.cacheable])
      *  is NOT stored: an unreliable SAF signature must re-extract every scan. */
@@ -127,6 +160,18 @@ class GameMetadataCache(cacheDir: File) {
         // v5: v4 caches hold add-on content the deep scan published as games before the
         // content-type gate; a hit would resurrect it without ever reclassifying.
         const val FILE_NAME = "game_metadata_v5.json"
+
+        /** Games of [entries] under one of [roots], sorted like a scan: what the library had
+         *  last time, before the walk confirms it. Legacy format-less entries are GOD. */
+        fun gamesUnder(entries: Map<String, Entry>, roots: List<String>): List<Game> {
+            val prefixes = roots.map { it.trimEnd('/') + "/" }
+            return entries.filter { (path, _) -> prefixes.any(path::startsWith) }
+                .map { (path, e) ->
+                    Game(path, e.name, e.format ?: GameFormat.GOD, e.iconCacheName, e.titleId, e.mediaId,
+                        e.discNumber, e.discCount)
+                }
+                .sortedBy { it.name.lowercase() }
+        }
 
         /**
          * PURE, side-effect-free HIT/MISS decision (no SAF/JNI/IO) so it is unit-testable.

@@ -10,8 +10,15 @@ sealed interface LibraryUiState {
     /** Scanning the chosen folder. */
     data object Loading : LibraryUiState
     /** Scan finished. [games] may be empty (folder has no recognized titles); [unavailableRoots]
-     *  are game folders that could not be read this time (L03: the others were scanned). */
-    data class Loaded(val games: List<Game>, val unavailableRoots: List<String> = emptyList()) : LibraryUiState
+     *  are game folders that could not be read this time (L03: the others were scanned).
+     *  L09: [truncated] = the walk hit its entry limit (partial list); [cached] = last time's
+     *  list from the metadata cache, shown while the first scan of this start runs. */
+    data class Loaded(
+        val games: List<Game>,
+        val unavailableRoots: List<String> = emptyList(),
+        val truncated: Boolean = false,
+        val cached: Boolean = false,
+    ) : LibraryUiState
     /** A games dir is persisted but it became unreadable (All Files Access grant gone). */
     data object PermissionLost : LibraryUiState
     /** Device has no Vulkan -> emulator cannot run; hard gate. */

@@ -74,6 +74,9 @@ import xendroid.compose.updater.shouldCheckForUpdates
 import xendroid.compose.updater.saveLastCheck
 
 
+/** A scan shorter than this shows no progress row. */
+private const val SCAN_PROGRESS_DELAY_MS = 700L
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameLibraryScreen(
@@ -211,6 +214,12 @@ fun GameLibraryScreen(
 
     val startGame: (Game) -> Unit = start@{ game ->
         if (preparingLaunch) return@start
+        // The list may be last time's (L09) or older than a file manager's change.
+        if (!java.io.File(game.launchUri).exists()) {
+            Toast.makeText(context, "${game.name} is not where it was; checking the folders again", Toast.LENGTH_LONG).show()
+            viewModel.refresh()
+            return@start
+        }
         lastFocusedId = game.stableId
         preparingLaunch = true
         scope.launch {
@@ -323,7 +332,10 @@ fun GameLibraryScreen(
             when (val s = state) {
                 LibraryUiState.NoVulkan ->
                     NoVulkanDialog(onQuit = { (context as? Activity)?.finish() })
-                LibraryUiState.Loading -> CircularProgressIndicator()
+                LibraryUiState.Loading -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    ScanProgressRow(viewModel)
+                }
                 // All Files Access is API 30+; on API 29 there is no games path at all.
                 LibraryUiState.NoFolder ->
                     if (AllFilesAccess.isSupported)
@@ -361,6 +373,14 @@ fun GameLibraryScreen(
                             }
                         }
                         Column(Modifier.fillMaxSize()) {
+                            ScanProgressRow(viewModel)
+                            if (s.truncated) {
+                                TextButton(onClick = { viewModel.loadFolders(); foldersOpen = true },
+                                    modifier = Modifier.padding(horizontal = 8.dp)) {
+                                    Text("The scan stopped after 100,000 files, so this list is partial: a game folder " +
+                                        "seems to hold more than games. Manage folders")
+                                }
+                            }
                             if (s.unavailableRoots.isNotEmpty()) {
                                 TextButton(onClick = { viewModel.loadFolders(); foldersOpen = true },
                                     modifier = Modifier.padding(horizontal = 8.dp)) {
@@ -1006,6 +1026,37 @@ private fun GameCell(
                 maxLines = 1,
             )
         }
+    }
+}
+
+/** L09: what the scan is doing, with "Stop"; nothing when no scan runs, and nothing for the
+ *  first moments of one, so a quick rescan on return to the app does not shift the grid. */
+@Composable
+private fun ScanProgressRow(viewModel: GameLibraryViewModel) {
+    val progress by viewModel.scanProgress.collectAsStateWithLifecycle()
+    val scanning = progress != null
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(scanning) {
+        shown = false
+        if (scanning) {
+            kotlinx.coroutines.delay(SCAN_PROGRESS_DELAY_MS)
+            shown = true
+        }
+    }
+    val p = progress?.takeIf { shown } ?: return
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            when {
+                p.reading != null -> "Reading ${p.reading} (${p.checked + 1} of ${p.candidates})"
+                p.candidates > 0 -> "Checking ${p.checked} of ${p.candidates} files"
+                else -> "Looking through ${p.entries} files…"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        TextButton(onClick = viewModel::stopScan) { Text("Stop") }
     }
 }
 

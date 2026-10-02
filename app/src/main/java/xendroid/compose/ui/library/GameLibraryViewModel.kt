@@ -33,6 +33,7 @@ import xendroid.compose.data.MissingTitle
 import xendroid.compose.data.PreferencesStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -220,26 +221,45 @@ class GameLibraryViewModel(
         }
     }
 
-    init { refresh() }
-
     /** L06: played or seen titles that the last scan did not list (file gone, folder away...). */
     private val _missing = MutableStateFlow<List<MissingTitle>>(emptyList())
     val missing: StateFlow<List<MissingTitle>> = _missing.asStateFlow()
 
     /** Play history (recents, play time) and, with it, the missing titles of [loaded]: one
-     *  read of the run records per scan. */
+     *  read of the run records per scan. A [LibraryUiState.Loaded.cached] list is unverified,
+     *  so it gets the history only. */
     private suspend fun refreshHistory(loaded: LibraryUiState.Loaded) {
         val (activity, missing) = withContext(Dispatchers.IO) {
             val runs = runCatching { xendroid.compose.sessions.SessionRuns.store().runs() }
                 .onFailure { Log.w("GameLibrary", "Reading play history failed", it) }
                 .getOrDefault(emptyList())
-            val missing = runCatching {
+            val missing = if (loaded.cached) null else runCatching {
                 repo.missingTitles(loaded.games, loaded.unavailableRoots, xendroid.compose.sessions.lastGamePaths(runs))
             }.onFailure { Log.w("GameLibrary", "Listing missing games failed", it) }.getOrDefault(emptyList())
             xendroid.compose.sessions.titleActivityOf(runs).associateBy { it.titleId } to missing
         }
         _activity.value = activity
-        _missing.value = missing
+        missing?.let { _missing.value = it }
+    }
+
+    /** L09: what the running scan is doing (null when idle). */
+    val scanProgress: StateFlow<GameLibraryRepository.ScanProgress?> = repo.progress
+
+    /** The running refresh. A refresh asked for meanwhile runs once after it ([rescanPending]),
+     *  so a folder added during a scan is scanned too. Main thread only. */
+    private var refreshJob: Job? = null
+    private var rescanPending = false
+
+    /** "Stop" while scanning: what is on screen stays (last time's list, if any); what was
+     *  extracted so far stays cached. */
+    fun stopScan() {
+        val job = refreshJob?.takeIf { it.isActive } ?: return
+        rescanPending = false
+        job.cancel()
+        _isRefreshing.value = false
+        if (_state.value !is LibraryUiState.Loaded) {
+            _state.value = LibraryUiState.Error("Scan stopped. Tap Retry or pull down to scan again.")
+        }
     }
 
     fun hideMissing(title: MissingTitle) {
@@ -254,37 +274,64 @@ class GameLibraryViewModel(
 
     fun refresh() {
         if (!EmulatorRuntime.supportsVulkan) { _state.value = LibraryUiState.NoVulkan; return }
+        if (refreshJob?.isActive == true) { rescanPending = true; return }
+        _isRefreshing.value = true
+        refreshJob = viewModelScope.launch {
+            do {
+                rescanPending = false
+                refreshOnce()
+            } while (rescanPending)
+            _isRefreshing.value = false
+        }
+    }
+
+    private suspend fun refreshOnce() {
         // Keep an existing list visible during a pull-to-refresh (show only the pull
         // indicator); the full-screen spinner is for the first/empty load.
         val wasLoaded = _state.value is LibraryUiState.Loaded
-        if (!wasLoaded) _state.value = LibraryUiState.Loading
-        _isRefreshing.value = true
-        viewModelScope.launch {
-            val startMs = SystemClock.elapsedRealtime()
-            val next = runCatching {
-                // ensureLoaded() can sleep + System.loadLibrary on delay-load devices
-                // (Adreno 5xx/6xx) -> never on the main thread.
-                withContext(Dispatchers.IO) {
-                    EmulatorRuntime.ensureLoaded()
-                    ProfileBootstrap.ensureDefaultProfile(appContext)
-                }
-                when (val r = repo.scan()) {
-                    GameLibraryRepository.ScanResult.NoFolder -> LibraryUiState.NoFolder
-                    GameLibraryRepository.ScanResult.PermissionLost -> LibraryUiState.PermissionLost
-                    is GameLibraryRepository.ScanResult.Games -> LibraryUiState.Loaded(r.games, r.unavailableRoots)
-                }
-            }.getOrElse { LibraryUiState.Error(it.message ?: "Failed to load library") }
-            // History before the list, so "Recently played" and the missing games match it.
-            if (next is LibraryUiState.Loaded) refreshHistory(next) else _missing.value = emptyList()
-            _state.value = next
-            // A warm-cache rescan finishes faster than the PullToRefreshBox reveal animation,
-            // which leaves the indicator visually stuck; hold it to a floor so it settles before
-            // retracting (pull-to-refresh only -- the cold load shows the full-screen spinner).
-            if (wasLoaded) {
-                val elapsed = SystemClock.elapsedRealtime() - startMs
-                if (elapsed < MIN_REFRESH_INDICATOR_MS) delay(MIN_REFRESH_INDICATOR_MS - elapsed)
+        if (!wasLoaded) {
+            _state.value = LibraryUiState.Loading
+            // L09: last time's list at once, from the metadata cache, while the walk runs.
+            val cached = try {
+                repo.cachedGames()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w("GameLibrary", "Reading the cached library failed", e)
+                emptyList()
             }
-            _isRefreshing.value = false
+            if (cached.isNotEmpty()) {
+                val shown = LibraryUiState.Loaded(cached, cached = true)
+                refreshHistory(shown)
+                _state.value = shown
+            }
+        }
+        val startMs = SystemClock.elapsedRealtime()
+        val next = try {
+            // ensureLoaded() can sleep + System.loadLibrary on delay-load devices
+            // (Adreno 5xx/6xx) -> never on the main thread.
+            withContext(Dispatchers.IO) {
+                EmulatorRuntime.ensureLoaded()
+                ProfileBootstrap.ensureDefaultProfile(appContext)
+            }
+            when (val r = repo.scan()) {
+                GameLibraryRepository.ScanResult.NoFolder -> LibraryUiState.NoFolder
+                GameLibraryRepository.ScanResult.PermissionLost -> LibraryUiState.PermissionLost
+                is GameLibraryRepository.ScanResult.Games ->
+                    LibraryUiState.Loaded(r.games, r.unavailableRoots, truncated = r.truncated)
+            }
+        } catch (e: Throwable) {
+            if (e is CancellationException) throw e
+            LibraryUiState.Error(e.message ?: "Failed to load library")
+        }
+        // History before the list, so "Recently played" and the missing games match it.
+        if (next is LibraryUiState.Loaded) refreshHistory(next) else _missing.value = emptyList()
+        _state.value = next
+        // A warm-cache rescan finishes faster than the PullToRefreshBox reveal animation,
+        // which leaves the indicator visually stuck; hold it to a floor so it settles before
+        // retracting (pull-to-refresh only -- the cold load shows the full-screen spinner).
+        if (wasLoaded) {
+            val elapsed = SystemClock.elapsedRealtime() - startMs
+            if (elapsed < MIN_REFRESH_INDICATOR_MS) delay(MIN_REFRESH_INDICATOR_MS - elapsed)
         }
     }
 
@@ -482,4 +529,8 @@ class GameLibraryViewModel(
             null
         )
     }
+
+    // Last in the class: refresh() starts a coroutine on Main.immediate that reads properties
+    // declared above, which must be initialized first.
+    init { refresh() }
 }
