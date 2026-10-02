@@ -108,4 +108,6 @@
     <string name="menu_rumble_value">Controller rumble · %1$s · %2$s</string>
     <string name="menu_no_controller">no controller</string>
     <string name="menu_phone_controllers">Phone controllers</string>
+    <string name="menu_touch_camera">Touch camera · free right side: %1$s</string>
+    <string name="menu_touch_camera_note">Touch camera: on the right side, away from the buttons, slide a finger to turn the camera; it stops when the finger rests or lifts.</string>
 </resources>

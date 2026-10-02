@@ -72,6 +72,7 @@ fun GamepadOverlay(
     onUserInteraction: () -> Unit = {},   // resets auto-hide timer
     editMode: Boolean = false,
     adaptiveSticks: Boolean = false,      // opt-in: spawn near the saved stick anchor at touch-down
+    touchCamera: Boolean = false,         // U07 opt-in: free right side of the screen = right stick by finger speed
     gridStepsX: Int = 0,                  // editor: snap-grid cell count per axis (0 = no grid).
     gridStepsY: Int = 0,                  // x/y differ so the cells are square on a non-1:1 screen.
     selectedId: ControlId? = null,
@@ -94,9 +95,12 @@ fun GamepadOverlay(
     val stickOrigins = remember { mutableStateMapOf<ControlId, Offset>() }
     // Rebuilding these per draw pass (display-refresh rate during a drag) was a GC-pause stutter storm.
     val drawCache = remember { GamepadDrawCache() }
+
     // per-dpad last-pressed sector set, for diffing.
     val dpadState = remember { mutableMapOf<ControlId, Set<Int>>() }
     val density = LocalDensity.current
+    // U07: full deflection at 1.2 dp per ms of finger travel (a brisk swipe).
+    val camera = remember(density) { TouchCamera(fullSpeedPxPerMs = with(density) { 1.2.dp.toPx() }) }
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
     // Latest controls WITHOUT restarting the pointerInput: in edit mode every drag frame
     // produces a new `controls` list; if it keyed the pointerInput, the gesture would cancel
@@ -123,7 +127,7 @@ fun GamepadOverlay(
             // Keyed only on editMode+sizePx (stable during a gesture). controls is read live
             // via controlsState so a drag (which mutates controls every frame) never restarts
             // the gesture. selectedId is not needed here (only the draw uses it).
-            .pointerInput(editMode, sizePx, adaptiveSticks) {
+            .pointerInput(editMode, sizePx, adaptiveSticks, touchCamera) {
                 if (editMode) {
                     editPointerLoop(
                         controlsState, sizePx, density,
@@ -136,7 +140,12 @@ fun GamepadOverlay(
                     try {
                     awaitPointerEventScope {
                         while (true) {
-                            val ev = awaitPointerEvent()
+                            // While the camera finger is down, a quiet moment means it rests: stop turning.
+                            val ev = if (camera.active) withTimeoutOrNull(camera.idleMs) { awaitPointerEvent() } else awaitPointerEvent()
+                            if (ev == null) {
+                                camera.idle(android.os.SystemClock.uptimeMillis())?.let { emitter.stick(false, it.x, it.y) }
+                                continue
+                            }
                             onUserInteraction()
                             for (ch in ev.changes) {
                                 val pid = ch.id.value
@@ -155,6 +164,14 @@ fun GamepadOverlay(
                                                         controlRadiusPx(c, density) * 1.65f
                                                 }
                                         } else hitTest(layout, ch.position, sizePx, density)
+                                        // The on-screen right stick wins over the camera area.
+                                        if (hit is OnScreenControl.AnalogStick && !hit.isLeft && camera.active) camera.reset()
+                                        if (hit == null && touchCamera && TouchCamera.inArea(ch.position.x, sizePx.width) &&
+                                            claims.values.none { id -> layout.any { it.id == id && it is OnScreenControl.AnalogStick && !it.isLeft } } &&
+                                            camera.down(pid, ch.position.x, ch.position.y, ch.uptimeMillis)
+                                        ) {
+                                            ch.consume()
+                                        }
                                         if (hit != null) {
                                             if (adaptiveSticks && hit is OnScreenControl.AnalogStick) {
                                                 val r = with(density) { hit.baseSizeDp.dp.toPx() } / 2f * hit.scale
@@ -171,6 +188,10 @@ fun GamepadOverlay(
                                     }
                                     // up OR cancellation (Home/focus-loss sends ACTION_CANCEL,
                                     // which is !pressed but not changedToUp) -> release the claim.
+                                    !ch.pressed && camera.up(pid) != null -> {
+                                        emitter.releaseStick(false)
+                                        ch.consume()
+                                    }
                                     !ch.pressed -> {
                                         pointerPos.remove(pid)
                                         claims.remove(pid)?.let { id ->
@@ -183,6 +204,12 @@ fun GamepadOverlay(
                                                     dispatchUp(emitter, it, dpadState)
                                                 }
                                             }
+                                            ch.consume()
+                                        }
+                                    }
+                                    ch.pressed && camera.active && claims[pid] == null -> {
+                                        camera.move(pid, ch.position.x, ch.position.y, ch.uptimeMillis)?.let { d ->
+                                            emitter.stick(false, d.x, d.y)
                                             ch.consume()
                                         }
                                     }
@@ -206,6 +233,7 @@ fun GamepadOverlay(
                         pointerPos.clear()
                         stickOrigins.clear()
                         dpadState.clear()
+                        camera.reset()
                     }
                 }
             }

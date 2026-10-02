@@ -354,6 +354,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
     private val fpsConfig = mutableStateOf(FpsConfigSnapshot())
     private val adaptiveSticks = mutableStateOf(false)
+    /** U07: the free right side of the screen drives the right stick by finger speed (opt-in, all games). */
+    private val touchCamera = mutableStateOf(false)
     private var controlsTitleId: String? = null
     /** The title the core reports running, for per-game touch layouts (U06). */
     private val activeTitleState = mutableStateOf<String?>(null)
@@ -388,6 +390,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         // L02: the interface mode chosen in the library; read once per game process.
         menuState.value = menuState.value.copy(
             developer = xendroid.compose.settings.UiModeStore.read(this) == xendroid.compose.settings.UiMode.DEVELOPER)
+        touchCamera.value = getSharedPreferences("touch_options", MODE_PRIVATE).getBoolean("touch_camera", false)
         enterImmersiveMode()
 
         EmuProcessLink.bindToMainProcess(this)
@@ -935,6 +938,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     controls =
                                         controls,
                                     adaptiveSticks = adaptiveSticks.value,
+                                    touchCamera = touchCamera.value,
 
                                     opacity =
                                         alpha,
@@ -1190,6 +1194,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                     .filter { it.value != null && !it.value!!.startsWith(xendroid.compose.companion.CompanionHost.KEY_PREFIX) }
                                                     .joinToString(", ") { "P${it.index + 1}" }.ifEmpty { stringResource(R.string.menu_no_controller) }),
                                             InGameAction.PHONE_CONTROLLERS to phoneControllersLabel.value,
+                                            InGameAction.TOUCH_CAMERA to stringResource(R.string.menu_touch_camera, if (touchCamera.value) on else off),
                                         ),
                                         phoneControllers = phoneControllersDetails.value,
                                         frameGenerationBudget = fgBudgetLabel.value,
@@ -2572,6 +2577,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 controlsTitleId = title
                 getSharedPreferences("touch_options", MODE_PRIVATE).edit()
                     .putBoolean("adaptive_$title", enabled).apply()
+            }
+            InGameAction.TOUCH_CAMERA -> {
+                touchCamera.value = !touchCamera.value
+                getSharedPreferences("touch_options", MODE_PRIVATE).edit()
+                    .putBoolean("touch_camera", touchCamera.value).apply()
             }
             InGameAction.RESUME -> closeMenuAndResume()
             InGameAction.SHARE_LOGS -> lifecycleScope.launch {

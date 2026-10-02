@@ -342,3 +342,10 @@ com comandos e resultados exatos.
    (anotar se o controle não vibra pelo Android). Com DualSense/Switch Pro (Android 12+): linha do
    giroscópio muda ao mexer. Apertar B não volta (é teste); segurar B por 1 s sai; o gesto de
    voltar do telefone também sai.
+31. Lote 10 — câmera por toque (U07): num jogo em 3ª pessoa com controles de toque, menu →
+   Controls → "Touch camera · free right side: On". Deslizar o dedo no lado direito longe dos
+   botões: a câmera gira na direção e na velocidade do dedo; parar o dedo (sem soltar): a câmera
+   para. Tocar A/B/X/Y nesse lado: continuam sendo botões. Segurar o analógico direito da tela:
+   ele manda, sem briga com a câmera. Abrir o menu no meio do gesto e voltar: a câmera não fica
+   girando sozinha. Girar a tela (se o jogo permitir): nada fica preso. Anotar se 1,2 dp/ms é
+   rápido/lento demais (é o único ajuste por enquanto).

@@ -23,6 +23,8 @@ enum class InGameAction {
     PHONE_CONTROLLERS,
     /** U01: shows or hides the tab's advanced options (it stays where it is in the list). */
     MORE_OPTIONS,
+    /** U07: the free right side of the screen as a touchpad for the right stick. */
+    TOUCH_CAMERA,
 }
 
 /** Every option once, on the tab it belongs to (U01), most used first. */
@@ -43,7 +45,8 @@ val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
         InGameAction.HUD_HOST_SUBMISSIONS, InGameAction.HUD_CPU, InGameAction.HUD_GPU,
         InGameAction.HUD_RAM, InGameAction.HUD_BATTERY, InGameAction.HUD_SOC,
     ),
-    InGamePage.CONTROLS to listOf(InGameAction.TOUCH_CONTROLS, InGameAction.ADAPTIVE_STICKS, InGameAction.EDIT_TOUCH_LAYOUT,
+    InGamePage.CONTROLS to listOf(InGameAction.TOUCH_CONTROLS, InGameAction.ADAPTIVE_STICKS, InGameAction.TOUCH_CAMERA,
+        InGameAction.EDIT_TOUCH_LAYOUT,
         InGameAction.PHONE_CONTROLLERS, InGameAction.CONTROLLER_RUMBLE,
         InGameAction.GYRO_CAMERA, InGameAction.GYRO_SENSITIVITY, InGameAction.GYRO_CALIBRATE),
     InGamePage.SESSION to listOf(InGameAction.RESUME, InGameAction.SHARE_LOGS, InGameAction.QUIT,

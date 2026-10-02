@@ -241,6 +241,7 @@ fun InGameMenu(
                                 Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
                             }
                             Text(stringResource(R.string.menu_adaptive_note), style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.menu_touch_camera_note), style = MaterialTheme.typography.bodySmall)
                             Text(stringResource(R.string.menu_phones_note), style = MaterialTheme.typography.bodySmall)
                         }
                         if (state.page == InGamePage.SESSION) {
@@ -333,6 +334,7 @@ private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: 
         InGameAction.CONTROLLER_RUMBLE -> stringResource(R.string.menu_rumble)
         InGameAction.PHONE_CONTROLLERS -> stringResource(R.string.menu_phone_controllers)
         InGameAction.MORE_OPTIONS -> stringResource(R.string.menu_fewer_options)
+        InGameAction.TOUCH_CAMERA -> stringResource(R.string.menu_touch_camera, onOff(false))
     }
 }
 

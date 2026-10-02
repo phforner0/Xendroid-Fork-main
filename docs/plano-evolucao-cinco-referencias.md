@@ -488,6 +488,11 @@ devem preservar direct launch e [contrato de frontend externo](frontend-integrat
 | U10 | Prompts guest e teclado virtual | Reusar bridge XAM existente; navegação por toque/D-pad/stick, atalhos de cursor/páginas/confirmar, UTF-8 inválido e strings limitadas; foco/cancel devolvem input ao dono sem botões presos |
 | U11 | Perfis locais e sign-in | Iterar `ProfilesScreen`/viewmodel, GamerTag/idioma/país/avatar, indicação do perfil ativo e erros acionáveis; escolher perfil antes do boot, respeitar saves/XUID existentes e depois integrar atribuição P1–P4 |
 
+**Estado U07 (2026-10-02, v1, Impl. + Local):** câmera por toque opt-in
+(`gamepad/TouchCamera.kt` no `GamepadOverlay`): lado direito livre vira analógico direito pela
+velocidade do dedo, zerando em repouso/soltar/cancelar; controles mantêm prioridade. Falta:
+ajuste de sensibilidade/área no editor e a sensação no aparelho (roteiro 31).
+
 **Estado U05 (2026-10-02, v1, Impl. + Local):** "Test controllers" na biblioteca
 (`ui/controllertest/`, `gamepad/ControllerTest.kt`): botões com checklist, analógicos sobre a
 zona morta com o valor que o jogo recebe, gatilhos, hat, giroscópio do controle (API 31+),
