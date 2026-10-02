@@ -226,3 +226,11 @@ com comandos e resultados exatos.
    "Pause on background" nem "Sustained performance", e D-pad/LB/RB percorrem só o que
    aparece. Voltar a Developer e abrir outro jogo: tudo volta. Configurações por jogo
    (ficha → Settings) seguem o mesmo modo.
+17. Lote 9 — assistente inicial (L01): com o app recém-instalado (ou apagando os dados do
+   pacote `.debug`), abrir a biblioteca: aparece "Welcome to XenDroid" com ✓ na GPU (nome do
+   Adreno), em 64-bit ARM e no Android; "Game folder" com "!" e o botão que leva ao fluxo de
+   All Files Access/pasta; com o telefone em português do Brasil, "From this phone: language
+   pt · region BR" → "Use them for games" → "Games will use them from the next launch" e, em
+   Configurações (Developer) → Console, User language = pt e User country = BR. "Open
+   Profiles" abre Perfis e, ao voltar, o assistente continua; "Done" sem escolher modo deixa
+   Player. Reabrir a biblioteca: não aparece de novo; ⋮ → "Setup assistant" reabre.

@@ -383,6 +383,12 @@ de deltas guest; registrar unavailable/stale e aquecimento. Referências [X2–X
 | L11 | Mods Xbox opt-in | Somente formatos suportados por Xenia/patch/override de arquivos; namespace separado, ordem e conflitos explícitos, não substituir um save/DLC; não portar mods/Workshop Steam |
 | L12 | Lixeira de dados gerenciados | Mover somente dados internos elegíveis para namespace isolado sob lease/journal; restauração com preview de conflitos, cota e limpeza explícita; remover referência da biblioteca não exclui ROM externa |
 
+**Estado L01 (2026-10-02, v1, Impl. + Local):** assistente inicial sobre a biblioteca
+(uma vez; reabre no menu): checagem de Vulkan/arm64/Android, pasta de jogos, idioma e região
+dos jogos a partir do locale do telefone (pt-BR → pt/BR), perfil, driver opcional e modo
+Jogador/Desenvolvedor; offline. Falta: interface do app em pt-BR (U02) e validação no
+aparelho (roteiro 17).
+
 **Estado L02 (2026-10-02, v1, Impl. + Local):** "Interface: Player/Developer" nas
 Configurações; Player mostra só "Essentials" (19 ajustes de jogador, também por jogo) e
 esconde do menu em jogo FG/LSFG, ADPF, contagem de submissões, política de fundo e modo

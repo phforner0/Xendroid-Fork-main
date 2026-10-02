@@ -149,6 +149,21 @@ fun GameLibraryScreen(
         return
     }
 
+    // L01: once, until finished or skipped; reopened from the menu. Not over the no-Vulkan
+    // gate, which already explains why games cannot run.
+    var assistantOpen by rememberSaveable { mutableStateOf(!FirstRunStore.done(context)) }
+    if (assistantOpen && state != LibraryUiState.NoVulkan) {
+        FirstRunAssistant(
+            folderReady = state is LibraryUiState.Loaded,
+            onChooseFolder = startRealPathMode,
+            onOpenProfiles = onOpenProfiles,
+            onClose = {
+                FirstRunStore.markDone(context)
+                assistantOpen = false
+            },
+        )
+    }
+
     val startGame: (Game) -> Unit = start@{ game ->
         if (preparingLaunch) return@start
         lastFocusedId = game.stableId
@@ -209,6 +224,10 @@ fun GameLibraryScreen(
                         DropdownMenuItem(
                             text = { Text("Use this phone as a controller") },
                             onClick = { menuOpen = false; onOpenPhoneController() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Setup assistant") },
+                            onClick = { menuOpen = false; assistantOpen = true },
                         )
                         DropdownMenuItem(
                             text = { Text("Open user data") },
