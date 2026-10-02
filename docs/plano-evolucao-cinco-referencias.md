@@ -488,6 +488,11 @@ devem preservar direct launch e [contrato de frontend externo](frontend-integrat
 | U10 | Prompts guest e teclado virtual | Reusar bridge XAM existente; navegação por toque/D-pad/stick, atalhos de cursor/páginas/confirmar, UTF-8 inválido e strings limitadas; foco/cancel devolvem input ao dono sem botões presos |
 | U11 | Perfis locais e sign-in | Iterar `ProfilesScreen`/viewmodel, GamerTag/idioma/país/avatar, indicação do perfil ativo e erros acionáveis; escolher perfil antes do boot, respeitar saves/XUID existentes e depois integrar atribuição P1–P4 |
 
+**Estado U01 (2026-10-02, Impl. + Local):** abas Graphics (apresentação/FG), System
+(FPS/energia/HUD), Controls (layout/jogadores/gyro) e Session (pausa/som/logs/sair), com o
+avançado de cada aba atrás de "More options" (abre no lugar, por aba, sem opções de dev no
+Player). Falta: linha do driver na aba Graphics e validação no aparelho (roteiro 27).
+
 **Estado 2026-10-02:** U03 (parte) — driver pedido × carregado na linha do driver,
 pela identidade gravada no run, sem falso alarme para runs anteriores à troca. U06 v1 —
 layout de toque por Title ID e orientação ("This game only" no editor dentro do jogo),

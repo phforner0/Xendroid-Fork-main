@@ -2341,6 +2341,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     private fun performMenuAction(action: InGameAction) {
+        if (action == InGameAction.MORE_OPTIONS) {
+            menuState.value = menuState.value.toggleAdvanced()
+            return
+        }
         if (!BuildConfig.DEBUG && action in listOf(InGameAction.WINFG, InGameAction.WINFG_PRESET,
                 InGameAction.LSFG, InGameAction.LSFG_MULTIPLIER)) return
         if (action == InGameAction.COLOR_FILTER) {

@@ -314,3 +314,11 @@ com comandos e resultados exatos.
    `address` (editar à mão): recusa "Line N: the write has no address" — e o jogo continua
    abrindo. Ligar um patch do catálogo e um seu que escrevam no mesmo endereço: aparece o aviso
    de conflito com o endereço; desligar um: some. "Remove": o arquivo sai da pasta `patches`.
+27. Lote 10 — menu em jogo (U01): abrir o menu num jogo: abas Graphics · System · Controls ·
+   Session. Graphics mostra modos de tela, escala, TV e (Developer) FG; System mostra o limite de
+   FPS com "Live limit/Next launch", HUD e taxa de atualização. Com controle: LB/RB troca de aba,
+   D-pad desce até "More options (N)", A abre — a seleção fica no item, que vira "Fewer options",
+   e os avançados aparecem abaixo; trocar de aba e voltar: continua aberto naquela aba. Em
+   Player, "More options" de Graphics mostra só "Stretch next launch" e o filtro de cor, e a aba
+   Session não tem o item. Em tela pequena (4:3 ou dividida), a lista rola e o rodapé
+   Continue/Exit continua visível.

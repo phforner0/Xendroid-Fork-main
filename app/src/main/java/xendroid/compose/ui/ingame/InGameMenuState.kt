@@ -1,6 +1,8 @@
 package xendroid.compose.ui.ingame
 
-enum class InGamePage { GRAPHICS, HUD, CONTROLS, SESSION }
+/** U01: Graphics = presentation and frame generation; System = frame rate, power and HUD;
+ *  Controls = layout, players and gyro; Session = pause, sound, logs and exit. */
+enum class InGamePage { GRAPHICS, SYSTEM, CONTROLS, SESSION }
 
 enum class InGameAction {
     FPS_UNLIMITED, FPS_30, FPS_45, FPS_60, FPS_90, FPS_120,
@@ -19,31 +21,43 @@ enum class InGameAction {
     GYRO_CALIBRATE, GYRO_SENSITIVITY,
     CONTROLLER_RUMBLE,
     PHONE_CONTROLLERS,
+    /** U01: shows or hides the tab's advanced options (it stays where it is in the list). */
+    MORE_OPTIONS,
 }
 
+/** Every option once, on the tab it belongs to (U01), most used first. */
 val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
     InGamePage.GRAPHICS to listOf(
+        InGameAction.DISPLAY_FIT, InGameAction.DISPLAY_FILL, InGameAction.DISPLAY_STRETCH, InGameAction.DISPLAY_INTEGER,
+        InGameAction.SCALING_EFFECT, InGameAction.EXTERNAL_DISPLAY,
+        InGameAction.WINFG, InGameAction.WINFG_PRESET, InGameAction.LSFG,
+        InGameAction.STRETCH, InGameAction.COLOR_FILTER,
+        InGameAction.LSFG_MULTIPLIER, InGameAction.IMPORT_LSFG_DLL, InGameAction.CLEAR_LSFG_CACHE,
+    ),
+    InGamePage.SYSTEM to listOf(
         InGameAction.FPS_UNLIMITED, InGameAction.FPS_30, InGameAction.FPS_45,
         InGameAction.FPS_60, InGameAction.FPS_90, InGameAction.FPS_120,
-        InGameAction.SAVE_GAME_FPS, InGameAction.INHERIT_GAME_FPS, InGameAction.SAVE_GLOBAL_FPS,
-        InGameAction.STRETCH,
-        InGameAction.DISPLAY_FIT, InGameAction.DISPLAY_FILL, InGameAction.DISPLAY_STRETCH, InGameAction.DISPLAY_INTEGER,
-        InGameAction.WINFG, InGameAction.WINFG_PRESET,
-        InGameAction.LSFG, InGameAction.IMPORT_LSFG_DLL, InGameAction.CLEAR_LSFG_CACHE,
-        InGameAction.LSFG_MULTIPLIER,
-        InGameAction.REFRESH_RATE, InGameAction.SUSTAINED_PERFORMANCE,
-        InGameAction.EXTERNAL_DISPLAY, InGameAction.SCALING_EFFECT,
-        InGameAction.PERFORMANCE_HINTS,
-        InGameAction.COLOR_FILTER,
-    ),
-    InGamePage.HUD to listOf(InGameAction.PERFORMANCE_HUD, InGameAction.HUD_STYLE,
+        InGameAction.SAVE_GAME_FPS, InGameAction.INHERIT_GAME_FPS,
+        InGameAction.PERFORMANCE_HUD, InGameAction.HUD_STYLE, InGameAction.REFRESH_RATE,
+        InGameAction.SAVE_GLOBAL_FPS, InGameAction.SUSTAINED_PERFORMANCE, InGameAction.PERFORMANCE_HINTS,
         InGameAction.HUD_HOST_SUBMISSIONS, InGameAction.HUD_CPU, InGameAction.HUD_GPU,
-        InGameAction.HUD_RAM, InGameAction.HUD_BATTERY, InGameAction.HUD_SOC),
+        InGameAction.HUD_RAM, InGameAction.HUD_BATTERY, InGameAction.HUD_SOC,
+    ),
     InGamePage.CONTROLS to listOf(InGameAction.TOUCH_CONTROLS, InGameAction.ADAPTIVE_STICKS, InGameAction.EDIT_TOUCH_LAYOUT,
-        InGameAction.GYRO_CAMERA, InGameAction.GYRO_CALIBRATE, InGameAction.GYRO_SENSITIVITY,
-        InGameAction.CONTROLLER_RUMBLE, InGameAction.PHONE_CONTROLLERS),
+        InGameAction.PHONE_CONTROLLERS, InGameAction.CONTROLLER_RUMBLE,
+        InGameAction.GYRO_CAMERA, InGameAction.GYRO_SENSITIVITY, InGameAction.GYRO_CALIBRATE),
     InGamePage.SESSION to listOf(InGameAction.RESUME, InGameAction.SHARE_LOGS, InGameAction.QUIT,
         InGameAction.MUTE, InGameAction.VOLUME_DOWN, InGameAction.VOLUME_UP, InGameAction.BACKGROUND_POLICY),
+)
+
+/** U01: behind "More options" on their tab: persistence, imports, fine HUD and power tuning. */
+val advancedActions: Set<InGameAction> = setOf(
+    InGameAction.STRETCH, InGameAction.COLOR_FILTER,
+    InGameAction.LSFG_MULTIPLIER, InGameAction.IMPORT_LSFG_DLL, InGameAction.CLEAR_LSFG_CACHE,
+    InGameAction.SAVE_GLOBAL_FPS, InGameAction.SUSTAINED_PERFORMANCE, InGameAction.PERFORMANCE_HINTS,
+    InGameAction.HUD_HOST_SUBMISSIONS, InGameAction.HUD_CPU, InGameAction.HUD_GPU,
+    InGameAction.HUD_RAM, InGameAction.HUD_BATTERY, InGameAction.HUD_SOC,
+    InGameAction.GYRO_CALIBRATE, InGameAction.BACKGROUND_POLICY,
 )
 
 /** L02: hidden in Player mode (engine internals and experiments); build gates still apply. */
@@ -66,10 +80,27 @@ data class InGameMenuState(
     val logSelection: Int = 0,
     /** Developer interface (L02); Player hides [developerActions]. */
     val developer: Boolean = true,
+    /** U01: tabs whose "More options" are open. */
+    val advanced: Set<InGamePage> = emptySet(),
 ) {
-    /** The page's actions as shown: what hardware navigation moves through. */
-    fun actions(page: InGamePage = this.page): List<InGameAction> =
-        inGamePageActions.getValue(page).let { all -> if (developer) all else all.filterNot { it in developerActions } }
+    /** The page's actions as shown, what hardware navigation moves through: the common ones,
+     *  then [InGameAction.MORE_OPTIONS] when the tab has advanced ones, then those if open. */
+    fun actions(page: InGamePage = this.page): List<InGameAction> {
+        val shown = inGamePageActions.getValue(page).filter { developer || it !in developerActions }
+        val (more, common) = shown.partition { it in advancedActions }
+        if (more.isEmpty()) return common
+        return common + InGameAction.MORE_OPTIONS + if (page in advanced) more else emptyList()
+    }
+
+    /** How many advanced options the tab holds (for the "More options" label). */
+    fun advancedCount(page: InGamePage = this.page): Int =
+        inGamePageActions.getValue(page).count { it in advancedActions && (developer || it !in developerActions) }
+
+    /** Opens or closes the tab's advanced options; the toggle keeps its place and selection. */
+    fun toggleAdvanced(): InGameMenuState {
+        val next = copy(advanced = if (page in advanced) advanced - page else advanced + page)
+        return next.select(next.actions().indexOf(InGameAction.MORE_OPTIONS).coerceAtLeast(0))
+    }
 
     val selected: Int
         get() = if (confirmingQuit) confirmationSelection else if (logPicker) logSelection else selections[page.ordinal]

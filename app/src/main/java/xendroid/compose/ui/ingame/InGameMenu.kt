@@ -170,12 +170,12 @@ fun InGameMenu(
                                 onClick = { onLogChoice(index) })
                         }
                     } else {
-                        if (state.page == InGamePage.GRAPHICS) {
-                            if (state.developer) {
-                                Text(presentation.label, style = MaterialTheme.typography.bodySmall)
-                                frameGenerationBudget?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                                Text("Experimental host interpolation; hardware cadence/latency remain unvalidated.", style = MaterialTheme.typography.bodySmall)
-                            }
+                        if (state.page == InGamePage.GRAPHICS && state.developer) {
+                            Text(presentation.label, style = MaterialTheme.typography.bodySmall)
+                            frameGenerationBudget?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                            Text("Experimental host interpolation; hardware cadence/latency remain unvalidated.", style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (state.page == InGamePage.SYSTEM) {
                             Text("Frame limit · this session", style = MaterialTheme.typography.titleSmall)
                             Text("Live limit: ${fpsText(fpsLimit)}", style = MaterialTheme.typography.bodySmall)
                             Text(
@@ -192,7 +192,11 @@ fun InGameMenu(
                         }
                         state.actions().forEachIndexed { index, action ->
                             GuestPanelOption(
-                                label = extensionLabels[action] ?: action.label(fpsLimit, performanceHud, compactHud, touchControls, adaptiveSticks, stretch, hudMetrics, presentation, fgPreset, volume),
+                                label = if (action == InGameAction.MORE_OPTIONS) {
+                                    if (state.page in state.advanced) "Fewer options" else "More options (${state.advancedCount()})"
+                                } else {
+                                    extensionLabels[action] ?: action.label(fpsLimit, performanceHud, compactHud, touchControls, adaptiveSticks, stretch, hudMetrics, presentation, fgPreset, volume)
+                                },
                                 selected = index == state.selected,
                                 enabled = (action != InGameAction.ADAPTIVE_STICKS || fpsConfig.titleId != null) &&
                                     (!action.isFrameGeneration || BuildConfig.DEBUG) &&
@@ -217,7 +221,7 @@ fun InGameMenu(
                             )
                             if (!BuildConfig.DEBUG && state.developer) Text("Frame generation remains gated to developer/debug builds pending hardware validation.", style = MaterialTheme.typography.bodySmall)
                         }
-                        if (state.page == InGamePage.HUD) {
+                        if (state.page == InGamePage.SYSTEM) {
                             Text("Vulkan submitted counts sends to the compositor, not measured display scanout.", style = MaterialTheme.typography.bodySmall)
                         }
                         if (state.page == InGamePage.CONTROLS) {
@@ -250,7 +254,7 @@ fun InGameMenu(
 private val InGamePage.label: String
     get() = when (this) {
         InGamePage.GRAPHICS -> "Graphics"
-        InGamePage.HUD -> "HUD"
+        InGamePage.SYSTEM -> "System"
         InGamePage.CONTROLS -> "Controls"
         InGamePage.SESSION -> "Session"
     }
@@ -307,6 +311,7 @@ private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: 
         InGameAction.GYRO_SENSITIVITY -> "Gyro camera sensitivity"
         InGameAction.CONTROLLER_RUMBLE -> "Controller rumble"
         InGameAction.PHONE_CONTROLLERS -> "Phone controllers"
+        InGameAction.MORE_OPTIONS -> "More options"
     }
 
 private fun HudMetric.label(metrics: Set<HudMetric>): String = "$label · full HUD: ${if (this in metrics) "On" else "Off"}"
