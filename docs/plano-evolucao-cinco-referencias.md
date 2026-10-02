@@ -543,7 +543,7 @@ segurada (350 ms + 120 ms) também no analógico/hat; corrigido o Esc que ativav
 menu em jogo. Popups nativos e teclado virtual continuam com o U10. Falta: validação no
 aparelho (roteiro 29).
 
-**Estado U02 (2026-10-02, parte, Impl. + Local):** recursos en/pt-BR com o menu em jogo
+**Estado U02 (2026-10-02, v1, Impl. + Local):** recursos en/pt-BR com o menu em jogo
 inteiro, `localeConfig` (idioma por app no Android 13+), descrição/papel do botão do menu e
 "selecionado" para o leitor de tela; teste que exige as mesmas chaves e marcadores nas duas
 línguas. Lote 12h: biblioteca inteira, diálogos, assistente inicial e navegador de pastas; lote
@@ -551,9 +551,11 @@ línguas. Lote 12h: biblioteca inteira, diálogos, assistente inicial e navegado
 recomendados); lote 12j: Perfis, Saves e Conteúdo (telas e mensagens); lote 12k: patches, teste de
 controles, comparação (moldura), companion (motivos estruturados), diagnóstico, sobre, teclas, pausa,
 disco, faixa de início, compressão, avisos do host e atualizador; lote 12l: editor de toque e
-layouts (recusas estruturadas). Falta: veredito/avisos da comparação e eventos de conexão do teste
-de controles, textos de estado de outros componentes (ADPF, TV, telefones como controle), RTL e
-texto grande no aparelho (roteiro 28).
+layouts (recusas estruturadas); lote 12m: veredito e avisos da comparação, eventos de conexão do
+teste de controles, linhas de telefones como controle e TV no menu (938 textos por língua). Fica em
+inglês, de propósito: itens só do modo Desenvolvedor (ADPF, FG/LSFG, governador, cvars), números do
+HUD, bloco técnico do último run e logs. Falta: revisão do texto, RTL e texto grande no aparelho
+(roteiro 28).
 
 **Estado U01 (2026-10-02, Impl. + Local):** abas Graphics (apresentação/FG), System
 (FPS/energia/HUD), Controls (layout/jogadores/gyro) e Session (pausa/som/logs/sair), com o

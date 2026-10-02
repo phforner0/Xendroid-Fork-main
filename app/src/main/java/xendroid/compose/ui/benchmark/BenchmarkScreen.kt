@@ -151,12 +151,12 @@ private fun RunRow(candidate: Candidate, label: Char?, onLabel: (Char?) -> Unit)
 private fun ResultCard(result: Benchmark.Result) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(result.verdict, style = MaterialTheme.typography.titleSmall)
+            Text(verdictText(result.outcome), style = MaterialTheme.typography.titleSmall)
             if (result.order.isNotEmpty()) Text(stringResource(R.string.bm_order, result.order) +
                 if (result.balanced) " " + stringResource(R.string.bm_balanced) else "",
                 style = MaterialTheme.typography.bodySmall)
-            if (result.changed.size == 1) Text(stringResource(R.string.bm_changed, result.changed.single()), style = MaterialTheme.typography.bodySmall)
-            result.warnings.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+            if (result.changes.size == 1) Text(stringResource(R.string.bm_changed, changeText(result.changes.single())), style = MaterialTheme.typography.bodySmall)
+            result.notes.forEach { Text("• " + warningText(it), style = MaterialTheme.typography.bodySmall) }
             listOf("A" to result.a, "B" to result.b).forEach { (name, side) ->
                 side?.let {
                     Text(stringResource(R.string.bm_side, name, it.runs, it.medianFps, it.lowFps) +

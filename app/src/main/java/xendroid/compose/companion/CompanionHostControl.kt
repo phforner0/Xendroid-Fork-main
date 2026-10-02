@@ -23,7 +23,11 @@ class CompanionHostControl(
         data object Starting : Status
         data class On(val host: CompanionHost, val network: String) : Status
         data object Stopping : Status
-        data class Failed(val reason: String) : Status
+        /** Could not start: [why] (with its [detail]) for the menu's language, [reason] in English. */
+        data class Failed(val why: Why, val detail: String = "") : Status {
+            enum class Why(val english: String) { NO_NETWORK("no Wi-Fi, hotspot or Ethernet network"), CANNOT_LISTEN("could not listen (%s)") }
+            val reason: String get() = why.english.format(detail)
+        }
     }
 
     @Volatile var status: Status = Status.Off
@@ -58,13 +62,13 @@ class CompanionHostControl(
     private fun start() {
         val lan = runCatching(pickNetwork).getOrNull()
         if (lan == null) {
-            finish(Status.Starting, Status.Failed("no Wi-Fi, hotspot or Ethernet network"))
+            finish(Status.Starting, Status.Failed(Status.Failed.Why.NO_NETWORK))
             return
         }
         val host = try {
             newHost(lan).start()
         } catch (e: Exception) {
-            finish(Status.Starting, Status.Failed("could not listen (${e.message ?: e.javaClass.simpleName})"))
+            finish(Status.Starting, Status.Failed(Status.Failed.Why.CANNOT_LISTEN, e.message ?: e.javaClass.simpleName))
             return
         }
         // Closed (the game ended) while starting: never leave a listening socket behind.

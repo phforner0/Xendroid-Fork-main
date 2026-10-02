@@ -39,28 +39,34 @@ data class TestedDevice(
  */
 class ControllerTestModel(private val deadzone: Float = 0.08f, private val maxLog: Int = 30) {
     private val devices = LinkedHashMap<Int, TestedDevice>()
-    private val log = ArrayDeque<String>()
+    private val log = ArrayDeque<Event>()
 
     val all: List<TestedDevice> get() = devices.values.toList()
-    val events: List<String> get() = log.toList()
+    /** A connection change, newest first; the screen says it in its language (U02). */
+    data class Event(val name: String, val kind: Kind) {
+        enum class Kind { CONNECTED, RECONNECTED, DISCONNECTED }
+        val english: String get() = "$name: ${kind.name.lowercase()}"
+    }
+
+    val events: List<Event> get() = log.toList()
 
     fun connected(device: TestedDevice) {
         val previous = devices.values.firstOrNull { it.descriptor == device.descriptor && it.id != device.id }
         if (previous != null) {
             devices.remove(previous.id)
             devices[device.id] = device.copy(seen = previous.seen)
-            note("${device.name}: reconnected")
+            note(Event(device.name, Event.Kind.RECONNECTED))
         } else {
             val known = devices[device.id]
             devices[device.id] = device.copy(seen = known?.seen.orEmpty())
-            if (known == null || !known.connected) note("${device.name}: connected")
+            if (known == null || !known.connected) note(Event(device.name, Event.Kind.CONNECTED))
         }
     }
 
     fun disconnected(id: Int) {
         val device = devices[id] ?: return
         devices[id] = device.copy(connected = false, pressed = emptySet(), axes = PadAxes())
-        note("${device.name}: disconnected")
+        note(Event(device.name, Event.Kind.DISCONNECTED))
     }
 
     fun key(id: Int, keyCode: Int, down: Boolean) {
@@ -90,8 +96,8 @@ class ControllerTestModel(private val deadzone: Float = 0.08f, private val maxLo
             axes.lt > 0.5f, axes.rt > 0.5f, dpad)
     }
 
-    private fun note(text: String) {
-        log.addFirst(text)
+    private fun note(event: Event) {
+        log.addFirst(event)
         while (log.size > maxLog) log.removeLast()
     }
 

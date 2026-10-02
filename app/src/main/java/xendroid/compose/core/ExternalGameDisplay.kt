@@ -33,13 +33,13 @@ class ExternalGameDisplay(
         .filter { it.isValid && it.displayId != Display.DEFAULT_DISPLAY }
     fun cycle() {
         val displays = choices()
-        if (displays.isEmpty()) { statusChanged("TV · no presentation display connected"); return }
+        if (displays.isEmpty()) { statusChanged(activity.getString(xendroid.compose.R.string.tv_none)); return }
         val index = displays.indexOfFirst { it.displayId == activeDisplay?.displayId }
         if (index + 1 >= displays.size) toPhone() else toDisplay(displays[index + 1])
     }
     private fun toDisplay(display: Display) {
         val next = try { Presentation(activity, display) } catch (e: RuntimeException) {
-            statusChanged("TV · display unavailable"); return
+            statusChanged(activity.getString(xendroid.compose.R.string.tv_unavailable)); return
         }
         val surface = SurfaceView(next.context)
         detach()
@@ -53,7 +53,7 @@ class ExternalGameDisplay(
         presentation = next
         old?.dismiss()
         next.setOnDismissListener { if (!closing && presentation === next) toPhone() }
-        try { next.show(); detached = false; statusChanged("TV · ${display.name} · ${display.refreshRate} Hz") }
+        try { next.show(); detached = false; statusChanged(activity.getString(xendroid.compose.R.string.tv_on, display.name, display.refreshRate.toString())) }
         catch (e: WindowManager.InvalidDisplayException) { toPhone() }
     }
     fun toPhone() {
@@ -67,10 +67,10 @@ class ExternalGameDisplay(
             callback.surfaceChanged(primary.holder, PixelFormat.RGBA_8888, primary.width, primary.height)
         }
         detached = false
-        statusChanged("TV · phone display")
+        statusChanged(activity.getString(xendroid.compose.R.string.tv_phone))
     }
     override fun onDisplayRemoved(id: Int) { if (activeDisplay?.displayId == id) toPhone() }
-    override fun onDisplayAdded(id: Int) { if (activeDisplay == null) statusChanged("TV · ${choices().size} external display(s) available") }
+    override fun onDisplayAdded(id: Int) { if (activeDisplay == null) statusChanged(activity.getString(xendroid.compose.R.string.tv_available, choices().size)) }
     override fun onDisplayChanged(id: Int) {
         if (activeDisplay?.displayId == id && activeDisplay?.isValid == false) toPhone()
     }

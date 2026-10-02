@@ -78,7 +78,7 @@ fun ControllerTestScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val model = remember { ControllerTestModel() }
     var devices by remember { mutableStateOf(emptyList<TestedDevice>()) }
-    var events by remember { mutableStateOf(emptyList<String>()) }
+    var events by remember { mutableStateOf(emptyList<ControllerTestModel.Event>()) }
     val gyro = remember { mutableStateMapOf<Int, FloatArray>() }
     // U08: each controller's own rumble intensity (the game reads it at the next start). Only its
     // own file is written here: the default lives with the game process's options.
@@ -154,7 +154,7 @@ fun ControllerTestScreen(onBack: () -> Unit) {
             }
             if (events.isNotEmpty()) {
                 item { Text(stringResource(R.string.ct_connections), style = MaterialTheme.typography.titleSmall) }
-                items(events.take(10)) { Text(it, style = MaterialTheme.typography.bodySmall) }
+                items(events.take(10)) { Text(eventText(it), style = MaterialTheme.typography.bodySmall) }
             }
         }
     }
@@ -267,6 +267,13 @@ private fun DeviceCard(device: TestedDevice, model: ControllerTestModel, gyro: F
         }
     }
 }
+
+@Composable
+private fun eventText(event: ControllerTestModel.Event): String = stringResource(when (event.kind) {
+    ControllerTestModel.Event.Kind.CONNECTED -> R.string.ct_event_connected
+    ControllerTestModel.Event.Kind.RECONNECTED -> R.string.ct_event_reconnected
+    ControllerTestModel.Event.Kind.DISCONNECTED -> R.string.ct_event_disconnected
+}, event.name)
 
 /** The stick's raw position over its dead zone: inside the inner circle the game gets nothing. */
 @Composable

@@ -351,6 +351,11 @@ com comandos e resultados exatos.
    Salvar e sair); Layouts: salvar um, aplicar outro (a prévia diz "Paisagem: Controles: N movido(s)…"),
    exportar e importar o arquivo; importar um arquivo que não é layout diz "Não importado: Não é um
    arquivo de layout."; nenhum botão da barra cortado em tela pequena.
+   Lote 12m: Comparar execuções com A e B marcados mostra o veredito e os avisos em português; Testar
+   controles lista "<controle>: conectado/desconectado/reconectado"; no menu em jogo, Controles →
+   Telefones como controle mostra "Telefones como controle · Ligado (ative para desligar)" com
+   "No outro telefone: Biblioteca → ⋮ → …, código …"; com o Wi-Fi desligado, "… · Desligado: nenhuma
+   rede Wi-Fi, ponto de acesso ou Ethernet"; a linha da TV diz "TV · tela do telefone".
 29. Lote 10 — navegação por controle (U04): na biblioteca, A abre o jogo e B volta; em
    Configurações → "Menus: A confirms…" → "Swap": agora B abre e A volta na hora. Abrir um jogo:
    no menu em jogo, B ativa e A fecha/cancela; dentro do jogo os botões continuam os de sempre.

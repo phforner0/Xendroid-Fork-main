@@ -203,14 +203,15 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         },
         onChange = { mainHandler.post { refreshPhoneControllers() } },
     )
-    private val phoneControllersLabel = mutableStateOf("Phone controllers · Off")
+    /** Null until the first refresh (resources are not ready while the activity is constructed). */
+    private val phoneControllersLabel = mutableStateOf<String?>(null)
     private val phoneControllersDetails = mutableStateOf<String?>(null)
     private var phoneControllersRecorded = "off"
 
     /** Menu texts; on, off and failures also go to the run's timeline (never the address or code). */
     private fun refreshPhoneControllers() {
-        phoneControllersLabel.value = phoneControllers.label()
-        phoneControllersDetails.value = phoneControllers.details()
+        phoneControllersLabel.value = xendroid.compose.ui.ingame.phoneControllersLabel(this, phoneControllers.status)
+        phoneControllersDetails.value = xendroid.compose.ui.ingame.phoneControllersDetails(this, phoneControllers.status)
         val status = when (val s = phoneControllers.status) {
             is xendroid.compose.companion.CompanionHostControl.Status.On -> "on (${s.network})"
             is xendroid.compose.companion.CompanionHostControl.Status.Failed -> "not started: ${s.reason}"
@@ -274,7 +275,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var surfaceView: SurfaceView? = null
     private var surfaceAvailable = false
     private var externalDisplay: ExternalGameDisplay? = null
-    private val externalDisplayLabel = mutableStateOf("TV · phone display")
+    /** Null until the TV output reports (it starts on the phone). */
+    private val externalDisplayLabel = mutableStateOf<String?>(null)
     private val scalingEffect = mutableIntStateOf(-1)
     private val performanceHints by lazy { PresenterPerformanceHints(applicationContext) }
     private val performanceHintsLabel = mutableStateOf("Presenter ADPF · Off")
@@ -1237,7 +1239,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                     stringResource(R.string.menu_color_contrast), stringResource(R.string.menu_color_warm))[presentationState.value.colorFilter.coerceIn(0, 3)]),
                                             InGameAction.LSFG_MULTIPLIER to stringResource(R.string.menu_lsfg_multiplier_value, lsfgMultiplier.intValue),
                                             InGameAction.PERFORMANCE_HINTS to performanceHintsLabel.value,
-                                            InGameAction.EXTERNAL_DISPLAY to externalDisplayLabel.value,
+                                            InGameAction.EXTERNAL_DISPLAY to (externalDisplayLabel.value ?: stringResource(R.string.tv_phone)),
                                             InGameAction.SCALING_EFFECT to stringResource(R.string.menu_scaling_value,
                                                 listOf(stringResource(R.string.menu_scaling_inherited), "Bilinear", "CAS", "FSR")[scalingEffect.intValue + 1]),
                                             InGameAction.REFRESH_RATE to stringResource(R.string.menu_refresh_rate_value,
@@ -1257,7 +1259,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                         // U08: a controller with its own intensity says it.
                                                         "P${player.index + 1}" + (player.value?.let { rumbleSettings.value.perDevice[it] }?.let { " (${rumbleNames.getValue(it)})" } ?: "")
                                                     }.ifEmpty { stringResource(R.string.menu_no_controller) }),
-                                            InGameAction.PHONE_CONTROLLERS to phoneControllersLabel.value,
+                                            InGameAction.PHONE_CONTROLLERS to (phoneControllersLabel.value ?: stringResource(R.string.phone_ctl_off)),
                                             InGameAction.TOUCH_CAMERA to stringResource(R.string.menu_touch_camera, if (touchCamera.value) on else off),
                                             InGameAction.MARK_SCENE to stringResource(R.string.menu_mark_scene, sceneMarkers.intValue),
                                             InGameAction.DRIVER_INFO to driverLine.value.let { (state, label) ->

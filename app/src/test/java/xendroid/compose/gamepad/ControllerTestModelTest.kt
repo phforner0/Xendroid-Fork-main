@@ -52,7 +52,7 @@ class ControllerTestModelTest {
         val back = model.all.single()
         assertEquals(9, back.id)
         assertEquals(setOf("X"), back.seen)
-        assertEquals(listOf("Pad 9: reconnected", "Pad 5: disconnected", "Pad 5: connected"), model.events)
+        assertEquals(listOf("Pad 9: reconnected", "Pad 5: disconnected", "Pad 5: connected"), model.events.map { it.english })
         model.connected(pad(9, "xbox-1"))                                    // a "changed" callback: no new line
         assertEquals(3, model.events.size)
     }
