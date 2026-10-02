@@ -177,3 +177,29 @@ com comandos e resultados exatos.
    prévia deve listar exatamente essas mudanças e o backup; depois, os valores voltam.
    Conferir que `vulkan_lib_path`/`content_root` deste aparelho não mudaram e que um
    arquivo qualquer (não bundle) é recusado com mensagem.
+14. Lote 7 — companion LAN (dois telefones com este APK na mesma rede: "host" roda o
+   jogo, "cliente" é o outro; de preferência um jogo com multijogador local/split-screen):
+   a. Host, com o jogo já rodando: menu (Back) → Controls → "Phone controllers". Esperado
+      "Phone controllers · On (activate to turn off)" e o bloco "… → 192.168.x.y:porta,
+      code NNNNNN (Wi-Fi)" com "No phone connected yet". Só com dados móveis (Wi-Fi e
+      hotspot desligados): "Off: no Wi-Fi, hotspot or Ethernet network". Antes do jogo
+      rodar (tela preta do boot): aviso "…once the game is running".
+   b. Cliente: Biblioteca → ⋮ → "Use this phone as a controller", digitar endereço e
+      código → pad em paisagem com "P2 · N ms · Leave". No host (menu aberto), a linha
+      "P2 <nome> (N ms)"; o jogo vê o controle 2 conectar (tela de entrada do P2).
+   c. Código errado → "Wrong code" no cliente; dez erros → "Pairing is closed…" e, no host,
+      "Pairing locked…"; desligar e ligar no host gera código novo, que funciona.
+   d. Com o menu do host aberto, o P2 não age no jogo; ao fechar o menu, o estado atual do
+      cliente vale (um stick ainda segurado continua movendo, sem precisar soltar).
+   e. Desligar o Wi-Fi do cliente em jogo: em ~1 s o P2 solta tudo (personagem para) e o
+      host deixa de listá-lo; religar e reconectar: o mesmo telefone volta como P2, sem
+      botão preso nem "fantasma".
+   f. Rumble: um evento que vibra o controle do P2 vibra o telefone cliente conforme a
+      intensidade escolhida nele (Off não vibra); abrir o menu do host para a vibração.
+   g. Terceiro telefone → P3; com P2–P4 ocupados, o próximo recebe "All player slots are
+      taken". Um controle físico conectado depois pega o slot livre seguinte (P1 se livre).
+   h. Sair do jogo no host: o cliente mostra "Disconnected: …" em até ~1 s. Na ficha do jogo,
+      "Last run timeline" mostra "companion · phone controllers on (Wi-Fi)", "phone
+      controller joined as P2" e "… left: …", nunca o IP, a porta ou o código.
+   i. Hotspot: repetir (b) com o host como hotspot e o cliente conectado a ele.
+   Registrar aparelhos, Android, rede (Wi-Fi/hotspot), jogo e as latências mostradas.

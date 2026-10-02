@@ -20,7 +20,7 @@ import javax.crypto.spec.SecretKeySpec
  *  client-> HELLO(version, clientId[16], name, proof[32] = HMAC-SHA256(code, tag | nonce | clientId))
  *  host  -> WELCOME(slot) | REJECT(reason)
  *  client-> STATE(seq, buttons, lt, rt, lx, ly, rx, ry)   full pad state, XInput layout
- *  host  -> PING(t) / client -> PONG(t)                    heartbeat and latency
+ *  host  -> PING(t, rtt) / client -> PONG(t)               heartbeat; rtt = the host's last round trip to this phone (ms, -1 unknown)
  *  host  -> RUMBLE(left, right)                            the guest's rumble for that slot
  *  either-> BYE
  *
@@ -84,7 +84,8 @@ sealed interface CompanionMessage {
     data class Welcome(val slot: Int) : CompanionMessage
     data class Reject(val reason: Int) : CompanionMessage
     data class State(val seq: Long, val pad: PadState) : CompanionMessage
-    data class Ping(val time: Long) : CompanionMessage
+    /** [rttMs]: the host's latest measured round trip to this phone, -1 before the first PONG. */
+    data class Ping(val time: Long, val rttMs: Int = -1) : CompanionMessage
     data class Pong(val time: Long) : CompanionMessage
     data class Rumble(val left: Int, val right: Int) : CompanionMessage
     data object Bye : CompanionMessage
@@ -118,7 +119,11 @@ object CompanionCodec {
                 }
                 CompanionProtocol.STATE
             }
-            is CompanionMessage.Ping -> { data.writeLong(message.time); CompanionProtocol.PING }
+            is CompanionMessage.Ping -> {
+                data.writeLong(message.time)
+                data.writeShort(message.rttMs.coerceIn(-1, Short.MAX_VALUE.toInt()))
+                CompanionProtocol.PING
+            }
             is CompanionMessage.Pong -> { data.writeLong(message.time); CompanionProtocol.PONG }
             is CompanionMessage.Rumble -> { data.writeShort(message.left); data.writeShort(message.right); CompanionProtocol.RUMBLE }
             CompanionMessage.Bye -> CompanionProtocol.BYE
@@ -160,7 +165,10 @@ object CompanionCodec {
                 CompanionMessage.State(seq, PadState(data.readUnsignedShort(), data.readUnsignedByte(), data.readUnsignedByte(),
                     data.readShort().toInt(), data.readShort().toInt(), data.readShort().toInt(), data.readShort().toInt()))
             }
-            CompanionProtocol.PING -> { need(8); CompanionMessage.Ping(data.readLong()) }
+            CompanionProtocol.PING -> {
+                need(10)
+                CompanionMessage.Ping(data.readLong(), data.readShort().toInt().coerceAtLeast(-1))
+            }
             CompanionProtocol.PONG -> { need(8); CompanionMessage.Pong(data.readLong()) }
             CompanionProtocol.RUMBLE -> { need(4); CompanionMessage.Rumble(data.readUnsignedShort(), data.readUnsignedShort()) }
             CompanionProtocol.BYE -> CompanionMessage.Bye

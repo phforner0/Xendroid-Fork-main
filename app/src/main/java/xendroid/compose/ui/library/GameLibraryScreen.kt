@@ -87,6 +87,7 @@ fun GameLibraryScreen(
     onOpenInstallContent: () -> Unit,
     onInstallFromDisc: (String) -> Unit,
     compressVm: GameCompressViewModel,
+    onOpenPhoneController: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -203,6 +204,10 @@ fun GameLibraryScreen(
                         DropdownMenuItem(
                             text = { Text("Touch controls") },
                             onClick = { menuOpen = false; onOpenTouchControls() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Use this phone as a controller") },
+                            onClick = { menuOpen = false; onOpenPhoneController() },
                         )
                         DropdownMenuItem(
                             text = { Text("Open user data") },

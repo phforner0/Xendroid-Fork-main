@@ -218,10 +218,12 @@ class CompanionHostTest {
         assertEquals(6, changes(1).size)
     }
 
-    @Test fun heartbeatsMeasureLatency() {
+    @Test fun heartbeatsMeasureLatencyAndThePhoneIsToldIt() {
         val host = host()
-        client(host).connect()
+        val phone = client(host)
+        phone.connect()
         eventually("latency measured") { host.connected.singleOrNull()?.latencyMs != null }
+        eventually("phone told") { phone.latencyMs != null }
     }
 
     @Test fun turningCompanionModeOffReleasesEveryPhone() {

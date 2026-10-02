@@ -529,8 +529,12 @@ o jogo rodando), endereço escolhido por `CompanionNetwork` (IPv4 privado de Wi-
 Ethernet/tethering; nunca dados móveis, VPN, CGNAT ou 0.0.0.0), liga/desliga ordenado fora
 da main thread (`CompanionHostControl`), IP:porta, código, jogadores e latência no menu,
 input dos telefones segurado com menu/pausa/fundo, rumble cru do slot a cada telefone só
-quando muda (`CompanionRumbleForwarder`). Falta: tela do cliente (endereço + código + pad de
-toque) e o gate em hardware (dois telefones na mesma rede, jogo split-screen).
+quando muda (`CompanionRumbleForwarder`). **Cliente (fatia 7c, Impl. + Local):** Biblioteca → ⋮
+→ "Use this phone as a controller" (`ui/companion/`): IP:porta + código + nome, conexão fora
+da main thread (`CompanionPadLink`, testado com host real), pad de toque em paisagem com o
+layout do usuário, latência medida pelo host (vai no PING), vibração com a intensidade do
+próprio telefone, `clientId` estável e mensagens de recusa/queda. Falta: o gate em hardware
+(dois telefones na mesma rede, jogo split-screen) — roteiro 14 da auditoria.
 
 ## 9. P0/P2 — FG, apresentação e energia
 

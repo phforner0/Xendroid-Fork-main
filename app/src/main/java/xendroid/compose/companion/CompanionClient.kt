@@ -79,6 +79,10 @@ class CompanionClient(
 
     val isOpen: Boolean get() = open.get()
 
+    /** The round trip to the game the host last measured (ms), null until it has one. */
+    @Volatile var latencyMs: Int? = null
+        private set
+
     private fun write(message: CompanionMessage) {
         synchronized(writeLock) { CompanionCodec.write(socket.getOutputStream(), message) }
     }
@@ -109,7 +113,10 @@ class CompanionClient(
         val reason = try {
             while (true) {
                 when (val message = CompanionCodec.read(input)) {
-                    is CompanionMessage.Ping -> write(CompanionMessage.Pong(message.time))
+                    is CompanionMessage.Ping -> {
+                        write(CompanionMessage.Pong(message.time))
+                        if (message.rttMs >= 0) latencyMs = message.rttMs
+                    }
                     is CompanionMessage.Rumble -> onRumble(message.left, message.right)
                     CompanionMessage.Bye -> break
                     else -> {}

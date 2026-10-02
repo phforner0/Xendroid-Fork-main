@@ -38,6 +38,8 @@ import xendroid.compose.ui.patches.GamePatchesScreen
 import xendroid.compose.ui.saves.SaveManagerViewModel
 import xendroid.compose.ui.saves.SaveManagerScreen
 import xendroid.compose.ui.diagnostics.DiagnosticsScreen
+import xendroid.compose.ui.companion.PhoneControllerScreen
+import xendroid.compose.ui.companion.PhoneControllerViewModel
 
 object Routes {
     const val LIBRARY = "library"
@@ -56,6 +58,7 @@ object Routes {
     const val INSTALL_CONTENT = "install_content"
     const val SAVES = "saves"
     const val DIAGNOSTICS = "diagnostics"
+    const val PHONE_CONTROLLER = "phone_controller"
 }
 
 private fun NavBackStackEntry.backOnce(nav: NavController): () -> Unit = {
@@ -110,7 +113,12 @@ fun AppNavHost(container: AppContainer) {
                 onInstallFromDisc = { path ->
                     navigateOnce("${Routes.INSTALL_CONTENT}?src=" + Uri.encode(path))
                 },
+                onOpenPhoneController = { navigateOnce(Routes.PHONE_CONTROLLER) },
             )
+        }
+        composable(Routes.PHONE_CONTROLLER) { entry ->
+            val vm: PhoneControllerViewModel = viewModel()
+            PhoneControllerScreen(vm = vm, onBack = entry.backOnce(nav))
         }
         composable(Routes.SETTINGS) { entry ->
             val vm: SettingsViewModel = viewModel(factory = container.settingsViewModelFactory())

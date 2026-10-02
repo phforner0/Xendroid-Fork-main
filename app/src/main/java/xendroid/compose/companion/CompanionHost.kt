@@ -148,8 +148,10 @@ class CompanionHost(
                 val now = clock()
                 for (client in clients.values) {
                     val silent = now - client.lastHeard
+                    // The phone shows the round trip the host measured (I09).
+                    val rtt = client.latencyMs?.coerceAtMost(Short.MAX_VALUE.toLong())?.toInt() ?: -1
                     if (silent > timeoutMs) client.close("no data for $silent ms")
-                    else runCatching { client.send(CompanionMessage.Ping(now)) }.onFailure { client.close("send failed") }
+                    else runCatching { client.send(CompanionMessage.Ping(now, rtt)) }.onFailure { client.close("send failed") }
                 }
             }
         }
