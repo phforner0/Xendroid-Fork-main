@@ -35,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
@@ -66,7 +67,9 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit) {
+fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit, inGame: Boolean = false,
+                        titleId: String? = null) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val persisted by controller.config.collectAsState(initial = GamepadConfigDto())
     var working by remember(persisted) { mutableStateOf(persisted) }
@@ -75,7 +78,10 @@ fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit) {
     var snap by remember { mutableStateOf(true) }
     var showGlobals by remember { mutableStateOf(false) }
     var chromeCollapsed by remember { mutableStateOf(false) }
-    val base = remember(working, landscape) { controller.controlsFor(working, landscape) }
+    // U06: with a game running, edits can go to that game's own layout instead of the shared one.
+    val perGame = titleId != null && working.hasOwnLayout(titleId, landscape)
+    val editScope = if (perGame) titleId else null
+    val base = remember(working, landscape, editScope) { controller.controlsFor(working, landscape, editScope) }
     // Un-snapped live fraction of the control being dragged. The drag accumulates raw deltas
     // here (NEVER snapped per frame) so it tracks the finger 1:1; snapFrac is applied once on
     // drag-end. Reset explicitly on drag-end. Null when no drag is active.
@@ -125,15 +131,15 @@ fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit) {
         onDispose {
             activity?.requestedOrientation = enterOrientation
             insets?.let {
-                it.show(WindowInsetsCompat.Type.systemBars())
+                if (inGame) it.hide(WindowInsetsCompat.Type.systemBars())
+                else it.show(WindowInsetsCompat.Type.systemBars())
                 if (prevBehavior != null) it.systemBarsBehavior = prevBehavior
             }
         }
     }
 
     fun mutateControls(transform: (List<OnScreenControl>) -> List<OnScreenControl>) {
-        val updated = transform(base).toDto()
-        working = if (landscape) working.copy(landscape = updated) else working.copy(portrait = updated)
+        working = working.withLayout(editScope, landscape, transform(base).toDto())
     }
     fun mutateGlobals(transform: (GamepadGlobalsDto) -> GamepadGlobalsDto) {
         working = working.copy(globals = transform(working.globals))
@@ -205,8 +211,14 @@ fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit) {
                 }
             },
             onReset = {
-                val def = defaultLayout(landscape).toDto()
-                working = if (landscape) working.copy(landscape = def) else working.copy(portrait = def)
+                working = working.withLayout(editScope, landscape, defaultLayout(landscape).toDto())
+            },
+            // Turning it on starts the game's own layout from what it plays with now; off goes
+            // back to the shared layout (the game's copy is dropped on save).
+            perGame = if (titleId != null) perGame else null,
+            onTogglePerGame = {
+                working = if (perGame) working.withoutOwnLayout(titleId, landscape)
+                else working.withLayout(titleId, landscape, base.toDto())
             },
             onHideShow = {
                 val id = selected ?: return@EditorChrome
@@ -215,7 +227,13 @@ fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit) {
             showGlobals = showGlobals, onToggleGlobals = { showGlobals = !showGlobals },
             globals = working.globals, onMutateGlobals = ::mutateGlobals,
             onCancel = onDone,
-            onSave = { scope.launch { controller.save(working); onDone() } },
+            onSave = { scope.launch {
+                try { controller.save(working); onDone() }
+                catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    android.widget.Toast.makeText(context, "Could not save the layout; previous file kept", android.widget.Toast.LENGTH_LONG).show()
+                }
+            } },
         )
     }
 }
@@ -234,6 +252,9 @@ private fun EditorChrome(
     selectedScale: Float?,
     onScaleSelected: (Float) -> Unit,
     onReset: () -> Unit,
+    /** Null when no game is running (only the shared layout can be edited). */
+    perGame: Boolean?,
+    onTogglePerGame: () -> Unit,
     onHideShow: () -> Unit,
     showGlobals: Boolean,
     onToggleGlobals: () -> Unit,
@@ -275,6 +296,9 @@ private fun EditorChrome(
                 FilterChip(selected = !landscape, onClick = { onSetLandscape(false) },
                     label = { Text("Portrait") })
                 FilterChip(selected = snap, onClick = onToggleSnap, label = { Text("Snap") })
+                if (perGame != null) {
+                    FilterChip(selected = perGame, onClick = onTogglePerGame, label = { Text("This game only") })
+                }
                 TextButton(onClick = onReset) { Text("Reset") }
                 TextButton(onClick = onHideShow, enabled = hasSelection) { Text("Hide / Show") }
                 TextButton(onClick = onToggleGlobals) { Text("Globals") }

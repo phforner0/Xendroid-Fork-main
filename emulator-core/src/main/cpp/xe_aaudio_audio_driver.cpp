@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 #include "xe_aaudio_audio_driver.h"
+#include "audio_runtime.h"
 
 #include <algorithm>
 #include <atomic>
@@ -160,6 +161,8 @@ bool AAudioAudioDriver::BuildStream() {
         AAudioStream_getPerformanceMode(stream_));
 
     stream_initialized_ = true;
+    xruns_published_ = 0;
+    ae::RunStats().backend.store(1, std::memory_order_relaxed);
     return true;
   }
   return false;
@@ -288,8 +291,16 @@ void AAudioAudioDriver::LoadNextBlock(uint32_t& releases, bool& gapped) {
   if (depth > stat_queue_depth_max_.load(std::memory_order_relaxed)) {
     stat_queue_depth_max_.store(depth, std::memory_order_relaxed);
   }
+  // Before the guest's first block the device only plays startup silence: not
+  // an underrun anyone hears, so the run summary starts counting after it.
+  if (played_once_) {
+    ae::RunStats().blocks.fetch_add(1, std::memory_order_relaxed);
+  }
   if (!buffer) {
     stat_gaps_.fetch_add(1, std::memory_order_relaxed);
+    if (played_once_) {
+      ae::RunStats().concealed.fetch_add(1, std::memory_order_relaxed);
+    }
     gapped = true;
     ConcealNextBlock();
     last_block_pos_ = 0;
@@ -302,6 +313,10 @@ void AAudioAudioDriver::LoadNextBlock(uint32_t& releases, bool& gapped) {
     // Media player: already interleaved host endian stereo.
     std::memcpy(last_block_.data(), buffer,
                 host_block_samples_ * sizeof(float));
+  }
+  if (!played_once_) {
+    played_once_ = true;
+    ae::RunStats().blocks.fetch_add(1, std::memory_order_relaxed);
   }
   ApplyGainAndClamp();
   ApplyFadeIn();
@@ -345,7 +360,7 @@ void AAudioAudioDriver::ConcealNextBlock() {
 }
 
 void AAudioAudioDriver::ApplyGainAndClamp() {
-  const uint32_t master = std::min<uint32_t>(cvars::volume, 100);
+  const uint32_t master = ae::EffectiveVolume();
   const float gain =
       driver_volume_.load(std::memory_order_relaxed) * (master / 100.0f);
 
@@ -455,6 +470,7 @@ void AAudioAudioDriver::RecoveryThreadMain() {
       }
       if (!restart_requested_) {
         lk.unlock();
+        PublishXRuns();
         if (cvars::apu_aaudio_log_stats) {
           LogAndResetStats();
         }
@@ -462,7 +478,22 @@ void AAudioAudioDriver::RecoveryThreadMain() {
       }
       restart_requested_ = false;
     }
+    // The old stream's last xruns, before the rebuild resets its count.
+    PublishXRuns();
     retry_pending = !RestartStream();
+  }
+}
+
+void AAudioAudioDriver::PublishXRuns() {
+  std::unique_lock<std::mutex> stream_guard(stream_mutex_);
+  if (!stream_initialized_ || !stream_) {
+    return;
+  }
+  const int32_t xruns = AAudioStream_getXRunCount(stream_);
+  if (xruns > xruns_published_) {
+    ae::RunStats().device_xruns.fetch_add(uint64_t(xruns - xruns_published_),
+                                          std::memory_order_relaxed);
+    xruns_published_ = xruns;
   }
 }
 

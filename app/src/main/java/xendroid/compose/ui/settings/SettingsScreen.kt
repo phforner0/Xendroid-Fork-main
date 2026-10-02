@@ -11,6 +11,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -28,6 +29,8 @@ import xendroid.compose.settings.SettingsViewModel
 @Composable
 fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
     val values by vm.values.collectAsStateWithLifecycle()
+    val ready by vm.ready.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
 
     // Durable flush on pause; re-open on resume. Dispose flush = backstop.
     val owner = LocalLifecycleOwner.current
@@ -44,6 +47,18 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
     }
 
     var selected by remember { mutableStateOf<SettingsCategory?>(null) }
+    if (!ready) {
+        ConfigLoadNotice(error, vm::onResume, onBack)
+        return
+    }
+    if (error != null) {
+        AlertDialog(
+            onDismissRequest = vm::clearError,
+            text = { Text(error.orEmpty()) },
+            confirmButton = { TextButton(onClick = { vm.clearError(); vm.flush() }) { Text("Retry save") } },
+            dismissButton = { TextButton(onClick = vm::clearError) { Text("Close") } },
+        )
+    }
     val section = selected
     if (section == null) {
         SettingsIndex(
@@ -51,6 +66,10 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
             modifiedCountOf = { cat -> cat.settings.count { values[it.key]?.modified == true } },
             onOpen = { selected = it },
             onBack = { vm.flush(); onBack() },
+            dataBundle = {
+                DataBundleSection(beforeImport = vm::flush, afterImport = vm::onResume)
+                UpdateChannelSection()
+            },
         )
     } else {
         BackHandler { selected = null }
@@ -70,6 +89,7 @@ private fun SettingsIndex(
     modifiedCountOf: (SettingsCategory) -> Int,
     onOpen: (SettingsCategory) -> Unit,
     onBack: () -> Unit,
+    dataBundle: @Composable () -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -84,6 +104,10 @@ private fun SettingsIndex(
         }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+            item(key = "data-bundle") {
+                dataBundle()
+                HorizontalDivider()
+            }
             items(categories, key = { it.title }) { cat ->
                 val modified = modifiedCountOf(cat)
                 ListItem(
@@ -125,12 +149,26 @@ private fun SettingsCategoryDetail(
             )
         }
     ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+        var query by remember { mutableStateOf("") }
+        Column(Modifier.fillMaxSize().padding(padding)) {
+        OutlinedTextField(query, onValueChange = { query = it }, label = { Text("Search settings") },
+            singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+        LazyColumn(Modifier.weight(1f)) {
+            if (query.isNotBlank()) {
+                items(vm.categories.flatMap { it.settings }.filter {
+                    it.title.contains(query, true) || it.name.contains(query, true) || it.desc.contains(query, true)
+                }, key = { it.key }) { setting ->
+                    val sv = values[setting.key]
+                    SettingRow(vm, setting, sv?.modified == true, sv?.raw)
+                }
+            } else {
             items(category.settings, key = { it.key }) { setting ->
                 val sv = values[setting.key]
                 SettingRow(vm, setting, modified = sv?.modified == true, raw = sv?.raw)
                 HorizontalDivider()
             }
+            }
+        }
         }
     }
 }

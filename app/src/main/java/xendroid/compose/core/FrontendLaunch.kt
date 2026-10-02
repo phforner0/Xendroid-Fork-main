@@ -38,6 +38,23 @@ object FrontendLaunch {
         return null
     }
 
+    /**
+     * For handing a launch from the main process to the :emu process: a real path when
+     * one exists, otherwise the original content:// URI. Never the /proc/self/fd/<n>
+     * fallback, whose descriptor number only means something in the process that
+     * opened it; :emu opens the URI itself.
+     */
+    fun resolveForHandOff(context: Context, intent: Intent?): String? {
+        intent ?: return null
+        val raw = intent.getStringExtra("game_uri")?.takeIf { it.isNotBlank() }
+            ?: intent.getStringExtra("AutoStartFile")?.takeIf { it.isNotBlank() }
+            ?: intent.dataString?.takeIf { it.isNotBlank() }
+            ?: return null
+        if (!raw.startsWith("content://")) return normalize(context, raw)
+        val uri = Uri.parse(raw)
+        return contentRealPath(context, uri) ?: raw
+    }
+
     private fun normalize(context: Context, raw: String): String? =
         if (raw.startsWith("content://") || raw.startsWith("file://")) {
             resolveUri(context, Uri.parse(raw))
@@ -51,12 +68,11 @@ object FrontendLaunch {
         else -> null
     }
 
-    private fun contentToPath(context: Context, uri: Uri): String? {
-        documentsProviderPath(context, uri)?.let { return it }
-        smuggledPath(uri)?.let { return it }
-        mediaStoreDataPath(context, uri)?.let { return it }
-        return fdPassthrough(context, uri)
-    }
+    private fun contentToPath(context: Context, uri: Uri): String? =
+        contentRealPath(context, uri) ?: fdPassthrough(context, uri)
+
+    private fun contentRealPath(context: Context, uri: Uri): String? =
+        documentsProviderPath(context, uri) ?: smuggledPath(uri) ?: mediaStoreDataPath(context, uri)
 
     /** com.android.externalstorage.documents: "primary:ROMs/x.iso" -> real path. */
     private fun documentsProviderPath(context: Context, uri: Uri): String? {

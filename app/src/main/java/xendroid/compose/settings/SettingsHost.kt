@@ -7,6 +7,10 @@ package xendroid.compose.settings
  * the calls already present in SettingRows.kt.
  */
 interface SettingsHost {
+    /** Stable persistence scope for frontend metadata such as driver selection history. */
+    val persistenceKey: String get() = "global"
+    fun contract(s: Setting): SettingContract = settingContract(s,
+        if (persistenceKey == "global") "globally" else "for this game", isCustomDriverSupported)
     val isCustomDriverSupported: Boolean
     fun currentBool(s: Setting.Bool): Boolean
     fun onBoolChanged(s: Setting.Bool, v: Boolean)

@@ -13,6 +13,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import xendroid.compose.core.ContentPaths
+import xendroid.compose.core.StorageAccess
 import xendroid.compose.core.EmulatorRuntime
 import xendroid.compose.core.GameMetadataSource
 import xendroid.compose.data.PreferencesStore
@@ -155,9 +156,9 @@ class InstallContentViewModel(
             }
             val status = withContext(Dispatchers.IO) {
                 val emu = EmulatorRuntime.emulator ?: return@withContext -1
-                emu.install_disc_content(
+                runCatching { StorageAccess.acquire().use { emu.install_disc_content(
                     discPath, item.innerPath,
-                    ContentPaths.contentRoot().absolutePath, scratch.absolutePath)
+                    ContentPaths.contentRoot().absolutePath, scratch.absolutePath) } }.getOrDefault(0xC0000022.toInt())
             }
             poll.cancel()
             if (status != 0) {
@@ -190,7 +191,9 @@ class InstallContentViewModel(
         }
         val status = withContext(Dispatchers.IO) {
             val emu = EmulatorRuntime.emulator ?: return@withContext -1
-            emu.install_content(srcPath, ContentPaths.contentRoot().absolutePath)
+            runCatching { StorageAccess.acquire().use {
+                emu.install_content(srcPath, ContentPaths.contentRoot().absolutePath)
+            } }.getOrDefault(0xC0000022.toInt())
         }
         poll.cancel()
         if (status == 0) {

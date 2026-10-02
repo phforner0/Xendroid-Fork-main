@@ -4,19 +4,28 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import xendroid.compose.archive.ArchiveFiles
+import xendroid.compose.archive.ContentBusyException
 import xendroid.compose.core.ContentPaths
 import xendroid.compose.core.EmulatorRuntime
 import xendroid.compose.core.Gamertag
 import xendroid.compose.core.ProfilePaths
+import xendroid.compose.core.StorageAccess
+import xendroid.compose.saves.ProfileContentSummary
+import xendroid.compose.saves.ProfileTrash
+import xendroid.compose.saves.TrashedProfile
 import xendroid.compose.settings.ConfigStore
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 class ProfileManagerViewModel(
@@ -42,15 +51,23 @@ class ProfileManagerViewModel(
     private val _listState = MutableStateFlow<ListState>(ListState.Loading)
     val listState: StateFlow<ListState> = _listState.asStateFlow()
 
+    /** Profiles removed from the list but still restorable (with every save). */
+    private val _trash = MutableStateFlow<List<TrashedProfile>>(emptyList())
+    val trash: StateFlow<List<TrashedProfile>> = _trash.asStateFlow()
+
     sealed interface OpState {
         data object Idle : OpState
         data class Busy(val message: String) : OpState
         data class Done(val message: String) : OpState
         data class Failed(val message: String) : OpState
+        /** What a delete would take away, shown before the user confirms it. */
+        data class ConfirmDelete(val entry: ProfileEntry, val summary: ProfileContentSummary) : OpState
     }
 
     private val _opState = MutableStateFlow<OpState>(OpState.Idle)
     val opState: StateFlow<OpState> = _opState.asStateFlow()
+
+    private val profileTrash get() = ProfileTrash(ContentPaths.contentRoot())
 
     init { refresh() }
 
@@ -81,6 +98,7 @@ class ProfileManagerViewModel(
                 ListState.Error(t.message ?: "Couldn't read profiles.")
             }
         }
+        _trash.value = withContext(Dispatchers.IO) { runCatching { profileTrash.list() }.getOrDefault(emptyList()) }
     }
 
     fun create(gamertag: String, language: Int, country: Int, avatarUri: Uri?) = viewModelScope.launch {
@@ -89,20 +107,26 @@ class ProfileManagerViewModel(
             return@launch
         }
         _opState.value = OpState.Busy("Creating profile…")
-        val result = withContext(Dispatchers.IO) {
-            EmulatorRuntime.ensureLoaded()
-            val emu = EmulatorRuntime.emulator ?: return@withContext null
-            val xuid = emu.create_profile(
-                ContentPaths.contentRoot().absolutePath, gamertag, language, country)
-            if (xuid != null && avatarUri != null) writeAvatar(xuid, avatarUri)
-            xuid
+        _opState.value = withContext(Dispatchers.IO) {
+            try {
+                // An unusable image fails here, before any profile file exists.
+                val tiles = avatarUri?.let(::decodeAvatar)
+                EmulatorRuntime.ensureLoaded()
+                val emu = EmulatorRuntime.emulator ?: return@withContext OpState.Failed("Emulator not loaded.")
+                StorageAccess.acquire().use {
+                    val xuid = emu.create_profile(
+                        ContentPaths.contentRoot().absolutePath, gamertag, language, country)
+                        ?: return@withContext OpState.Failed("Couldn't create the profile.")
+                    val avatarError = tiles?.let { runCatching { writeAvatar(xuid, it) }.exceptionOrNull() }
+                    if (avatarError == null) OpState.Done("Created “$gamertag”.")
+                    else OpState.Done("Created “$gamertag”, but the avatar could not be saved: ${avatarError.message}")
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                OpState.Failed(reason("Couldn't create the profile", e))
+            }
         }
-        if (result != null) {
-            _opState.value = OpState.Done("Created “$gamertag”.")
-            refresh()
-        } else {
-            _opState.value = OpState.Failed("Couldn't create the profile.")
-        }
+        refresh()
     }
 
     fun rename(xuid: String, gamertag: String, language: Int, country: Int, avatarUri: Uri?) =
@@ -112,44 +136,87 @@ class ProfileManagerViewModel(
                 return@launch
             }
             _opState.value = OpState.Busy("Saving…")
-            val status = withContext(Dispatchers.IO) {
-                EmulatorRuntime.ensureLoaded()
-                val emu = EmulatorRuntime.emulator ?: return@withContext -1
-                val st = emu.rename_profile(
-                    ContentPaths.contentRoot().absolutePath, xuid, gamertag, language, country)
-                if (st == 0 && avatarUri != null) writeAvatar(xuid, avatarUri)
-                st
+            _opState.value = withContext(Dispatchers.IO) {
+                try {
+                    val tiles = avatarUri?.let(::decodeAvatar)
+                    EmulatorRuntime.ensureLoaded()
+                    val emu = EmulatorRuntime.emulator ?: return@withContext OpState.Failed("Emulator not loaded.")
+                    StorageAccess.acquire().use {
+                        val status = emu.rename_profile(
+                            ContentPaths.contentRoot().absolutePath, xuid, gamertag, language, country)
+                        if (status != 0) return@withContext OpState.Failed(renameReasonFor(status))
+                        val avatarError = tiles?.let { runCatching { writeAvatar(xuid, it) }.exceptionOrNull() }
+                        if (avatarError == null) OpState.Done("Saved “$gamertag”.")
+                        else OpState.Done("Saved “$gamertag”, but the avatar could not be saved: ${avatarError.message}")
+                    }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    OpState.Failed(reason("Couldn't save the profile", e))
+                }
             }
-            if (status == 0) {
-                _opState.value = OpState.Done("Saved “$gamertag”.")
-                refresh()
-            } else {
-                _opState.value = OpState.Failed(renameReasonFor(status))
-            }
+            refresh()
         }
 
     fun setActive(xuid: String) = viewModelScope.launch {
-        withContext(Dispatchers.IO) { writeActiveXuid(xuid.uppercase()) }
-        _opState.value = OpState.Done("Active profile set. Applies on next game launch.")
+        _opState.value = runCatching { withContext(Dispatchers.IO) { writeActiveXuid(xuid.uppercase()) } }
+            .fold({ OpState.Done("Active profile set. Applies on next game launch.") }, {
+                if (it is CancellationException) throw it
+                Log.w(TAG, "Setting the active profile failed", it)
+                OpState.Failed(reason("Couldn't set the active profile; the configuration was kept", it))
+            })
         refresh()
     }
 
+    /** First step of a delete: measure what content/<XUID> holds so the dialog can say it. */
+    fun requestDelete(entry: ProfileEntry) = viewModelScope.launch {
+        _opState.value = OpState.Busy("Checking the profile's saved data…")
+        _opState.value = withContext(Dispatchers.IO) {
+            runCatching { OpState.ConfirmDelete(entry, profileTrash.summarize(entry.xuid)) }
+                .getOrElse { OpState.Failed(reason("Couldn't read the profile's data", it)) }
+        }
+    }
+
+    /** Moves the whole profile folder (account + every game's saves) to the trash. */
     fun delete(xuid: String) = viewModelScope.launch {
-        _opState.value = OpState.Busy("Removing…")
-        val ok = withContext(Dispatchers.IO) {
-            val id = xuid.uppercase()
-            if (!ProfilePaths.XUID_REGEX.matches(id)) return@withContext false
-            val dir = File(ContentPaths.contentRoot(), id)
-            val removed = dir.deleteRecursively()
-            if (activeXuid().equals(id, ignoreCase = true)) writeActiveXuid("")
-            removed
+        _opState.value = OpState.Busy("Moving the profile to the trash…")
+        _opState.value = withContext(Dispatchers.IO) {
+            try {
+                StorageAccess.acquire().use { lease ->
+                    profileTrash.moveToTrash(lease, xuid)
+                    if (activeXuid().equals(xuid, ignoreCase = true)) writeActiveXuid("")
+                }
+                OpState.Done("Profile moved to the trash. Restore it from this screen, or remove it permanently.")
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                OpState.Failed(reason("Couldn't remove the profile; nothing was deleted", e))
+            }
         }
-        if (ok) {
-            _opState.value = OpState.Done("Profile removed.")
-            refresh()
-        } else {
-            _opState.value = OpState.Failed("Couldn't remove the profile.")
+        refresh()
+    }
+
+    fun restore(trashId: String) = viewModelScope.launch {
+        _opState.value = OpState.Busy("Restoring the profile…")
+        _opState.value = withContext(Dispatchers.IO) {
+            runCatching { StorageAccess.acquire().use { profileTrash.restore(it, trashId) } }
+                .fold({ OpState.Done("Profile restored with its saves.") },
+                    { OpState.Failed(reason("Couldn't restore the profile", it)) })
         }
+        refresh()
+    }
+
+    fun purge(trashId: String) = viewModelScope.launch {
+        _opState.value = OpState.Busy("Removing permanently…")
+        _opState.value = withContext(Dispatchers.IO) {
+            runCatching { StorageAccess.acquire().use { profileTrash.purge(it, trashId) } }
+                .fold({ OpState.Done("Removed permanently.") },
+                    { OpState.Failed(reason("Couldn't remove the trashed profile", it)) })
+        }
+        refresh()
+    }
+
+    private fun reason(action: String, e: Throwable): String = when (e) {
+        is ContentBusyException -> "$action: a game or another save/content operation is running. Close it and try again."
+        else -> "$action: ${e.message ?: e.javaClass.simpleName}"
     }
 
     private fun activeXuid(): String {
@@ -157,29 +224,46 @@ class ProfileManagerViewModel(
         return try {
             h.getString("Profiles", "logged_profile_slot_0_xuid") ?: ""
         } finally {
-            h.closeString()
+            h.closeDiscard()
         }
     }
 
     private fun writeActiveXuid(xuid: String) {
-        val h = configStore.openLive()
-        try {
+        configStore.editLiveConfig { h ->
             h.putString("Profiles", "logged_profile_slot_0_xuid", xuid)
-        } finally {
-            h.closeFile()
         }
     }
 
-    private fun writeAvatar(xuid: String, uri: Uri) {
-        val src = appContext.contentResolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it)
-        } ?: return
-        val square = centerCropSquare(src)
-        val dir = ProfilePaths.profileDir(xuid).also { it.mkdirs() }
-        writePng(square, 64, File(dir, "tile_64.png"))
-        writePng(square, 32, File(dir, "tile_32.png"))
-        if (square != src) square.recycle()
-        src.recycle()
+    private class AvatarTiles(val tile64: ByteArray, val tile32: ByteArray)
+
+    /** Bounded read + bounds-only decode first: a huge or bogus image cannot exhaust memory. */
+    private fun decodeAvatar(uri: Uri): AvatarTiles {
+        val bytes = appContext.contentResolver.openInputStream(uri)?.use {
+            ArchiveFiles.readBounded(it, AvatarPolicy.MAX_INPUT_BYTES)
+        } ?: error("Cannot read the selected image")
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = AvatarPolicy.sampleSize(bounds.outWidth, bounds.outHeight)
+        }
+        val src = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            ?: error("The selected file is not a supported image")
+        try {
+            val square = centerCropSquare(src)
+            try {
+                return AvatarTiles(png(square, 64), png(square, 32))
+            } finally {
+                if (square !== src) square.recycle()
+            }
+        } finally {
+            src.recycle()
+        }
+    }
+
+    private fun writeAvatar(xuid: String, tiles: AvatarTiles) {
+        val dir = ProfilePaths.profileDir(xuid)
+        ArchiveFiles.atomicBytes(File(dir, "tile_64.png"), tiles.tile64)
+        ArchiveFiles.atomicBytes(File(dir, "tile_32.png"), tiles.tile32)
     }
 
     private fun centerCropSquare(bmp: Bitmap): Bitmap {
@@ -190,10 +274,16 @@ class ProfileManagerViewModel(
         return Bitmap.createBitmap(bmp, x, y, side, side)
     }
 
-    private fun writePng(square: Bitmap, size: Int, dest: File) {
+    private fun png(square: Bitmap, size: Int): ByteArray {
         val scaled = Bitmap.createScaledBitmap(square, size, size, true)
-        dest.outputStream().use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        if (scaled != square) scaled.recycle()
+        try {
+            return ByteArrayOutputStream().use {
+                check(scaled.compress(Bitmap.CompressFormat.PNG, 100, it)) { "Avatar encoding failed" }
+                it.toByteArray()
+            }
+        } finally {
+            if (scaled !== square) scaled.recycle()
+        }
     }
 
     private fun renameReasonFor(status: Int): String = when (status) {
@@ -203,4 +293,6 @@ class ProfileManagerViewModel(
         0xC0000022.toInt() -> "Couldn't write the profile files."
         else -> "Save failed (0x${status.toUInt().toString(16)})."
     }
+
+    private companion object { const val TAG = "ProfileManager" }
 }

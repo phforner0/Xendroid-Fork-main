@@ -3,21 +3,39 @@ package xendroid.compose.ui.library
 import android.app.Activity
 import android.content.Context
 import android.util.Log
+import android.widget.Toast
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,9 +47,15 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import xendroid.compose.core.AllFilesAccess
 import xendroid.compose.core.EmuProcessLink
+import xendroid.compose.sessions.describeAudio
+import xendroid.compose.sessions.describeFrameTimes
+import xendroid.compose.sessions.describeRun
+import xendroid.compose.sessions.formatPlayTime
 import xendroid.compose.data.Game
+import xendroid.compose.data.isFavorite
 import xendroid.compose.data.GameFormat
 import xendroid.compose.ui.compress.GameCompressViewModel
 import xendroid.compose.ui.compress.GameCompressViewModel.CompressState
@@ -58,6 +82,8 @@ fun GameLibraryScreen(
     onOpenPerGameSettings: (titleId: String, gameName: String, format: GameFormat, launchUri: String) -> Unit,
     onOpenGamePatches: (titleId: String, gameName: String) -> Unit,
     onOpenContentManager: (titleId: String, gameName: String) -> Unit,
+    onOpenSaves: (titleId: String, gameName: String) -> Unit,
+    onOpenDiagnostics: (String?) -> Unit,
     onOpenInstallContent: () -> Unit,
     onInstallFromDisc: (String) -> Unit,
     compressVm: GameCompressViewModel,
@@ -68,12 +94,22 @@ fun GameLibraryScreen(
     var updateResult by remember { mutableStateOf<UpdateResult?>(null) }
 
     var pendingGame by remember { mutableStateOf<Game?>(null) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     // A disc whose content is not installed yet; the launch waits on the answer.
     var pendingDiscInstall by remember { mutableStateOf<Pair<Game, Int>?>(null) }
     var compressConfirmFor by remember { mutableStateOf<Game?>(null) }
     val compressState by compressVm.state.collectAsStateWithLifecycle()
     val titleIdState by viewModel.titleIdState.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
+    val sort by viewModel.sort.collectAsStateWithLifecycle()
+    val activity by viewModel.activity.collectAsStateWithLifecycle()
+    var favoritesOnly by rememberSaveable { mutableStateOf(false) }
+    var lastFocusedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var focusRestoreTick by remember { mutableIntStateOf(0) }
+    var preparingLaunch by remember { mutableStateOf(false) }
+    var searchHasFocus by remember { mutableStateOf(false) }
+    val gridState = rememberLazyGridState()
 
     var showBrowser by remember { mutableStateOf(false) }
     var allFilesGranted by remember { mutableStateOf(AllFilesAccess.isGranted()) }
@@ -94,6 +130,7 @@ fun GameLibraryScreen(
                 allFilesGranted = AllFilesAccess.isGranted()
                 if (firstStart) firstStart = false else viewModel.refresh()
             }
+            if (event == Lifecycle.Event.ON_RESUME) focusRestoreTick++
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -108,6 +145,23 @@ fun GameLibraryScreen(
             onCancel = { showBrowser = false },
         )
         return
+    }
+
+    val startGame: (Game) -> Unit = start@{ game ->
+        if (preparingLaunch) return@start
+        lastFocusedId = game.stableId
+        preparingLaunch = true
+        scope.launch {
+            try {
+                val pending = viewModel.uninstalledDiscContent(game)
+                if (pending.isNotEmpty()) pendingDiscInstall = game to pending.size
+                else launchGame(context, viewModel, game)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w("GameLibrary", "Preparing launch failed", e)
+                Toast.makeText(context, "Could not prepare this game for launch", Toast.LENGTH_LONG).show()
+            } finally { preparingLaunch = false }
+        }
     }
 
     Scaffold(
@@ -139,6 +193,9 @@ fun GameLibraryScreen(
                             text = { Text("Profiles") },
                             onClick = { menuOpen = false; onOpenProfiles() },
                         )
+                        DropdownMenuItem(text = { Text("Diagnostics") }, onClick = {
+                            menuOpen = false; onOpenDiagnostics(null)
+                        })
                         DropdownMenuItem(
                             text = { Text("Key mapping") },
                             onClick = { menuOpen = false; onOpenKeymap() },
@@ -205,23 +262,75 @@ fun GameLibraryScreen(
                     if (s.games.isEmpty())
                         EmptyMessage("No games in this folder", "Choose another",
                             onAction = startRealPathMode)
-                    else GameGrid(
-                        games = s.games,
-                        viewModel = viewModel,
-                        onLaunch = { game ->
-                            scope.launch {
-                                // A mandatory-install disc is still bootable, so this asks
-                                // rather than diverting the launch on its own.
-                                val pending = viewModel.uninstalledDiscContent(game)
-                                if (pending.isNotEmpty()) {
-                                    pendingDiscInstall = game to pending.size
-                                } else {
-                                    launchGame(context, viewModel, game)
+                    else {
+                        val visibleGames = remember(s.games, searchQuery, favoritesOnly, favorites, sort, activity) {
+                            val query = searchQuery.trim()
+                            val filtered = s.games.filter { game ->
+                                (!favoritesOnly || isFavorite(game, favorites)) &&
+                                    (query.isEmpty() || game.name.contains(query, ignoreCase = true) ||
+                                        game.titleId?.contains(query, ignoreCase = true) == true)
+                            }
+                            when (sort) {
+                                LibrarySort.NAME_ASC -> filtered.sortedBy { it.name.lowercase() }
+                                LibrarySort.NAME_DESC -> filtered.sortedByDescending { it.name.lowercase() }
+                                LibrarySort.FORMAT -> filtered.sortedWith(compareBy({ it.format.name }, { it.name.lowercase() }))
+                                LibrarySort.RECENT -> sortByRecent(filtered, activity)
+                            }
+                        }
+                        Column(Modifier.fillMaxSize()) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                label = { Text("Search games or Title ID") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                                    .onFocusChanged { searchHasFocus = it.isFocused },
+                            )
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically) {
+                                FilterChip(
+                                    selected = favoritesOnly,
+                                    onClick = { favoritesOnly = !favoritesOnly },
+                                    label = { Text("Favorites") },
+                                )
+                                var sortMenu by remember { mutableStateOf(false) }
+                                Box {
+                                    TextButton(onClick = { sortMenu = true }) { Text(sort.label) }
+                                    DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                                        LibrarySort.entries.forEach { option ->
+                                            DropdownMenuItem(text = { Text(option.label) }, onClick = {
+                                                viewModel.setSort(option); sortMenu = false
+                                            })
+                                        }
+                                    }
                                 }
                             }
-                        },
-                        onLongPress = { pendingGame = it },
-                    )
+                            if (preparingLaunch) LinearProgressIndicator(Modifier.fillMaxWidth())
+                            if (visibleGames.isEmpty()) {
+                                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    EmptyMessage("No games match your search", "Clear search") {
+                                        searchQuery = ""
+                                        favoritesOnly = false
+                                    }
+                                }
+                            } else {
+                                GameGrid(
+                                    games = visibleGames,
+                                    viewModel = viewModel,
+                                    modifier = Modifier.weight(1f),
+                                    gridState = gridState,
+                                    favorites = favorites,
+                                    restoreFocus = focusRestoreTick,
+                                    focusAllowed = !searchHasFocus && pendingGame == null && pendingDiscInstall == null,
+                                    lastFocusedId = lastFocusedId,
+                                    onFocused = { lastFocusedId = it },
+                                    onLaunch = startGame,
+                                    onLongPress = { lastFocusedId = it.stableId; pendingGame = it },
+                                )
+                            }
+                        }
+                    }
             }
         }
         }
@@ -276,13 +385,49 @@ fun GameLibraryScreen(
     }
 
     pendingGame?.let { game ->
-        val dismiss = { pendingGame = null; viewModel.clearTitleIdRequest() }
+        val dismiss: () -> Unit = {
+            pendingGame = null; viewModel.clearTitleIdRequest(); viewModel.clearDetails(); focusRestoreTick++
+        }
         val sheetState = rememberModalBottomSheetState()
+        val details by viewModel.details.collectAsStateWithLifecycle()
+        var ratingOpen by remember(game.identityKey) { mutableStateOf(false) }
+        var timelineOpen by remember(game.identityKey) { mutableStateOf(false) }
+        LaunchedEffect(game.identityKey) { viewModel.loadDetails(game) }
+        if (ratingOpen) {
+            CompatibilityRatingDialog(
+                current = details?.compatibility?.latest?.status,
+                onDismiss = { ratingOpen = false },
+                onSave = { status, note -> ratingOpen = false; viewModel.rateCompatibility(game, status, note) },
+            )
+        }
+        val timeline = details?.takeIf { it.identityKey == game.identityKey }?.lastRunEvents
+        if (timelineOpen && timeline != null) RunTimelineDialog(timeline, onDismiss = { timelineOpen = false })
+        var report by remember(game.identityKey) { mutableStateOf<xendroid.compose.sessions.RunReport?>(null) }
+        var reportBusy by remember(game.identityKey) { mutableStateOf(false) }
+        report?.let { shown ->
+            RunReportDialog(shown, reportBusy, onShare = {
+                reportBusy = true
+                scope.launch {
+                    try {
+                        val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            xendroid.compose.sessions.SessionRuns.writeReport(context, shown)
+                        }
+                        context.startActivity(xendroid.compose.core.diagnosticsShareIntent(context, file))
+                        report = null
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        Toast.makeText(context, "Could not create the run report", Toast.LENGTH_LONG).show()
+                    } finally {
+                        reportBusy = false
+                    }
+                }
+            }, onDismiss = { report = null })
+        }
         ModalBottomSheet(
             onDismissRequest = dismiss,
             sheetState = sheetState,
         ) {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 // The title-id status line shows ONLY while resolving or on error.
                 val statusContent: (@Composable () -> Unit)? = when (val st = titleIdState) {
                     is TitleIdState.Loading -> ({
@@ -311,6 +456,12 @@ fun GameLibraryScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 game.titleId?.let { Text("Title ID: $it") }
                                 game.mediaId?.let { Text("Media ID: $it") }
+                                game.titleId?.uppercase()?.let { activity[it] }?.let { played ->
+                                    Text("Last played " + java.text.DateFormat.getDateTimeInstance(
+                                        java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
+                                        .format(java.util.Date(played.lastPlayedAt)) +
+                                        " · ${formatPlayTime(played.playedMs)} in ${played.runs} session(s)")
+                                }
                                 statusContent?.invoke()
                             }
                         }
@@ -318,6 +469,73 @@ fun GameLibraryScreen(
                         null
                     },
                 )
+
+                ListItem(
+                    headlineContent = { Text("Play") },
+                    modifier = Modifier.clickable(enabled = !preparingLaunch) { dismiss(); startGame(game) },
+                )
+                ListItem(
+                    headlineContent = { Text(if (isFavorite(game, favorites)) "Remove from favorites" else "Add to favorites") },
+                    modifier = Modifier.clickable { viewModel.toggleFavorite(game) },
+                )
+                details?.takeIf { it.identityKey == game.identityKey && it.titleId != null }?.let { info ->
+                    val latest = info.compatibility?.latest
+                    ListItem(
+                        headlineContent = { Text("Compatibility: ${latest?.status?.label ?: "not rated"}") },
+                        supportingContent = {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                latest?.let { report ->
+                                    Text("Your result on " + java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM)
+                                        .format(java.util.Date(report.createdAt)) +
+                                        " · build ${report.build} · ${report.driverLabel ?: report.gpu}" +
+                                        listOfNotNull(report.mediaId?.let { "media $it" }, report.disc?.let { "disc $it" })
+                                            .joinToString("") { " · $it" })
+                                    if (report.note.isNotBlank()) Text(report.note)
+                                }
+                                info.lastRun?.let { run ->
+                                    Text("Last run: ${describeRun(run)}")
+                                    run.performance?.let { perf ->
+                                        val median = perf.fpsPercentile(0.5)
+                                        val low = perf.fpsPercentile(0.05)
+                                        if (median != null && low != null) {
+                                            Text("Guest FPS over 1-second windows: median $median, 5th percentile $low " +
+                                                "(${perf.sampledSeconds} s sampled)")
+                                        }
+                                        describeFrameTimes(perf)?.let { Text("Guest frame time: $it") }
+                                        perf.firstFrameSeconds?.let { Text("First frame after $it s") }
+                                        describeAudio(perf)?.let { Text("Audio · $it") }
+                                        perf.pipelineCreations?.takeIf { it > 0 }?.let { count ->
+                                            Text("Pipelines created: $count, %.1f s spent creating them"
+                                                .format((perf.pipelineCreationMs ?: 0L) / 1000.0))
+                                        }
+                                    }
+                                    run.driver?.let { Text("Driver: ${it.label}") }
+                                }
+                                Text("Rate it yourself: results are kept per build and driver, never guessed.")
+                            }
+                        },
+                        modifier = Modifier.clickable { ratingOpen = true },
+                    )
+                    info.lastRunEvents?.takeIf { it.events.isNotEmpty() }?.let { log ->
+                        ListItem(
+                            headlineContent = { Text("Last run timeline") },
+                            supportingContent = { Text("${log.events.size} events: lifecycle, pauses, stalls, heat, controllers, errors") },
+                            modifier = Modifier.clickable { timelineOpen = true },
+                        )
+                    }
+                    info.lastRun?.let { run ->
+                        ListItem(
+                            headlineContent = { Text("Share last run report") },
+                            supportingContent = { Text("Review what it contains first; you choose where it goes") },
+                            modifier = Modifier.clickable {
+                                report = xendroid.compose.sessions.RunReports.build(run, info.lastRunEvents,
+                                    info.compatibility?.reports.orEmpty(),
+                                    xendroid.compose.sessions.SessionRuns.reportDevice(xendroid.compose.BuildConfig.VERSION_NAME),
+                                    System.currentTimeMillis())
+                            },
+                        )
+                    }
+                }
 
                 val perGameEnabled = titleIdState !is TitleIdState.Loading
                 ListItem(
@@ -365,6 +583,13 @@ fun GameLibraryScreen(
                     },
                 )
 
+                ListItem(
+                    headlineContent = { Text("Saves · backup and restore") },
+                    modifier = Modifier.clickable(enabled = perGameEnabled) { viewModel.requestSaves(game) },
+                )
+                ListItem(headlineContent = { Text("Last sessions · diagnostics") },
+                    modifier = Modifier.clickable(enabled = perGameEnabled) { viewModel.requestDiagnostics(game) })
+
                 if (game.format == GameFormat.ISO) {
                     ListItem(
                         headlineContent = { Text("Compress to .zar") },
@@ -398,6 +623,8 @@ fun GameLibraryScreen(
                     onOpenGamePatches(r.titleId, r.game.name)
                 GameAction.MANAGE_CONTENT ->
                     onOpenContentManager(r.titleId, r.game.name)
+                GameAction.SAVES -> onOpenSaves(r.titleId, r.game.name)
+                GameAction.DIAGNOSTICS -> onOpenDiagnostics(r.titleId)
             }
             pendingGame = null
             viewModel.clearTitleIdRequest()
@@ -485,14 +712,38 @@ private fun GameGrid(
     viewModel: GameLibraryViewModel,
     onLaunch: (Game) -> Unit,
     onLongPress: (Game) -> Unit,
+    gridState: LazyGridState,
+    favorites: Set<String>,
+    restoreFocus: Int,
+    focusAllowed: Boolean,
+    lastFocusedId: String?,
+    onFocused: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    val inputMode = LocalInputModeManager.current.inputMode
+    val requesters = remember(games.map { it.stableId }) {
+        games.associate { it.stableId to FocusRequester() }
+    }
+    LaunchedEffect(restoreFocus, inputMode, focusAllowed) {
+        if (inputMode == InputMode.Keyboard && focusAllowed && games.isNotEmpty()) {
+            val index = games.indexOfFirst { it.stableId == lastFocusedId }.coerceAtLeast(0)
+            gridState.scrollToItem(index)
+            withFrameNanos { }
+            runCatching { requesters.getValue(games[index].stableId).requestFocus() }
+                .onFailure { Log.d("GameLibrary", "Focus target no longer attached", it) }
+        }
+    }
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Adaptive(minSize = 120.dp),
         contentPadding = PaddingValues(12.dp),
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
     ) {
         items(games, key = { it.stableId }) { game ->
-            GameCell(game, viewModel, onLaunch, onLongPress)
+            GameCell(game, viewModel, onLaunch, onLongPress,
+                favorite = isFavorite(game, favorites),
+                focusRequester = requesters.getValue(game.stableId),
+                onFocused = { onFocused(game.stableId) })
         }
     }
 }
@@ -504,14 +755,39 @@ private fun GameCell(
     viewModel: GameLibraryViewModel,
     onLaunch: (Game) -> Unit,
     onLongPress: (Game) -> Unit,
+    favorite: Boolean,
+    focusRequester: FocusRequester,
+    onFocused: () -> Unit,
 ) {
     val context = LocalContext.current
     // Once per cell: the File.exists() stat must not run on every recomposition while
     // scrolling.
     val iconModel = remember(game.stableId) { viewModel.iconFileOrFallback(game) }
+    var focused by remember { mutableStateOf(false) }
     Column(
         Modifier
             .padding(8.dp)
+            .focusRequester(focusRequester)
+            .onFocusChanged { focused = it.isFocused; if (focused) onFocused() }
+            .border(
+                2.dp,
+                if (focused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                RoundedCornerShape(8.dp),
+            )
+            .onPreviewKeyEvent { event ->
+                val key = event.nativeKeyEvent.keyCode
+                if (key in listOf(AndroidKeyEvent.KEYCODE_BUTTON_A, AndroidKeyEvent.KEYCODE_BUTTON_X,
+                        AndroidKeyEvent.KEYCODE_MENU, AndroidKeyEvent.KEYCODE_BUTTON_Y)) {
+                    if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) {
+                        when (key) {
+                            AndroidKeyEvent.KEYCODE_BUTTON_A -> onLaunch(game)
+                            AndroidKeyEvent.KEYCODE_BUTTON_Y -> viewModel.toggleFavorite(game)
+                            else -> onLongPress(game)
+                        }
+                    }
+                    true // consume both down and up, avoiding duplicate Compose clicks
+                } else false
+            }
             .combinedClickable(onClick = { onLaunch(game) }, onLongClick = { onLongPress(game) }),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -524,7 +800,7 @@ private fun GameCell(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            game.name,
+            if (favorite) "★ ${game.name}" else game.name,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -577,7 +853,7 @@ fun checkForUpdatesClicked(
         }
 
         try {
-            val result = checkForUpdates()
+            val result = checkForUpdates(context)
             saveLastCheck(context)
             onResult(result)
         } catch (e: Exception) {

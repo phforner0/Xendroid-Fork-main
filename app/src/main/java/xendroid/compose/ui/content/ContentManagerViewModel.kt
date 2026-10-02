@@ -15,6 +15,7 @@ import xendroid.compose.Emulator
 import xendroid.compose.core.ContentPaths
 import xendroid.compose.core.EmulatorRuntime
 import xendroid.compose.core.GameMetadataSource
+import xendroid.compose.core.StorageAccess
 import java.io.File
 
 class ContentManagerViewModel(
@@ -108,9 +109,9 @@ class ContentManagerViewModel(
         _state.value = ContentInstallState.Busy("Removing…")
         val status = withContext(Dispatchers.IO) {
             val emu = EmulatorRuntime.emulator ?: return@withContext -1
-            emu.delete_content(
+            runCatching { StorageAccess.acquire().use { emu.delete_content(
                 ContentPaths.contentRoot().absolutePath, titleId,
-                item.contentType, item.pkgDir)
+                item.contentType, item.pkgDir) } }.getOrDefault(0xC0000022.toInt())
         }
         if (status == 0) {
             _state.value = ContentInstallState.Done("Removed “${item.displayName}”.")
@@ -161,7 +162,9 @@ class ContentManagerViewModel(
         }
         val status = withContext(Dispatchers.IO) {
             val emu = EmulatorRuntime.emulator ?: return@withContext -1
-            emu.install_content(srcPath, ContentPaths.contentRoot().absolutePath)
+            runCatching { StorageAccess.acquire().use {
+                emu.install_content(srcPath, ContentPaths.contentRoot().absolutePath)
+            } }.getOrDefault(0xC0000022.toInt())
         }
         poll.cancel()
         if (status == 0) {

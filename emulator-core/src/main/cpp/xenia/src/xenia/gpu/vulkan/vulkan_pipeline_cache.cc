@@ -3164,22 +3164,23 @@ void VulkanPipelineCache::InitializeShaderStorage(
   const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
   const VkDevice device = vulkan_device->device();
 
-  // Try to load existing VkPipelineCache data.
-  std::vector<uint8_t> pipeline_cache_data;
-  if (FILE* cache_file =
-          xe::filesystem::OpenFile(vk_pipeline_cache_path_, "rb")) {
-    xe::filesystem::Seek(cache_file, 0, SEEK_END);
-    int64_t cache_size = xe::filesystem::Tell(cache_file);
-    if (cache_size > 0) {
-      pipeline_cache_data.resize(size_t(cache_size));
-      xe::filesystem::Seek(cache_file, 0, SEEK_SET);
-      pipeline_cache_data.resize(fread(pipeline_cache_data.data(), 1,
-                                       pipeline_cache_data.size(), cache_file));
-    }
-    fclose(cache_file);
-    XELOGI("Loaded {} bytes of VkPipelineCache data",
-           pipeline_cache_data.size());
-  }
+  // Load the VkPipelineCache data written for THIS driver build: verified
+  // envelope, bounded size; another driver's file is kept aside, not reused.
+  pipeline_cache_file::Identity pipeline_cache_identity;
+  pipeline_cache_identity.vendor_id = vulkan_device->properties().vendorID;
+  pipeline_cache_identity.device_id = vulkan_device->properties().deviceID;
+  std::memcpy(pipeline_cache_identity.uuid,
+              vulkan_device->properties().pipelineCacheUUID,
+              pipeline_cache_file::kUuidSize);
+  vk_pipeline_cache_store_ = std::make_unique<pipeline_cache_file::Store>(
+      vk_pipeline_cache_path_, pipeline_cache_identity);
+  std::string pipeline_cache_load_description;
+  std::vector<uint8_t> pipeline_cache_data =
+      vk_pipeline_cache_store_->LoadForCreate(pipeline_cache_load_description);
+  XELOGI("VkPipelineCache {} (identity {}): {}, {} bytes used",
+         xe::path_to_utf8(vk_pipeline_cache_path_.filename()),
+         pipeline_cache_identity.Tag(), pipeline_cache_load_description,
+         pipeline_cache_data.size());
 
   // Recreate the VkPipelineCache with the loaded data.
   if (vk_pipeline_cache_ != VK_NULL_HANDLE) {
@@ -3460,7 +3461,8 @@ void VulkanPipelineCache::InitializeShaderStorage(
 }
 
 void VulkanPipelineCache::SaveVkPipelineCache() {
-  if (vk_pipeline_cache_ == VK_NULL_HANDLE || vk_pipeline_cache_path_.empty()) {
+  if (vk_pipeline_cache_ == VK_NULL_HANDLE || vk_pipeline_cache_path_.empty() ||
+      !vk_pipeline_cache_store_) {
     return;
   }
   const ui::vulkan::VulkanDevice* const vulkan_device =
@@ -3473,16 +3475,18 @@ void VulkanPipelineCache::SaveVkPipelineCache() {
                                  nullptr) == VK_SUCCESS &&
       cache_size > 0) {
     std::vector<uint8_t> cache_data(cache_size);
+    // If creation threads grew the cache between the two calls the driver
+    // returns VK_INCOMPLETE with partial data: skip this save, a later one runs.
     if (dfn.vkGetPipelineCacheData(device, vk_pipeline_cache_, &cache_size,
                                    cache_data.data()) == VK_SUCCESS) {
-      if (FILE* cache_file =
-              xe::filesystem::OpenFile(vk_pipeline_cache_path_, "wb")) {
-        fwrite(cache_data.data(), 1, cache_size, cache_file);
-        fclose(cache_file);
-        XELOGI("Saved {} bytes of VkPipelineCache data", cache_size);
+      std::string description;
+      if (vk_pipeline_cache_store_->Save(cache_data.data(), cache_size,
+                                         description)) {
+        XELOGI("Saved {} bytes of VkPipelineCache data: {}", cache_size,
+               description);
       } else {
-        XELOGE("Failed to open VkPipelineCache file for writing: {}",
-               xe::path_to_utf8(vk_pipeline_cache_path_));
+        XELOGE("VkPipelineCache {}: {}",
+               xe::path_to_utf8(vk_pipeline_cache_path_), description);
       }
     }
   } else {
@@ -3495,6 +3499,7 @@ void VulkanPipelineCache::ShutdownShaderStorage() {
   // Save VkPipelineCache to disk before shutting down storage.
   SaveVkPipelineCache();
   vk_pipeline_cache_path_.clear();
+  vk_pipeline_cache_store_.reset();
 
   // Shut down the storage writer (closes files, stops write thread).
   storage_writer_.ShutdownShaderStorage();

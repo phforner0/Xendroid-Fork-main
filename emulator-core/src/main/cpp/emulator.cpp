@@ -203,6 +203,19 @@ static void j_save_config_entry_ty_arr(JNIEnv* env,jobject self,YAML::Node* conf
             break;
     }
 }
+static void j_remove_config_entry(JNIEnv* env, jobject self, YAML::Node* config_node, jstring tag) {
+    if (!config_node || !tag) return;
+    const char* chars = env->GetStringUTFChars(tag, nullptr);
+    if (!chars) return;
+    const std::string key(chars);
+    env->ReleaseStringUTFChars(tag, chars);
+    const size_t separator = key.find('|');
+    if (separator == std::string::npos) return;
+    (*config_node)[key.substr(0, separator)].remove(key.substr(separator + 1));
+}
+static jboolean j_config_empty(JNIEnv* env, jobject self, YAML::Node* config_node) {
+    return !config_node || config_node->size() == 0 ? JNI_TRUE : JNI_FALSE;
+}
 static void j_close_config_file(JNIEnv* env,jobject self,YAML::Node* config_node,jstring config_path){
     YAML::Emitter out;
     out << *config_node;
@@ -379,6 +392,28 @@ static void j_save_config_entry(JNIEnv* env, jobject self, toml::table* config_t
 static void j_save_config_entry_ty_arr(JNIEnv* env, jobject self, toml::table* config_table, jstring tag, jobjectArray val) {
 }
 
+// Remove only the edited key. Keep every unknown key, array, nested table and type
+// parsed by toml++; rebuilding from the Android schema would silently lose them.
+static void j_remove_config_entry(JNIEnv* env, jobject self, toml::table* config_table, jstring tag) {
+    if (!config_table || !tag) return;
+    const char* chars = env->GetStringUTFChars(tag, nullptr);
+    if (!chars) return;
+    const std::string key(chars);
+    env->ReleaseStringUTFChars(tag, chars);
+    const size_t separator = key.find('|');
+    if (separator == std::string::npos || separator == 0 || separator + 1 >= key.size()) return;
+    const std::string section = key.substr(0, separator);
+    auto* table_node = config_table->get(section);
+    if (!table_node || !table_node->is_table()) return;
+    auto* table = table_node->as_table();
+    table->erase(key.substr(separator + 1));
+    if (table->empty()) config_table->erase(section);
+}
+
+static jboolean j_config_empty(JNIEnv* env, jobject self, toml::table* config_table) {
+    return !config_table || config_table->empty() ? JNI_TRUE : JNI_FALSE;
+}
+
 static void j_close_config_file(JNIEnv* env, jobject self, toml::table* config_table, jstring config_path) {
     if (!config_table) {
         return;
@@ -416,6 +451,8 @@ int register_Emulator$Config(JNIEnv* env){
             { "native_load_config_entry_ty_arr", "(JLjava/lang/String;)[Ljava/lang/String;", (void *) j_load_config_entry_ty_arr },
             { "native_save_config_entry", "(JLjava/lang/String;Ljava/lang/String;)V", (void *) j_save_config_entry },
             { "native_save_config_entry_ty_arr", "(JLjava/lang/String;[Ljava/lang/String;)V", (void *) j_save_config_entry_ty_arr },
+            { "native_remove_config_entry", "(JLjava/lang/String;)V", (void *) j_remove_config_entry },
+            { "native_config_empty", "(J)Z", (void *) j_config_empty },
             { "native_close_config_file", "(JLjava/lang/String;)V", (void *) j_close_config_file },
             { "native_free_config", "(J)V", (void *) j_free_config },
     };

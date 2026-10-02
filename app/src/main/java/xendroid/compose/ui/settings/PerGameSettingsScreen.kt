@@ -25,7 +25,7 @@ import xendroid.compose.settings.SettingsCategory
  * [SettingsScreen], but each detail row is an [OverrideRow] (a leading switch that
  * overrides/inherits the key), the index "changed" count is the overridden count, and
  * the header shows the game name. The override config is SPARSE — only toggled-on keys
- * are written, and the file is rebuilt/deleted on flush (no native key-erase exists).
+ * are patched into the file on flush, leaving non-schema overrides intact.
  * A title id is keyed PER GAME (not per file), so this applies to every copy of the game.
  */
 @Composable
@@ -35,6 +35,8 @@ fun PerGameSettingsScreen(
     onBack: () -> Unit,
 ) {
     val overrides by vm.overrides.collectAsStateWithLifecycle()
+    val ready by vm.ready.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
 
     // Durable flush on pause; re-open on resume. Dispose flush = backstop. (Mirrors SettingsScreen.)
     val owner = LocalLifecycleOwner.current
@@ -51,6 +53,18 @@ fun PerGameSettingsScreen(
     }
 
     var selected by remember { mutableStateOf<SettingsCategory?>(null) }
+    if (!ready) {
+        ConfigLoadNotice(error, vm::onResume, onBack)
+        return
+    }
+    if (error != null) {
+        AlertDialog(
+            onDismissRequest = vm::clearError,
+            text = { Text(error.orEmpty()) },
+            confirmButton = { TextButton(onClick = { vm.clearError(); vm.flush() }) { Text("Retry save") } },
+            dismissButton = { TextButton(onClick = vm::clearError) { Text("Close") } },
+        )
+    }
     val section = selected
     if (section == null) {
         PerGameIndex(

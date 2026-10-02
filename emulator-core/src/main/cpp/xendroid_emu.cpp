@@ -804,19 +804,40 @@ namespace ae{
 
     }
 
-    void key_event(int key_code,bool pressed,int value){
+    // The Android input driver, or null while the detached boot thread is still building
+    // the emulator: input arrives in that window (a controller press on the boot splash,
+    // the touch overlay releasing its keys as it leaves composition).
+    static xe::hid::android::AndroidInputDriver* android_input_driver(){
         static const bool is_android=cvars::hid=="android";
-        if(!is_android) return;
-        // Every hop can still be null while the detached boot thread builds the emulator,
-        // and input arrives in that window: a controller press on the boot splash, or the
-        // touch overlay releasing its keys as it leaves composition.
-        if(!g_windowed_app_ref || !g_windowed_app_ref->emu) return;
+        if(!is_android) return nullptr;
+        if(!g_windowed_app_ref || !g_windowed_app_ref->emu) return nullptr;
         xe::hid::InputSystem* input_system=g_windowed_app_ref->emu->input_system();
         // driver(0) indexes the vector, so the count must be checked, not the pointer.
-        if(!input_system || input_system->driver_count()==0) return;
-        auto* driver=reinterpret_cast<xe::hid::android::AndroidInputDriver*>(input_system->driver(0));
-        if(!driver) return;
-        driver->OnKey(key_code,pressed,value);
+        if(!input_system || input_system->driver_count()==0) return nullptr;
+        return reinterpret_cast<xe::hid::android::AndroidInputDriver*>(input_system->driver(0));
+    }
+
+    void key_event(int key_code,bool pressed,int value){
+        key_event_slot(0,key_code,pressed,value);
+    }
+
+    void key_event_slot(int slot,int key_code,bool pressed,int value){
+        // The index comes from Java (keymaps, editable touch layouts) and indexes the
+        // driver's fixed key table.
+        if(key_code<0 || key_code>=static_cast<int>(key_maps.size())) return;
+        if(slot<0 || slot>=static_cast<int>(xe::hid::android::AndroidInputDriver::kSlotCount)) return;
+        if(auto* driver=android_input_driver()) driver->OnKey(size_t(slot),key_code,pressed,value);
+    }
+
+    void set_slot_connected(int slot,bool connected,const std::string& name){
+        if(slot<0 || slot>=static_cast<int>(xe::hid::android::AndroidInputDriver::kSlotCount)) return;
+        if(auto* driver=android_input_driver()) driver->SetSlotConnected(size_t(slot),connected,name);
+    }
+
+    uint32_t slot_rumble(int slot){
+        if(slot<0) return 0;
+        auto* driver=android_input_driver();
+        return driver ? driver->Rumble(size_t(slot)) : 0;
     }
     bool is_running(){
         if(!g_windowed_app_ref || !g_windowed_app_ref->emu) return false;
@@ -836,6 +857,14 @@ namespace ae{
     bool is_paused(){
         if(!g_windowed_app_ref || !g_windowed_app_ref->emu) return false;
         return g_windowed_app_ref->emu->is_paused();
+    }
+    uint32_t active_title_id() {
+        // Same single-session lifetime as pause/is_paused: the host only queries
+        // after boot; destruction terminates this process instead of freeing a
+        // live emulator underneath a JNI call. Do not trust launch-intent extras.
+        if (!g_windowed_app_ref || !g_windowed_app_ref->emu) return 0;
+        const auto* emulator = g_windowed_app_ref->emu.get();
+        return emulator->is_title_open() ? emulator->title_id() : 0;
     }
     void pause(){
         // DIRECT call on the calling (Android main) thread. Emulator::Pause() is

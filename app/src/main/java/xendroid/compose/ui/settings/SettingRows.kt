@@ -24,17 +24,27 @@ import xendroid.compose.Utils
 import xendroid.compose.core.SessionLogs
 import xendroid.compose.driver.DriverInfo
 import xendroid.compose.driver.DriverRepository
+import xendroid.compose.driver.DriverPackageIO
+import xendroid.compose.driver.DriverPackageInstaller
 import xendroid.compose.settings.Setting
 import xendroid.compose.settings.SettingsHost
 
 @Composable
-fun SettingRow(host: SettingsHost, s: Setting, modified: Boolean, raw: String? = null) = when (s) {
+fun SettingRow(host: SettingsHost, s: Setting, modified: Boolean, raw: String? = null) {
+    val contract = host.contract(s)
+    Column(Modifier.fillMaxWidth()) {
+        Text(contract.label, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 6.dp))
+        if (!contract.available) return@Column
+        when (s) {
     is Setting.Bool       -> BoolRow(host, s, modified)
     is Setting.IntRange   -> IntRow(host, s, modified)
     is Setting.ListChoice -> ListRow(host, s, modified)
     is Setting.Action     ->
         if (s.name == "dump_session_logs") ExportLogsRow(s)
         else DriverActionRow(host, s, modified, raw)
+        }
+    }
 }
 
 @Composable
@@ -284,7 +294,7 @@ private fun ExportLogsRow(s: Setting.Action) {
             RowTitle(
                 s.title,
                 false,
-                sub = if (busy) "Exporting..." else "Shelved sessions + current run",
+                sub = if (busy) "Exporting..." else "Raw logs (not redacted) · shelved sessions + current run",
                 desc = s.desc
             )
         }
@@ -317,13 +327,48 @@ private fun DriverActionRow(
     var loading by remember { mutableStateOf(false) }
     var downloading by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableIntStateOf(0) }
+    val previousKey = "previous_${host.persistenceKey}_${s.key}"
+    val selectedAtKey = "selected_at_${host.persistenceKey}_${s.key}"
+    var previousDriver by remember(previousKey) { mutableStateOf(prefs.getString(previousKey, null)) }
+    var selectedAt by remember(selectedAtKey) { mutableStateOf(prefs.getLong(selectedAtKey, 0L).takeIf { it > 0 }) }
+
+    // U03: the driver the latest run of this scope actually loaded, against the selection.
+    var lastRun by remember { mutableStateOf<xendroid.compose.sessions.SessionRun?>(null) }
+    LaunchedEffect(host.persistenceKey) {
+        val title = host.persistenceKey.removePrefix("game:").takeIf { host.persistenceKey.startsWith("game:") }
+        lastRun = withContext(Dispatchers.IO) {
+            runCatching {
+                xendroid.compose.sessions.SessionRuns.store().runs()
+                    .firstOrNull { it.driver != null && (title == null || it.titleId.equals(title, ignoreCase = true)) }
+            }.getOrNull()
+        }
+    }
+
+    fun selectDriver(path: String) {
+        if (path == current) return
+        // History belongs to this global/title scope. Keep installed binaries untouched
+        // so undoing a selection does not require another download or unsafe deletion.
+        previousDriver = current
+        val now = System.currentTimeMillis()
+        selectedAt = now
+        prefs.edit().putString(previousKey, current).putLong(selectedAtKey, now).apply()
+        host.onDriverPathChanged(s, path)
+    }
 
     val pickZip = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri != null && activity != null) {
-            Utils.install_custom_driver_from_zip(activity, uri) { path ->
-                host.onDriverPathChanged(s, path)
+        if (uri != null && downloading == null) {
+            downloading = "import"
+            scope.launch {
+                try {
+                    val installed = DriverPackageIO.import(context, uri)
+                    selectDriver(installed.library.absolutePath)
+                    Toast.makeText(context, "Driver imported · local ZIP", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+                } finally { downloading = null }
             }
         }
     }
@@ -362,10 +407,16 @@ private fun DriverActionRow(
                 RowTitle(
                     s.title,
                     modified,
-                    sub = current.ifEmpty { "Default" },
+                    sub = "${current.ifEmpty { "System driver" }} · next launch",
                     desc = s.desc
                 )
             }
+        }
+
+        xendroid.compose.driver.DriverIdentity.describeEffective(current, lastRun?.driver, lastRun?.startedAt, selectedAt)?.let { note ->
+            Text(note, style = MaterialTheme.typography.bodySmall,
+                color = if ("did not load" in note) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp))
         }
 
         Row(
@@ -382,19 +433,30 @@ private fun DriverActionRow(
             }
 
             TextButton(
+                enabled = downloading == null,
                 onClick = {
-                    host.onDriverPathChanged(s, "")
+                    selectDriver("")
                 }
             ) {
                 Text("Use default driver")
             }
 
             TextButton(
+                enabled = downloading == null,
                 onClick = {
                     pickZip.launch(arrayOf("application/zip"))
                 }
             ) {
                 Text("Import ZIP")
+            }
+        }
+        previousDriver?.let { previous ->
+            val available = previous.isEmpty() || java.io.File(previous).isFile
+            TextButton(
+                enabled = available && downloading == null,
+                onClick = { selectDriver(previous) },
+            ) {
+                Text(if (available) "Use previous driver selection" else "Previous driver no longer installed")
             }
         }
     }
@@ -440,7 +502,9 @@ private fun DriverActionRow(
                                         "installed_${driver.url}",
                                         null
                                     )?.takeIf {
-                                        java.io.File(it).exists()
+                                        java.io.File(it).isFile &&
+                                            (driver.sha256.isEmpty() ||
+                                                prefs.getString("digest_${driver.url}", "") == driver.sha256.lowercase())
                                     }
 
                                 Column(
@@ -457,6 +521,13 @@ private fun DriverActionRow(
                                         driver.version,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    Text(
+                                        if (driver.sha256.isBlank()) "No checksum published"
+                                        else "SHA-256 published for this download",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
 
                                     if (downloading == driver.url) {
@@ -477,10 +548,12 @@ private fun DriverActionRow(
                                                 }
 
                                                 if (installedPath != null) {
-                                                    host.onDriverPathChanged(
-                                                        s,
-                                                        installedPath
-                                                    )
+                                                    val valid = runCatching { DriverPackageInstaller.validateArm64Library(java.io.File(installedPath)) }.isSuccess
+                                                    if (!valid) {
+                                                        Toast.makeText(context, "Installed driver is damaged or has the wrong ABI", Toast.LENGTH_LONG).show()
+                                                        return@TextButton
+                                                    }
+                                                    selectDriver(installedPath)
 
                                                     Toast.makeText(
                                                         context,
@@ -504,31 +577,21 @@ private fun DriverActionRow(
                                                         }
                                                     }.onSuccess { file ->
 
-                                                        val installed =
-                                                            Utils.install_custom_driver_from_file(
-                                                                activity,
-                                                                file
-                                                            ) { path ->
-
-                                                                prefs.edit()
-                                                                    .putString(
-                                                                        "installed_${driver.url}",
-                                                                        path
-                                                                    )
-                                                                    .apply()
-
-                                                                host.onDriverPathChanged(
-                                                                    s,
-                                                                    path
-                                                                )
-                                                            }
-
-                                                        if (installed) {
+                                                        val installed = runCatching { DriverPackageIO.install(file, driver.sha256.takeIf { it.isNotBlank() }) }
+                                                        installed.onSuccess { result ->
+                                                            prefs.edit()
+                                                                .putString("installed_${driver.url}", result.library.absolutePath)
+                                                                .putString("digest_${driver.url}", result.sha256)
+                                                                .apply()
+                                                            selectDriver(result.library.absolutePath)
                                                             Toast.makeText(
                                                                 context,
-                                                                "Driver installed",
+                                                                if (result.verifiedDownload) "Driver installed · SHA-256 verified" else "Driver installed · no published checksum",
                                                                 Toast.LENGTH_SHORT
                                                             ).show()
+                                                        }.onFailure { error ->
+                                                            if (error is kotlinx.coroutines.CancellationException) throw error
+                                                            Toast.makeText(context, "Install failed: ${error.message}", Toast.LENGTH_LONG).show()
                                                         }
                                                     }.onFailure {
                                                         Toast.makeText(

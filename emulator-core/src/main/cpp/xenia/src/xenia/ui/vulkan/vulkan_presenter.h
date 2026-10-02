@@ -17,6 +17,9 @@
 #include <memory>
 #include <utility>
 #include <vector>
+#include <thread>
+#include <condition_variable>
+#include "xenia/ui/presentation_runtime.h"
 
 #include "xenia/base/assert.h"
 #include "xenia/ui/presenter.h"
@@ -163,18 +166,25 @@ class VulkanPresenter final : public Presenter {
       bool& is_8bpc_out_ref) override;
 
   PaintResult PaintAndPresentImpl(bool execute_ui_drawers) override;
+  bool ScheduleGuestOutput() override;
+  void SetScheduledPaintPhase(int phase) override {
+    fg_scheduled_paint_ = phase >= 0;
+    fg_generated_phase_ = phase > 0;
+    fg_generation_index_ = phase;
+  }
 
  private:
   // Usable for both the guest output image itself and for intermediate images.
   class GuestOutputImage {
    public:
     static std::unique_ptr<GuestOutputImage> Create(
-        const VulkanDevice* const vulkan_device, const uint32_t width,
-        const uint32_t height) {
+          const VulkanDevice* const vulkan_device, const uint32_t width,
+          const uint32_t height, VkFormat format = kGuestOutputFormat,
+          VkImageUsageFlags extra_usage = 0) {
       assert_not_zero(width);
       assert_not_zero(height);
       auto image = std::unique_ptr<GuestOutputImage>(
-          new GuestOutputImage(vulkan_device, width, height));
+          new GuestOutputImage(vulkan_device, width, height, format, extra_usage));
       if (!image->Initialize()) {
         return nullptr;
       }
@@ -193,8 +203,9 @@ class VulkanPresenter final : public Presenter {
 
    private:
     GuestOutputImage(const VulkanDevice* const vulkan_device,
-                     const uint32_t width, const uint32_t height)
-        : vulkan_device_(vulkan_device) {
+                     const uint32_t width, const uint32_t height, VkFormat format,
+                     VkImageUsageFlags extra_usage)
+        : vulkan_device_(vulkan_device), format_(format), extra_usage_(extra_usage) {
       extent_.width = width;
       extent_.height = height;
     }
@@ -202,6 +213,8 @@ class VulkanPresenter final : public Presenter {
     bool Initialize();
 
     const VulkanDevice* vulkan_device_;
+    VkFormat format_;
+    VkImageUsageFlags extra_usage_;
 
     VkExtent2D extent_;
     VkImage image_ = VK_NULL_HANDLE;
@@ -228,6 +241,28 @@ class VulkanPresenter final : public Presenter {
       ever_successfully_refreshed = false;
     }
   };
+
+  struct FrameGenContext;
+  struct ColorFilterContext;
+  std::shared_ptr<ColorFilterContext> color_context_;
+  bool ApplyColorFilter(VkCommandBuffer command, std::shared_ptr<GuestOutputImage>& image);
+  void ResetColorFilter();
+  std::shared_ptr<FrameGenContext> fg_context_;
+  std::thread fg_thread_;
+  std::mutex fg_mutex_;
+  std::condition_variable fg_condition_;
+  bool fg_shutdown_ = false;
+  uint64_t fg_notification_ = 0;
+  int64_t fg_arrival_ns_ = 0;
+  bool fg_scheduled_paint_ = false;
+  bool fg_generated_phase_ = false;
+  bool fg_actual_synthetic_ = false;
+  int fg_generation_index_ = 0;
+  void FrameGenerationThread();
+  void StopFrameGenerationThread();
+  bool PrepareGeneratedFrame(VkCommandBuffer command, std::shared_ptr<GuestOutputImage>& image,
+                             GuestOutputProperties& properties);
+  void ResetFrameGeneration();
 
   struct GuestOutputPaintRectangleConstants {
     union {
@@ -439,6 +474,7 @@ class VulkanPresenter final : public Presenter {
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     VkExtent2D swapchain_extent = {};
     bool swapchain_is_fifo = false;
+    bool swapchain_frame_generation_policy = false;
     std::vector<VkImage> swapchain_images;
     std::vector<SwapchainFramebuffer> swapchain_framebuffers;
     std::vector<VkSemaphore> swapchain_image_present_semaphores;

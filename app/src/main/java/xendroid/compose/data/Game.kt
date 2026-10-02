@@ -28,4 +28,22 @@ data class Game(
     val isMultiDisc: Boolean get() = discCount > 1
     /** Stable id derived from the launch uri (used for shortcut ids, list keys). */
     val stableId: String get() = launchUri
+
+    /**
+     * Identity that survives moving or renaming the file: Title ID + Media ID + disc when
+     * the header states them; the launch URI only for games without a readable Title ID.
+     * Used for user metadata (favorites), never for locating the file.
+     */
+    val identityKey: String get() = titleId?.takeIf { it.isNotBlank() && it != "00000000" }
+        ?.let { "title:${it.uppercase()}:${mediaId?.uppercase()?.ifBlank { null } ?: "-"}:$discNumber" }
+        ?: "uri:$launchUri"
 }
+
+/** Favorites written before [Game.identityKey] existed hold the raw launch URI. */
+fun isFavorite(game: Game, favorites: Set<String>): Boolean =
+    game.identityKey in favorites || game.launchUri in favorites
+
+/** New favorite set after toggling [game]; a legacy URI entry is replaced, not duplicated. */
+fun toggledFavorites(game: Game, favorites: Set<String>): Set<String> =
+    if (isFavorite(game, favorites)) favorites - game.identityKey - game.launchUri
+    else favorites + game.identityKey

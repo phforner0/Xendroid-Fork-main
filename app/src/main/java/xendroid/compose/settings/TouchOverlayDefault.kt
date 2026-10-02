@@ -27,9 +27,7 @@ fun seedTouchOverlayDefault(context: Context, store: ConfigStore) {
     if (prefs.getBoolean(KEY_SEEDED, false)) return
     val show = !hasPhysicalController()
     runCatching {
-        val handle = store.openLive()
-        handle.putBool("HID", "show_touch_overlay", show)
-        handle.closeFile()
+        store.editLiveConfig { it.putBool("HID", "show_touch_overlay", show) }
     }.onFailure {
         // Leave the flag unset so the next launch retries rather than silently keeping
         // the cvar default.

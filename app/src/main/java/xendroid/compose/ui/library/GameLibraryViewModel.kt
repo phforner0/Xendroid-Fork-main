@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.content.getSystemService
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -21,11 +22,16 @@ import xendroid.compose.data.Game
 import xendroid.compose.data.GameFormat
 import xendroid.compose.data.GameLibraryRepository
 import xendroid.compose.data.IconCache
+import xendroid.compose.data.PreferencesStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -41,7 +47,15 @@ const val EXTRA_DISC_PATHS = "disc_paths"
 private const val MIN_REFRESH_INDICATOR_MS = 500L
 
 /** Which long-press action triggered title-id resolution (both need the id, then branch). */
-enum class GameAction { PER_GAME_SETTINGS, GAME_PATCHES, MANAGE_CONTENT }
+enum class GameAction { PER_GAME_SETTINGS, GAME_PATCHES, MANAGE_CONTENT, SAVES, DIAGNOSTICS }
+enum class LibrarySort(val label: String) {
+    NAME_ASC("Name A–Z"), NAME_DESC("Name Z–A"), FORMAT("Format"), RECENT("Recently played"),
+}
+
+/** Orders by the title's last finished run (newest first); never-played games follow by name. */
+fun sortByRecent(games: List<Game>, activity: Map<String, xendroid.compose.sessions.TitleActivity>): List<Game> =
+    games.sortedWith(compareByDescending<Game> { game -> game.titleId?.uppercase()?.let { activity[it]?.lastPlayedAt } ?: Long.MIN_VALUE }
+        .thenBy { it.name.lowercase() })
 
 /** Async resolution of a game's title id (needed before the per-game settings editor or the
  *  patches screen can open). Driven by the long-press dialog; all formats resolve boot-free. */
@@ -58,6 +72,29 @@ class GameLibraryViewModel(
     private val appContext: Context,
 ) : ViewModel() {
 
+    private val preferences = PreferencesStore(appContext)
+    val favorites = preferences.favoriteIds
+        .catch { Log.w("GameLibrary", "Reading favorites failed", it); emit(emptySet()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+    val sort = preferences.librarySort
+        .map { raw -> LibrarySort.entries.firstOrNull { it.name == raw } ?: LibrarySort.NAME_ASC }
+        .catch { Log.w("GameLibrary", "Reading library sort failed", it); emit(LibrarySort.NAME_ASC) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibrarySort.NAME_ASC)
+
+    fun toggleFavorite(game: Game) {
+        viewModelScope.launch {
+            runCatching { preferences.toggleFavorite(game) }
+                .onFailure { Log.w("GameLibrary", "Saving favorite failed", it) }
+        }
+    }
+
+    fun setSort(sort: LibrarySort) {
+        viewModelScope.launch {
+            runCatching { preferences.setLibrarySort(sort.name) }
+                .onFailure { Log.w("GameLibrary", "Saving library sort failed", it) }
+        }
+    }
+
     private val _state = MutableStateFlow<LibraryUiState>(LibraryUiState.Loading)
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
 
@@ -69,9 +106,78 @@ class GameLibraryViewModel(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    /** Last played / play time per Title ID, from finished game runs (sessions/). */
+    private val _activity = MutableStateFlow<Map<String, xendroid.compose.sessions.TitleActivity>>(emptyMap())
+    val activity: StateFlow<Map<String, xendroid.compose.sessions.TitleActivity>> = _activity.asStateFlow()
+
+    /** Compatibility reports and the last finished run of the game whose sheet is open. */
+    data class GameDetails(
+        val identityKey: String,
+        val titleId: String?,
+        val compatibility: xendroid.compose.compatibility.TitleCompatibility?,
+        val lastRun: xendroid.compose.sessions.SessionRun?,
+        /** Flight recorder of [lastRun] (C01), when it saved one. */
+        val lastRunEvents: xendroid.compose.sessions.RunEventLog? = null,
+    )
+    private val _details = MutableStateFlow<GameDetails?>(null)
+    val details: StateFlow<GameDetails?> = _details.asStateFlow()
+    private val compatibilityStore by lazy {
+        xendroid.compose.compatibility.CompatibilityStore(
+            java.io.File(xendroid.compose.Application.get_internal_data_dir(), "compatibility"))
+    }
+
+    private fun validTitle(game: Game): String? =
+        game.titleId?.uppercase()?.takeIf { it.matches(Regex("[0-9A-F]{8}")) && it != "00000000" }
+
+    fun loadDetails(game: Game) {
+        val title = validTitle(game)
+        _details.value = GameDetails(game.identityKey, title, null, null)
+        if (title == null) return
+        viewModelScope.launch {
+            val loaded = withContext(Dispatchers.IO) {
+                runCatching {
+                    val runs = xendroid.compose.sessions.SessionRuns.store()
+                    val lastRun = runs.lastRun(title)
+                    GameDetails(game.identityKey, title, compatibilityStore.get(title), lastRun,
+                        lastRun?.let { runs.events(it.runId) })
+                }.onFailure { Log.w("GameLibrary", "Reading game details failed", it) }.getOrNull()
+            }
+            if (loaded != null && _details.value?.identityKey == game.identityKey) _details.value = loaded
+        }
+    }
+
+    fun clearDetails() { _details.value = null }
+
+    /** Stores the user's own result with this build and the driver of the last run. */
+    fun rateCompatibility(game: Game, status: xendroid.compose.compatibility.CompatStatus, note: String) {
+        val title = validTitle(game) ?: return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val lastRun = xendroid.compose.sessions.SessionRuns.store().lastRun(title)
+                    compatibilityStore.report(title, status, note, xendroid.compose.BuildConfig.VERSION_NAME,
+                        lastRun?.driver?.gpu?.ifBlank { null } ?: EmulatorRuntime.gpuDeviceName ?: "unknown GPU",
+                        lastRun?.driver, game.mediaId, game.discNumber)
+                }.onFailure { Log.w("GameLibrary", "Saving the compatibility report failed", it) }
+            }
+            loadDetails(game)
+        }
+    }
+
     init { refresh() }
 
+    private fun refreshActivity() {
+        viewModelScope.launch {
+            _activity.value = withContext(Dispatchers.IO) {
+                runCatching { xendroid.compose.sessions.SessionRuns.store().titleActivity().associateBy { it.titleId } }
+                    .onFailure { Log.w("GameLibrary", "Reading play history failed", it) }
+                    .getOrDefault(emptyMap())
+            }
+        }
+    }
+
     fun refresh() {
+        refreshActivity()
         if (!EmulatorRuntime.supportsVulkan) { _state.value = LibraryUiState.NoVulkan; return }
         // Keep an existing list visible during a pull-to-refresh (show only the pull
         // indicator); the full-screen spinner is for the first/empty load.
@@ -116,6 +222,8 @@ class GameLibraryViewModel(
     fun requestPerGameSettings(game: Game) = request(game, GameAction.PER_GAME_SETTINGS)
     fun requestGamePatches(game: Game) = request(game, GameAction.GAME_PATCHES)
     fun requestContentManager(game: Game) = request(game, GameAction.MANAGE_CONTENT)
+    fun requestSaves(game: Game) = request(game, GameAction.SAVES)
+    fun requestDiagnostics(game: Game) = request(game, GameAction.DIAGNOSTICS)
 
     /** Resolve a game's title id off-main, then the long-press dialog opens the matching screen. */
     private fun request(game: Game, action: GameAction) {

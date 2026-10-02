@@ -35,6 +35,9 @@ import xendroid.compose.ui.profile.ProfileManagerViewModel
 import xendroid.compose.ui.profile.ProfilesScreen
 import xendroid.compose.patches.GamePatchesViewModel
 import xendroid.compose.ui.patches.GamePatchesScreen
+import xendroid.compose.ui.saves.SaveManagerViewModel
+import xendroid.compose.ui.saves.SaveManagerScreen
+import xendroid.compose.ui.diagnostics.DiagnosticsScreen
 
 object Routes {
     const val LIBRARY = "library"
@@ -51,6 +54,8 @@ object Routes {
     // "$CONTENT_MANAGER/{titleId}?name={name}"
     const val CONTENT_MANAGER = "content_manager"
     const val INSTALL_CONTENT = "install_content"
+    const val SAVES = "saves"
+    const val DIAGNOSTICS = "diagnostics"
 }
 
 private fun NavBackStackEntry.backOnce(nav: NavController): () -> Unit = {
@@ -94,6 +99,12 @@ fun AppNavHost(container: AppContainer) {
                 },
                 onOpenContentManager = { titleId, name ->
                     navigateOnce("${Routes.CONTENT_MANAGER}/$titleId?name=${Uri.encode(name)}")
+                },
+                onOpenSaves = { titleId, name ->
+                    navigateOnce("${Routes.SAVES}/$titleId?name=${Uri.encode(name)}")
+                },
+                onOpenDiagnostics = { titleId ->
+                    navigateOnce("${Routes.DIAGNOSTICS}?title=${titleId.orEmpty()}")
                 },
                 onOpenInstallContent = { navigateOnce(Routes.INSTALL_CONTENT) },
                 onInstallFromDisc = { path ->
@@ -180,5 +191,16 @@ fun AppNavHost(container: AppContainer) {
                 sourcePath = entry.arguments?.getString("src")?.let { Uri.decode(it) },
             )
         }
+        composable("${Routes.SAVES}/{titleId}?name={name}", arguments = listOf(
+            navArgument("titleId") { type = NavType.StringType },
+            navArgument("name") { nullable = true; defaultValue = null },
+        )) { entry ->
+            val titleId = entry.arguments?.getString("titleId") ?: return@composable
+            val vm: SaveManagerViewModel = viewModel(factory = container.saveManagerViewModelFactory(titleId))
+            SaveManagerScreen(vm, entry.arguments?.getString("name").orEmpty(), entry.backOnce(nav))
+        }
+        composable("${Routes.DIAGNOSTICS}?title={title}", arguments = listOf(
+            navArgument("title") { nullable = true; defaultValue = null },
+        )) { entry -> DiagnosticsScreen(entry.arguments?.getString("title")?.takeIf { it.isNotEmpty() }, entry.backOnce(nav)) }
     }
 }

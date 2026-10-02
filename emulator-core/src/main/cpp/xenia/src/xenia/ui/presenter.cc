@@ -14,6 +14,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 #include "xenia/ui/window.h"
+#include "xenia/ui/presentation_runtime.h"
 
 #if XE_PLATFORM_WIN32
 #include "xenia/ui/surface_win.h"
@@ -439,6 +440,8 @@ bool Presenter::RefreshGuestOutput(
   // paint cadence and UI drawers don't request extra repaints on top of it.
   guest_output_refresh_count_.fetch_add(1, std::memory_order_relaxed);
 
+  if (ScheduleGuestOutput()) return is_active;
+
   // Trigger the presentation on the host.
   PaintResult paint_result = PaintResult::kNotPresented;
   {
@@ -526,6 +529,30 @@ void Presenter::SetGuestOutputPaintConfigFromUIThread(
       }
     }
   }
+}
+
+bool Presenter::CanScheduleGuestOutput() {
+  std::lock_guard<std::mutex> lock(paint_mode_mutex_);
+  return paint_mode_ == PaintMode::kGuestOutputThreadImmediately;
+}
+
+Presenter::PaintResult Presenter::PaintGuestFromScheduledThread(int phase) {
+  PaintResult result = PaintResult::kNotPresented;
+  {
+    std::lock_guard<std::mutex> lock(paint_mode_mutex_);
+    if (paint_mode_ != PaintMode::kGuestOutputThreadImmediately ||
+        surface_paint_connection_state_ != SurfacePaintConnectionState::kConnectedPaintable) return result;
+    SetScheduledPaintPhase(phase);
+    result = PaintAndPresent(false);
+    SetScheduledPaintPhase(-1);
+    if (surface_paint_connection_state_ == SurfacePaintConnectionState::kConnectedOutdated) {
+      RequestPaintOrConnectionRecoveryViaWindow(true);
+    }
+  }
+  if (host_gpu_loss_callback_ && (result == PaintResult::kGpuLostResponsible || result == PaintResult::kGpuLostExternally)) {
+    host_gpu_loss_callback_(result == PaintResult::kGpuLostResponsible, false);
+  }
+  return result;
 }
 
 void Presenter::AddUIDrawerFromUIThread(UIDrawer* drawer, size_t z_order) {
@@ -622,6 +649,8 @@ std::unique_lock<std::mutex> Presenter::ConsumeGuestOutput(
     // UI thread.
     std::unique_lock<std::mutex> config_lock(guest_output_paint_config_mutex_);
     *paint_config_out = guest_output_paint_config_;
+    const int effect = RuntimePresentation().scaling_effect.load(std::memory_order_relaxed);
+    if (effect >= 0 && effect <= 2) paint_config_out->SetEffect(GuestOutputPaintConfig::Effect(effect));
   }
 
   // Lock the mutex to make sure the image that will be acquired now is owned
@@ -811,6 +840,16 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
     flow.output_x =
         (int32_t(surface_width_in_paint_connection_) - int32_t(output_width)) /
         2;
+  }
+
+  const int runtime_mode = RuntimePresentation().display_mode.load(std::memory_order_relaxed);
+  if (runtime_mode >= 0 && runtime_mode <= 3) {
+    const auto rectangle = CalculateOutputRectangle(DisplayMode(runtime_mode),
+        properties.frontbuffer_width, properties.frontbuffer_height,
+        properties.display_aspect_ratio_x, properties.display_aspect_ratio_y,
+        surface_width_in_paint_connection_, surface_height_in_paint_connection_);
+    flow.output_x = rectangle.x; flow.output_y = rectangle.y;
+    output_width = rectangle.width; output_height = rectangle.height;
   }
 
   // Convert the location from surface pixels (which have 1:1 aspect ratio
@@ -1105,7 +1144,7 @@ Presenter::PaintMode Presenter::GetDesiredPaintModeFromUIThread(
     // dispatches the same display) concurrently.
     return PaintMode::kUIThreadOnRequest;
   }
-  if (surface_paint_connection_has_implicit_vsync_) {
+  if (surface_paint_connection_has_implicit_vsync_ && !RuntimePresentation().frame_generation_requested.load()) {
     // Don't be causing host vertical sync CPU waits in the thread generating
     // the guest output.
     return PaintMode::kUIThreadOnRequest;

@@ -10,7 +10,7 @@ The Gradle build produces two modules:
   `libhardware_ProcessorInfo.so`) plus the JNI-bound Java classes. Built once,
   consumed transitively.
 - `:app` — the Kotlin/Jetpack-Compose frontend (`applicationId
-  compose.compose`).
+  xendroid.compose`, with `.debug` appended for debug builds).
 
 ## Toolchain
 
@@ -46,7 +46,7 @@ sdkmanager "platform-tools" "platforms;android-35" "ndk;29.0.14206865" "cmake;3.
    ```
 2. **Android SDK / NDK / CMake** — install Android Studio, or with cmdline-tools:
    ```
-   sdkmanager.bat "platform-tools" "platforms;android-35" "ndk;27.2.12479018" "cmake;3.30.3"
+    sdkmanager.bat "platform-tools" "platforms;android-35" "ndk;29.0.14206865" "cmake;3.30.3"
    ```
 3. **SPIR-V shader toolchain** — install the **LunarG Vulkan SDK**
    (<https://vulkan.lunarg.com/sdk/home#windows>, or `winget install
@@ -61,16 +61,11 @@ sdkmanager "platform-tools" "platforms;android-35" "ndk;29.0.14206865" "cmake;3.
 
 ## First-time setup
 
-0. **Initialize the xenia third_party submodules.** As of the xenia-edge rebase,
-   `emulator-core/src/main/cpp/xenia-canary/third_party/` is a set of **git
-   submodules** (matching upstream edge) rather than vendored files. Populate them
-   before building:
-   ```bash
-   git submodule update --init --recursive
-   ```
-   A fresh clone needs `git clone --recurse-submodules`, or this command afterwards.
-   (Submodule paths are declared in the repo-root `.gitmodules`, prefixed with
-   `emulator-core/src/main/cpp/xenia-canary/`.)
+0. **The xenia tree is vendored.** The native sources the build compiles are
+   `emulator-core/src/main/cpp/xenia/` (`CMakeLists.txt` does
+   `add_subdirectory(xenia)`), including its `third_party/` libraries, committed as
+   plain files. No `git submodule` step is needed; the repo-root `.gitmodules` is a
+   leftover of upstream and lists no gitlinks. There is no `xenia-canary/` directory.
 
 1. Copy the example config and edit the paths:
 
@@ -102,7 +97,7 @@ sdkmanager "platform-tools" "platforms;android-35" "ndk;29.0.14206865" "cmake;3.
 ## Generated shaders
 
 The GPU/UI Vulkan shaders live as `.xesl`/`.xesli` GLSL sources under
-`emulator-core/src/main/cpp/xenia-canary/src/xenia/{gpu,ui}/shaders/`. The CMake
+`emulator-core/src/main/cpp/xenia/src/xenia/{gpu,ui}/shaders/`. The CMake
 build compiles them to SPIR-V C headers (`bytecode/vulkan_spirv/*.h`) as a
 pre-build step, via `tools/build/compile_shader_spirv.py`
 (`glslangValidator` -> `spirv-opt` -> `spirv-dis` -> `.h`). This is wired
@@ -114,6 +109,12 @@ The generated `bytecode/` headers are **not** checked in (they are
 shader tools (above) must therefore be installed — configure fails fast with an
 actionable message if any is missing. The tools are found on `PATH`, or set
 `VULKAN_SDK` to pin a specific Vulkan SDK (its `bin`/`Bin` is searched).
+
+The tool versions shape the generated SPIR-V, so builds meant to be compared should
+use the same ones: the local verification builds use glslang 16.2.0 and SPIRV-Tools
+2026.1; CI uses the Ubuntu 24.04 packages. On an older distro (e.g. Ubuntu 20.04,
+whose packages date from 2020) build those two from their release tags instead of
+mixing versions.
 
 > The DXBC/FXC path (`compile_shader_dxbc.py`) is D3D12-only and is **not** part
 > of the Android build — Windows contributors do not need the Windows SDK or
@@ -139,9 +140,51 @@ First build downloads Gradle 8.11.1 (SHA-256 verified) and compiles the full
 native tree — ~8–9 min cold. The APK lands in
 `app/build/outputs/apk/debug/`.
 
+## Tests and experimental presentation engines
+
+```bash
+./gradlew --no-daemon --console=plain :app:testDebugUnitTest :app:lintDebug
+./gradlew --no-daemon --console=plain :app:assembleDebug :app:assembleDebugAndroidTest
+# JNI bindings: every Java `native` against the RegisterNatives tables, exported
+# Java_* symbols and the C++ parameter types (no build needed; also in CI Checks).
+python3 tools/check-jni.py
+# Packaging of a built APK: arm64-only core exporting JNI_OnLoad, signed, license
+# texts present, no DLL/shader cache/game image/profile data (also in the CI APK job).
+python3 tools/check-apk.py app/build/outputs/apk/debug/app-debug.apk --aapt2 "$ANDROID_SDK/build-tools/35.0.0/aapt2"
+# Pure-logic native tests (presentation policy, FG schedule, pipeline cache file).
+# Any C++20 compiler; on a host without one, XENDROID_NDK builds static x86_64
+# Android executables that a Linux kernel (e.g. WSL) runs directly:
+bash tools/test-native-logic.sh
+XENDROID_NDK=$ANDROID_SDK/ndk/29.0.14206865 bash tools/test-native-logic.sh
+# Optional isolated C++/software-Vulkan tests (not a standalone Android CMake build):
+bash tools/test-presentation-host.sh
+XENDROID_LSFG_DLL=/private/path/Lossless.dll bash tools/test-presentation-host.sh
+```
+
+### Build identity
+
+`tools/build-identity.sh` writes `build-identity.properties` (git-ignored) with the
+base commit and a digest of uncommitted changes; `app/build.gradle` turns it into
+`versionName` `<commit>+local.<digest>` and `BuildConfig.BUILD_CHANGESET`, so an APK
+built from a dirty tree never claims to be the clean commit. Passing `-PgitHash`
+(CI) overrides the name. CI also passes `-PxendroidVersionCode=<run number>`, which
+the updater uses to order releases (`XenDroid-v<n>-<sha>` tags).
+
+Host tests require a C++20 compiler, Vulkan loader/ICD (such as llvmpipe), and
+`glslangValidator`. LSFG's software test currently enables Vulkan 1.3 and
+`VK_EXT_robustness2`; it validates synthesis, not Android scanout, latency, or
+Adreno performance. DLL/cache data stays outside source and APK. Preserve the
+licenses in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) when distributing the
+combined GPL-containing build. Debug/developer builds expose off-by-default FG;
+regular release UI keeps it disabled pending hardware gates.
+
+On low-RAM Linux hosts set `XENDROID_NINJA_JOBS=2`. Keep `JAVA_HOME` on persistent
+storage; `/tmp` downloads disappear when WSL restarts. Copying sources to ext4
+before building avoids the heavy NTFS/WSL compilation penalty.
+
 ## Windows notes
 
-The vendored `xenia-canary/third_party` tree is deep; combined with Gradle's
+The vendored `xenia/third_party` tree is deep; combined with Gradle's
 `.cxx` intermediate dirs, object paths approach the legacy 260-char `MAX_PATH`
 limit. Before cloning on Windows:
 

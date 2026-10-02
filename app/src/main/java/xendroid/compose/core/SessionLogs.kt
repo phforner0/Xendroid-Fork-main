@@ -13,6 +13,10 @@ import java.util.Date
 import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import java.util.zip.ZipFile
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /**
  * Per-app-session log shelving. A session = one main-process lifetime; xe.log
@@ -27,6 +31,47 @@ object SessionLogs {
     // Shelve only the newest portion of runaway logs.
     private const val MAX_SHELVED_BYTES = 64L * 1024 * 1024
     private const val MAX_TRACE_BYTES = 4L * 1024 * 1024
+    private const val CONTEXT_NAME = "current-context.json"
+    private val contextJson = Json { ignoreUnknownKeys = true }
+    private fun readContext(file: File): RunContext = runCatching {
+        require(file.length() in 1..65536)
+        contextJson.decodeFromString<RunContext>(file.readText())
+    }.getOrDefault(RunContext())
+    @Serializable
+    data class RunContext(val titleIds: List<String> = emptyList(), val appVersion: String = "")
+    data class Session(val id: String, val label: String, val timestamp: Long, val bytes: Long, val titles: List<String>)
+
+    /** Invoked only on a newly observed active title. Do not append private driver paths. */
+    fun noteTitle(titleId: String, version: String) {
+        require(titleId.matches(Regex("[0-9A-F]{8}")))
+        val log = File(Utils.get_log_file_path())
+        val dir = File(log.parentFile, "logs").apply { mkdirs() }
+        val file = File(dir, CONTEXT_NAME)
+        val old = readContext(file)
+        xendroid.compose.archive.ArchiveFiles.atomicText(file,
+            contextJson.encodeToString(RunContext((old.titleIds + titleId).distinct(), version)))
+    }
+
+    fun sessions(): List<Session> {
+        val log = File(Utils.get_log_file_path())
+        val dir = File(log.parentFile, "logs")
+        val currentFiles = listOf(log, File(dir, CAPTURE_NAME)).filter { it.isFile }
+        val currentContext = readContext(File(dir, CONTEXT_NAME))
+        val current = if (currentFiles.isNotEmpty()) listOf(Session("current", "Current session", currentFiles.maxOf { it.lastModified() },
+            currentFiles.sumOf { it.length() }, currentContext.titleIds)) else emptyList()
+        val old = dir.listFiles { f -> f.name.matches(Regex("session_[A-Za-z0-9_-]+\\.zip")) }.orEmpty()
+            .sortedByDescending { it.lastModified() }.map { file ->
+                val titles = runCatching {
+                    ZipFile(file).use { zip ->
+                        val entry = zip.getEntry("context.json")
+                        if (entry == null || entry.size !in 0..65536) emptyList()
+                        else zip.getInputStream(entry).use { contextJson.decodeFromString<RunContext>(it.bufferedReader().readText()).titleIds }
+                    }
+                }.getOrDefault(emptyList())
+                Session(file.name, file.name.removePrefix("session_").removeSuffix(".zip"), file.lastModified(), file.length(), titles)
+            }
+        return current + old
+    }
 
     fun startAppSession(context: Context) {
         val xeLog = File(Utils.get_log_file_path())
@@ -53,7 +98,7 @@ object SessionLogs {
         try {
             handle.getInt("Logging", "log_sessions_keep", 4)
         } finally {
-            handle.closeString()
+            handle.closeDiscard()
         }
     }.getOrDefault(4)
 
@@ -89,8 +134,8 @@ object SessionLogs {
             f.name.startsWith("session_") &&
                 (f.name.endsWith("-xe.log") || f.name.endsWith("-logcat.txt"))
         }?.toList() ?: emptyList()
-        val sources = (listOf(xeLog to "xe.log", capture to "logcat.txt") +
-            leftovers.map { it to it.name.substringAfter("session_").substringAfter('-') })
+        val sources = (listOf(xeLog to "xe.log", capture to "logcat.txt", File(logsDir, CONTEXT_NAME) to "context.json") +
+            leftovers.sortedBy { it.name }.mapIndexed { index, file -> file to leftoverEntryName(index, file.name) })
             .filter { it.first.isFile && it.first.length() > 0 }
         if (sources.isEmpty()) return
 
@@ -123,6 +168,14 @@ object SessionLogs {
             capture.takeIf { it.isFile }
                 ?.renameTo(File(logsDir, "session_$stamp-logcat.txt"))
         }
+    }
+
+    /** Entry name for an earlier failed shelve's raw file ("session_<stamp>-xe.log"):
+     * unique within the ZIP and recognized by the redacted share export. */
+    internal fun leftoverEntryName(index: Int, fileName: String): String {
+        val kind = if (fileName.endsWith("-logcat.txt")) "logcat.txt" else "xe.log"
+        val stamp = Regex("session_([0-9]{8}-[0-9]{6})-.*").matchEntire(fileName)?.groupValues?.get(1) ?: "0"
+        return "previous-$index-$stamp-$kind"
     }
 
     /** Copies at most [maxBytes] of the file tail (newest content wins). */
@@ -224,6 +277,29 @@ object SessionLogs {
             Log.w(TAG, "Log export failed", it)
             tmp.delete()
         }.getOrNull()
+    }
+
+    /** A separate, redacted ZIP for Android share sheets. Raw exports remain local. */
+    fun exportRedactedForSharing(context: Context, selectedId: String? = null): File? {
+        require(selectedId == null || selectedId == "current" || selectedId.matches(Regex("session_[A-Za-z0-9_-]+\\.zip")))
+        val xeLog = File(Utils.get_log_file_path())
+        val logsDir = File(xeLog.parentFile, "logs")
+        val histories = logsDir.listFiles { f ->
+            f.name.startsWith("session_") && f.name.endsWith(".zip")
+        }?.sortedBy { it.lastModified() }?.filter { selectedId == null || it.name == selectedId } ?: emptyList()
+        val current = listOf(
+            xeLog to "xe.log",
+            File(logsDir, CAPTURE_NAME) to "logcat.txt",
+            File(logsDir, CONTEXT_NAME) to "context.json",
+        ).filter { (selectedId == null || selectedId == "current") && it.first.isFile && it.first.length() > 0 }
+
+        val sharedDir = File(context.cacheDir, "shared-logs").apply { mkdirs() }
+        sharedDir.listFiles()?.filter { it.lastModified() < System.currentTimeMillis() - 86_400_000L }
+            ?.forEach { it.delete() }
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
+        return SanitizedSessionExport.create(
+            File(sharedDir, "xendroid-diagnostics-$stamp.zip"), histories, current,
+        )
     }
 
     /** Unprivileged logcat sees exactly this uid's entries (both processes);

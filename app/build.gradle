@@ -18,6 +18,30 @@ def syncGamePatches = tasks.register('syncGamePatches', Copy) {
 // AGP doesn't honor the assets.srcDir(...).builtBy() hint, so wire the sync in explicitly.
 tasks.named('preBuild').configure { dependsOn(syncGamePatches) }
 
+// Build identity (tools/build-identity.sh): the base commit and a digest of the local
+// changes it was built with. A dirty tree is never presented as the clean commit.
+def buildIdentity = new Properties()
+def buildIdentityFile = rootProject.file('build-identity.properties')
+if (buildIdentityFile.isFile()) buildIdentityFile.withInputStream { buildIdentity.load(it) }
+def buildBaseCommit = buildIdentity.getProperty('base') ?: (project.findProperty('gitHash') ?: 'unknown')
+def buildChangeset = buildIdentity.getProperty('changeset') ?: ''
+def buildVersionName = project.findProperty('gitHash') ?:
+    (buildChangeset ? "${buildBaseCommit}+local.${buildChangeset}" : buildBaseCommit)
+
+def engineLicensesDir = layout.buildDirectory.dir('generated/engineLicenseAssets')
+def syncEngineLicenses = tasks.register('syncEngineLicenses', Sync) {
+    into engineLicensesDir
+    into('engine-licenses') {
+        from('../emulator-core/src/main/cpp/third_party/winfg/LICENSE') { rename { 'winfg-MIT.txt' } }
+        from('../emulator-core/src/main/cpp/third_party/winfg/THIRD-PARTY.md') { rename { 'winfg-third-party.txt' } }
+        from('../emulator-core/src/main/cpp/third_party/winfg/NOTICE_FIDELITYFX_OPTICALFLOW.md') { rename { 'fidelityfx-notice.txt' } }
+        from('../emulator-core/src/main/cpp/third_party/lsfg/LICENSE') { rename { 'lsfg-GPL-3.0.txt' } }
+        from('../emulator-core/src/main/cpp/third_party/lsfg-dxbc/LICENSE.md') { rename { 'dxbc-license.txt' } }
+        from('../THIRD-PARTY-NOTICES.md') { rename { 'xendroid-notices.txt' } }
+    }
+}
+tasks.named('preBuild').configure { dependsOn(syncEngineLicenses) }
+
 android {
     namespace 'xendroid.compose'
     compileSdk 35
@@ -30,14 +54,27 @@ android {
         // 29+ matches :emulator-core (native ELF TLS in libe.so).
         minSdk 29
         targetSdk 35
-        versionCode 1
-        versionName project.findProperty("gitHash") ?: "unknown"
-        
+        // CI passes a monotonic number (-PxendroidVersionCode=<run number>); local builds
+        // stay 1, which the updater treats as "unordered, never offer an update".
+        versionCode((project.findProperty('xendroidVersionCode') ?: '1') as String as int)
+        versionName buildVersionName
+        buildConfigField 'String', 'BUILD_BASE_COMMIT', "\"${buildBaseCommit}\""
+        // Empty for a clean checkout (CI); otherwise the digest of uncommitted changes.
+        buildConfigField 'String', 'BUILD_CHANGESET', "\"${buildChangeset}\""
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        // The emulator core (libe.so) exists for arm64-v8a only. Without this filter the
+        // native helpers of AndroidX libraries made the APK claim armeabi-v7a/x86/x86_64
+        // too, so such devices installed it and crashed loading the core.
+        ndk { abiFilters 'arm64-v8a' }
+        // Release feed of the regular .fork package; "" disables the update check.
+        buildConfigField 'String', 'UPDATE_REPOSITORY',
+            "\"${project.findProperty('xendroidUpdateRepo') ?: 'phforner0/Xendroid-Fork-main'}\""
     }
 
     sourceSets {
         main {
             assets.srcDir(files(gamePatchesGenDir).builtBy(syncGamePatches))
+            assets.srcDir(files(engineLicensesDir).builtBy(syncEngineLicenses))
         }
     }
 
@@ -123,4 +160,6 @@ dependencies {
     implementation libs.androidx.datastore.preferences
     testImplementation libs.junit
     testImplementation libs.kotlinx.coroutines.test
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }

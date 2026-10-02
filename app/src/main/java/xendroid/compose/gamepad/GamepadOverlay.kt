@@ -71,6 +71,7 @@ fun GamepadOverlay(
                                            // so the draw phase reads it: redraws without recomposing.
     onUserInteraction: () -> Unit = {},   // resets auto-hide timer
     editMode: Boolean = false,
+    adaptiveSticks: Boolean = false,      // opt-in: spawn near the saved stick anchor at touch-down
     gridStepsX: Int = 0,                  // editor: snap-grid cell count per axis (0 = no grid).
     gridStepsY: Int = 0,                  // x/y differ so the cells are square on a non-1:1 screen.
     selectedId: ControlId? = null,
@@ -90,6 +91,7 @@ fun GamepadOverlay(
     // claim change -- plain maps record no snapshot read, so the knob would sit frozen.
     val claims = remember { mutableStateMapOf<Long, ControlId>() }
     val pointerPos = remember { mutableStateMapOf<Long, Offset>() }
+    val stickOrigins = remember { mutableStateMapOf<ControlId, Offset>() }
     // Rebuilding these per draw pass (display-refresh rate during a drag) was a GC-pause stutter storm.
     val drawCache = remember { GamepadDrawCache() }
     // per-dpad last-pressed sector set, for diffing.
@@ -121,7 +123,7 @@ fun GamepadOverlay(
             // Keyed only on editMode+sizePx (stable during a gesture). controls is read live
             // via controlsState so a drag (which mutates controls every frame) never restarts
             // the gesture. selectedId is not needed here (only the draw uses it).
-            .pointerInput(editMode, sizePx) {
+            .pointerInput(editMode, sizePx, adaptiveSticks) {
                 if (editMode) {
                     editPointerLoop(
                         controlsState, sizePx, density,
@@ -131,6 +133,7 @@ fun GamepadOverlay(
                         { id -> onDragEndState.value(id) },
                     )
                 } else {
+                    try {
                     awaitPointerEventScope {
                         while (true) {
                             val ev = awaitPointerEvent()
@@ -139,11 +142,30 @@ fun GamepadOverlay(
                                 val pid = ch.id.value
                                 when {
                                     ch.changedToDownIgnoreConsumed() -> {
-                                        val hit = hitTest(controlsState.value, ch.position, sizePx, density)
+                                        val layout = controlsState.value
+                                        val hit = if (adaptiveSticks) {
+                                            // Buttons and D-pad win over a stick's expanded grab zone.
+                                            hitTest(layout.filterNot { it is OnScreenControl.AnalogStick },
+                                                ch.position, sizePx, density)
+                                                ?: layout.firstOrNull { c ->
+                                                    c is OnScreenControl.AnalogStick && c.visible &&
+                                                        !claims.containsValue(c.id) &&
+                                                        hypot(ch.position.x - controlCenterPx(c, sizePx).x,
+                                                            ch.position.y - controlCenterPx(c, sizePx).y) <=
+                                                        controlRadiusPx(c, density) * 1.65f
+                                                }
+                                        } else hitTest(layout, ch.position, sizePx, density)
                                         if (hit != null) {
+                                            if (adaptiveSticks && hit is OnScreenControl.AnalogStick) {
+                                                val r = with(density) { hit.baseSizeDp.dp.toPx() } / 2f * hit.scale
+                                                stickOrigins[hit.id] = Offset(
+                                                    ch.position.x.coerceIn(minOf(r, sizePx.width / 2f), maxOf(sizePx.width - r, sizePx.width / 2f)),
+                                                    ch.position.y.coerceIn(minOf(r, sizePx.height / 2f), maxOf(sizePx.height - r, sizePx.height / 2f)),
+                                                )
+                                            }
                                             claims[pid] = hit.id
                                             pointerPos[pid] = ch.position
-                                            dispatchDown(emitter, hit, ch.position, sizePx, density, dpadState)
+                                            dispatchDown(emitter, hit, ch.position, sizePx, density, dpadState, stickOrigins[hit.id])
                                             ch.consume()
                                         }
                                     }
@@ -156,6 +178,7 @@ fun GamepadOverlay(
                                             // control (two fingers on one stick: lifting one
                                             // must not zero the input the other is still driving).
                                             if (claims.none { it.value == id }) {
+                                                stickOrigins.remove(id)
                                                 controlsState.value.firstOrNull { it.id == id }?.let {
                                                     dispatchUp(emitter, it, dpadState)
                                                 }
@@ -167,13 +190,22 @@ fun GamepadOverlay(
                                         val id = claims[pid] ?: continue
                                         pointerPos[pid] = ch.position
                                         controlsState.value.firstOrNull { it.id == id }?.let {
-                                            dispatchMove(emitter, it, ch.position, sizePx, density, dpadState)
+                                            dispatchMove(emitter, it, ch.position, sizePx, density, dpadState, stickOrigins[id])
                                             ch.consume()
                                         }
                                     }
                                 }
                             }
                         }
+                    }
+                    } finally {
+                        // Resizing, switching mode or cancelling without a pointer-up must
+                        // release every claim and axis, including adaptive stick origins.
+                        emitter.releaseAll()
+                        claims.clear()
+                        pointerPos.clear()
+                        stickOrigins.clear()
+                        dpadState.clear()
                     }
                 }
             }
@@ -208,11 +240,13 @@ fun GamepadOverlay(
         val contrastNow = contrast()   // draw-phase read: animation frames only re-draw
         for (c in controls) {
             if (!c.visible) continue
+            if (adaptiveSticks && !editMode && c is OnScreenControl.AnalogStick && stickOrigins[c.id] == null) continue
             drawControl(
                 c, opacity, contrastNow, sizePx, density, drawCache,
                 pressed = claims.containsValue(c.id),
                 dpadDirs = if (c is OnScreenControl.Dpad) dpadState[c.id] ?: emptySet() else emptySet(),
                 activePos = activePos(c.id),
+                centerOverride = stickOrigins[c.id],
             )
             if (editMode && c.id == selectedId) drawSelection(c, sizePx, density)
         }
@@ -292,22 +326,24 @@ private suspend fun PointerInputScope.editPointerLoop(
 private fun dispatchDown(
     emitter: GamepadEmitter, c: OnScreenControl, pos: Offset,
     size: IntSize, density: Density, dpadState: MutableMap<ControlId, Set<Int>>,
+    stickOrigin: Offset? = null,
 ) {
     when (c) {
         is OnScreenControl.Button -> emitter.pressDigital(c.keyCode)
         is OnScreenControl.Dpad -> updateDpad(emitter, c, pos, size, density, dpadState)
-        is OnScreenControl.AnalogStick -> updateStick(emitter, c, pos, size, density)
+        is OnScreenControl.AnalogStick -> updateStick(emitter, c, pos, size, density, stickOrigin)
     }
 }
 
 private fun dispatchMove(
     emitter: GamepadEmitter, c: OnScreenControl, pos: Offset,
     size: IntSize, density: Density, dpadState: MutableMap<ControlId, Set<Int>>,
+    stickOrigin: Offset? = null,
 ) {
     when (c) {
         is OnScreenControl.Button -> Unit                 // sticky press while held
         is OnScreenControl.Dpad -> updateDpad(emitter, c, pos, size, density, dpadState)
-        is OnScreenControl.AnalogStick -> updateStick(emitter, c, pos, size, density)
+        is OnScreenControl.AnalogStick -> updateStick(emitter, c, pos, size, density, stickOrigin)
     }
 }
 
@@ -343,8 +379,9 @@ private fun updateDpad(
 private fun updateStick(
     emitter: GamepadEmitter, c: OnScreenControl.AnalogStick, pos: Offset,
     size: IntSize, density: Density,
+    origin: Offset? = null,
 ) {
-    val center = controlCenterPx(c, size)
+    val center = origin ?: controlCenterPx(c, size)
     // Normalize by the VISUAL ring (matches drawControl), NOT the 1.15x grab radius, so
     // full deflection == reaching the drawn ring (and the knob == the emitted value).
     val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
@@ -482,8 +519,9 @@ private fun DrawScope.drawControl(
     c: OnScreenControl, opacity: Float, contrast: Float, size: IntSize, density: Density,
     cache: GamepadDrawCache,
     pressed: Boolean, dpadDirs: Set<Int>, activePos: Offset?,
+    centerOverride: Offset? = null,
 ) {
-    val center = controlCenterPx(c, size)
+    val center = centerOverride ?: controlCenterPx(c, size)
     val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
     val strokeW = with(density) { 2.dp.toPx() }
     // Coloured face buttons keep their face colour; only their light accents follow the ink.

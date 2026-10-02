@@ -34,6 +34,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import xendroid.compose.core.Gamertag
 import xendroid.compose.core.ProfilePaths
+import xendroid.compose.saves.ProfileContentSummary
+import xendroid.compose.saves.TrashedProfile
 import xendroid.compose.settings.Setting
 import xendroid.compose.settings.SettingsSchema
 import xendroid.compose.ui.profile.ProfileManagerViewModel.ListState
@@ -66,8 +68,9 @@ fun ProfilesScreen(
 ) {
     val listState by vm.listState.collectAsStateWithLifecycle()
     val opState by vm.opState.collectAsStateWithLifecycle()
+    val trash by vm.trash.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<Editing>(Editing.None) }
-    var deleteTarget by remember { mutableStateOf<ProfileEntry?>(null) }
+    var purgeTarget by remember { mutableStateOf<TrashedProfile?>(null) }
 
     Scaffold(
         topBar = {
@@ -91,16 +94,19 @@ fun ProfilesScreen(
                 ListState.Loading -> CircularProgressIndicator()
                 is ListState.Error -> Text(s.message, Modifier.padding(24.dp))
                 is ListState.Loaded ->
-                    if (s.profiles.isEmpty()) {
+                    if (s.profiles.isEmpty() && trash.isEmpty()) {
                         Text("No profiles yet. Tap + to create one.",
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.padding(24.dp))
                     } else {
                         ProfileList(
                             profiles = s.profiles,
+                            trash = trash,
                             onSelect = vm::setActive,
                             onRename = { editing = Editing.Rename(it) },
-                            onDelete = { deleteTarget = it },
+                            onDelete = vm::requestDelete,
+                            onRestore = { vm.restore(it.id) },
+                            onPurge = { purgeTarget = it },
                         )
                     }
             }
@@ -127,23 +133,29 @@ fun ProfilesScreen(
         )
     }
 
-    deleteTarget?.let { target ->
+    purgeTarget?.let { target ->
         AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = { Text("Delete profile?") },
-            text = { Text("Delete “${target.gamertag}”? This removes its files permanently.") },
+            onDismissRequest = { purgeTarget = null },
+            title = { Text("Remove permanently?") },
+            text = { Text("The trashed profile ${target.xuid} and every save stored with it will be " +
+                "deleted from this device. This cannot be undone.") },
             confirmButton = {
-                TextButton(onClick = { deleteTarget = null; vm.delete(target.xuid) }) {
-                    Text("Delete")
-                }
+                TextButton(onClick = { purgeTarget = null; vm.purge(target.id) }) { Text("Remove permanently") }
             },
-            dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
-            },
+            dismissButton = { TextButton(onClick = { purgeTarget = null }) { Text("Cancel") } },
         )
     }
 
     when (val s = opState) {
+        is OpState.ConfirmDelete -> AlertDialog(
+            onDismissRequest = vm::dismiss,
+            title = { Text("Move profile to the trash?") },
+            text = { Text(deleteSummaryText(s.entry, s.summary)) },
+            confirmButton = {
+                TextButton(onClick = { vm.delete(s.entry.xuid) }) { Text("Move to trash") }
+            },
+            dismissButton = { TextButton(onClick = vm::dismiss) { Text("Cancel") } },
+        )
         is OpState.Busy -> AlertDialog(
             onDismissRequest = {},
             title = { Text(s.message) },
@@ -166,12 +178,28 @@ fun ProfilesScreen(
     }
 }
 
+private fun deleteSummaryText(entry: ProfileEntry, summary: ProfileContentSummary): String {
+    val name = entry.gamertag.ifBlank { entry.xuid }
+    val games = summary.gameTitles
+    val megabytes = "%.1f".format(summary.bytes / (1024.0 * 1024.0))
+    val detail = if (games.isEmpty()) "It has no game saves stored on this device."
+    else "This also removes the saved data of ${games.size} game(s): " +
+        "${games.joinToString(", ") { it.titleId }} (${summary.files} files, $megabytes MB including the profile)."
+    val partial = if (summary.truncated) " The folder is very large; the totals above are partial." else ""
+    return "“$name” disappears from the profile list and from every game. $detail$partial " +
+        "Everything stays in the trash on this device until you remove it permanently, " +
+        "and can be restored from this screen."
+}
+
 @Composable
 private fun ProfileList(
     profiles: List<ProfileEntry>,
+    trash: List<TrashedProfile>,
     onSelect: (String) -> Unit,
     onRename: (ProfileEntry) -> Unit,
     onDelete: (ProfileEntry) -> Unit,
+    onRestore: (TrashedProfile) -> Unit,
+    onPurge: (TrashedProfile) -> Unit,
 ) {
     LazyColumn(Modifier.fillMaxSize()) {
         items(profiles, key = { it.xuid }) { p ->
@@ -186,6 +214,29 @@ private fun ProfileList(
                 modifier = Modifier.clickable { onSelect(p.xuid) },
             )
             HorizontalDivider()
+        }
+        if (trash.isNotEmpty()) {
+            item(key = "trash-header") {
+                Text("Trash · restorable with their saves",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 4.dp))
+            }
+            items(trash, key = { "trash-${it.id}" }) { t ->
+                ListItem(
+                    headlineContent = { Text(t.xuid) },
+                    supportingContent = {
+                        Text("Removed " + java.text.DateFormat.getDateTimeInstance(
+                            java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(t.deletedAt)))
+                    },
+                    trailingContent = {
+                        Row {
+                            TextButton(onClick = { onRestore(t) }) { Text("Restore") }
+                            TextButton(onClick = { onPurge(t) }) { Text("Remove") }
+                        }
+                    },
+                )
+                HorizontalDivider()
+            }
         }
     }
 }

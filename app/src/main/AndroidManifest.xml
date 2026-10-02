@@ -16,6 +16,9 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <!-- Controller rumble (host Activity, SP1-C; declared now so core code never NPEs). -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- In-app updates (R03): the system installer still asks the user to confirm each one,
+         and only after they allow this app to install updates in system settings. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
@@ -51,13 +54,16 @@
              re-booting. Full configChanges so rotation/keyboard/etc. do NOT recreate the
              Activity (a recreate would re-enter the single-shot boot). Fullscreen theme:
              the Vulkan swapchain must own the whole window. -->
+        <!-- density/fontScale/colorMode/touchscreen/mcc/mnc too: changing the display size or
+             font size in system settings while a game is in the background would otherwise
+             recreate this Activity, and onDestroy ends the single-shot process (the game). -->
         <activity
             android:name="xendroid.compose.EmulatorHostActivity"
             android:process=":emu"
             android:exported="true"
             android:launchMode="singleTask"
             android:screenOrientation="sensorLandscape"
-            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation|density|fontScale|colorMode|touchscreen|mcc|mnc|fontWeightAdjustment|grammaticalGender"
             android:windowSoftInputMode="adjustNothing"
             android:theme="@style/Theme.xendroidEmu">
             <!-- In-app launch: GameLibraryViewModel.buildLaunchIntent (xendroid + setPackage). -->
@@ -75,5 +81,18 @@
         <service
             android:name="xendroid.compose.core.MainAliveService"
             android:exported="false" />
+        <!-- Status of an in-app update's install session (shows the system confirmation). -->
+        <receiver
+            android:name="xendroid.compose.updater.UpdateInstallReceiver"
+            android:exported="false" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.share"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/share_paths" />
+        </provider>
     </application>
 </manifest>

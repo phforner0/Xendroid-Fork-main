@@ -1,5 +1,8 @@
 package xendroid.compose
 
+import android.content.Intent
+import android.content.ClipData
+import android.annotation.SuppressLint
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -15,6 +18,8 @@ import android.view.SurfaceView
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.core.view.WindowCompat
+import androidx.core.content.FileProvider
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import xendroid.compose.core.EmuProcessLink
@@ -23,6 +28,16 @@ import xendroid.compose.core.FrontendLaunch
 import xendroid.compose.core.EmulatorSession
 import xendroid.compose.core.ScreenBrightnessSampler
 import xendroid.compose.core.SessionLogs
+import xendroid.compose.core.HudMetric
+import xendroid.compose.core.PresentationState
+import xendroid.compose.core.LsfgAssets
+import xendroid.compose.core.BackgroundPolicy
+import xendroid.compose.core.GyroCamera
+import xendroid.compose.core.refreshChoices
+import xendroid.compose.core.selectRefresh
+import xendroid.compose.core.sustainedPerformance
+import xendroid.compose.core.ExternalGameDisplay
+import xendroid.compose.core.PresenterPerformanceHints
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -42,6 +57,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -60,21 +76,23 @@ import xendroid.compose.ui.disc.DiscSwapPanel
 import xendroid.compose.ui.keyboard.GuestKeyboardPanel
 import xendroid.compose.ui.keyboard.clampToUtf16Units
 import xendroid.compose.ui.messagebox.GuestMessageBoxPanel
-import xendroid.compose.ui.pause.PAUSE_OPTION_COUNT
-import xendroid.compose.ui.pause.PAUSE_OPTION_QUIT
-import xendroid.compose.ui.pause.PAUSE_OPTION_TOUCH_OVERLAY
-import xendroid.compose.ui.pause.PAUSE_OPTION_RESUME
-import xendroid.compose.ui.panel.GuestSidePanel
-import xendroid.compose.ui.pause.PauseMenuPanel
+import xendroid.compose.ui.ingame.InGameAction
+import xendroid.compose.ui.ingame.InGameMenu
+import xendroid.compose.ui.ingame.InGameMenuHandle
+import xendroid.compose.ui.ingame.InGameMenuState
+import xendroid.compose.ui.ingame.InGamePage
 import xendroid.compose.ui.theme.xendroidTheme
 import xendroid.compose.gamepad.GamepadConfigDto
 import xendroid.compose.gamepad.GamepadController
+import xendroid.compose.gamepad.GamepadEditorScreen
 import xendroid.compose.gamepad.GamepadOverlay
 import xendroid.compose.gamepad.Kc
 import xendroid.compose.gamepad.rememberAutoHide
 import xendroid.compose.data.GameButtons
 import xendroid.compose.data.KeymapStore
 import xendroid.compose.settings.ConfigStore
+import xendroid.compose.settings.FpsConfigSnapshot
+import xendroid.compose.settings.InGameConfigRepository
 
 /**
  * The :emu emulator host (separate process; see manifest). Reads game_uri from the Intent,
@@ -115,6 +133,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val KEY_VALUE_UNUSED = -1
         private const val AXIS_DEADZONE = 0.08f
         private const val FOCUS_PAUSE_DEBOUNCE_MS = 250L
+        /** Running seconds without a new guest frame before the flight recorder notes a stall. */
+        private const val STALL_EVENT_SECONDS = 3
 
         private const val DISPLAY_SETTINGS_PREFS = "display_settings"
         private const val FULLSCREEN_STRETCH_KEY =
@@ -122,13 +142,102 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     private val session = EmulatorSession()
+    /** Durable record of this guest run (sessions/SessionRunStore); null if unavailable. */
+    @Volatile private var runId: String? = null
+    private var lastRunHeartbeatMs = 0L
+    /** One-second samples of this run (main thread only), saved with the heartbeat and at the end. */
+    private val runPerformance = xendroid.compose.sessions.RunPerformanceAccumulator()
+    /** Flight recorder of this run (C01): rare host events, flushed beside the run record. */
+    private val runEvents = xendroid.compose.sessions.RunEventRecorder(clock = android.os.SystemClock::elapsedRealtime)
+    private var lastPresentationLabel: String? = null
+    private var lastPresentCount = -1L
+    private var stalledSeconds = 0
+    private var lastThermalStatus = -1
+    private var driverRecorded = false
+    /** Seconds with >= 100 ms spent creating pipelines (ns counter, pipelines alongside). */
+    private val compileBursts = xendroid.compose.sessions.BurstTracker(threshold = 100_000_000, quietSeconds = 2)
+    /** Seconds with concealed audio blocks; 5 quiet seconds end a burst, so sporadic dropouts stay one event pair. */
+    private val audioBursts = xendroid.compose.sessions.BurstTracker(threshold = 1, quietSeconds = 5)
+    /** Shown over the black screen until the first guest frame (U09); null afterwards. */
+    private val bootStatus = mutableStateOf<String?>("Starting the emulator…")
+    private val createdAtMs = android.os.SystemClock.elapsedRealtime()
+    /** Connected controllers by device id, described by vendor/product only. */
+    private val controllers = mutableMapOf<Int, String>()
+    /** I01: physical controllers -> players. P1 keeps the existing path; P2-P4 go through [slotInput]. */
+    private val controllerSlots = xendroid.compose.gamepad.ControllerSlots()
+    private val slotInput = xendroid.compose.gamepad.SlotInputRouter(AXIS_DEADZONE) { slot, key, pressed, value ->
+        session.keyEventSlot(slot, key, pressed, value)
+    }
+    /** Device id -> descriptor of each known controller (a removed device can no longer be asked). */
+    private val controllerKeys = mutableMapOf<Int, String>()
+    /** I04/U08: guest rumble on physical controllers only (never the phone), per the user's intensity. */
+    private val rumbleIntensity by lazy {
+        mutableStateOf(xendroid.compose.gamepad.RumbleIntensity.parse(
+            getSharedPreferences("touch_options", MODE_PRIVATE).getString("controller_rumble", null)))
+    }
+    private val rumbleAmplitudes = mutableMapOf<Int, Int>()
+
+    /** Plays each slot's guest rumble on the controller holding it; called every 50 ms while the game runs. */
+    private fun driveRumble(state: LongArray) {
+        controllerSlots.players.forEachIndexed { slot, key ->
+            val deviceId = key?.let { k -> controllerKeys.entries.firstOrNull { it.value == k }?.key } ?: return@forEachIndexed
+            val amplitude = xendroid.compose.gamepad.rumbleAmplitude(state.getOrElse(slot) { 0L }, rumbleIntensity.value)
+            val vibrator = controllerVibrator(deviceId) ?: return@forEachIndexed
+            if (amplitude > 0) {
+                // Short overlapping shots: stops by itself if this loop does.
+                vibrator.vibrate(VibrationEffect.createOneShot(100, amplitude))
+            } else if ((rumbleAmplitudes[deviceId] ?: 0) > 0) {
+                vibrator.cancel()
+            }
+            rumbleAmplitudes[deviceId] = amplitude
+        }
+    }
+
+    private fun stopRumble() {
+        rumbleAmplitudes.keys.toList().forEach { id -> if ((rumbleAmplitudes[id] ?: 0) > 0) controllerVibrator(id)?.cancel() }
+        rumbleAmplitudes.clear()
+    }
+
+    private fun controllerVibrator(deviceId: Int): Vibrator? {
+        val device = InputDevice.getDevice(deviceId) ?: return null
+        val vibrator = if (Build.VERSION.SDK_INT >= 31) device.vibratorManager.defaultVibrator
+        else @Suppress("DEPRECATION") device.vibrator
+        return vibrator.takeIf { it.hasVibrator() }
+    }
+    private val thermalListener = android.os.PowerManager.OnThermalStatusChangedListener { noteThermal(it) }
+    private val inputDeviceListener = object : android.hardware.input.InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(deviceId: Int) = noteController(deviceId, "connected")
+        override fun onInputDeviceRemoved(deviceId: Int) {
+            controllers.remove(deviceId)?.let { recordEvent("controller", "disconnected ($it)", flush = true) }
+            // Release only what the lost controller held (I04); its player slot frees up.
+            controllerKeys.remove(deviceId)?.let { key ->
+                controllerSlots.disconnect(key)?.let { slot ->
+                    if (slot == 0) releaseGuestInput() else {
+                        slotInput.release(slot)
+                        session.setSlotConnected(slot, false, "Controller ${slot + 1}")
+                    }
+                }
+            }
+        }
+        override fun onInputDeviceChanged(deviceId: Int) {}
+    }
+    /** Set when the launch failed visibly, so the run is recorded as FAILED. */
+    private var launchFailure: String? = null
+    /** The game this single-shot process boots; a later launch intent cannot switch it. */
+    private var launchedGame: String? = null
     private var surfaceView: SurfaceView? = null
+    private var surfaceAvailable = false
+    private var externalDisplay: ExternalGameDisplay? = null
+    private val externalDisplayLabel = mutableStateOf("TV · phone display")
+    private val scalingEffect = mutableIntStateOf(-1)
+    private val performanceHints by lazy { PresenterPerformanceHints(applicationContext) }
+    private val performanceHintsLabel = mutableStateOf("Presenter ADPF · Off")
     private var started = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val pauseOnFocusLost =
         Runnable {
-            if (session.booted) session.pause()
+            pauseForLifecycle()
         }
 
     private val gamepad by lazy {
@@ -143,9 +252,12 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var hapticsEnabled = false
 
     private val bootedState = mutableStateOf(false)
+    private val foregroundState = mutableStateOf(false)
     private val fpsLimitState = mutableIntStateOf(60)
     private val showFpsOverlay = mutableStateOf(false)
     private val performanceOverlayEnabled = mutableStateOf(false)
+    private val compactPerformanceOverlay = mutableStateOf(false)
+    private val hudMetrics = mutableStateOf(HudMetric.entries.toSet())
 
     // Fullscreen stretch:
     // false = preserve aspect ratio / black bars
@@ -153,7 +265,59 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val fullscreenStretchEnabled = mutableStateOf(false)
 
     private val showTouchOverlay = mutableStateOf<Boolean?>(null)
-    private val menuOpenState = mutableStateOf(false)
+    private val menuState = mutableStateOf(InGameMenuState())
+    private val menuPaused = mutableStateOf(false)
+    private val editorOpen = mutableStateOf(false)
+    private val menuLogSessions = mutableStateOf<List<SessionLogs.Session>>(emptyList())
+    private val presentationState = mutableStateOf(PresentationState())
+    private val fgPreset = mutableIntStateOf(2)
+    private val lsfgMultiplier = mutableIntStateOf(2)
+    private val generationCap = xendroid.compose.core.GenerationCap()
+    private val audioVolume = mutableIntStateOf(100)
+    private val gpuLabel = mutableStateOf("")
+    private var volumeBeforeMute = 100
+    private val backgroundPolicy = mutableStateOf(BackgroundPolicy.AUTO)
+    private val gyroEnabled = mutableStateOf(false)
+    private val gyroSensitivity = mutableIntStateOf(1)
+    private val sustainedMode = mutableStateOf(false)
+    private val sustainedAvailable = mutableStateOf(true)
+    private val requestedRefresh = mutableStateOf<Float?>(null)
+    /** Right-stick directions currently held on the touch overlay. */
+    private val touchStickHeld = BooleanArray(24)
+    private val gyroCamera by lazy { GyroCamera(applicationContext) { code, down, value ->
+        // A physical or touch right stick keeps priority over the optional camera sensor:
+        // the sensor re-sends every sample, which would zero a held touch stick.
+        if (!(KC_RTHUMB_LEFT..KC_RTHUMB_DOWN).any { axisPressed[it] || touchStickHeld[it] }) {
+            session.keyEvent(code, down, value)
+        }
+    } }
+    private val lsfgCache = mutableStateOf<String?>(null)
+    private var importingLsfg = false
+    private val lsfgPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null && !importingLsfg) {
+            importingLsfg = true
+            lifecycleScope.launch {
+                try {
+                    val cache = LsfgAssets.import(applicationContext, uri)
+                    lsfgCache.value = cache.path
+                    Toast.makeText(this@EmulatorHostActivity, "LSFG shaders imported locally", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    Toast.makeText(this@EmulatorHostActivity, "LSFG import failed: ${e.message}", Toast.LENGTH_LONG).show()
+                } finally { importingLsfg = false }
+            }
+        }
+    }
+    private val fpsConfig = mutableStateOf(FpsConfigSnapshot())
+    private val adaptiveSticks = mutableStateOf(false)
+    private var controlsTitleId: String? = null
+    /** The title the core reports running, for per-game touch layouts (U06). */
+    private val activeTitleState = mutableStateOf<String?>(null)
+    private val inGameConfig by lazy { InGameConfigRepository(ConfigStore(applicationContext)) }
+    private var pausedByLifecycle = false
+    private val consumedMenuKeys = mutableSetOf<Long>()
+    private val sentGuestKeys = mutableMapOf<Long, Int>()
+    private var sharingLogs = false
 
     private val keyboardRequestState =
         mutableStateOf<Emulator.KeyboardRequest?>(null)
@@ -213,6 +377,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             finish()
             return
         }
+        launchedGame = gameUri
+        startEventSources()
 
         lifecycleScope.launch {
             val store = KeymapStore(applicationContext)
@@ -238,6 +404,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     "performance_overlay_enabled",
                     false
                 )
+
+            compactPerformanceOverlay.value = getSharedPreferences("fps_overlay", MODE_PRIVATE)
+                .getBoolean("performance_overlay_compact", false)
+            val savedMetrics = getSharedPreferences("fps_overlay", MODE_PRIVATE).getStringSet("hud_metrics", null)
+            if (savedMetrics != null) hudMetrics.value = HudMetric.entries.filter { it.name in savedMetrics }.toSet()
 
             fullscreenStretchEnabled.value =
                 getSharedPreferences(
@@ -276,6 +447,45 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 }
             }
 
+            // Lease + save-restore recovery before the guest can touch the content tree.
+            // A failure is shown to the user instead of a silent finish().
+            val storage = withContext(Dispatchers.IO) {
+                runCatching {
+                    session.prepareStorage(onWaiting = {
+                        lifecycleScope.launch {
+                            Toast.makeText(this@EmulatorHostActivity,
+                                "Waiting for a save or content operation to finish…", Toast.LENGTH_SHORT).show()
+                        }
+                    })
+                }.getOrElse {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
+                    Log.e(TAG, "Preparing game storage failed", it)
+                    EmulatorSession.StorageResult.Unavailable("Game data could not be prepared: ${it.message}")
+                }
+            }
+            if (storage is EmulatorSession.StorageResult.Unavailable) {
+                showLaunchFailure(storage.message)
+                return@launch
+            }
+            recordEvent("storage", "ready")
+
+            // Runs left open by a :emu that died (crash, kill) are closed first, then this
+            // run starts. Frontend-only launches never start the main process to do it.
+            runId = withContext(Dispatchers.IO) {
+                runCatching {
+                    val runs = xendroid.compose.sessions.SessionRuns.store()
+                    runs.reconcile(xendroid.compose.sessions.SessionRuns.fates(applicationContext))
+                    runs.begin(launchSource(), gameUri, BuildConfig.VERSION_NAME, Process.myPid()).runId
+                }.onFailure { Log.w(TAG, "Session run record unavailable", it) }.getOrNull()
+            }
+            recordEvent("boot", "run started", flush = true)
+            // A fatal core error (GPU device lost...) aborts without UI: its message goes
+            // beside the run record so the next reconcile can name the cause.
+            runId?.let { id ->
+                runCatching { session.setFatalReportPath(xendroid.compose.sessions.SessionRuns.store().fatalReportFile(id).path) }
+                    .onFailure { Log.w(TAG, "Fatal report path unavailable", it) }
+            }
+
             prepareNativeRealPath(gameUri)
 
             // Re-apply the saved display setting immediately before the
@@ -292,6 +502,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        recordEvent("focus", if (hasFocus) "gained" else "lost")
 
         if (hasFocus) {
             mainHandler.removeCallbacks(
@@ -300,12 +511,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
             enterImmersiveMode()
 
-            if (
-                session.booted &&
-                !menuOpenState.value
-            ) {
-                session.resumeIfPaused()
-            }
+            resumeForLifecycle()
         } else {
             mainHandler.removeCallbacks(
                 pauseOnFocusLost
@@ -316,6 +522,136 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 FOCUS_PAUSE_DEBOUNCE_MS
             )
         }
+    }
+
+    /** Blocking explanation before leaving: a Toast is easy to miss on a launch from an
+     *  external frontend, and the user needs to know the game did not start and why. */
+    /** singleTask: a frontend or shortcut launching while a game runs lands here. The
+     *  core is single-shot per process, so say why the requested game did not start
+     *  instead of silently showing the running one. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val requested = FrontendLaunch.resolveForHandOff(this, intent) ?: return
+        if (requested != launchedGame) {
+            Toast.makeText(this, "A game is already running. Exit it (Back → Exit game) before starting another.",
+                Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Where this launch came from, as far as Android tells us (local record only). */
+    private fun launchSource(): String {
+        val origin = referrer?.host
+        return when {
+            origin == packageName -> "library"
+            intent?.action == Intent.ACTION_VIEW && origin == null -> "shortcut"
+            origin != null -> "external:$origin"
+            else -> "external"
+        }
+    }
+
+    /** Flight recorder entry (C01). [flush] writes the log now, for events a crash or kill may follow. */
+    private fun recordEvent(kind: String, detail: String = "", flush: Boolean = false) {
+        runEvents.record(kind, detail)
+        if (flush) flushRunEvents()
+    }
+
+    private fun flushRunEvents() {
+        val id = runId ?: return
+        val log = runEvents.snapshotIfChanged() ?: return
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { xendroid.compose.sessions.SessionRuns.store().saveEvents(id, log) }
+                .onFailure { Log.w(TAG, "Saving the run events failed", it) }
+        }
+    }
+
+    /** Thermal status and controller changes for the flight recorder (main thread). */
+    private fun startEventSources() {
+        runCatching {
+            getSystemService(android.os.PowerManager::class.java)?.let { power ->
+                noteThermal(power.currentThermalStatus)
+                power.addThermalStatusListener(mainExecutor, thermalListener)
+            }
+        }.onFailure { Log.w(TAG, "Thermal status unavailable", it) }
+        runCatching {
+            InputDevice.getDeviceIds().forEach { noteController(it, "present") }
+            getSystemService(android.hardware.input.InputManager::class.java)
+                ?.registerInputDeviceListener(inputDeviceListener, mainHandler)
+        }.onFailure { Log.w(TAG, "Input device events unavailable", it) }
+    }
+
+    private fun stopEventSources() {
+        runCatching { getSystemService(android.os.PowerManager::class.java)?.removeThermalStatusListener(thermalListener) }
+        runCatching { getSystemService(android.hardware.input.InputManager::class.java)?.unregisterInputDeviceListener(inputDeviceListener) }
+    }
+
+    private fun noteThermal(status: Int) {
+        if (status == lastThermalStatus) return
+        lastThermalStatus = status
+        recordEvent("thermal", xendroid.compose.sessions.thermalStatusName(status),
+            flush = status >= android.os.PowerManager.THERMAL_STATUS_SEVERE)
+    }
+
+    private fun noteController(deviceId: Int, what: String) {
+        val device = InputDevice.getDevice(deviceId) ?: return
+        val sources = device.sources
+        val controller = sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
+            sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
+        if (!controller || device.isVirtual) return
+        // IDs only: a Bluetooth name can carry its owner's name.
+        val id = "vendor 0x%04X product 0x%04X".format(device.vendorId, device.productId)
+        controllers[deviceId] = id
+        val key = device.descriptor ?: "device:$deviceId"
+        controllerKeys[deviceId] = key
+        val slot = controllerSlots.connect(key)
+        recordEvent("controller", "$what ($id) " + (slot?.let { "as P${it + 1}" } ?: "with no free player slot"))
+        if (slot != null && slot > 0) session.setSlotConnected(slot, true, "Controller ${slot + 1}")
+    }
+
+    /** The player a device plays as; anything not assigned (keyboards, unknown devices) is P1, as before. */
+    private fun playerSlot(deviceId: Int): Int =
+        controllerKeys[deviceId]?.let { controllerSlots.slotOf(it) } ?: 0
+
+    /** Before boot the core ignores slot changes: tell it which players exist once it runs. */
+    private fun syncControllerSlots() {
+        controllerSlots.players.forEachIndexed { slot, key ->
+            if (slot > 0 && key != null) session.setSlotConnected(slot, true, "Controller ${slot + 1}")
+        }
+    }
+
+    /** Per-second flight recorder checks: presentation state changes and guest stalls. */
+    private fun notePresentation(state: PresentationState, running: Boolean, presentCount: Long) {
+        val label = state.stateLabel
+        val previousLabel = lastPresentationLabel
+        lastPresentationLabel = label
+        if (previousLabel != null && label != previousLabel) recordEvent("presentation", label)
+        val previousCount = lastPresentCount
+        lastPresentCount = presentCount
+        if (previousCount < 0) return
+        if (running && presentCount == previousCount) {
+            stalledSeconds++
+            if (stalledSeconds == STALL_EVENT_SECONDS) recordEvent("stall", "no new frame for $STALL_EVENT_SECONDS s", flush = true)
+        } else {
+            if (stalledSeconds >= STALL_EVENT_SECONDS) recordEvent("stall", "frames resumed after $stalledSeconds s")
+            stalledSeconds = 0
+        }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // 10 = TRIM_MEMORY_RUNNING_LOW and above: the kill this may precede loses no events.
+        recordEvent("memory", "trim level $level", flush = level >= 10)
+    }
+
+    private fun showLaunchFailure(message: String) {
+        launchFailure = message
+        recordEvent("error", message, flush = true)
+        if (isFinishing || isDestroyed) return
+        android.app.AlertDialog.Builder(this)
+            .setTitle("The game could not start")
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok) { _, _ -> finish() }
+            .setOnCancelListener { finish() }
+            .show()
     }
 
     private fun enterImmersiveMode() {
@@ -355,7 +691,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     false
                 )
             } finally {
-                handle.closeString()
+                handle.closeDiscard()
             }
         }.getOrDefault(false)
 
@@ -372,26 +708,20 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     true
                 )
             } finally {
-                handle.closeString()
+                handle.closeDiscard()
             }
         }.getOrDefault(false)
 
     private fun persistFullscreenStretchConfig(
         enabled: Boolean
-    ) {
+    ): Boolean =
         runCatching {
-            val handle =
-                ConfigStore(applicationContext)
-                    .openLive()
-
-            try {
+            ConfigStore(applicationContext).editLiveConfig { handle ->
                 handle.putBool(
                     "Display",
                     "present_letterbox",
                     !enabled
                 )
-            } finally {
-                handle.closeFile()
             }
         }.onFailure {
             Log.w(
@@ -399,8 +729,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 "persisting fullscreen stretch failed",
                 it
             )
-        }
-    }
+        }.isSuccess
 
     private fun prepareNativeRealPath(
         absPath: String
@@ -448,6 +777,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             }
 
         surfaceView = sv
+        externalDisplay = ExternalGameDisplay(this, sv, this, detach = {
+            surfaceAvailable = false
+            pauseForLifecycle()
+            if (started) session.detachSurface()
+        }, statusChanged = { externalDisplayLabel.value = it })
 
         val compose =
             ComposeView(this).apply {
@@ -462,14 +796,18 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
                     val booted by bootedState
 
+                    val playingTitle by activeTitleState
                     val controls =
                         remember(
                             cfg,
-                            landscape
+                            landscape,
+                            playingTitle
                         ) {
+                            // The running game's own layout when it has one (U06).
                             gamepad.controlsFor(
                                 cfg,
-                                landscape
+                                landscape,
+                                playingTitle
                             )
                         }
 
@@ -493,8 +831,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
                     val overlayActive =
                         booted &&
+                            foregroundState.value &&
                             cfg.globals.enabled &&
-                            padVisible
+                            padVisible &&
+                            !menuState.value.open
 
                     DisposableEffect(
                         overlayActive
@@ -524,110 +864,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                         )
                     }
 
-                    GuestSidePanel(
-                        fpsLimit =
-                            fpsLimitState.intValue,
-
-                        onFpsLimitChange = { value ->
-                            fpsLimitState.intValue =
-                                value
-
-                            session.setFpsLimit(
-                                value
-                            )
-
-                            lifecycleScope.launch(
-                                Dispatchers.IO
-                            ) {
-                                runCatching {
-                                    val handle =
-                                        ConfigStore(
-                                            applicationContext
-                                        ).openLive()
-
-                                    handle.putString(
-                                        "GPU",
-                                        "framerate_limit",
-                                        value.toString()
-                                    )
-
-                                    handle.closeFile()
-                                }
-                            }
-                        },
-
-                        performanceOverlayEnabled =
-                            performanceOverlayEnabled.value,
-
-                        onPerformanceOverlayChange = {
-                            enabled ->
-
-                            performanceOverlayEnabled.value =
-                                enabled
-
-                            getSharedPreferences(
-                                "fps_overlay",
-                                MODE_PRIVATE
-                            )
-                                .edit()
-                                .putBoolean(
-                                    "performance_overlay_enabled",
-                                    enabled
-                                )
-                                .apply()
-                        },
-
-                        fullscreenStretchEnabled =
-                            fullscreenStretchEnabled.value,
-
-                        onFullscreenStretchChange = {
-                            enabled ->
-
-                            // Store the user's choice first.
-                            // The renderer itself will use it
-                            // on the next emulator boot.
-                            fullscreenStretchEnabled.value =
-                                enabled
-
-                            getSharedPreferences(
-                                DISPLAY_SETTINGS_PREFS,
-                                MODE_PRIVATE
-                            )
-                                .edit()
-                                .putBoolean(
-                                    FULLSCREEN_STRETCH_KEY,
-                                    enabled
-                                )
-                                .apply()
-
-                            lifecycleScope.launch(
-                                Dispatchers.IO
-                            ) {
-                                val success =
-                                    runCatching {
-                                        persistFullscreenStretchConfig(
-                                            enabled
-                                        )
-                                    }.isSuccess
-
-                                if (success) {
-                                    withContext(
-                                        Dispatchers.Main
-                                    ) {
-                                        finish()
-                                    }
-                                }
-                            }
-                        },
-
-                        // Exit Emulation
-                        onExitEmulation = {
-                            finish()
-                        }
-                    ) {
-                        Box(
-                            Modifier.fillMaxSize()
-                        ) {
+                    Box(Modifier.fillMaxSize()) {
                             AndroidView(
                                 factory = {
                                     sv
@@ -636,14 +873,21 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     Modifier.fillMaxSize()
                             )
 
+                            bootStatus.value?.let {
+                                xendroid.compose.ui.ingame.BootStatusLabel(it, Modifier.align(Alignment.BottomStart))
+                            }
+
                             if (
                                 booted &&
+                                foregroundState.value &&
                                 cfg.globals.enabled &&
-                                padVisible
+                                padVisible &&
+                                !menuState.value.open
                             ) {
                                 GamepadOverlay(
                                     controls =
                                         controls,
+                                    adaptiveSticks = adaptiveSticks.value,
 
                                     opacity =
                                         alpha,
@@ -667,6 +911,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         ) {
                                             maybeVibrate()
                                         }
+                                        if (kc in KC_RTHUMB_LEFT..KC_RTHUMB_DOWN) touchStickHeld[kc] = pressed
 
                                         session.keyEvent(
                                             kc,
@@ -686,11 +931,130 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 if (!booted) {
                                     return@LaunchedEffect
                                 }
+                                // Guest rumble (I04): only while the game itself runs, never under the
+                                // menu or a pause, where the last requested strength would linger.
+                                launch {
+                                    while (isActive) {
+                                        delay(50)
+                                        val playing = foregroundState.value && !menuState.value.open && !session.isPaused()
+                                        val state = if (playing && rumbleIntensity.value != xendroid.compose.gamepad.RumbleIntensity.OFF)
+                                            session.rumbleState() else null
+                                        if (state == null) stopRumble() else runCatching { driveRumble(state) }
+                                    }
+                                }
+                                syncControllerSlots()
 
                                 while (isActive) {
                                     showTouchOverlay.value =
                                         session
                                             .showTouchOverlayEnabled()
+
+                                    val activeTitle = session.activeTitleId()
+                                    performanceHints.update(session.presenterWork(),
+                                        1_000_000_000L / session.fpsLimit().coerceAtLeast(30),
+                                        foregroundState.value && !menuState.value.open)
+                                    performanceHintsLabel.value = performanceHints.status
+                                    val activeRun = runId
+                                    if (activeTitle != controlsTitleId) {
+                                        controlsTitleId = activeTitle
+                                        activeTitleState.value = activeTitle
+                                        val driver = session.activeDriverIdentity()
+                                        recordEvent("title", activeTitle?.let { "$it running" } ?: "none active", flush = true)
+                                        if (driver != null && !driverRecorded) {
+                                            driverRecorded = true
+                                            recordEvent("driver", driver.label)
+                                        }
+                                        if (activeTitle != null) lifecycleScope.launch(Dispatchers.IO) {
+                                            runCatching { SessionLogs.noteTitle(activeTitle, BuildConfig.VERSION_NAME) }
+                                                .onFailure { Log.w(TAG, "Writing diagnostic session context failed", it) }
+                                            if (activeRun != null) runCatching { xendroid.compose.sessions.SessionRuns.store().running(activeRun, activeTitle, driver) }
+                                                .onFailure { Log.w(TAG, "Recording the running title failed", it) }
+                                        }
+                                        adaptiveSticks.value = activeTitle != null &&
+                                            getSharedPreferences("touch_options", MODE_PRIVATE)
+                                                .getBoolean("adaptive_$activeTitle", false)
+                                    }
+                                    // One sample per second for the run summary (C02); paused or
+                                    // background seconds count as idle, never as FPS.
+                                    val fgNow = session.presentationState()
+                                    val frameTimes = session.guestFrameTimeHistogram()
+                                    val guestFrames = frameTimes?.sum()
+                                    val runningNow = foregroundState.value && !session.isPaused()
+                                    runPerformance.sample(
+                                        running = runningNow,
+                                        guestFps = session.averageFps(),
+                                        presentCount = session.hostPresentSubmissionCount(),
+                                        generatedCount = fgNow.generated,
+                                        frameGenerationActive = fgNow.requested && fgNow.state == 2,
+                                        guestFrames = guestFrames,
+                                    )
+                                    runPerformance.frameTimes(frameTimes)
+                                    notePresentation(fgNow, runningNow, guestFrames ?: session.hostPresentSubmissionCount())
+                                    val compileStats = session.shaderCompileStats()
+                                    if (bootStatus.value != null) {
+                                        val elapsed = (android.os.SystemClock.elapsedRealtime() - createdAtMs) / 1000
+                                        if ((guestFrames ?: 0L) > 0L) {
+                                            bootStatus.value = null
+                                            runPerformance.firstFrame(elapsed.toInt())
+                                            recordEvent("boot", "first guest frames after $elapsed s")
+                                        } else {
+                                            bootStatus.value = xendroid.compose.ui.ingame.bootStatusText(activeTitle != null,
+                                                compileStats?.getOrNull(0) ?: 0L, compileStats?.getOrNull(2) ?: 0L, elapsed)
+                                        }
+                                    }
+                                    compileStats?.let { stats ->
+                                        runPerformance.compiles(stats)
+                                        when (val burst = compileBursts.sample(stats[1], stats[0])) {
+                                            // Driver crashes during compiles happen: keep the start on disk.
+                                            xendroid.compose.sessions.BurstTracker.Burst.Started ->
+                                                recordEvent("compile", "pipeline creation burst started", flush = true)
+                                            is xendroid.compose.sessions.BurstTracker.Burst.Ended -> recordEvent("compile",
+                                                "${burst.events} pipelines, ${burst.amount / 1_000_000} ms over ${burst.seconds} s")
+                                            null -> {}
+                                        }
+                                    }
+                                    session.audioRunStats()?.let { audio ->
+                                        runPerformance.audio(audio)
+                                        when (val burst = audioBursts.sample(audio[2], audio[1])) {
+                                            xendroid.compose.sessions.BurstTracker.Burst.Started ->
+                                                recordEvent("audio", "underruns started")
+                                            is xendroid.compose.sessions.BurstTracker.Burst.Ended -> recordEvent("audio",
+                                                "${burst.amount} of ${burst.events} blocks concealed, ${burst.seconds} s with underruns")
+                                            null -> {}
+                                        }
+                                    }
+                                    // Bounds the play time of a run that later dies without finishing.
+                                    val nowMs = android.os.SystemClock.elapsedRealtime()
+                                    if (activeRun != null && nowMs - lastRunHeartbeatMs >= 30_000) {
+                                        lastRunHeartbeatMs = nowMs
+                                        runPerformance.battery(xendroid.compose.sessions.SessionRuns.batteryCelsius(applicationContext))
+                                        val summary = runPerformance.snapshot()
+                                        val driver = session.activeDriverIdentity()
+                                        if (driver != null && !driverRecorded) {
+                                            driverRecorded = true
+                                            recordEvent("driver", driver.label)
+                                        }
+                                        lifecycleScope.launch(Dispatchers.IO) {
+                                            runCatching { xendroid.compose.sessions.SessionRuns.store().heartbeat(activeRun, summary, driver) }
+                                        }
+                                        flushRunEvents()
+                                    }
+
+                                    // FG can stop by itself (failure, cadence over Hz) while the
+                                    // menu is closed: hand the temporary cap back then too.
+                                    if (generationCap.active && !menuState.value.open) {
+                                        val state = session.presentationState()
+                                        if (!state.requested) { presentationState.value = state; restoreGenerationCap() }
+                                    }
+                                    if (menuState.value.open) {
+                                        presentationState.value = session.presentationState()
+                                        if (!presentationState.value.requested) restoreGenerationCap()
+                                        audioVolume.intValue = session.audioVolume()
+                                        gpuLabel.value = session.activeGpuLabel()
+                                        menuPaused.value = session.isPaused()
+                                        fpsLimitState.intValue = session.fpsLimit()
+                                        if (activeTitle != fpsConfig.value.titleId) refreshFpsConfig()
+                                    }
 
                                     delay(1000)
                                 }
@@ -701,11 +1065,73 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
                                 visible =
                                     booted &&
+                                        foregroundState.value && !menuState.value.open &&
                                         performanceOverlayEnabled.value,
+                                compact = compactPerformanceOverlay.value,
+                                metrics = hudMetrics.value,
 
                                 modifier =
                                     Modifier.fillMaxSize(),
                             )
+
+                            if (editorOpen.value) {
+                                xendroidTheme { GamepadEditorScreen(
+                                    controller = gamepad,
+                                    onDone = { editorOpen.value = false },
+                                    inGame = true,
+                                    titleId = activeTitleState.value,
+                                ) }
+                            } else if (menuState.value.open) {
+                                xendroidTheme {
+                                    InGameMenu(
+                                        state = menuState.value,
+                                        paused = menuPaused.value,
+                                        fpsLimit = fpsLimitState.intValue,
+                                        fpsConfig = fpsConfig.value,
+                                        presentation = presentationState.value,
+                                        fgPreset = fgPreset.intValue,
+                                        lsfgAvailable = lsfgCache.value != null && !importingLsfg,
+                                        extensionLabels = mapOf(
+                                            InGameAction.COLOR_FILTER to if (presentationState.value.colorError != 0) "SDR filter · backend unavailable" else
+                                                "SDR filter · ${listOf("Off", "Grayscale", "Contrast", "Warm")[presentationState.value.colorFilter.coerceIn(0, 3)]}",
+                                            InGameAction.LSFG_MULTIPLIER to "LSFG multiplier · ${lsfgMultiplier.intValue}× (experimental)",
+                                            InGameAction.PERFORMANCE_HINTS to performanceHintsLabel.value,
+                                            InGameAction.EXTERNAL_DISPLAY to externalDisplayLabel.value,
+                                            InGameAction.SCALING_EFFECT to "Scaling · ${listOf("Inherited", "Bilinear", "CAS", "FSR")[scalingEffect.intValue + 1]}",
+                                            InGameAction.REFRESH_RATE to "Display Hz · requested ${requestedRefresh.value ?: "Auto"} · effective ${if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else windowManager.defaultDisplay.refreshRate}",
+                                            InGameAction.SUSTAINED_PERFORMANCE to if (!sustainedAvailable.value) "Sustained performance · unavailable" else "Sustained performance · ${if (sustainedMode.value) "On" else "Off"}",
+                                            InGameAction.BACKGROUND_POLICY to "Pause on background · ${backgroundPolicy.value.name}",
+                                            InGameAction.GYRO_CAMERA to if (!gyroCamera.available) "Gyro camera · sensor unavailable" else "Gyro camera · ${if (gyroEnabled.value) "On" else "Off"}",
+                                            InGameAction.GYRO_SENSITIVITY to "Gyro sensitivity · ${listOf("Low", "Normal", "High")[gyroSensitivity.intValue]}",
+                                            InGameAction.CONTROLLER_RUMBLE to "Controller rumble · ${rumbleIntensity.value.label} · " +
+                                                controllerSlots.players.withIndex().filter { it.value != null }
+                                                    .joinToString(", ") { "P${it.index + 1}" }.ifEmpty { "no controller" },
+                                        ),
+                                        performanceHud = performanceOverlayEnabled.value,
+                                        compactHud = compactPerformanceOverlay.value,
+                                        hudMetrics = hudMetrics.value,
+                                        touchControls = showTouchOverlay.value == true,
+                                        adaptiveSticks = adaptiveSticks.value,
+                                        stretch = fullscreenStretchEnabled.value,
+                                        volume = audioVolume.intValue,
+                                        sessionInfo = "${BuildConfig.VERSION_NAME}\n${gpuLabel.value.ifEmpty { "GPU information unavailable" }}\nAudio output follows Android's media route.",
+                                        logSessions = menuLogSessions.value,
+                                        onLogChoice = ::chooseLogSession,
+                                        onPage = { page -> menuState.value = menuState.value.copy(page = page) },
+                                        onSelect = { index -> menuState.value = menuState.value.select(index) },
+                                        onAction = ::performMenuAction,
+                                        onQuitChoice = ::chooseMenuQuit,
+                                    )
+                                }
+                            } else if (
+                                booted && keyboardRequestState.value == null &&
+                                discRequestState.value == null && messageBoxRequestState.value == null
+                            ) {
+                                InGameMenuHandle(
+                                    onOpen = { openMenu(pause = false) },
+                                    modifier = Modifier.align(Alignment.CenterStart),
+                                )
+                            }
 
                             val keyboardRequest by
                                 keyboardRequestState
@@ -746,6 +1172,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
                                                 keyboardRequestState.value =
                                                     req
+                                                recordEvent("guest-ui", "text entry prompt")
                                             }
                                     }
 
@@ -812,6 +1239,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
                                                 messageBoxRequestState.value =
                                                     req
+                                                recordEvent("guest-ui", "message box (${req.buttons?.size ?: 0} buttons)")
                                             }
                                     }
 
@@ -866,6 +1294,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
                                                 discRequestState.value =
                                                     req
+                                                recordEvent("guest-ui", "disc ${req.discNumber} requested", flush = true)
                                             }
                                     }
 
@@ -899,11 +1328,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     )
                                 }
                             }
-                        }
                     }
 
-                    val menuOpen by
-                        menuOpenState
+                    val menuOpen = menuState.value.open
 
                     val keyboardOpen =
                         keyboardRequestState.value !=
@@ -947,47 +1374,16 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 !discOpen &&
                                 !messageBoxOpen
                     ) {
-                        panelSelectedState.intValue =
-                            PAUSE_OPTION_RESUME
-
-                        menuOpenState.value = true
-
-                        if (session.booted) {
-                            session.pause()
-                        }
+                        openMenu(pause = true)
                     }
 
                     BackHandler(
-                        enabled = menuOpen
+                        enabled = menuOpen && !editorOpen.value && !keyboardOpen && !discOpen && !messageBoxOpen
                     ) {
-                        closeMenuAndResume()
+                        backMenu()
                     }
-
-                    if (menuOpen) {
-                        xendroidTheme {
-                            PauseMenuPanel(
-                                selected =
-                                    panelSelectedState.intValue,
-
-                                touchOverlayShown =
-                                    showTouchOverlay.value == true,
-
-                                onToggleTouchOverlay = {
-                                    toggleTouchOverlay()
-                                },
-
-                                onResume = {
-                                    closeMenuAndResume()
-                                },
-
-                                onQuit = {
-                                    finish()
-                                },
-
-                                modifier =
-                                    Modifier.fillMaxSize(),
-                            )
-                        }
+                    BackHandler(enabled = editorOpen.value && !keyboardOpen && !discOpen && !messageBoxOpen) {
+                        editorOpen.value = false
                     }
                 }
             }
@@ -1035,6 +1431,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     override fun surfaceCreated(
         holder: SurfaceHolder
     ) {
+        if (externalDisplay?.owns(holder) == false) return
+        surfaceAvailable = true
+        recordEvent("surface", if (started) "recreated" else "created, booting the core")
         if (!started) {
             started = true
 
@@ -1075,16 +1474,14 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     t
                 )
 
-                finish()
+                showLaunchFailure("The emulator core did not start: ${t.message ?: t.javaClass.simpleName}")
             }
         } else {
             session.attachSurface(
                 holder.surface
             )
 
-            if (!menuOpenState.value) {
-                session.resumeIfPaused()
-            }
+            resumeForLifecycle()
         }
     }
 
@@ -1094,8 +1491,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         width: Int,
         height: Int
     ) {
+        if (externalDisplay?.owns(holder) == false) return
         if (!started) return
         if (width == 0 || height == 0) return
+        recordEvent("surface", "${width}x$height")
 
         session.changeSurface(
             width,
@@ -1106,11 +1505,12 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     override fun surfaceDestroyed(
         holder: SurfaceHolder
     ) {
+        if (externalDisplay?.owns(holder) == false) return
+        surfaceAvailable = false
         if (!started) return
+        recordEvent("surface", "destroyed", flush = true)
 
-        if (session.booted) {
-            session.pause()
-        }
+        pauseForLifecycle()
 
         session.detachSurface()
     }
@@ -1122,14 +1522,15 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     override fun onStop() {
         super.onStop()
+        foregroundState.value = false
+        // The background is where the system kills a game: keep the log current.
+        recordEvent("lifecycle", "background", flush = true)
 
         mainHandler.removeCallbacks(
             pauseOnFocusLost
         )
 
-        if (session.booted) {
-            session.pause()
-        }
+        pauseForLifecycle()
 
         brightnessSampler.stop()
 
@@ -1140,6 +1541,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     override fun onStart() {
         super.onStart()
+        foregroundState.value = true
+        recordEvent("lifecycle", "foreground")
 
         EmuProcessLink.setEmuForeground(
             true
@@ -1151,15 +1554,41 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             }
         }
 
-        if (
-            session.booted &&
-            !menuOpenState.value
-        ) {
-            session.resumeIfPaused()
+        resumeForLifecycle()
+    }
+
+    private fun pauseForLifecycle() {
+        gyroCamera.stop()
+        performanceHints.close()
+        releaseGuestInput()
+        if (backgroundPolicy.value != BackgroundPolicy.AUTO && surfaceAvailable) return
+        if (!session.booted) return
+        releaseGuestInput()
+        if (!session.isPaused()) {
+            session.pause()
+            pausedByLifecycle = true
+            recordEvent("pause", "guest paused by the app lifecycle")
         }
+        menuPaused.value = session.isPaused()
+    }
+
+    private fun resumeForLifecycle() {
+        if (pausedByLifecycle && session.booted && surfaceAvailable && hasWindowFocus() &&
+            !menuState.value.pausedByMenu &&
+            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+            session.resumeIfPaused()
+            pausedByLifecycle = false
+            menuPaused.value = session.isPaused()
+            recordEvent("pause", "guest resumed")
+        }
+        if (gyroEnabled.value && foregroundState.value && !menuState.value.open && hasWindowFocus()) gyroCamera.start()
     }
 
     override fun onDestroy() {
+        performanceHints.close()
+        gyroCamera.stop()
+        stopEventSources()
+        externalDisplay?.close()
         super.onDestroy()
 
         keyboardRequestState.value = null
@@ -1171,28 +1600,98 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         messageBoxRequestState.value = null
         session.messageBoxCancelAll()
 
+        // The one place this process finalizes its run; a death before this point is
+        // finalized later from the platform's exit reason (SessionRunStore.reconcile).
+        runId?.let { id ->
+            runCatching {
+                val failure = launchFailure
+                runPerformance.battery(xendroid.compose.sessions.SessionRuns.batteryCelsius(applicationContext))
+                runPerformance.frameTimes(session.guestFrameTimeHistogram())
+                runPerformance.compiles(session.shaderCompileStats())
+                runPerformance.audio(session.audioRunStats())
+                runEvents.record("exit", if (isFinishing) "activity finished" else "activity destroyed by the system")
+                runCatching { xendroid.compose.sessions.SessionRuns.store().saveEvents(id, runEvents.snapshot()) }
+                    .onFailure { Log.w(TAG, "Saving the run events failed", it) }
+                xendroid.compose.sessions.SessionRuns.store().finish(id,
+                    if (failure != null) xendroid.compose.sessions.RunState.FAILED else xendroid.compose.sessions.RunState.ENDED,
+                    failure ?: if (isFinishing) "activity finished" else "activity destroyed by the system",
+                    runPerformance.snapshot())
+            }.onFailure { Log.w(TAG, "Finishing the session run record failed", it) }
+        }
+
         Process.killProcess(
             Process.myPid()
         )
+    }
+
+    // Public platform input callback; only the inherited AndroidX implementation
+    // class is library-restricted. Keep the restriction exception local to this override.
+    @SuppressLint("RestrictedApi")
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (editorOpen.value && !hasGuestPrompt()) {
+            val code = when (event.keyCode) {
+                KeyEvent.KEYCODE_BUTTON_A -> KeyEvent.KEYCODE_DPAD_CENTER
+                KeyEvent.KEYCODE_BUTTON_B -> KeyEvent.KEYCODE_BACK
+                else -> return super.dispatchKeyEvent(event)
+            }
+            return super.dispatchKeyEvent(KeyEvent(event.downTime, event.eventTime, event.action, code,
+                event.repeatCount, event.metaState, event.deviceId, event.scanCode, event.flags, event.source))
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onKeyDown(
         keyCode: Int,
         event: KeyEvent
     ): Boolean {
+        if (editorOpen.value && !hasGuestPrompt()) return super.onKeyDown(keyCode, event)
+        // Let Android/Compose dispatch Back to the highest-priority BackHandler.
+        // Consuming it with other menu keys leaves the pause sheet impossible to close.
+        if (keyCode == KeyEvent.KEYCODE_BACK) return super.onKeyDown(keyCode, event)
+
+        val identity = keyIdentity(event)
+        if (event.repeatCount > 0 && consumedMenuKeys.contains(identity) &&
+            keyCode !in setOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT)) return true
+        if (keyCode == KeyEvent.KEYCODE_BUTTON_MODE && !hasGuestPrompt()) {
+            if (event.repeatCount == 0) {
+                if (menuState.value.open) backMenu() else openMenu(pause = true)
+            }
+            consumedMenuKeys.add(identity)
+            return true
+        }
+
         val nav = panelNav()
 
         if (nav != null) {
+            if (menuState.value.open && !hasGuestPrompt() &&
+                !menuState.value.confirmingQuit && !menuState.value.logPicker &&
+                (keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_BUTTON_R1)
+            ) {
+                if (event.repeatCount == 0) {
+                    menuState.value = menuState.value.changePage(
+                        if (keyCode == KeyEvent.KEYCODE_BUTTON_L1) -1 else 1
+                    )
+                }
+                consumedMenuKeys.add(identity)
+                return true
+            }
             if (
                 panelKeyDown(
                     nav,
                     keyCode
                 )
             ) {
+                consumedMenuKeys.add(identity)
                 return true
             }
 
             if (consumeIfGamepad(event)) {
+                consumedMenuKeys.add(identity)
+                return true
+            }
+            if (menuState.value.open && !hasGuestPrompt()) {
+                consumedMenuKeys.add(identity)
                 return true
             }
         }
@@ -1205,7 +1704,15 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                         event
                     )
 
+        // P2-P4 controllers play their own slot (I03); P1 continues below unchanged.
+        val player = playerSlot(event.deviceId)
+        if (player > 0) {
+            if (event.repeatCount == 0) slotInput.keyDown(player, identity, gameKey)
+            return true
+        }
+
         if (event.repeatCount == 0) {
+            sentGuestKeys[identity] = gameKey
             session.keyEvent(
                 gameKey,
                 true,
@@ -1225,6 +1732,17 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         keyCode: Int,
         event: KeyEvent
     ): Boolean {
+        if (editorOpen.value && !hasGuestPrompt()) return super.onKeyUp(keyCode, event)
+        val identity = keyIdentity(event)
+        if (consumedMenuKeys.remove(identity)) return true
+        val player = playerSlot(event.deviceId)
+        if (player > 0 && slotInput.keyUp(player, identity)) return true
+
+        sentGuestKeys.remove(identity)?.let { gameKey ->
+            session.keyEvent(gameKey, false, KEY_VALUE_UNUSED)
+            return true
+        }
+
         if (
             panelNav() != null &&
             (
@@ -1235,22 +1753,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             return true
         }
 
-        val gameKey =
-            keyMap[keyCode]
-                ?: return consumeIfGamepad(event) ||
-                    super.onKeyUp(
-                        keyCode,
-                        event
-                    )
-
-        session.keyEvent(
-            gameKey,
-            false,
-            KEY_VALUE_UNUSED
-        )
-
-        return true
+        return consumeIfGamepad(event) || super.onKeyUp(keyCode, event)
     }
+
+    private fun keyIdentity(event: KeyEvent): Long =
+        (event.deviceId.toLong() shl 32) or (event.keyCode.toLong() and 0xffffffffL)
 
     private fun consumeIfGamepad(
         event: KeyEvent
@@ -1273,12 +1780,27 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun onGenericMotion(
         event: MotionEvent
     ): Boolean {
+        if (editorOpen.value && !hasGuestPrompt()) return super.onGenericMotionEvent(event)
         panelNav()?.let { nav ->
             panelHat(
                 nav,
                 event
             )
 
+            return true
+        }
+
+        val player = playerSlot(event.deviceId)
+        if (player > 0 && event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK) {
+            // Same axes and rules as P1 below; a D-pad that also sends keys has no hat here.
+            val hat = isNonDpadSource(event)
+            slotInput.motion(player,
+                event.getAxisValue(MotionEvent.AXIS_X), event.getAxisValue(MotionEvent.AXIS_Y),
+                event.getAxisValue(MotionEvent.AXIS_Z), event.getAxisValue(MotionEvent.AXIS_RZ),
+                maxOf(event.getAxisValue(MotionEvent.AXIS_LTRIGGER), event.getAxisValue(MotionEvent.AXIS_BRAKE)),
+                maxOf(event.getAxisValue(MotionEvent.AXIS_RTRIGGER), event.getAxisValue(MotionEvent.AXIS_GAS)),
+                if (hat) event.getAxisValue(MotionEvent.AXIS_HAT_X) else 0f,
+                if (hat) event.getAxisValue(MotionEvent.AXIS_HAT_Y) else 0f)
             return true
         }
 
@@ -1570,6 +2092,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         val cancel: () -> Unit,
     )
 
+    private fun hasGuestPrompt(): Boolean =
+        discRequestState.value != null || messageBoxRequestState.value != null ||
+            keyboardRequestState.value != null
+
     private fun panelNav(): PanelNav? {
         discRequestState.value?.let { req ->
             val paths =
@@ -1638,25 +2164,23 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             )
         }
 
-        if (menuOpenState.value) {
+        if (menuState.value.open) {
             return PanelNav(
-                PAUSE_OPTION_COUNT,
+                menuState.value.count,
 
                 { i ->
-                    when (i) {
-                        PAUSE_OPTION_QUIT ->
-                            finish()
-
-                        PAUSE_OPTION_TOUCH_OVERLAY ->
-                            toggleTouchOverlay()
-
-                        else ->
-                            closeMenuAndResume()
+                    menuState.value = menuState.value.select(i)
+                    if (menuState.value.confirmingQuit) {
+                        chooseMenuQuit(i == 1)
+                    } else if (menuState.value.logPicker) {
+                        chooseLogSession(i)
+                    } else {
+                        menuState.value.action?.let(::performMenuAction)
                     }
                 },
 
                 {
-                    closeMenuAndResume()
+                    backMenu()
                 }
             )
         }
@@ -1675,38 +2199,402 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             next
         )
 
-        lifecycleScope.launch(
-            Dispatchers.IO
-        ) {
-            runCatching {
-                val handle =
-                    ConfigStore(
-                        applicationContext
-                    ).openLive()
+        // Live/session-only. The settings screens expose explicit global/per-game
+        // persistence, so opening the menu cannot silently overwrite either scope.
+    }
 
-                handle.putBool(
-                    "HID",
-                    "show_touch_overlay",
-                    next
-                )
-
-                handle.closeFile()
-            }.onFailure {
-                Log.w(
-                    TAG,
-                    "persisting show_touch_overlay failed",
-                    it
-                )
-            }
+    private fun openMenu(pause: Boolean) {
+        gyroCamera.stop()
+        if (menuState.value.open || hasGuestPrompt()) return
+        releaseGuestInput()
+        val pausedHere = pause && session.booted && !session.isPaused()
+        if (pausedHere) session.pause()
+        recordEvent("menu", if (pausedHere) "opened, guest paused" else "opened")
+        menuPaused.value = session.isPaused()
+        fpsLimitState.intValue = session.fpsLimit()
+        presentationState.value = session.presentationState()
+        menuState.value = menuState.value.show(pausedHere)
+        refreshFpsConfig()
+        lifecycleScope.launch {
+            lsfgCache.value = withContext(Dispatchers.IO) { runCatching { LsfgAssets.cache(applicationContext)?.path }.getOrNull() }
         }
     }
 
     private fun closeMenuAndResume() {
-        menuOpenState.value = false
-
-        if (session.booted) {
-            session.resumeIfPaused()
+        val resume = menuState.value.pausedByMenu || pausedByLifecycle
+        menuState.value = menuState.value.hide()
+        recordEvent("menu", "closed")
+        panelNavPrev = false
+        panelNavNext = false
+        if (resume) {
+            pausedByLifecycle = true
+            resumeForLifecycle()
         }
+        if (gyroEnabled.value && hasWindowFocus()) gyroCamera.start()
+    }
+
+    private fun backMenu() {
+        if (menuState.value.logPicker) menuState.value = menuState.value.closeLogs()
+        else if (menuState.value.confirmingQuit) menuState.value = menuState.value.cancelQuit()
+        else closeMenuAndResume()
+    }
+
+    private fun chooseMenuQuit(quit: Boolean) {
+        if (quit && fpsConfig.value.saving) {
+            Toast.makeText(this, "Wait for the configuration save to finish", Toast.LENGTH_SHORT).show()
+        } else if (quit) {
+            runId?.let { id -> runCatching { xendroid.compose.sessions.SessionRuns.store().ending(id, "user exit") } }
+            recordEvent("exit", "user exit")
+            finish()
+        } else menuState.value = menuState.value.cancelQuit()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun currentOutputHz(): Float = externalDisplay?.activeDisplay?.refreshRate ?:
+        (if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else windowManager.defaultDisplay.refreshRate) ?: 60f
+
+    private fun prepareGenerationCap(hz: Float, multiplier: Int = 2) {
+        generationCap.prepare(session.fpsLimit(), hz, multiplier)?.let { capped ->
+            session.setFpsLimit(capped)
+            fpsLimitState.intValue = session.fpsLimit()
+        }
+    }
+
+    private fun restoreGenerationCap() {
+        generationCap.restore(session.fpsLimit())?.let { before ->
+            session.setFpsLimit(before)
+            fpsLimitState.intValue = session.fpsLimit()
+        }
+    }
+
+    private fun performMenuAction(action: InGameAction) {
+        if (!BuildConfig.DEBUG && action in listOf(InGameAction.WINFG, InGameAction.WINFG_PRESET,
+                InGameAction.LSFG, InGameAction.LSFG_MULTIPLIER)) return
+        if (action == InGameAction.COLOR_FILTER) {
+            session.setColorFilter((session.presentationState().colorFilter + 1) % 4)
+            presentationState.value = session.presentationState()
+            return
+        }
+        if (action == InGameAction.PERFORMANCE_HINTS) { performanceHints.requested = !performanceHints.requested; return }
+        if (action == InGameAction.EXTERNAL_DISPLAY) { externalDisplay?.cycle(); return }
+        if (action == InGameAction.SCALING_EFFECT) {
+            scalingEffect.intValue = if (scalingEffect.intValue >= 2) -1 else scalingEffect.intValue + 1
+            session.setScalingEffect(scalingEffect.intValue)
+            return
+        }
+        if (action == InGameAction.BACKGROUND_POLICY) {
+            backgroundPolicy.value = BackgroundPolicy.entries[(backgroundPolicy.value.ordinal + 1) % BackgroundPolicy.entries.size]
+            return
+        }
+        if (action == InGameAction.GYRO_CAMERA) {
+            if (gyroCamera.available) gyroEnabled.value = !gyroEnabled.value
+            return
+        }
+        if (action == InGameAction.GYRO_CALIBRATE) { gyroCamera.calibrate(); return }
+        if (action == InGameAction.CONTROLLER_RUMBLE) {
+            rumbleIntensity.value = rumbleIntensity.value.next()
+            getSharedPreferences("touch_options", MODE_PRIVATE).edit()
+                .putString("controller_rumble", rumbleIntensity.value.name).apply()
+            stopRumble()
+            return
+        }
+        if (action == InGameAction.GYRO_SENSITIVITY) {
+            gyroSensitivity.intValue = (gyroSensitivity.intValue + 1) % 3
+            gyroCamera.sensitivity = listOf(0.2f, 0.35f, 0.6f)[gyroSensitivity.intValue]
+            return
+        }
+        if (action == InGameAction.SUSTAINED_PERFORMANCE) {
+            val enabled = !sustainedMode.value
+            sustainedAvailable.value = sustainedPerformance(this, enabled)
+            if (sustainedAvailable.value) sustainedMode.value = enabled
+            return
+        }
+        if (action == InGameAction.REFRESH_RATE) {
+            @Suppress("DEPRECATION") val activeDisplay = if (Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay
+            if (activeDisplay != null) {
+                val modes = refreshChoices(activeDisplay)
+                val index = modes.indexOfFirst { it.hz == requestedRefresh.value }
+                requestedRefresh.value = if (index + 1 < modes.size) modes[index + 1].hz else null
+                selectRefresh(this, requestedRefresh.value)
+            }
+            return
+        }
+        if (action == InGameAction.MUTE || action == InGameAction.VOLUME_UP || action == InGameAction.VOLUME_DOWN) {
+            val current = session.audioVolume()
+            val volume = when (action) {
+                InGameAction.MUTE -> if (current == 0) volumeBeforeMute else { volumeBeforeMute = current; 0 }
+                InGameAction.VOLUME_UP -> (current + 10).coerceAtMost(100)
+                else -> (current - 10).coerceAtLeast(0)
+            }
+            session.setAudioVolume(volume); audioVolume.intValue = session.audioVolume()
+            return
+        }
+        if (action == InGameAction.IMPORT_LSFG_DLL) {
+            if (!importingLsfg) lsfgPicker.launch(arrayOf("application/octet-stream", "application/x-msdownload", "*/*"))
+            return
+        }
+        if (action == InGameAction.CLEAR_LSFG_CACHE) {
+            if (session.presentationState().engine == 1) {
+                session.setFrameGeneration(false, fgPreset.intValue, currentOutputHz())
+                restoreGenerationCap()
+            }
+            lifecycleScope.launch {
+                val deleted = withContext(Dispatchers.IO) { runCatching { LsfgAssets.clear(applicationContext) } }
+                if (deleted.isSuccess) lsfgCache.value = null
+                else Toast.makeText(this@EmulatorHostActivity, "Could not remove the shader cache", Toast.LENGTH_LONG).show()
+                presentationState.value = session.presentationState()
+            }
+            return
+        }
+        if (action == InGameAction.LSFG || action == InGameAction.LSFG_MULTIPLIER) {
+            if (action == InGameAction.LSFG_MULTIPLIER) lsfgMultiplier.intValue = if (lsfgMultiplier.intValue == 4) 2 else lsfgMultiplier.intValue + 1
+            val cache = lsfgCache.value ?: return
+            val current = session.presentationState()
+            if (action == InGameAction.LSFG_MULTIPLIER && !(current.requested && current.engine == 1)) return
+            val enabled = if (action == InGameAction.LSFG) !(current.requested && current.engine == 1) else true
+            val hz = currentOutputHz()
+            if (enabled) prepareGenerationCap(hz, lsfgMultiplier.intValue) else restoreGenerationCap()
+            session.setLsfg(enabled, cache, hz, lsfgMultiplier.intValue)
+            presentationState.value = session.presentationState()
+            return
+        }
+        val displayMode = when (action) {
+            InGameAction.DISPLAY_FIT -> 0
+            InGameAction.DISPLAY_FILL -> 1
+            InGameAction.DISPLAY_STRETCH -> 2
+            InGameAction.DISPLAY_INTEGER -> 3
+            else -> null
+        }
+        if (displayMode != null) {
+            session.setPresentationMode(displayMode)
+            presentationState.value = session.presentationState()
+            return
+        }
+        if (action == InGameAction.WINFG || action == InGameAction.WINFG_PRESET) {
+            if (action == InGameAction.WINFG_PRESET) fgPreset.intValue = (fgPreset.intValue + 1) % 3
+            val state = session.presentationState()
+            if (action == InGameAction.WINFG_PRESET && state.engine == 1) return
+            val enabled = if (action == InGameAction.WINFG) !(state.requested && state.engine == 0) else state.requested
+            val hz = currentOutputHz()
+            if (enabled) prepareGenerationCap(hz) else restoreGenerationCap()
+            session.setFrameGeneration(enabled, fgPreset.intValue, hz)
+            presentationState.value = session.presentationState()
+            return
+        }
+        val metric = when (action) {
+            InGameAction.HUD_HOST_SUBMISSIONS -> HudMetric.HOST_SUBMISSIONS
+            InGameAction.HUD_CPU -> HudMetric.CPU
+            InGameAction.HUD_GPU -> HudMetric.GPU
+            InGameAction.HUD_RAM -> HudMetric.RAM
+            InGameAction.HUD_BATTERY -> HudMetric.BATTERY_TEMPERATURE
+            InGameAction.HUD_SOC -> HudMetric.SOC_TEMPERATURE
+            else -> null
+        }
+        if (metric != null) {
+            val enabled = hudMetrics.value.toMutableSet()
+            if (!enabled.remove(metric)) enabled.add(metric)
+            hudMetrics.value = enabled.toSet()
+            getSharedPreferences("fps_overlay", MODE_PRIVATE).edit()
+                .putStringSet("hud_metrics", enabled.map { it.name }.toSet()).apply()
+            return
+        }
+        val fps = when (action) {
+            InGameAction.FPS_UNLIMITED -> 0
+            InGameAction.FPS_30 -> 30
+            InGameAction.FPS_45 -> 45
+            InGameAction.FPS_60 -> 60
+            InGameAction.FPS_90 -> 90
+            InGameAction.FPS_120 -> 120
+            else -> null
+        }
+        if (fps != null) {
+            // Explicit manual changes supersede a temporary automatic FG cap.
+            generationCap.forget()
+            fpsLimitState.intValue = fps
+            session.setFpsLimit(fps) // session-only; don't overwrite the global/per-game config.
+            return
+        }
+        when (action) {
+            InGameAction.EDIT_TOUCH_LAYOUT -> {
+                if (session.booted && !session.isPaused()) {
+                    session.pause()
+                    menuState.value = menuState.value.copy(pausedByMenu = true)
+                }
+                menuPaused.value = session.isPaused()
+                editorOpen.value = true
+            }
+            InGameAction.SAVE_GAME_FPS,
+            InGameAction.INHERIT_GAME_FPS,
+            InGameAction.SAVE_GLOBAL_FPS -> persistMenuFps(action)
+            InGameAction.STRETCH -> {
+                if (fpsConfig.value.loading || fpsConfig.value.saving || fpsConfig.value.error != null) return
+                val enabled = !fullscreenStretchEnabled.value
+                val before = fpsConfig.value
+                fpsConfig.value = before.copy(saving = true)
+                lifecycleScope.launch {
+                    val saved = withContext(Dispatchers.IO) { persistFullscreenStretchConfig(enabled) }
+                    if (saved) {
+                        fullscreenStretchEnabled.value = enabled
+                        getSharedPreferences(DISPLAY_SETTINGS_PREFS, MODE_PRIVATE).edit()
+                            .putBoolean(FULLSCREEN_STRETCH_KEY, enabled).apply()
+                    } else {
+                        Toast.makeText(this@EmulatorHostActivity, "Could not save display configuration", Toast.LENGTH_LONG).show()
+                    }
+                    fpsConfig.value = before
+                }
+            }
+            InGameAction.PERFORMANCE_HUD -> {
+                val enabled = !performanceOverlayEnabled.value
+                performanceOverlayEnabled.value = enabled
+                getSharedPreferences("fps_overlay", MODE_PRIVATE).edit()
+                    .putBoolean("performance_overlay_enabled", enabled).apply()
+            }
+            InGameAction.HUD_STYLE -> {
+                val compact = !compactPerformanceOverlay.value
+                compactPerformanceOverlay.value = compact
+                getSharedPreferences("fps_overlay", MODE_PRIVATE).edit()
+                    .putBoolean("performance_overlay_compact", compact).apply()
+            }
+            InGameAction.TOUCH_CONTROLS -> toggleTouchOverlay()
+            InGameAction.ADAPTIVE_STICKS -> {
+                val title = session.activeTitleId() ?: return
+                val enabled = !adaptiveSticks.value
+                adaptiveSticks.value = enabled
+                controlsTitleId = title
+                getSharedPreferences("touch_options", MODE_PRIVATE).edit()
+                    .putBoolean("adaptive_$title", enabled).apply()
+            }
+            InGameAction.RESUME -> closeMenuAndResume()
+            InGameAction.SHARE_LOGS -> lifecycleScope.launch {
+                menuLogSessions.value = withContext(Dispatchers.IO) { runCatching { SessionLogs.sessions() }.getOrDefault(emptyList()) }
+                menuState.value = menuState.value.showLogs(menuLogSessions.value.size)
+            }
+            InGameAction.QUIT -> menuState.value = menuState.value.askToQuit()
+            else -> Unit
+        }
+    }
+
+    private fun refreshFpsConfig() {
+        if (fpsConfig.value.loading || fpsConfig.value.saving) return
+        val title = session.activeTitleId()
+        fpsConfig.value = FpsConfigSnapshot(titleId = title, loading = true)
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { inGameConfig.fpsSnapshot(title) } }
+            fpsConfig.value = result.getOrElse {
+                Log.w(TAG, "Reading saved FPS configuration failed", it)
+                FpsConfigSnapshot(titleId = title, error = "Cannot read saved configuration; persistent actions are unavailable.")
+            }
+        }
+    }
+
+    private fun persistMenuFps(action: InGameAction) {
+        val before = fpsConfig.value
+        if (before.loading || before.saving || before.error != null) return
+        val title = before.titleId
+        if (action != InGameAction.SAVE_GLOBAL_FPS &&
+            (title == null || session.activeTitleId() != title)) return
+        val currentLimit = session.fpsLimit()
+        fpsConfig.value = before.copy(saving = true)
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val inherited = when (action) {
+                        InGameAction.SAVE_GAME_FPS -> { inGameConfig.saveGameFps(title!!, currentLimit); null }
+                        InGameAction.SAVE_GLOBAL_FPS -> { inGameConfig.saveGlobalFps(currentLimit); null }
+                        InGameAction.INHERIT_GAME_FPS -> inGameConfig.inheritGlobalFps(title!!)
+                        else -> null
+                    }
+                    val snapshot = runCatching { inGameConfig.fpsSnapshot(title) }.getOrElse {
+                        before.copy(saving = false, error = "Saved, but unable to refresh the configuration display.")
+                    }
+                    snapshot to inherited
+                }
+            }
+            result.onSuccess { (snapshot, inherited) ->
+                fpsConfig.value = snapshot
+                if (inherited != null && session.activeTitleId() == title) {
+                    session.setFpsLimit(inherited)
+                    fpsLimitState.intValue = session.fpsLimit()
+                }
+                Toast.makeText(this@EmulatorHostActivity, "FPS configuration saved", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Log.w(TAG, "Saving FPS configuration failed; keeping previous file", it)
+                fpsConfig.value = before
+                Toast.makeText(this@EmulatorHostActivity, "Could not save configuration; previous file kept", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun chooseLogSession(index: Int) {
+        if (index == menuLogSessions.value.size + 1) {
+            menuState.value = menuState.value.closeLogs(); return
+        }
+        val sessionId = if (index == 0) null else menuLogSessions.value.getOrNull(index - 1)?.id ?: return
+        shareSessionLogs(sessionId)
+    }
+
+    private fun shareSessionLogs(selectedSession: String? = null) {
+        if (sharingLogs) return
+        sharingLogs = true
+        if (session.booted && !session.isPaused()) {
+            session.pause()
+            menuState.value = menuState.value.copy(pausedByMenu = true)
+        }
+        lifecycleScope.launch {
+            try {
+                val file = withContext(Dispatchers.IO) {
+                    runCatching { SessionLogs.exportRedactedForSharing(applicationContext, selectedSession) }
+                        .onFailure { Log.w(TAG, "Sharing diagnostics failed", it) }.getOrNull()
+                }
+                if (file == null) {
+                    Toast.makeText(this@EmulatorHostActivity, "No diagnostics to share", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                runCatching {
+                    val uri = FileProvider.getUriForFile(
+                        this@EmulatorHostActivity, "$packageName.share", file,
+                    )
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/zip"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        clipData = ClipData.newRawUri("XenDroid diagnostics", uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(Intent.createChooser(send, "Share XenDroid diagnostics"))
+                }.onFailure {
+                    Log.w(TAG, "Opening diagnostics share sheet failed", it)
+                    Toast.makeText(this@EmulatorHostActivity, "Could not share diagnostics", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                sharingLogs = false
+            }
+        }
+    }
+
+    /** Neutralize a held controller before routing its next events to the menu. */
+    private fun releaseGuestInput() {
+        consumedMenuKeys.addAll(sentGuestKeys.keys)
+        sentGuestKeys.values.forEach { session.keyEvent(it, false, KEY_VALUE_UNUSED) }
+        sentGuestKeys.clear()
+        for (code in KC_LTHUMB_LEFT..KC_RTHUMB_DOWN) {
+            if (axisPressed[code]) emitAxis(code, false, 0)
+        }
+        if (lTriggerDown) session.keyEvent(KC_TRIGGER_L, false, KEY_VALUE_UNUSED)
+        if (rTriggerDown) session.keyEvent(KC_TRIGGER_R, false, KEY_VALUE_UNUSED)
+        lTriggerDown = false
+        rTriggerDown = false
+        if (hatLeft) session.keyEvent(KC_DPAD_LEFT, false, KEY_VALUE_UNUSED)
+        if (hatRight) session.keyEvent(KC_DPAD_RIGHT, false, KEY_VALUE_UNUSED)
+        if (hatUp) session.keyEvent(KC_DPAD_UP, false, KEY_VALUE_UNUSED)
+        if (hatDown) session.keyEvent(KC_DPAD_DOWN, false, KEY_VALUE_UNUSED)
+        hatLeft = false
+        hatRight = false
+        hatUp = false
+        hatDown = false
+        panelNavPrev = false
+        panelNavNext = false
+        slotInput.releaseAll()
+        stopRumble()
     }
 
     private fun isPanelKey(
@@ -1720,7 +2608,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_BUTTON_A,
-            KeyEvent.KEYCODE_BUTTON_B -> true
+            KeyEvent.KEYCODE_BUTTON_B,
+            KeyEvent.KEYCODE_BUTTON_L1,
+            KeyEvent.KEYCODE_BUTTON_R1,
+            KeyEvent.KEYCODE_BUTTON_MODE -> true
 
             else -> false
         }
@@ -1752,15 +2643,18 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_ESCAPE,
             KeyEvent.KEYCODE_BUTTON_A -> {
                 nav.activate(
-                    panelSelectedState.intValue
+                    if (menuState.value.open && !hasGuestPrompt()) menuState.value.selected
+                    else panelSelectedState.intValue
                 )
 
                 true
             }
 
-            KeyEvent.KEYCODE_BUTTON_B -> {
+            KeyEvent.KEYCODE_BUTTON_B,
+            KeyEvent.KEYCODE_ESCAPE -> {
                 nav.cancel()
                 true
             }
@@ -1827,6 +2721,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         delta: Int
     ) {
         if (nav.count <= 0) return
+
+        if (menuState.value.open && !hasGuestPrompt()) {
+            menuState.value = menuState.value.move(delta)
+            return
+        }
 
         val next =
             panelSelectedState.intValue +

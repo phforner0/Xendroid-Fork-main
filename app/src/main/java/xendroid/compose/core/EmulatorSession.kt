@@ -3,6 +3,7 @@ package xendroid.compose.core
 import android.content.Context
 import android.view.Surface
 import xendroid.compose.Emulator
+import xendroid.compose.driver.DriverIdentity
 import xendroid.emulator.Emulator as BaseEmulator
 
 /**
@@ -20,9 +21,45 @@ import xendroid.emulator.Emulator as BaseEmulator
  *   keyEvent(...)                                                 [hardware input]
  */
 class EmulatorSession {
+    // Held until this single-shot process exits. Closing early after an asynchronous
+    // quit could let a restore race the guest's final storage writes.
+    @Volatile private var contentLease: xendroid.compose.archive.ContentLease? = null
 
     var booted: Boolean = false
         private set
+
+    sealed interface StorageResult {
+        data object Ready : StorageResult
+        data class Unavailable(val message: String) : StorageResult
+    }
+
+    /**
+     * Takes the storage lease for the whole session and rolls back interrupted save
+     * restores under it, before the surface exists. Waits a bounded time for a short
+     * job (an automatic backup) instead of failing the launch. Call off the main thread.
+     */
+    suspend fun prepareStorage(timeoutMs: Long = 15_000, onWaiting: () -> Unit = {}): StorageResult {
+        if (contentLease != null) return StorageResult.Ready
+        val lease = try {
+            xendroid.compose.archive.acquireWithRetry(timeoutMs, onBusy = onWaiting) { StorageAccess.acquire() }
+        } catch (e: xendroid.compose.archive.ContentBusyException) {
+            return StorageResult.Unavailable(
+                "Another save, profile or content operation is still using the game data. " +
+                    "Wait for it to finish, then start the game again.")
+        }
+        val report = try {
+            StorageAccess.saveStore().recoverTransactions(lease)
+        } catch (e: Exception) {
+            lease.close()
+            throw e
+        }
+        if (!report.clean) {
+            lease.close()
+            return StorageResult.Unavailable(xendroid.compose.saves.SaveRecoveryException(report).message!!)
+        }
+        contentLease = lease
+        return StorageResult.Ready
+    }
 
     /** Throws clearly if used before ensureLoaded(). */
     private val core: Emulator
@@ -54,6 +91,9 @@ class EmulatorSession {
     @Throws(RuntimeException::class)
     fun bootOnce() {
         if (booted) return
+        // prepareStorage() must have succeeded: the guest never runs without the lease
+        // or over a save tree with an unrecovered restore.
+        checkNotNull(contentLease) { "Storage was not prepared before boot" }
         booted = true
         try {
             core.boot()
@@ -68,6 +108,7 @@ class EmulatorSession {
 
     fun pause() = core.pause()
     fun resume() = core.resume()
+    fun isPaused(): Boolean = booted && core.is_paused()
 
     /** Best-effort GPU cache flush (onPause). Swallows everything; never throws. */
     fun flushGpuCaches() {
@@ -84,6 +125,20 @@ class EmulatorSession {
         core.key_event(keyCode, pressed, value)
     }
 
+    /** Input of a controller holding player slot P2..P4 ([slot] 1..3); P1 is [keyEvent]. */
+    fun keyEventSlot(slot: Int, keyCode: Int, pressed: Boolean, value: Int) {
+        if (!booted) return
+        if (slot == 0) core.key_event(keyCode, pressed, value) else core.key_event_slot(slot, keyCode, pressed, value)
+    }
+
+    /** A controller took or left slot [slot] (1..3); the guest sees the pad connect or disconnect. */
+    fun setSlotConnected(slot: Int, connected: Boolean, label: String) {
+        if (booted) core.set_slot_connected(slot, connected, label)
+    }
+
+    /** Guest rumble per slot P1..P4: left motor shl 16 or right motor; null before boot. */
+    fun rumbleState(): LongArray? = if (booted) core.rumble_state() else null
+
     // ---- Debug stats (UI-thread polled; reads native lock-free atomics) ----
 
     /** Last presented guest-frame interval in ms (0 before first present / after pause). */
@@ -92,7 +147,33 @@ class EmulatorSession {
     /** Instant fps, NOT the average. */
     fun instantFps(): Double = if (booted) core.instant_fps() else 0.0
 
-      fun averageFps(): Double = if (booted) core.average_fps() else 0.0
+    fun averageFps(): Double = if (booted) core.average_fps() else 0.0
+    fun hostPresentSubmissionCount(): Long =
+        if (booted) core.host_present_submission_count() else 0L
+    fun activeTitleId(): String? = if (booted) core.active_title_id() else null
+    fun presentationState(): PresentationState = if (booted) PresentationState.decode(core.presentation_state()) else PresentationState()
+    fun setPresentationMode(mode: Int) { if (booted) core.set_presentation_mode(mode) }
+    fun setScalingEffect(effect: Int) { if (booted) core.set_scaling_effect(effect) }
+    fun setColorFilter(mode: Int) { if (booted) core.set_color_filter(mode) }
+    fun activeGpuLabel(): String = if (booted) core.active_gpu_label().orEmpty() else ""
+    /** Identity of the Vulkan driver actually loaded (see [DriverIdentity]); null before the presenter starts. */
+    fun activeDriverIdentity(): DriverIdentity? =
+        if (booted) DriverIdentity.parse(core.active_driver_identity().orEmpty()) else null
+    /** Cumulative guest frame-time counts per 1 ms bucket; null before boot. */
+    fun guestFrameTimeHistogram(): LongArray? = if (booted) core.guest_frame_time_histogram() else null
+    /** {pipeline creations, ns spent in them, in flight} since the process started; null before boot. */
+    fun shaderCompileStats(): LongArray? = if (booted) core.shader_compile_stats() else null
+    /** {backend, blocks played, blocks concealed, device xruns} since the process started; null before boot. */
+    fun audioRunStats(): LongArray? = if (booted) core.audio_run_stats() else null
+    /** PRE-boot: where the core leaves a fatal error's message before aborting. */
+    fun setFatalReportPath(path: String?) = core.set_fatal_report_path(path)
+    fun presenterWork(): LongArray = if (booted) core.presenter_work() else longArrayOf(0, 0, 0)
+    fun setFrameGeneration(enabled: Boolean, preset: Int, hz: Float) { if (booted) core.set_frame_generation(enabled, preset, hz) }
+    fun setLsfg(enabled: Boolean, cache: String, hz: Float, multiplier: Int = 2) {
+        if (booted) core.set_lsfg(enabled, cache, hz, multiplier.coerceIn(2, 4))
+    }
+    fun audioVolume(): Int = if (booted) core.audio_volume() else 100
+    fun setAudioVolume(percent: Int) { if (booted) core.set_audio_volume(percent.coerceIn(0, 100)) }
 
 /** Effective show_debug_overlay (global + per-game override). The override lands on the
  * detached boot thread, so callers must POLL this after boot. */

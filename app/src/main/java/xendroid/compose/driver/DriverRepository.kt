@@ -8,6 +8,8 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 data class DriverInfo(
     val name: String,
@@ -15,6 +17,11 @@ data class DriverInfo(
     val url: String,
     val sha256: String = ""
 )
+
+/** GitHub release assets may publish a digest; absent/malformed values are not verified. */
+fun githubAssetSha256(digest: String?): String? =
+    digest?.takeIf { it.matches(Regex("(?i)sha256:[0-9a-f]{64}")) }
+        ?.substringAfter(':')
 
 object DriverRepository {
 
@@ -73,7 +80,8 @@ object DriverRepository {
                             DriverInfo(
                                 name = assetName,
                                 version = "$releaseName ($tagName)",
-                                url = downloadUrl
+                                url = downloadUrl,
+                                sha256 = githubAssetSha256(asset.optString("digest")).orEmpty(),
                             )
                         )
                     }
@@ -96,12 +104,14 @@ object DriverRepository {
             throw Exception("Unable to create download directory")
         }
 
-        val safeName = driver.name.replace(
+        val safeName = "${driver.version}-${driver.name}".replace(
             Regex("[^A-Za-z0-9._-]"),
             "_"
-        )
+        ).take(140)
 
         val file = File(directory, safeName)
+        val tmp = File.createTempFile(".download-", ".zip", directory)
+        val coroutine = currentCoroutineContext()
 
         val connection = URL(driver.url).openConnection() as HttpURLConnection
 
@@ -118,11 +128,12 @@ object DriverRepository {
             val total = connection.contentLengthLong
 
             connection.inputStream.use { input ->
-                file.outputStream().use { output ->
+                tmp.outputStream().use { output ->
                     val buffer = ByteArray(16384)
                     var downloaded = 0L
 
                     while (true) {
+                        coroutine.ensureActive()
                         val count = input.read(buffer)
 
                         if (count == -1) {
@@ -131,10 +142,11 @@ object DriverRepository {
 
                         output.write(buffer, 0, count)
                         downloaded += count
+                        require(downloaded <= 64L * 1024 * 1024) { "Driver download exceeds 64 MB" }
 
                         if (total > 0) {
                             onProgress(
-                                ((downloaded * 100L) / total).toInt()
+                                ((downloaded * 100L) / total).toInt().coerceIn(0, 100)
                             )
                         }
                     }
@@ -142,16 +154,18 @@ object DriverRepository {
             }
 
             if (driver.sha256.isNotBlank()) {
-                val actualHash = sha256(file)
+                val actualHash = sha256(tmp)
 
                 if (!actualHash.equals(driver.sha256, ignoreCase = true)) {
-                    file.delete()
                     throw Exception("SHA-256 verification failed")
                 }
             }
 
+            java.nio.file.Files.move(tmp.toPath(), file.toPath(),
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
             file
         } finally {
+            tmp.delete()
             connection.disconnect()
         }
     }

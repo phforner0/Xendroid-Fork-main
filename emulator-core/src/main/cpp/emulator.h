@@ -6,6 +6,7 @@
 #include <android/native_window_jni.h>
 #include <mutex>
 #include <string>
+#include <cstdint>
 
 namespace ae{
     constexpr int BOOT_TYPE_WITH_PATH=1;
@@ -32,8 +33,13 @@ namespace ae{
 
     extern void main_thr();
     extern void key_event(int key_code,bool pressed,int value);
+    // Player slots P2-P4 (P1 = key_event): input, controller hotplug and guest rumble.
+    extern void key_event_slot(int slot,int key_code,bool pressed,int value);
+    extern void set_slot_connected(int slot,bool connected,const std::string& name);
+    extern uint32_t slot_rumble(int slot);
     extern bool is_running();
     extern bool is_paused();
+    extern uint32_t active_title_id();
     extern void pause();
     extern void resume();
     extern void quit();

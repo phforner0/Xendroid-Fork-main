@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: WTFPL
 #include "emulator_xendroid.h"
+#include "emulator.h"
 #include "xendroid_emu.h"
 #include "xe_android_disc_swap.h"
 #include "xe_android_message_box.h"
@@ -18,6 +19,11 @@
 #include "xenia/base/mapped_memory.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/frame_stats.h"
+#include "xenia/ui/presentation_runtime.h"
+#include "third_party/lsfg/lsfg_dll.h"
+#include "xenia/apu/apu_flags.h"
+#include "audio_runtime.h"
+#include "xe_fatal_report.h"
 #include "xenia/base/shader_compile_counter.h"
 
 #include "xenia/cpu/xex_module.h"             // XexModule::GetOptHeader, kXEX2Signature/kXEX1Signature
@@ -1159,6 +1165,183 @@ static jdouble j_average_fps(JNIEnv* env, jobject thiz) {
     return (jdouble)fps;
 }
 
+// Number of Vulkan present submissions accepted in this process, including UI-only
+// repaints. A successful vkQueuePresentKHR is NOT proof of display scanout.
+static jlong j_host_present_submission_count(JNIEnv* env, jobject thiz) {
+    return static_cast<jlong>(xe::GetHostPresentSubmissionCount());
+}
+
+static void j_set_presentation_mode(JNIEnv* env, jobject thiz, jint mode) {
+    if (mode >= -1 && mode <= 3) xe::ui::RuntimePresentation().display_mode = mode;
+}
+static void j_set_scaling_effect(JNIEnv* env, jobject thiz, jint effect) {
+    if (effect >= -1 && effect <= 2) xe::ui::RuntimePresentation().scaling_effect = effect;
+}
+static void j_set_color_filter(JNIEnv* env, jobject thiz, jint mode) {
+    auto& runtime = xe::ui::RuntimePresentation();
+    runtime.color_filter_error = 0; runtime.color_filter = std::clamp(int(mode), 0, 3);
+}
+static jstring j_active_gpu_label(JNIEnv* env, jobject thiz) {
+    auto& runtime = xe::ui::RuntimePresentation();
+    std::lock_guard<std::mutex> lock(runtime.configuration_mutex);
+    return env->NewStringUTF(runtime.gpu_label.c_str());
+}
+// Cumulative per-frame guest frame-time counts (1 ms buckets, last = longer); the
+// caller takes deltas between snapshots.
+static jlongArray j_guest_frame_time_histogram(JNIEnv* env, jobject thiz) {
+    constexpr jsize kCount = jsize(xe::kFrameTimeBuckets);
+    jlong values[kCount];
+    const auto* buckets = xe::GuestFrameTimeHistogram();
+    for (jsize i = 0; i < kCount; ++i) values[i] = jlong(buckets[i].load(std::memory_order_relaxed));
+    auto array = env->NewLongArray(kCount);
+    if (array) env->SetLongArrayRegion(array, 0, kCount, values);
+    return array;
+}
+// Player slots P2-P4 (P1 stays on key_event): input of a controller assigned to a slot.
+static void j_key_event_slot(JNIEnv* env, jobject thiz, jint slot, jint key_code, jboolean pressed, jint value) {
+    ae::key_event_slot(slot, key_code, pressed, value);
+}
+// A controller took (or left) a slot; the guest sees the pad connect or disconnect.
+static void j_set_slot_connected(JNIEnv* env, jobject thiz, jint slot, jboolean connected, jstring name) {
+    std::string label;
+    if (name) {
+        if (const char* chars = env->GetStringUTFChars(name, nullptr)) {
+            label = chars;
+            env->ReleaseStringUTFChars(name, chars);
+        }
+    }
+    ae::set_slot_connected(slot, connected, label);
+}
+// Guest rumble per slot P1..P4: left motor << 16 | right motor (0..65535 each).
+static jlongArray j_rumble_state(JNIEnv* env, jobject thiz) {
+    const jlong values[] = {jlong(ae::slot_rumble(0)), jlong(ae::slot_rumble(1)),
+                            jlong(ae::slot_rumble(2)), jlong(ae::slot_rumble(3))};
+    auto array = env->NewLongArray(4);
+    if (array) env->SetLongArrayRegion(array, 0, 4, values);
+    return array;
+}
+// {backend (0 none yet, 1 AAudio, 2 OpenSL ES), blocks played, blocks concealed
+// because the emulator was late, device xruns} since the process started.
+static jlongArray j_audio_run_stats(JNIEnv* env, jobject thiz) {
+    auto& stats = ae::RunStats();
+    const jlong values[] = {
+        jlong(stats.backend.load(std::memory_order_relaxed)),
+        jlong(stats.blocks.load(std::memory_order_relaxed)),
+        jlong(stats.concealed.load(std::memory_order_relaxed)),
+        jlong(stats.device_xruns.load(std::memory_order_relaxed))};
+    auto array = env->NewLongArray(4);
+    if (array) env->SetLongArrayRegion(array, 0, 4, values);
+    return array;
+}
+// Where a fatal error's message goes before the abort (see xe_fatal_report.h).
+static void j_set_fatal_report_path(JNIEnv* env, jobject thiz, jstring path) {
+    if (!path) {
+        xe::SetFatalReportPath({});
+        return;
+    }
+    const char* chars = env->GetStringUTFChars(path, nullptr);
+    if (!chars) return;
+    xe::SetFatalReportPath(chars);
+    env->ReleaseStringUTFChars(path, chars);
+}
+// {pipeline creations so far, nanoseconds spent creating them, creations in flight}.
+static jlongArray j_shader_compile_stats(JNIEnv* env, jobject thiz) {
+    const jlong values[] = {
+        jlong(xe::shader_compiles_total().load(std::memory_order_relaxed)),
+        jlong(xe::shader_compile_ns_total().load(std::memory_order_relaxed)),
+        jlong(xe::shader_compiles_in_flight_count())};
+    auto array = env->NewLongArray(3);
+    if (array) env->SetLongArrayRegion(array, 0, 3, values);
+    return array;
+}
+// "key=value;..." identity of the Vulkan driver in use; empty before the presenter starts.
+static jstring j_active_driver_identity(JNIEnv* env, jobject thiz) {
+    auto& runtime = xe::ui::RuntimePresentation();
+    std::lock_guard<std::mutex> lock(runtime.configuration_mutex);
+    return env->NewStringUTF(runtime.driver_identity.c_str());
+}
+static jlongArray j_presenter_work(JNIEnv* env, jobject thiz) {
+    const auto& runtime = xe::ui::RuntimePresentation();
+    const jlong values[] = {runtime.presenter_tid.load(), runtime.presenter_work_ns.load(),
+        static_cast<jlong>(runtime.presenter_work_sequence.load(std::memory_order_acquire))};
+    auto array = env->NewLongArray(3);
+    if (array) env->SetLongArrayRegion(array, 0, 3, values);
+    return array;
+}
+static void j_set_audio_volume(JNIEnv* env, jobject thiz, jint percent) {
+    ae::SetSessionVolume(percent);
+}
+static jint j_audio_volume(JNIEnv* env, jobject thiz) { return ae::EffectiveVolume(); }
+static void j_set_frame_generation(JNIEnv* env, jobject thiz, jboolean enabled, jint preset, jfloat hz) {
+    auto& runtime = xe::ui::RuntimePresentation();
+    runtime.frame_generation_engine = 0;
+    runtime.frame_generation_multiplier = 2;
+    runtime.display_hz = std::clamp(float(hz), 24.0f, 360.0f);
+    runtime.frame_generation_preset = std::clamp(int(preset), 0, 2);
+    runtime.frame_generation_error = 0;
+    runtime.generation_gpu_ms = -1.0;
+    runtime.configuration_epoch.fetch_add(1);
+    runtime.frame_generation_state = enabled ? int(xe::ui::FrameGenerationState::kWarmingUp) : 0;
+    runtime.frame_generation_requested = enabled;
+}
+static jlongArray j_presentation_state(JNIEnv* env, jobject thiz) {
+    const auto& runtime = xe::ui::RuntimePresentation();
+    jlong values[] = {runtime.display_mode.load(), runtime.frame_generation_requested.load() ? 1 : 0,
+        runtime.frame_generation_state.load(), runtime.frame_generation_error.load(),
+        static_cast<jlong>(runtime.generated_submissions.load()),
+        static_cast<jlong>(runtime.generation_gpu_ms.load() * 1000000.0),
+        static_cast<jlong>(runtime.dropped_guest_notifications.load()),
+        static_cast<jlong>(runtime.display_hz.load() * 1000.0), runtime.frame_generation_engine.load(),
+        runtime.color_filter.load(), runtime.color_filter_error.load(), runtime.frame_generation_multiplier.load(),
+        static_cast<jlong>(runtime.late_synthetic_skips.load())};
+    constexpr jsize kCount = jsize(sizeof(values) / sizeof(values[0]));
+    auto array = env->NewLongArray(kCount);
+    if (array) env->SetLongArrayRegion(array, 0, kCount, values);
+    return array;
+}
+
+static jstring j_active_title_id(JNIEnv* env, jobject thiz) {
+    const uint32_t id = ae::active_title_id();
+    if (!id) return nullptr;
+    char text[9];
+    std::snprintf(text, sizeof(text), "%08X", id);
+    return env->NewStringUTF(text);
+}
+
+static jint j_build_lsfg_cache(JNIEnv* env, jobject thiz, jstring dll, jstring cache) {
+    if (!dll || !cache) return int(lsfg::DllStatus::UnreadableFile);
+    const char* dll_chars = env->GetStringUTFChars(dll, nullptr);
+    const char* cache_chars = env->GetStringUTFChars(cache, nullptr);
+    if (!dll_chars || !cache_chars) {
+        if (dll_chars) env->ReleaseStringUTFChars(dll, dll_chars);
+        if (cache_chars) env->ReleaseStringUTFChars(cache, cache_chars);
+        return int(lsfg::DllStatus::UnreadableFile);
+    }
+    const std::string dll_path(dll_chars), cache_path(cache_chars);
+    env->ReleaseStringUTFChars(dll, dll_chars); env->ReleaseStringUTFChars(cache, cache_chars);
+    return int(lsfg::buildCache(dll_path, cache_path, true));
+}
+static void j_set_lsfg(JNIEnv* env, jobject thiz, jboolean enabled, jstring cache, jfloat hz, jint multiplier) {
+    if (!cache) return;
+    const char* chars = env->GetStringUTFChars(cache, nullptr);
+    if (!chars) return;
+    auto& runtime = xe::ui::RuntimePresentation();
+    {
+        std::lock_guard<std::mutex> lock(runtime.configuration_mutex);
+        runtime.lsfg_cache = chars;
+    }
+    env->ReleaseStringUTFChars(cache, chars);
+    runtime.frame_generation_requested = false;
+    runtime.frame_generation_engine = 1;
+    runtime.frame_generation_multiplier = std::clamp(int(multiplier), 2, 4);
+    runtime.display_hz = std::clamp(float(hz), 24.0f, 360.0f);
+    runtime.frame_generation_state = enabled ? int(xe::ui::FrameGenerationState::kWarmingUp) : 0;
+    runtime.frame_generation_error = 0;
+    runtime.generation_gpu_ms = -1.0;
+    runtime.configuration_epoch.fetch_add(1);
+    runtime.frame_generation_requested = enabled;
+}
+
 // EFFECTIVE Display|show_debug_overlay, i.e. the live cvar AFTER any per-game config
 // overlay. xenia's LoadGameConfig applies a game-specific override into this cvar
 // during module load (on the detached boot thread), so the Compose overlay gate must
@@ -1799,6 +1982,27 @@ int register_xendroid_Emulator(JNIEnv* env){
             ,{"debug_overlay_text", "()Ljava/lang/String;", (void *) j_debug_overlay_text}
             ,{"instant_fps", "()D", (void *) j_instant_fps}
             ,{"average_fps", "()D", (void *) j_average_fps}
+            ,{"host_present_submission_count", "()J", (void *) j_host_present_submission_count}
+            ,{"active_title_id", "()Ljava/lang/String;", (void *) j_active_title_id}
+            ,{"set_presentation_mode", "(I)V", (void *) j_set_presentation_mode}
+            ,{"set_scaling_effect", "(I)V", (void *) j_set_scaling_effect}
+            ,{"set_color_filter", "(I)V", (void *) j_set_color_filter}
+            ,{"active_gpu_label", "()Ljava/lang/String;", (void *) j_active_gpu_label}
+            ,{"active_driver_identity", "()Ljava/lang/String;", (void *) j_active_driver_identity}
+            ,{"guest_frame_time_histogram", "()[J", (void *) j_guest_frame_time_histogram}
+            ,{"shader_compile_stats", "()[J", (void *) j_shader_compile_stats}
+            ,{"audio_run_stats", "()[J", (void *) j_audio_run_stats}
+            ,{"key_event_slot", "(IIZI)V", (void *) j_key_event_slot}
+            ,{"set_slot_connected", "(IZLjava/lang/String;)V", (void *) j_set_slot_connected}
+            ,{"rumble_state", "()[J", (void *) j_rumble_state}
+            ,{"set_fatal_report_path", "(Ljava/lang/String;)V", (void *) j_set_fatal_report_path}
+            ,{"presenter_work", "()[J", (void *) j_presenter_work}
+            ,{"set_frame_generation", "(ZIF)V", (void *) j_set_frame_generation}
+            ,{"presentation_state", "()[J", (void *) j_presentation_state}
+            ,{"build_lsfg_cache", "(Ljava/lang/String;Ljava/lang/String;)I", (void *) j_build_lsfg_cache}
+            ,{"set_lsfg", "(ZLjava/lang/String;FI)V", (void *) j_set_lsfg}
+            ,{"set_audio_volume", "(I)V", (void *) j_set_audio_volume}
+            ,{"audio_volume", "()I", (void *) j_audio_volume}
             ,{"last_frame_time_ms", "()D", (void *) j_last_frame_time_ms}
             ,{"show_debug_overlay_enabled", "()Z", (void *) j_show_debug_overlay_enabled}
             ,{"show_touch_overlay_enabled", "()Z", (void *) j_show_touch_overlay_enabled}

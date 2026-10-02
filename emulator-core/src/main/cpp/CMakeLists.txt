@@ -100,6 +100,27 @@ endif()
 
 add_subdirectory(xenia EXCLUDE_FROM_ALL)
 
+target_sources(xenia-ui-vulkan PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/winfg/src/framegen.cpp")
+target_include_directories(xenia-ui-vulkan PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+add_subdirectory(third_party/lsfg-dxbc)
+add_subdirectory(third_party/lsfg)
+target_link_libraries(xenia-ui-vulkan PRIVATE xendroid-lsfg)
+target_link_libraries(emu PRIVATE xendroid-lsfg)
+find_program(XENDROID_GLSLANG glslangValidator REQUIRED)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(XENDROID_COLOR_SPV "${CMAKE_CURRENT_BINARY_DIR}/xendroid_color_filter.spv")
+set(XENDROID_COLOR_HEADER "${CMAKE_CURRENT_BINARY_DIR}/xendroid_color_filter.inc")
+add_custom_command(OUTPUT "${XENDROID_COLOR_HEADER}"
+    COMMAND "${XENDROID_GLSLANG}" -V --target-env vulkan1.0
+        "${CMAKE_CURRENT_SOURCE_DIR}/xenia/src/xenia/ui/vulkan/shaders/xendroid_color_filter.comp" -o "${XENDROID_COLOR_SPV}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../tools/spirv-to-header.py"
+        "${XENDROID_COLOR_SPV}" "${XENDROID_COLOR_HEADER}" xendroid_color_filter_spv
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/xenia/src/xenia/ui/vulkan/shaders/xendroid_color_filter.comp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../tools/spirv-to-header.py")
+add_custom_target(xendroid-color-shader DEPENDS "${XENDROID_COLOR_HEADER}")
+add_dependencies(xenia-ui-vulkan xendroid-color-shader)
+target_include_directories(xenia-ui-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+
 add_subdirectory(xenia/third_party/libadrenotools EXCLUDE_FROM_ALL)
 
 target_include_directories(emu PRIVATE

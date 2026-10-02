@@ -35,7 +35,31 @@ inline std::atomic<float>& frame_fps() {
   static std::atomic<float> v{0.0f};
   return v;
 }
+// vkQueuePresentKHR accepts host submissions asynchronously. This counter does
+// NOT measure display scanout, and may include repaints without a new guest frame.
+inline std::atomic<uint64_t>& host_present_submissions() {
+  static std::atomic<uint64_t> v{0};
+  return v;
+}
 }  // namespace internal
+
+// Per-frame guest frame times for run summaries: 1 ms buckets, the last one holds
+// everything from (kFrameTimeBuckets - 1) ms up. Counts only grow (a reader keeps
+// its own baseline and takes deltas); a gap longer than the FPS window (pause,
+// loading) restarts the timing and is not counted as a frame.
+constexpr size_t kFrameTimeBuckets = 251;
+inline std::atomic<uint32_t>* GuestFrameTimeHistogram() {
+  static std::atomic<uint32_t> buckets[kFrameTimeBuckets] = {};
+  return buckets;
+}
+
+inline void RecordHostPresentSubmission() {
+  internal::host_present_submissions().fetch_add(1, std::memory_order_relaxed);
+}
+
+inline uint64_t GetHostPresentSubmissionCount() {
+  return internal::host_present_submissions().load(std::memory_order_relaxed);
+}
 
 // Call once per presented guest frame (single producer thread).
 // FPS is a RenderDoc-style average over a ~1s sliding time window (framerate
@@ -67,6 +91,12 @@ inline void RecordGuestPresent() {
     internal::frame_fps().store(0.0f, std::memory_order_relaxed);
     return;
   }
+
+  // One relaxed increment per guest frame (single producer).
+  GuestFrameTimeHistogram()[instant_ms >= double(kFrameTimeBuckets - 1)
+                                ? kFrameTimeBuckets - 1
+                                : size_t(instant_ms)]
+      .fetch_add(1, std::memory_order_relaxed);
 
   const size_t tail = (head + count) % kCap;
   ts[tail] = now;

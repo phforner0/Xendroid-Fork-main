@@ -110,6 +110,8 @@ class AAudioAudioDriver : public AudioDriver {
   // is not exactly channel_samples_ would otherwise drop or duplicate audio.
   uint32_t last_block_pos_ = channel_samples_;
   uint32_t gap_blocks_ = 0;
+  // A guest block has reached the device at least once (run summary counts).
+  bool played_once_ = false;
 
   bool fade_in_pending_ = false;
 
@@ -136,6 +138,10 @@ class AAudioAudioDriver : public AudioDriver {
   std::atomic<uint64_t> stat_clipped_{0};
   std::atomic<uint32_t> stat_rate_milli_{1000};
   void LogAndResetStats();
+  // Adds the stream's new xruns to ae::RunStats(); AAudio counts per stream, so
+  // the count seen so far restarts with every rebuild. recovery_thread_ only.
+  void PublishXRuns();
+  int32_t xruns_published_ = 0;
 
   // Per-driver volume (XMP): written by other threads, read by the callback.
   std::atomic<float> driver_volume_{1.0f};

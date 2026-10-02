@@ -298,6 +298,8 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
         if (!vulkan_instance->loader_) {
           XELOGE("adrenotools failed to load custom Vulkan driver '{}': {}",
                  custom_lib_path, dlerror());
+        } else {
+          vulkan_instance->custom_driver_path_ = custom_lib_path;
         }
 
         gpu_power_control_in_use.store(true, std::memory_order_relaxed);

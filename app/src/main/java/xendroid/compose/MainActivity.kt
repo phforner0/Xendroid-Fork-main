@@ -3,6 +3,8 @@ package xendroid.compose
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.view.KeyEvent
+import android.annotation.SuppressLint
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +19,10 @@ import xendroid.compose.core.FrontendLaunch
 import xendroid.compose.ui.library.ACTION_LAUNCH_GAME
 import xendroid.compose.ui.library.EXTRA_GAME_URI
 import xendroid.compose.core.SessionLogs
+import xendroid.compose.saves.BackupSync
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import xendroid.compose.ui.AppNavHost
 import xendroid.compose.ui.theme.xendroidTheme
 import xendroid.compose.settings.ConfigStore
@@ -39,6 +45,31 @@ class MainActivity : ComponentActivity() {
     }
 
     private var updateResult by mutableStateOf<UpdateResult?>(null)
+    private var backupSyncJob: Job? = null
+    override fun onStart() {
+        super.onStart()
+        if (backupSyncJob?.isActive != true) backupSyncJob = lifecycleScope.launch {
+            BackupSync.publishAutomatic(applicationContext)
+        }
+    }
+
+    /** Compose's standard click/back keys for controller-driven frontend screens.
+     * The emulator Activity keeps its separate guest/menu input routing. */
+    // This is the public Activity/Window callback. AndroidX annotates its internal
+    // implementation class RestrictTo, but overriding the platform callback is valid.
+    @SuppressLint("RestrictedApi")
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val code = when (event.keyCode) {
+            KeyEvent.KEYCODE_BUTTON_A -> KeyEvent.KEYCODE_DPAD_CENTER
+            KeyEvent.KEYCODE_BUTTON_B -> KeyEvent.KEYCODE_BACK
+            else -> return super.dispatchKeyEvent(event)
+        }
+        val translated = KeyEvent(
+            event.downTime, event.eventTime, event.action, code, event.repeatCount,
+            event.metaState, event.deviceId, event.scanCode, event.flags, event.source,
+        )
+        return super.dispatchKeyEvent(translated)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,12 +77,18 @@ class MainActivity : ComponentActivity() {
         // Same intent shape as the in-app launch, which routes through the
         // manifest filter into the host's own task. Finishing here instead
         // collapses that task and the emulator is paused before it draws.
-        val frontendGame = FrontendLaunch.resolveGamePath(this, intent)
+        // Resolved for the :emu process: a real path, or the URI itself (with the read
+        // grant) - never this process's /proc/self/fd/<n>, which :emu cannot use.
+        val frontendGame = FrontendLaunch.resolveForHandOff(this, intent)
         if (frontendGame != null) {
             startActivity(
                 Intent(ACTION_LAUNCH_GAME).apply {
                     setPackage(packageName)
                     putExtra(EXTRA_GAME_URI, frontendGame)
+                    if (frontendGame.startsWith("content://")) {
+                        clipData = android.content.ClipData.newRawUri("game", android.net.Uri.parse(frontendGame))
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
                 }
             )
         }
@@ -61,6 +98,11 @@ class MainActivity : ComponentActivity() {
 
             thread(name = "SessionLogs") {
                 runCatching { SessionLogs.startAppSession(appContext) }
+                // Close game runs whose :emu process died without finishing them.
+                runCatching {
+                    xendroid.compose.sessions.SessionRuns.store()
+                        .reconcile(xendroid.compose.sessions.SessionRuns.fates(appContext))
+                }
 
                 // Pre-warm so settings doesn't pay the delay-load System.loadLibrary.
                 runCatching { EmulatorRuntime.ensureLoaded() }
@@ -90,9 +132,11 @@ class MainActivity : ComponentActivity() {
                     }
 
                     try {
-                        val result = checkForUpdates()
+                        val result = checkForUpdates(applicationContext)
 
-                        updateResult = result
+                        // An automatic check only interrupts the user for a real update;
+                        // "you are up to date" belongs to an explicit check.
+                        updateResult = result.takeIf { it is UpdateResult.Available }
 
                         // Export check result only if github replied with a valid response
                         saveLastCheck(applicationContext)

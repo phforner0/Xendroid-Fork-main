@@ -36,6 +36,7 @@
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/shader_storage.h"
 #include "xenia/gpu/spirv_shader_translator.h"
+#include "xenia/gpu/vulkan/vulkan_pipeline_cache_file.h"
 #include "xenia/gpu/vulkan/vulkan_render_target_cache.h"
 #include "xenia/gpu/vulkan/vulkan_shader.h"
 #include "xenia/gpu/xenos.h"
@@ -686,6 +687,9 @@ class VulkanPipelineCache : public GuestSpirvShaderCache::Host {
 
   // VkPipelineCache persistence path.
   std::filesystem::path vk_pipeline_cache_path_;
+  // Verified, size-bounded, atomically replaced file per driver identity (see
+  // vulkan_pipeline_cache_file.h). Set while vk_pipeline_cache_path_ is.
+  std::unique_ptr<pipeline_cache_file::Store> vk_pipeline_cache_store_;
   // Saves vk_pipeline_cache_ to vk_pipeline_cache_path_ (no-op if either is
   // unset). Safe to call from the GPU thread concurrently with pipeline
   // creation (the pipeline cache is internally synchronized by the driver).

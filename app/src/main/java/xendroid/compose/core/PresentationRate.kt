@@ -1,0 +1,39 @@
+package xendroid.compose.core
+
+/** Rate of accepted host present submissions, never a measurement of display scanout. */
+fun presentSubmissionRate(previous: Long, current: Long, elapsedNs: Long): Double? {
+    if (previous < 0 || current < previous || elapsedNs <= 0) return null
+    return (current - previous).toDouble() * 1_000_000_000.0 / elapsedNs
+}
+
+/**
+ * The temporary FPS cap applied while frame generation runs (guest cap x multiplier
+ * must fit the display). Restoring it never undoes a limit the user picked in the
+ * meantime: only the exact automatic value is reverted. 0 means unlimited.
+ */
+class GenerationCap {
+    private var before: Int? = null
+    private var automatic: Int? = null
+    val active: Boolean get() = before != null
+
+    /** The limit to apply now, or null to keep the current one. */
+    fun prepare(current: Int, displayHz: Float, multiplier: Int): Int? {
+        val max = (displayHz / multiplier.coerceAtLeast(2)).toInt().coerceAtLeast(1)
+        val base = before ?: current
+        val capped = if (base == 0) max else base.coerceAtMost(max)
+        if (capped == current) return null
+        if (before == null) before = current
+        automatic = capped
+        return capped
+    }
+
+    /** The limit to put back, or null when the user changed it after the automatic cap. */
+    fun restore(current: Int): Int? {
+        val result = before?.takeIf { automatic == current }
+        forget()
+        return result
+    }
+
+    /** An explicit user choice supersedes the automatic cap. */
+    fun forget() { before = null; automatic = null }
+}

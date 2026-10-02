@@ -1,0 +1,64 @@
+package xendroid.compose.sessions
+
+import java.util.zip.ZipFile
+import kotlinx.serialization.json.Json
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import xendroid.compose.compatibility.CompatStatus
+import xendroid.compose.compatibility.CompatibilityReport
+
+class RunReportTest {
+    @get:Rule val folder = TemporaryFolder()
+
+    private val device = ReportDevice("Xiaomi", "POCO F7", "QTI SM8735", "15", 35, "77011a0c+local.abc-debug")
+    private val run = SessionRun(
+        runId = "0f8fad5b-d9cb-469f-a165-70867728950e", state = RunState.FAILED, launchSource = "library",
+        gamePath = "/storage/emulated/0/Games/Forza Horizon (Pedro's copy).iso", buildVersion = "77011a0c+local.abc-debug",
+        pid = 4242, startedAt = 1_000, titleId = "4D5309C9", runningAt = 2_000, lastSeenAt = 62_000, endedAt = 62_000,
+        endReason = "fatal error: could not open /storage/emulated/0/Android/data/x/cache.bin",
+        performance = RunPerformance(fpsHistogram = List(31) { if (it == 30) 60 else 0 }),
+    )
+    private val events = RunEventLog(events = listOf(
+        RunEvent(0, "boot", "run started"),
+        RunEvent(5_000, "error", "pedro@example.com wrote to /sdcard/notes.txt"),
+    ))
+    private val notes = listOf(CompatibilityReport(CompatStatus.PLAYABLE, "ok, ask me at pedro@example.com", "b", "g", createdAt = 1))
+
+    @Test fun theShareCopyKeepsTheFormatButNoPathsOrAddresses() {
+        val report = RunReports.build(run, events, notes, device, now = 99)
+        assertEquals("[game file].iso", report.run.gamePath)
+        assertEquals("fatal error: could not open [storage-path]", report.run.endReason)
+        assertEquals("[email] wrote to [storage-path]", report.events!!.events[1].detail)
+        assertEquals("ok, ask me at [email]", report.compatibility.single().note)
+        assertEquals("4D5309C9", report.run.titleId)
+        // Unknown formats and content URIs keep no name either.
+        assertEquals("[game file]", RunReports.build(run.copy(gamePath = "/x/game"), null, emptyList(), device, 0).run.gamePath)
+        assertEquals("[game file].zar", RunReports.build(run.copy(
+            gamePath = "content://com.android.externalstorage.documents/document/primary%3AGames%2FForza.ZAR"), null, emptyList(), device, 0)
+            .run.gamePath)
+    }
+
+    @Test fun thePreviewNamesEverythingTheReportCarries() {
+        val lines = RunReports.preview(RunReports.build(run, events, notes, device, now = 99))
+        assertTrue(lines.first().startsWith("Device: Xiaomi POCO F7 · QTI SM8735 · Android 15 (API 35)"))
+        assertTrue(lines.any { it.startsWith("Game: Title ID 4D5309C9 · [game file].iso") })
+        assertTrue(lines.any { it == "Timeline: 2 events" })
+        assertTrue(lines.any { it == "Your compatibility results: 1 (with your notes)" })
+        assertTrue(lines.none { "Pedro" in it || "/storage" in it })
+    }
+
+    @Test fun theZipHoldsTheJsonAndTheTimeline() {
+        val report = RunReports.build(run, events, notes, device, now = 99)
+        val zip = RunReports.write(folder.root.resolve("share/run.zip"), report)
+        ZipFile(zip).use { file ->
+            assertEquals(setOf("run-report.json", "timeline.txt"), file.entries().asSequence().map { it.name }.toSet())
+            val text = file.getInputStream(file.getEntry("run-report.json")).readBytes().toString(Charsets.UTF_8)
+            assertEquals(report, Json.decodeFromString(RunReport.serializer(), text))
+            val timeline = file.getInputStream(file.getEntry("timeline.txt")).readBytes().toString(Charsets.UTF_8)
+            assertTrue(timeline.contains("0:05 error · [email] wrote to [storage-path]"))
+        }
+        assertFalse(folder.root.resolve("share/.run.zip.tmp").exists())
+    }
+}

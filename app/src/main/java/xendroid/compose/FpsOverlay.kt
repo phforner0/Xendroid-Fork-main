@@ -40,6 +40,8 @@ import java.io.File
 import java.util.Locale
 import kotlin.math.roundToInt
 import xendroid.compose.core.EmulatorSession
+import xendroid.compose.core.presentSubmissionRate
+import xendroid.compose.core.HudMetric
 
 private data class GpuCounter(
     val busy: Long,
@@ -147,6 +149,8 @@ private fun readCpuSocTemperature(): Float? {
 fun FpsOverlay(
     session: EmulatorSession,
     visible: Boolean,
+    compact: Boolean = false,
+    metrics: Set<HudMetric> = HudMetric.entries.toSet(),
     modifier: Modifier = Modifier,
     pollHz: Int = 4,
     baseFontSizeSp: Float = 9f
@@ -168,6 +172,7 @@ fun FpsOverlay(
 
     var fps by remember { mutableStateOf(0.0) }
     var frameMs by remember { mutableStateOf(0.0) }
+    var presentSubmissionsPerSecond by remember { mutableStateOf<Double?>(null) }
     var cpu by remember { mutableStateOf(0f) }
     var gpu by remember { mutableStateOf<Int?>(null) }
     var ramUsed by remember { mutableStateOf(0L) }
@@ -175,12 +180,14 @@ fun FpsOverlay(
     var batTemp by remember { mutableStateOf(0f) }
     var socTemp by remember { mutableStateOf<Float?>(null) }
 
-    LaunchedEffect(pollHz) {
+    LaunchedEffect(pollHz, compact, metrics) {
         val periodMs = 1000L / pollHz.coerceIn(1, 10)
         val cpuCount = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
 
         var previousCpuMs = Process.getElapsedCpuTime()
         var previousWallNs = SystemClock.elapsedRealtimeNanos()
+        var previousPresentCount = session.hostPresentSubmissionCount()
+        var previousPresentNs = previousWallNs
         var previousGpu: GpuCounter? = null
         var gpuSource: GpuSource? = null
 
@@ -188,12 +195,29 @@ fun FpsOverlay(
             val currentFps = session.averageFps()
             val currentFrameMs = session.lastFrameTimeMs()
 
+            if (compact) {
+                fps = currentFps
+                frameMs = currentFrameMs
+                delay(periodMs)
+                continue
+            }
+
+            if (HudMetric.HOST_SUBMISSIONS in metrics) {
+                val presentCount = session.hostPresentSubmissionCount()
+                val presentNs = SystemClock.elapsedRealtimeNanos()
+                presentSubmissionsPerSecond = presentSubmissionRate(
+                    previousPresentCount, presentCount, presentNs - previousPresentNs,
+                )
+                previousPresentCount = presentCount
+                previousPresentNs = presentNs
+            }
+
             val stats = withContext(Dispatchers.IO) {
-                if (gpuSource == null) {
+                if (HudMetric.GPU in metrics && gpuSource == null) {
                     gpuSource = findGpuSource()
                 }
 
-                val newCpuMs = Process.getElapsedCpuTime()
+                val newCpuMs = if (HudMetric.CPU in metrics) Process.getElapsedCpuTime() else previousCpuMs
                 val newWallNs = SystemClock.elapsedRealtimeNanos()
                 val cpuDeltaMs = newCpuMs - previousCpuMs
                 val wallDeltaMs = (newWallNs - previousWallNs) / 1_000_000.0
@@ -212,9 +236,9 @@ fun FpsOverlay(
                 var gpuUsage: Int? = null
                 val source = gpuSource
 
-                if (source?.directPercentFile != null) {
+                if (HudMetric.GPU in metrics && source?.directPercentFile != null) {
                     gpuUsage = readDirectGpuPercent(source.directPercentFile)
-                } else if (source?.counterFile != null) {
+                } else if (HudMetric.GPU in metrics && source?.counterFile != null) {
                     val currentGpu = readGpuCounter(source.counterFile)
                     if (previousGpu != null && currentGpu != null) {
                         val busyDelta = currentGpu.busy - previousGpu!!.busy
@@ -228,15 +252,16 @@ fun FpsOverlay(
                     previousGpu = currentGpu
                 }
 
-                val bTemp = readBatteryTemperature(context)
-                val sTemp = readCpuSocTemperature()
-                Triple(cpuUsage, gpuUsage, readRamUsage(context)) to (bTemp to sTemp)
+                val bTemp = if (HudMetric.BATTERY_TEMPERATURE in metrics) readBatteryTemperature(context) else 0f
+                val sTemp = if (HudMetric.SOC_TEMPERATURE in metrics) readCpuSocTemperature() else null
+                val ram = if (HudMetric.RAM in metrics) readRamUsage(context) else (0L to 0L)
+                Triple(cpuUsage, gpuUsage, ram) to (bTemp to sTemp)
             }
 
             fps = currentFps
             frameMs = currentFrameMs
             cpu = stats.first.first
-            if (stats.first.second != null) gpu = stats.first.second
+            gpu = stats.first.second // inaccessible counters must show N/A, not a stale percent
             ramUsed = stats.first.third.first
             ramTotal = stats.first.third.second
             batTemp = stats.second.first
@@ -257,11 +282,16 @@ fun FpsOverlay(
         Text(
             text = buildString {
                 append(String.format(Locale.US, "FPS %.0f · %.1f ms\n", fps, frameMs))
-                append(String.format(Locale.US, "CPU %.0f%%\n", cpu))
-                append(gpu?.let { "GPU $it%\n" } ?: "GPU N/A\n")
-                append(String.format(Locale.US, "RAM %.1f/%.1f GB\n", usedGb, totalGb))
-                append(String.format(Locale.US, "BAT %.1f°C\n", batTemp))
-                append(socTemp?.let { String.format(Locale.US, "SoC/CPU %.0f°C", it) } ?: "SoC/CPU N/A")
+                if (!compact) {
+                    if (HudMetric.HOST_SUBMISSIONS in metrics) presentSubmissionsPerSecond?.let {
+                        append(String.format(Locale.US, "Vulkan submitted %.0f/s\n", it))
+                    }
+                    if (HudMetric.CPU in metrics) append(String.format(Locale.US, "CPU %.0f%%\n", cpu))
+                    if (HudMetric.GPU in metrics) append(gpu?.let { "GPU $it%\n" } ?: "GPU N/A\n")
+                    if (HudMetric.RAM in metrics) append(String.format(Locale.US, "RAM %.1f/%.1f GB\n", usedGb, totalGb))
+                    if (HudMetric.BATTERY_TEMPERATURE in metrics) append(String.format(Locale.US, "BAT %.1f°C\n", batTemp))
+                    if (HudMetric.SOC_TEMPERATURE in metrics) append(socTemp?.let { String.format(Locale.US, "SoC/CPU %.0f°C", it) } ?: "SoC/CPU N/A")
+                }
             },
             color = Color.White.copy(alpha = 0.85f),
             fontSize = (baseFontSizeSp * scale).sp,

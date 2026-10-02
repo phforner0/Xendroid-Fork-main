@@ -17,6 +17,10 @@ class SettingsViewModel(private val repo: SettingsRepository) : ViewModel(), Set
 
     private val _values = MutableStateFlow<Map<String, SettingValue>>(emptyMap())
     val values: StateFlow<Map<String, SettingValue>> = _values.asStateFlow()
+    private val _ready = MutableStateFlow(false)
+    val ready = _ready.asStateFlow()
+    private val _error = MutableStateFlow<String?>(null)
+    val error = _error.asStateFlow()
 
     init { load() }
 
@@ -27,9 +31,13 @@ class SettingsViewModel(private val repo: SettingsRepository) : ViewModel(), Set
      *  corrupt the native handle. */
     private fun load() {
         viewModelScope.launch(Dispatchers.IO) {
-            EmulatorRuntime.ensureLoaded()
-            repo.ensureOpen()
-            reloadAll()
+            runCatching {
+                EmulatorRuntime.ensureLoaded()
+                repo.ensureOpen()
+                reloadAll()
+                _ready.value = true
+                _error.value = null
+            }.onFailure { _ready.value = false; fail(it) }
         }
     }
 
@@ -41,9 +49,12 @@ class SettingsViewModel(private val repo: SettingsRepository) : ViewModel(), Set
         _values.value = _values.value.toMutableMap().apply { put(s.key, repo.valueOf(s)) }
     }
 
-    override fun onBoolChanged(s: Setting.Bool, v: Boolean) { repo.setBool(s, v); refreshKey(s) }
-    override fun onIntChanged(s: Setting.IntRange, v: Int) { repo.setInt(s, v); refreshKey(s) }
-    override fun onListChanged(s: Setting.ListChoice, value: String) { repo.setListValue(s, value); refreshKey(s) }
+    private fun change(s: Setting, edit: () -> Unit) {
+        runCatching { edit(); refreshKey(s) }.onFailure { fail(it) }
+    }
+    override fun onBoolChanged(s: Setting.Bool, v: Boolean) = change(s) { repo.setBool(s, v) }
+    override fun onIntChanged(s: Setting.IntRange, v: Int) = change(s) { repo.setInt(s, v) }
+    override fun onListChanged(s: Setting.ListChoice, value: String) = change(s) { repo.setListValue(s, value) }
     /** Custom driver picker writes the installed .so path ("" clears -> system driver).
      *  Persisted durably OFF the screen handle (the SAF picker pauses the screen, nulling
      *  the handle), then the snapshot is refreshed. Runs off the main thread. */
@@ -53,7 +64,7 @@ class SettingsViewModel(private val repo: SettingsRepository) : ViewModel(), Set
                 repo.persistDriverPath(value)
                 repo.ensureOpen()
                 reloadAll()
-            }.onFailure { Log.w("SettingsViewModel", "driver path persist failed", it) }
+            }.onFailure { fail(it) }
         }
     }
 
@@ -66,10 +77,19 @@ class SettingsViewModel(private val repo: SettingsRepository) : ViewModel(), Set
     override fun currentDriverPath(s: Setting.Action) = raw(s) ?: ""
 
     /** Synchronous durable write; I/O-free when nothing was edited. */
-    fun flush() = repo.flushAndClose()
+    fun flush() {
+        runCatching { repo.flushAndClose() }.onFailure { fail(it) }
+    }
+
+    fun clearError() { _error.value = null }
+
+    private fun fail(cause: Throwable) {
+        Log.w("SettingsViewModel", "Config edit failed; keeping previous file", cause)
+        _error.value = "Could not read or save the configuration. The existing file was kept. Fix invalid TOML or storage access, then retry."
+    }
 
     /** Re-open the handle after a pause-flush and refresh snapshots. Call on resume. */
     fun onResume() = load()
 
-    override fun onCleared() { repo.close() }
+    override fun onCleared() { runCatching { repo.close() }.onFailure { fail(it) } }
 }

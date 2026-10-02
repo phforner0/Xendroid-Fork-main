@@ -599,6 +599,12 @@ class Presenter {
   // Must be called by the implementation's initialization, before the presenter
   // is used for anything.
   bool InitializeCommonSurfaceIndependent();
+  // Optional host-side FG presenter. The default path remains synchronous and
+  // unchanged; scheduled painting still uses the surface ownership mutex.
+  virtual bool ScheduleGuestOutput() { return false; }
+  virtual void SetScheduledPaintPhase(int phase) {}
+  PaintResult PaintGuestFromScheduledThread(int phase);
+  bool CanScheduleGuestOutput();
 
   // ConnectOrReconnect and Disconnect are callable only by the UI thread and
   // only when it has access to painting (PaintMode is not

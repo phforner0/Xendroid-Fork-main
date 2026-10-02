@@ -11,6 +11,7 @@
 #define XENIA_UI_VULKAN_VULKAN_INSTANCE_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "xenia/base/platform.h"
@@ -129,6 +130,10 @@ class VulkanInstance {
 
   VkInstance instance() const { return instance_; }
 
+  // The custom driver library actually loaded through adrenotools
+  // (vulkan_lib_path), or empty when the system loader is in use.
+  const std::string& custom_driver_path() const { return custom_driver_path_; }
+
   void EnumeratePhysicalDevices(
       std::vector<VkPhysicalDevice>& physical_devices_out) const;
 
@@ -142,6 +147,7 @@ class VulkanInstance {
 #elif XE_PLATFORM_WIN32
   HMODULE loader_ = nullptr;
 #endif
+  std::string custom_driver_path_;
 
   Functions functions_;
 

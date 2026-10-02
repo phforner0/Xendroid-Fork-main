@@ -20,6 +20,7 @@ import xendroid.compose.ui.compress.GameCompressViewModel
 import xendroid.compose.ui.content.ContentManagerViewModel
 import xendroid.compose.ui.content.InstallContentViewModel
 import xendroid.compose.ui.profile.ProfileManagerViewModel
+import xendroid.compose.ui.saves.SaveManagerViewModel
 import xendroid.compose.patches.AssetPatchAssets
 import xendroid.compose.patches.GamePatchesViewModel
 import xendroid.compose.patches.PatchPaths
@@ -134,6 +135,15 @@ class AppContainer(context: Context) {
                     "Unknown ViewModel ${modelClass.name}"
                 }
                 return ProfileManagerViewModel(appContext, configStore) as T
+            }
+        }
+
+    fun saveManagerViewModelFactory(titleId: String): ViewModelProvider.Factory =
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                require(modelClass == SaveManagerViewModel::class.java)
+                return SaveManagerViewModel(appContext, titleId) as T
             }
         }
 

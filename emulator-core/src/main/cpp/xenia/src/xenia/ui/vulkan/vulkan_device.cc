@@ -202,6 +202,7 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
   bool ext_1_2_KHR_sampler_mirror_clamp_to_edge = false;
   bool ext_1_2_EXT_host_query_reset = false;
   bool ext_1_2_KHR_shader_float16_int8 = false;
+  bool ext_EXT_robustness2 = false;
   bool ext_1_1_KHR_maintenance1 = false;
   bool ext_1_2_KHR_shader_float_controls = false;
   bool ext_EXT_fragment_shader_interlock = false;
@@ -230,6 +231,7 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       XE_UI_VULKAN_LOCAL_PROMOTED_EXTENSION(EXT_host_query_reset, 1, 2)
       // #83. Float16 and Int16 capabilities are declared by system shaders.
       XE_UI_VULKAN_LOCAL_PROMOTED_EXTENSION(KHR_shader_float16_int8, 1, 2)
+      XE_UI_VULKAN_LOCAL_EXTENSION(EXT_robustness2)
       // #252.
       XE_UI_VULKAN_LOCAL_EXTENSION(EXT_fragment_shader_interlock)
       // #55.
@@ -356,6 +358,8 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
   VulkanFeatures<VkPhysicalDeviceShaderFloat16Int8Features,
                  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES>
       features_KHR_shader_float16_int8;
+  VulkanFeatures<VkPhysicalDeviceRobustness2FeaturesEXT,
+                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT> features_EXT_robustness2;
   VulkanFeatures<VkPhysicalDeviceVulkan13Features,
                  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES>
       features_1_3;
@@ -432,6 +436,7 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       features_KHR_pipeline_executable_properties;
 
   if (get_physical_device_properties2_supported) {
+    if (ext_EXT_robustness2) features_EXT_robustness2.Link(supported_features_2, device_create_info);
     if (properties.apiVersion >= VK_MAKE_API_VERSION(0, 1, 1, 0)) {
       features_1_1.Link(supported_features_2, device_create_info);
     }
@@ -735,6 +740,8 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
   device->properties_.vendorID = properties.vendorID;
   device->properties_.deviceID = properties.deviceID;
   std::strcpy(device->properties_.deviceName, properties.deviceName);
+  std::memcpy(device->properties_.pipelineCacheUUID, properties.pipelineCacheUUID,
+              VK_UUID_SIZE);
 
   XELOGI(
       "Vulkan device '{}': API {}.{}.{} ({}.{} used), vendor 0x{:04X}, device "
@@ -865,6 +872,9 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
     XE_UI_VULKAN_FEATURE(shaderClipDistance)
     XE_UI_VULKAN_FEATURE(shaderCullDistance)
     XE_UI_VULKAN_FEATURE(shaderInt16)
+    XE_UI_VULKAN_FEATURE(shaderStorageImageExtendedFormats)
+    XE_UI_VULKAN_FEATURE(shaderStorageImageReadWithoutFormat)
+    XE_UI_VULKAN_FEATURE(shaderStorageImageWriteWithoutFormat)
     XE_UI_VULKAN_FEATURE(sparseBinding)
     XE_UI_VULKAN_FEATURE(sparseResidencyBuffer)
   }
@@ -876,6 +886,8 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
       XE_UI_VULKAN_FEATURE_2(features_1_2, scalarBlockLayout);
       XE_UI_VULKAN_FEATURE_2(features_1_2, hostQueryReset);
       XE_UI_VULKAN_FEATURE_2(features_1_2, shaderFloat16);
+      XE_UI_VULKAN_FEATURE_2(features_1_2, vulkanMemoryModel);
+      XE_UI_VULKAN_FEATURE_2(features_1_2, vulkanMemoryModelDeviceScope);
     }
   } else {
     if (ext_1_2_KHR_sampler_mirror_clamp_to_edge) {
@@ -890,6 +902,9 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
   }
   device->extensions_.ext_1_2_EXT_host_query_reset =
       ext_1_2_EXT_host_query_reset;
+  if (ext_EXT_robustness2 && with_gpu_emulation) {
+    XE_UI_VULKAN_FEATURE_2(features_EXT_robustness2, nullDescriptor);
+  }
 
   // shaderDrawParameters (Vulkan 1.1). Needed by shaders reading SV_VertexID
   // with Direct3D semantics, which are compiled to VertexIndex minus BaseVertex

@@ -1,0 +1,89 @@
+package xendroid.compose.driver
+
+import org.junit.Assert.*
+import org.junit.Test
+
+class DriverIdentityTest {
+    private val line = "vendor=0x5143;device=0x44050A00;driverVersion=0x80C00000;api=1.4.318;driverId=18;" +
+        "driverName=turnip Mesa driver;driverInfo=Mesa 25.3.0-devel (git-1234abcd);gpu=Turnip Adreno (TM) 825;" +
+        "uuid=0123456789ABCDEF0123456789abcdef"
+
+    @Test fun parsesThePresenterLine() {
+        val identity = DriverIdentity.parse(line)!!
+        assertEquals("0x5143", identity.vendorId)
+        assertEquals("0x44050A00", identity.deviceId)
+        assertEquals(18, identity.driverId)
+        assertEquals("0123456789abcdef0123456789abcdef", identity.uuid)
+        assertEquals("turnip Mesa driver Mesa 25.3.0-devel (git-1234abcd) · Turnip Adreno (TM) 825", identity.label)
+        assertEquals(12, identity.key.length)
+    }
+
+    @Test fun keySeparatesDriverBuildsButNotTheirNames() {
+        val identity = DriverIdentity.parse(line)!!
+        assertEquals(identity.key, identity.copy(driverName = "renamed", gpu = "other label").key)
+        assertNotEquals(identity.key, identity.copy(uuid = "f".repeat(32)).key)
+        assertNotEquals(identity.key, identity.copy(driverVersion = "0x80C00001").key)
+    }
+
+    @Test fun customLibraryIsTiedToItsInstalledPackage() {
+        val sha = "ab".repeat(32)
+        val custom = DriverIdentity.parse("$line;loader=custom;library=/data/user/0/xendroid.compose.fork/files/" +
+            "custom_drivers/$sha/lib/libvulkan_freedreno.so")!!
+        assertEquals("custom", custom.loader)
+        assertEquals("libvulkan_freedreno.so", custom.library)   // the storage path is not kept
+        assertEquals(sha, custom.packageSha256)
+        assertTrue(custom.label.endsWith(" · package abababab"))
+        // A reinstall beside a damaged copy is the same package.
+        val reinstall = DriverIdentity.parse("$line;loader=custom;library=/x/$sha-0f8fad5b-d9cb-469f-a165-70867728950e/libvulkan.so")!!
+        assertEquals(sha, reinstall.packageSha256)
+        // Same driver build from two different packages: results are kept apart.
+        assertNotEquals(custom.key, custom.copy(packageSha256 = "cd".repeat(32)).key)
+        // The system driver keeps the key it had before packages were recorded.
+        val system = DriverIdentity.parse("$line;loader=system;library=")!!
+        assertEquals(DriverIdentity.parse(line)!!.key, system.key)
+        assertNull(system.packageSha256)
+        assertEquals("", system.library)
+        // A library set by hand outside a package: named, but no package hash.
+        val manual = DriverIdentity.parse("$line;loader=custom;library=/sdcard/turnip/libvulkan_freedreno.so")!!
+        assertNull(manual.packageSha256)
+        assertTrue(manual.label.endsWith(" · libvulkan_freedreno.so"))
+        // A library path is ignored unless the presenter says a custom loader is in use.
+        assertNull(DriverIdentity.parse("$line;loader=system;library=/x/$sha/libvulkan.so")!!.packageSha256)
+    }
+
+    @Test fun requestedDriverIsComparedWithWhatTheLastRunLoaded() {
+        val sha = "ab".repeat(32)
+        val custom = DriverIdentity.parse("$line;loader=custom;library=/data/x/$sha/libvulkan_freedreno.so")!!
+        val system = DriverIdentity.parse("$line;loader=system;library=")!!
+        val selected = "/data/x/$sha/libvulkan_freedreno.so"
+        assertNull(DriverIdentity.describeEffective(selected, null, null, null))
+        // The selection loaded.
+        assertTrue(DriverIdentity.describeEffective(selected, custom, 2_000, 1_000)!!.startsWith("Last game ran on turnip"))
+        assertFalse(DriverIdentity.describeEffective(selected, custom, 2_000, 1_000)!!.contains("did not load"))
+        // A custom driver was selected but the system one loaded.
+        assertTrue(DriverIdentity.describeEffective(selected, system, 2_000, 1_000)!!.endsWith("so the system driver was used"))
+        // Another library than the selected one.
+        assertTrue(DriverIdentity.describeEffective("/data/y/libvulkan_v37.so", custom, 2_000, 1_000)!!
+            .endsWith("not the library selected now (libvulkan_v37.so)"))
+        // The last run predates the selection: no verdict yet.
+        assertTrue(DriverIdentity.describeEffective(selected, system, 500, 1_000)!!.startsWith("No game has run with this selection yet"))
+        // System driver selected now, custom then.
+        assertTrue(DriverIdentity.describeEffective("", custom, 2_000, null)!!.endsWith("(a custom driver was selected then)"))
+        // Records from before the loader was known only say what ran.
+        assertEquals("Last game ran on ${DriverIdentity.parse(line)!!.label}",
+            DriverIdentity.describeEffective(selected, DriverIdentity.parse(line), 2_000, null))
+    }
+
+    @Test fun missingOrMalformedFieldsGiveNoIdentity() {
+        assertNull(DriverIdentity.parse(""))
+        assertNull(DriverIdentity.parse("vendor=0x5143;device=0x1"))                       // no uuid
+        assertNull(DriverIdentity.parse(line.replace("uuid=0123456789ABCDEF", "uuid=xyz")))  // bad uuid
+        assertNull(DriverIdentity.parse(line.replace("vendor=0x5143;", "")))
+        assertNull(DriverIdentity.parse("x".repeat(5000)))
+        // Unknown extra fields are ignored; absent optional ones default.
+        val minimal = DriverIdentity.parse("vendor=0x1;device=0x2;uuid=${"0".repeat(32)};future=1")!!
+        assertEquals("unknown driver", minimal.label)
+        assertNull(minimal.driverId)
+        assertEquals("driver 0x7", minimal.copy(driverVersion = "0x7").label)
+    }
+}
