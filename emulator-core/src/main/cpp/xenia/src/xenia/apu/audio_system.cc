@@ -20,6 +20,10 @@
 #include <dirent.h>
 #include <dlfcn.h>
 #include <sys/resource.h>
+#include <unistd.h>
+#include <algorithm>
+#include <map>
+#include <string>
 #include <vector>
 #endif
 
@@ -165,7 +169,11 @@ class AudioPerformanceHint {
     if (!manager) {
       return;
     }
-    std::vector<int32_t> tids;
+    // One thread per name, the oldest (lowest tid): a short-lived thread can
+    // carry a worker's name, and a session naming a thread that has exited by
+    // the time it is created fails as a whole (2 of 13 Forza launches: 10
+    // threads instead of 9).
+    std::map<std::string, int32_t> tid_by_name;
     if (DIR* dir = opendir("/proc/self/task")) {
       while (dirent* entry = readdir(dir)) {
         int32_t tid = atoi(entry->d_name);
@@ -181,16 +189,38 @@ class AudioPerformanceHint {
         }
         if (!strncmp(comm, "Guest CPU", 9) || !strncmp(comm, "Audio Worker", 12) ||
             !strncmp(comm, "XMA Decoder", 11)) {
-          tids.push_back(tid);
+          auto it = tid_by_name.emplace(comm, tid).first;
+          it->second = std::min(it->second, tid);
         }
       }
       closedir(dir);
+    }
+    std::vector<int32_t> tids;
+    for (const auto& name_tid : tid_by_name) {
+      tids.push_back(name_tid.second);
     }
     if (tids.empty()) {
       return;
     }
     session_ = create_session(manager, tids.data(), tids.size(),
                               AudioSystem::kAudioPumpInterval * int64_t(1000));
+    if (!session_) {
+      // Once more with the threads still alive.
+      std::vector<int32_t> alive;
+      for (int32_t tid : tids) {
+        char task_path[48];
+        snprintf(task_path, sizeof(task_path), "/proc/self/task/%d", tid);
+        if (access(task_path, F_OK) == 0) {
+          alive.push_back(tid);
+        }
+      }
+      if (!alive.empty() && alive.size() != tids.size()) {
+        tids.swap(alive);
+        session_ =
+            create_session(manager, tids.data(), tids.size(),
+                           AudioSystem::kAudioPumpInterval * int64_t(1000));
+      }
+    }
     if (!session_) {
       XELOGW("AudioPerformanceHint: createSession failed ({} threads)",
              tids.size());

@@ -224,8 +224,9 @@ DEFINE_int32(
     "the guest memory stores of resolves storing into a texture; 4 - all "
     "render target ownership transfers; 8 - the transfers between a 4x MSAA "
     "and a 1x surface at the same EDRAM base; 16 - the averaging of MSAA "
-    "samples in direct host resolves (only the first sample is read). Read "
-    "per resolve / draw (debug.xendroid.gpu_probe on Android).",
+    "samples in direct host resolves (only the first sample is read); 32 - "
+    "the stencil fetch of direct host depth resolves (stored as 0). Read per "
+    "resolve / draw (debug.xendroid.gpu_probe on Android).",
     "Vulkan");
 
 DEFINE_bool(
@@ -3236,7 +3237,11 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
       if (!depth_float24_convert_in_pixel_shader_ && depth_float24_round_) {
         source_flags |= kDirectHostResolveDepthFlagRoundDepth;
       }
-      source_flags |= kDirectHostResolveDepthFlagHasStencil;
+      // vulkan_debug_gpu_probe: what fetching the stencil costs.
+      if (!(cvars::vulkan_debug_gpu_probe &
+            kGpuProbeSkipDepthResolveStencil)) {
+        source_flags |= kDirectHostResolveDepthFlagHasStencil;
+      }
       if (format_variants) {
         format_variant = size_t(resolve_depth_format ==
                                 xenos::DepthRenderTargetFormat::kD24FS8);

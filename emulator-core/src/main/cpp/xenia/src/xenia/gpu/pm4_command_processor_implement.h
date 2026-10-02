@@ -853,6 +853,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_XE_SWAP(uint32_t packet,
   COMMAND_PROCESSOR::IssueSwap(frontbuffer_ptr, frontbuffer_width,
                                frontbuffer_height);
   COMMAND_PROCESSOR::FrameStatsEndSwap(fs_swap_begin);
+  COMMAND_PROCESSOR::FrameHintEndFrame();
   COMMAND_PROCESSOR::BinTraceEndFrame();
 
   // Advance the present-frame counter shown in the log prefix.
@@ -977,7 +978,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
 
     if (!matched) {
       if (!unmet_begin_ns) {
-        unmet_begin_ns = COMMAND_PROCESSOR::FrameStatsBegin();
+        unmet_begin_ns = COMMAND_PROCESSOR::FrameWaitBegin();
       }
       if (log_unmet && first_check) {
         first_value = value;

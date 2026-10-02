@@ -844,6 +844,7 @@ bool VulkanSharedMemory::UploadRanges(
       }
       MakeRangeValid(upload_range_start << page_size_log2(),
                      uint32_t(upload_buffer_size), false);
+      command_processor_.NoteSharedMemoryUpload(upload_buffer_size);
 
       if (upload_buffer_size < (1ULL << 32) && upload_buffer_size > 8192) {
         memory::vastcpy(
