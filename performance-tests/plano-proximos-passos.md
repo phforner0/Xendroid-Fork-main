@@ -1,4 +1,4 @@
-# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9, a v5, a reanálise v6, o fechamento dela no AB11, a reanálise v7, o fechamento dela no AB12 e a reanálise v8)
+# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9, a v5, a reanálise v6, o fechamento dela no AB11, a reanálise v7, o fechamento dela no AB12, a reanálise v8 e o fechamento dela no AB13)
 
 **Data:** 2026-09-30. **Base:** reanálise de `ab2` a `ab8-results.md`, dos logs
 com timestamps do build 36 (`b36-depth1x-ts`), do perfil de CPU do build 42
@@ -508,6 +508,39 @@ Ordem sugerida:
 - o 6 depende da interface do usuário;
 - o 7 é o maior ganho de CPU que resta e também o maior risco.
 
+## Situação depois do AB13 (`ab13-results.md`)
+
+Os 9 caminhos da v8 foram medidos (S56–S67 e a validação final S66,
+builds 78–88, tudo pela rede). CPU medida por instruções e ciclos por
+frame (contadores de hardware); GPU no teto de 30 fps.
+
+| # (v8) | Resultado | Situação |
+|---|---|---|
+| 1 | CPU por contadores de hardware no `restart_ab`/`forza_auto_ab` (`-Stat`), `forza_cpustat.py`, `jit_dump_compare.py` | feito |
+| 2 | thread de comandos −6% de instruções (52,7 → 49,4 M/frame); caches de `LoadShader` e de `QueryRegionInfo` sem ganho, retirados | feito |
+| 3 | ADPF: sessão do áudio consertada; a da thread de comandos não muda clock nem tempo | áudio feito; comandos desligado |
+| 4 | resolves (a)–(c): tetos de 0,05 / 0,2 / 0,25 ms | não implementados |
+| 5 | picos: cargas de texturas escritas pela GPU, resolves 1280x720 e uploads a cada ~10 s; não derrubam frames a 30 fps | documentado |
+| 6 | opções: MSAA 2x −3,1 ms, AF 16x +0,5 ms, A2C → teste −0,2 ms, VRS 2x1 inconclusivo, modo 40 fps | documentado (interface do usuário) |
+| 7 | JIT exato e barato: Guest CPU 5 104,8 → 56–58 M instruções/frame (−46%), ciclos −34%; `ppc_single_float_keep_nan = false` descartado (corrompe dados) | padrão + quirk do Forza (NaN do host na aritmética, folhas de 32) |
+| 8 | FH2, Halo: Reach, RDR com o JIT novo e os quirks exatos de GPU: imagens corretas, nenhum erro novo | quirks seguem do Forza |
+| 9 | sem o teto de vblank: ~49 fps em tempo real, GPU e thread de comandos no limite, 94 °C; modo 40 fps (`guest_display_refresh_cap = false` + `framerate_limit = 40`) a 39,7 fps com GPU a 71%, mas SoC 94–96 °C | documentado |
+| — | validação final (S66, b77 × b87, ABBA): Guest CPU 5 −38% de instruções e −21% de ciclos, comandos −5%, CPU do processo −7%, GPU igual (17,7/17,6 ms), mesma imagem | feito |
+
+### Próximos caminhos (depois da v8)
+
+Com a GPU a 17,6 ms no teto de 30 fps e a CPU do jogo bem mais leve, o que
+resta, em ordem de valor:
+
+| # | Caminho | Evidência | Ganho estimado |
+|---|---|---|---|
+| 1 | **Modo 40 fps com controle térmico**: a opção na interface (com aviso) e, se o usuário quiser, um teste longo para ver onde o clock cai | S66: 39,7 fps, GPU 71%, SoC 94–96 °C | +33% de fluidez enquanto o aparelho aguenta |
+| 2 | **Texturas escritas pela GPU servidas pelo resolve direto** (as cargas de 1 M texels dos picos de ~10 s: formato de leitura ≠ do resolvido) | AB13 seção 5 | tira os picos do orçamento de 25 ms do modo 40 fps |
+| 3 | **Microcódigo com vigia de escrita** (`LoadShader` sem ler o microcódigo a cada `IM_LOAD`) | AB13 seção 2: hash e comparação custam o mesmo | ≤ 4% da thread de comandos |
+| 4 | **JIT**: o resto do custo exato (~14% da Guest CPU 5 contra o modo inexato), prólogo da sincronização de pilha (~16 instruções por chamada, enxugável para ~11), endereço de retorno materializado duas vezes por chamada | AB13 seção 7 | 3–8% das threads do jogo |
+| 5 | **Quirks exatos de GPU como padrão** depois de jogo de verdade em 2–3 títulos (o S64 só cobriu menus) | AB13 seção 8 | todos os jogos |
+| 6 | Thread de comandos: o que o `memmove` copia (5,8%), `WriteRegisterRangeFromRing` (6,9%) | perfil do b82 | ≤ 10% da thread |
+
 ## Becos sem saída (não repetir sem fato novo)
 
 LRZ (AB3); extents reais no tiling predicado; thread de replay; estacionar todo
@@ -539,4 +572,10 @@ perderia precisão longe); UBWC perdido (nenhuma imagem do Forza, S54); LRZ
 (as mesmas causas do AB3); memória (sem recuperação de páginas durante o
 jogo); cpuset (o processo `:emu` está em `top-app`); contadores da GPU (sem
 `VK_KHR_performance_query`); perfil do sistema inteiro (`simpleperf record -a`
-recusado); a CPU por draw "maior" na v7 (é núcleo e frequência).
+recusado); a CPU por draw "maior" na v7 (é núcleo e frequência). Do AB13:
+`ppc_single_float_keep_nan = false` (corrompe dados de 32 bits copiados por
+FPR que pareçam NaN sinalizador); sincronização de pilha desligada como
+quirk (risco de `longjmp`); escrever o FPCR menos vezes no JIT (~0,1 ns por
+escrita nos A720); cache de `LoadShader` por comparação (custa o mesmo que o
+XXH3); cache de `QueryRegionInfo` (0 acertos); ADPF na thread de comandos
+(não muda o clock); resolves 4a–4c (tetos de 0,05–0,25 ms).
