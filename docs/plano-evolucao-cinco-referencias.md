@@ -559,6 +559,13 @@ medida, probes de GPU/custo/FPS guest e holdoff/histerese. Recua/desliga em déf
 fila crescente ou thermal significativo; devolve cap temporário sem desfazer
 alteração manual do usuário. Inspiração [D5], [E3/E4], implementação Xenia própria.
 
+**Estado F04 (2026-10-02, fatia 8d, Impl. + Local, consultivo):** `FrameGenerationGovernor`
+julga por segundo orçamento de GPU (passada > 80% do intervalo entre saídas), cadência ×
+multiplicador > Hz, slots atrasados (> 1 em 5) e térmico SEVERE, com histerese de 3 s; mostra
+o veredito no menu e o grava na linha do tempo, **sem agir**. Falta: calibrar os limiares no
+aparelho (roteiro 15) e só então deixá-lo recuar/desligar, além de target-rate e credit
+fracionário do LSFG.
+
 **F05 — refresh/surface dinâmicos:** observar mudança real de modo externo/telefone,
 desanexar/reconectar sem reboot, renegociar FIFO/flags, revalidar cache/engine.
 “Requested Hz” e “effective Hz” distintos; não copiar power pin de outro app.

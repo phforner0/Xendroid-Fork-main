@@ -203,3 +203,18 @@ com comandos e resultados exatos.
       controller joined as P2" e "… left: …", nunca o IP, a porta ou o código.
    i. Hotspot: repetir (b) com o host como hotspot e o cliente conectado a ele.
    Registrar aparelhos, Android, rede (Wi-Fi/hotspot), jogo e as latências mostradas.
+15. Lote 8 — FG observável (APK debug; FG continua off por padrão): num jogo com folga de
+   GPU (Forza é o controle negativo), Graphics → Win-FG 2× On por ~2 min, depois sair.
+   a. Menu, página Graphics: "Win-FG: active · requested 2× · X ms GPU" com X variando; se o
+      driver não der timestamps, "GPU timing unavailable" (nunca um número parado). Logo
+      abaixo, "Budget (advisory, never acts): fits · generation X ms of Y ms between
+      outputs" (ou o motivo: generation over budget / synthetic outputs late / thermal /
+      more outputs than the display shows). Anotar X, Y, o Hz e o FPS do jogo.
+   b. Ficha do jogo → último run: "Frame generation (experimental) · N synthetic frames over
+      S s (of M slots: …) · GPU per generation pass: median …, 95th …, 99th … (T timed…)";
+      conferir que a mediana bate com o X visto no menu e que M ≈ quadros-fonte × (2−1).
+      Na linha do tempo, "fg budget · …" quando o veredito mudou.
+   c. LSFG (com a DLL do usuário importada), 3×: mesmos campos; M ≈ 2 por quadro-fonte e
+      "… painted without a generated frame" só no aquecimento.
+   d. Com o veredito "over budget" ou "late": registrar se a imagem engasga (os limiares do
+      governador são hipótese; ele não age sozinho). Device, driver, jogo, Hz e temperatura.

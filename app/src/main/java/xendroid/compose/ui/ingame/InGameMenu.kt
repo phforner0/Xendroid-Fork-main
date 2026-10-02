@@ -90,6 +90,8 @@ fun InGameMenu(
     sessionInfo: String,
     /** While phone controllers are on: address, code and players (Controls page). */
     phoneControllers: String?,
+    /** While frame generation runs: the advisory budget verdict (Graphics page). */
+    frameGenerationBudget: String? = null,
     logSessions: List<SessionLogs.Session>,
     onLogChoice: (Int) -> Unit,
     onPage: (InGamePage) -> Unit,
@@ -170,6 +172,7 @@ fun InGameMenu(
                     } else {
                         if (state.page == InGamePage.GRAPHICS) {
                             Text(presentation.label, style = MaterialTheme.typography.bodySmall)
+                            frameGenerationBudget?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                             Text("Experimental host interpolation; hardware cadence/latency remain unvalidated.", style = MaterialTheme.typography.bodySmall)
                             Text("Frame limit · this session", style = MaterialTheme.typography.titleSmall)
                             Text("Live limit: ${fpsText(fpsLimit)}", style = MaterialTheme.typography.bodySmall)

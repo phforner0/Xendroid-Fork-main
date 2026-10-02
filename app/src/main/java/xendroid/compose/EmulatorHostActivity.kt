@@ -310,6 +310,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val editorOpen = mutableStateOf(false)
     private val menuLogSessions = mutableStateOf<List<SessionLogs.Session>>(emptyList())
     private val presentationState = mutableStateOf(PresentationState())
+    private val fgGovernor = xendroid.compose.core.FrameGenerationGovernor()
+    private val fgBudgetLabel = mutableStateOf<String?>(null)
     private val fgPreset = mutableIntStateOf(2)
     private val lsfgMultiplier = mutableIntStateOf(2)
     private val generationCap = xendroid.compose.core.GenerationCap()
@@ -1035,6 +1037,17 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     )
                                     runPerformance.frameTimes(frameTimes)
                                     runPerformance.frameGeneration(session.frameGenerationGpuHistogram(), fgNow.lateSkips, fgNow.dropped, fgNow.syntheticSlots)
+                                    // F04, advisory only: a verdict change goes to the timeline.
+                                    fgGovernor.sample(xendroid.compose.core.FrameGenerationGovernor.Second(
+                                        active = fgNow.requested && fgNow.state == 2, displayHz = fgNow.hz,
+                                        multiplier = if (fgNow.engine == 1) fgNow.multiplier else 2,
+                                        guestFps = session.averageFps(), gpuMs = fgNow.gpuMs,
+                                        slots = fgNow.syntheticSlots, lateSkips = fgNow.lateSkips,
+                                        thermalStatus = lastThermalStatus,
+                                    ))?.let { recordEvent("fg budget", it.text) }
+                                    fgBudgetLabel.value = fgGovernor.current.takeIf {
+                                        it.verdict != xendroid.compose.core.FrameGenerationGovernor.Verdict.OFF
+                                    }?.let { "Budget (advisory, never acts): ${it.text}" }
                                     notePresentation(fgNow, runningNow, guestFrames ?: session.hostPresentSubmissionCount())
                                     val compileStats = session.shaderCompileStats()
                                     if (bootStatus.value != null) {
@@ -1158,6 +1171,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             InGameAction.PHONE_CONTROLLERS to phoneControllersLabel.value,
                                         ),
                                         phoneControllers = phoneControllersDetails.value,
+                                        frameGenerationBudget = fgBudgetLabel.value,
                                         performanceHud = performanceOverlayEnabled.value,
                                         compactHud = compactPerformanceOverlay.value,
                                         hudMetrics = hudMetrics.value,
