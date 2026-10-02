@@ -109,5 +109,6 @@
     <string name="menu_no_controller">nenhum controle</string>
     <string name="menu_phone_controllers">Telefones como controle</string>
     <string name="menu_touch_camera">Câmera por toque · lado direito livre: %1$s</string>
+    <string name="menu_mark_scene">Marcar cena para comparar · %1$d até agora</string>
     <string name="menu_touch_camera_note">Câmera por toque: no lado direito, longe dos botões, deslize o dedo para girar a câmera; ela para quando o dedo para ou sai.</string>
 </resources>

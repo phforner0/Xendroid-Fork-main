@@ -360,6 +360,11 @@ Testes JVM cobrem finalização concorrente, reconciliação e poda.
   diferentes; a do driver do sistema não mudou.
 - Falta: eventos nativos no flight recorder, exportação por run (C06) e catálogo
   remoto (C04).
+- **Estado C07 (2026-10-02, v1, Impl. + Local):** "Compare runs" (`sessions/Benchmark.kt`,
+  `ui/benchmark/`): runs marcados A/B, checagem de ordem ABBA, duração mínima, driver, FG e
+  temperatura inicial antes de qualquer número, diferenças por par com veredito só quando todos
+  concordam; marcador de cena no menu em jogo. Falta: fixar/registrar limite de FPS e Hz no run
+  (hoje não são gravados) e uso no aparelho (roteiro 34).
 
 Módulos novos sugeridos `compatibility/`, `sessions/`, `benchmark/`. Reusar coletor
 de HUD e evitar lançar outro poller por card. Extrair percentis de buffer limitado

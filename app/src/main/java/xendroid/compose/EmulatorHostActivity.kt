@@ -355,6 +355,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val adaptiveSticks = mutableStateOf(false)
     /** U07: the free right side of the screen drives the right stick by finger speed (opt-in, all games). */
     private val touchCamera = mutableStateOf(false)
+    /** C07: scene markers placed in this run (for "Compare runs"). */
+    private val sceneMarkers = mutableIntStateOf(0)
     private var controlsTitleId: String? = null
     /** The title the core reports running, for per-game touch layouts (U06). */
     private val activeTitleState = mutableStateOf<String?>(null)
@@ -1202,6 +1204,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                     .joinToString(", ") { "P${it.index + 1}" }.ifEmpty { stringResource(R.string.menu_no_controller) }),
                                             InGameAction.PHONE_CONTROLLERS to phoneControllersLabel.value,
                                             InGameAction.TOUCH_CAMERA to stringResource(R.string.menu_touch_camera, if (touchCamera.value) on else off),
+                                            InGameAction.MARK_SCENE to stringResource(R.string.menu_mark_scene, sceneMarkers.intValue),
                                         ),
                                         phoneControllers = phoneControllersDetails.value,
                                         frameGenerationBudget = fgBudgetLabel.value,
@@ -2586,6 +2589,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 controlsTitleId = title
                 getSharedPreferences("touch_options", MODE_PRIVATE).edit()
                     .putBoolean("adaptive_$title", enabled).apply()
+            }
+            InGameAction.MARK_SCENE -> {
+                sceneMarkers.intValue++
+                recordEvent("marker", "scene ${sceneMarkers.intValue}", flush = true)
+                Toast.makeText(this, "Scene ${sceneMarkers.intValue} marked", Toast.LENGTH_SHORT).show()
             }
             InGameAction.TOUCH_CAMERA -> {
                 touchCamera.value = !touchCamera.value

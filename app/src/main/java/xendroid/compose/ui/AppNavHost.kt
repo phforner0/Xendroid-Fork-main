@@ -60,6 +60,7 @@ object Routes {
     const val DIAGNOSTICS = "diagnostics"
     const val PHONE_CONTROLLER = "phone_controller"
     const val CONTROLLER_TEST = "controller_test"
+    const val BENCHMARK = "benchmark"
 }
 
 private fun NavBackStackEntry.backOnce(nav: NavController): () -> Unit = {
@@ -116,7 +117,11 @@ fun AppNavHost(container: AppContainer) {
                 },
                 onOpenPhoneController = { navigateOnce(Routes.PHONE_CONTROLLER) },
                 onOpenControllerTest = { navigateOnce(Routes.CONTROLLER_TEST) },
+                onOpenBenchmark = { navigateOnce(Routes.BENCHMARK) },
             )
+        }
+        composable(Routes.BENCHMARK) { entry ->
+            xendroid.compose.ui.benchmark.BenchmarkScreen(onBack = entry.backOnce(nav))
         }
         composable(Routes.CONTROLLER_TEST) { entry ->
             xendroid.compose.ui.controllertest.ControllerTestScreen(onBack = entry.backOnce(nav))

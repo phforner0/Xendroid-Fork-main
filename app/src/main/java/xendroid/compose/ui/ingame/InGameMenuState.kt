@@ -25,6 +25,8 @@ enum class InGameAction {
     MORE_OPTIONS,
     /** U07: the free right side of the screen as a touchpad for the right stick. */
     TOUCH_CAMERA,
+    /** C07: a numbered scene marker in the run's timeline, to line A/B runs up. */
+    MARK_SCENE,
 }
 
 /** Every option once, on the tab it belongs to (U01), most used first. */
@@ -50,7 +52,8 @@ val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
         InGameAction.PHONE_CONTROLLERS, InGameAction.CONTROLLER_RUMBLE,
         InGameAction.GYRO_CAMERA, InGameAction.GYRO_SENSITIVITY, InGameAction.GYRO_CALIBRATE),
     InGamePage.SESSION to listOf(InGameAction.RESUME, InGameAction.SHARE_LOGS, InGameAction.QUIT,
-        InGameAction.MUTE, InGameAction.VOLUME_DOWN, InGameAction.VOLUME_UP, InGameAction.BACKGROUND_POLICY),
+        InGameAction.MUTE, InGameAction.VOLUME_DOWN, InGameAction.VOLUME_UP, InGameAction.MARK_SCENE,
+        InGameAction.BACKGROUND_POLICY),
 )
 
 /** U01: behind "More options" on their tab: persistence, imports, fine HUD and power tuning. */

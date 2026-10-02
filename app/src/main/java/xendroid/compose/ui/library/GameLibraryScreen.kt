@@ -96,6 +96,7 @@ fun GameLibraryScreen(
     compressVm: GameCompressViewModel,
     onOpenPhoneController: () -> Unit = {},
     onOpenControllerTest: () -> Unit = {},
+    onOpenBenchmark: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -329,6 +330,10 @@ fun GameLibraryScreen(
                         DropdownMenuItem(
                             text = { Text("Test controllers") },
                             onClick = { menuOpen = false; onOpenControllerTest() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Compare runs") },
+                            onClick = { menuOpen = false; onOpenBenchmark() },
                         )
                         DropdownMenuItem(
                             text = { Text("Setup assistant") },

@@ -363,3 +363,9 @@ com comandos e resultados exatos.
    <outro>". Marcar "Don't ask again": o próximo jogo abre direto; em Perfis, "Ask who plays…"
    desligado; ligar de novo: volta a perguntar. Mandar o perfil ativo para a lixeira e abrir um
    jogo com um só perfil restante: abre com ele, sem erro de perfil.
+34. Lote 11 — comparar runs (C07): num jogo, fazer 4 runs da mesma cena (≥ 30 s cada), na ordem
+   A (FG off) · B (FG on) · B · A, fechando o jogo entre eles e esperando a bateria voltar à mesma
+   temperatura; em cada um, Session → "Mark scene…" no começo da cena. ⋮ → "Compare runs" → o jogo:
+   marcar os runs A/B: sem avisos, "B − A per pair" com dois números e o veredito. Marcar na ordem
+   AABB (ou trocar o driver num run): aparecem os avisos e "Fix the warnings first". Anotar o
+   resultado no relatório de FG (é a forma de A/B que o plano pede).
