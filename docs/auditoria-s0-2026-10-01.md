@@ -281,3 +281,11 @@ com comandos e resultados exatos.
    (cronômetro do "Looking through…") no aparelho. (f) Apagar uma ISO pelo gerenciador com o
    app em segundo plano e, ao voltar, tocar nela antes de a varredura terminar: aviso "…is not
    where it was…" e nova varredura, sem abrir o emulador.
+23. Lote 9 — lixeira de conteúdo (L12): num jogo com uma DLC instalada, Manage content → DLC →
+   lixeira na DLC → "Move to trash": some da aba DLC e aparece em "Trash (1)" com tamanho e
+   data; abrir o jogo: a DLC não está disponível. "Restore": volta para a aba DLC e o jogo a
+   vê de novo (conferir no jogo). Mover de novo, reinstalar o mesmo pacote e tentar "Restore":
+   recusa com "…is installed again…". "Delete" na lixeira: pede confirmação e apaga. Com o
+   jogo aberto (outro processo), tentar mover: "Close the running game first.". Matar o app
+   (`am kill`/forçar parada) logo após tocar em "Move to trash" com uma TU grande: ao reabrir o
+   gerenciador, a TU está ou instalada ou na lixeira, nunca sumida.

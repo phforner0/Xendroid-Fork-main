@@ -383,6 +383,12 @@ de deltas guest; registrar unavailable/stale e aquecimento. Referências [X2–X
 | L11 | Mods Xbox opt-in | Somente formatos suportados por Xenia/patch/override de arquivos; namespace separado, ordem e conflitos explícitos, não substituir um save/DLC; não portar mods/Workshop Steam |
 | L12 | Lixeira de dados gerenciados | Mover somente dados internos elegíveis para namespace isolado sob lease/journal; restauração com preview de conflitos, cota e limpeza explícita; remover referência da biblioteca não exclui ROM externa |
 
+**Estado L12 (2026-10-02, v1, Impl. + Local):** lixeira para DLC/TU removidos
+(`saves/ContentTrash.kt`), com lease, journal por nome de pasta (`.partial`/`.restoring`) e
+recuperação, restauração com prévia de conflito, cota de 4 GiB e limpeza só explícita; perfis
+já tinham a sua (A09). Fora por desenho: jogos das pastas da biblioteca (o app não apaga ROM
+externa) e caches regeneráveis (shader/LSFG). Falta: validação no aparelho (roteiro 23).
+
 **Estado L09 (2026-10-02, v1, Impl. + Local):** `data/LibraryWalker.kt` com cota (100.000
 entradas → lista parcial avisada), profundidade, cancelamento ("Stop") e progresso; lista da
 última varredura na abertura; extração só de entradas novas/modificadas, agora também

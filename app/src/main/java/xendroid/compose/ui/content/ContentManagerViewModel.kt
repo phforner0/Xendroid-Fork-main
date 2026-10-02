@@ -16,6 +16,9 @@ import xendroid.compose.core.ContentPaths
 import xendroid.compose.core.EmulatorRuntime
 import xendroid.compose.core.GameMetadataSource
 import xendroid.compose.core.StorageAccess
+import xendroid.compose.saves.ContentTrash
+import xendroid.compose.saves.TrashFullException
+import xendroid.compose.saves.TrashedContent
 import java.io.File
 
 class ContentManagerViewModel(
@@ -33,9 +36,19 @@ class ContentManagerViewModel(
 
     sealed interface ListState {
         data object Loading : ListState
-        data class Loaded(val dlc: List<ContentEntry>, val updates: List<ContentEntry>) : ListState
+        /** [trashed]: this game's packages in the trash (L12); [trashUsed] counts every game's. */
+        data class Loaded(
+            val dlc: List<ContentEntry>,
+            val updates: List<ContentEntry>,
+            val trashed: List<TrashedContent> = emptyList(),
+            val trashUsed: Long = 0,
+            val trashQuota: Long = ContentTrash.DEFAULT_QUOTA,
+        ) : ListState
         data class Error(val message: String) : ListState
     }
+
+    /** L12: removing moves a package to the trash; restore or delete it for good from there. */
+    private val trash by lazy { ContentTrash(ContentPaths.contentRoot()) }
 
     private val _listState = MutableStateFlow<ListState>(ListState.Loading)
     val listState: StateFlow<ListState> = _listState.asStateFlow()
@@ -48,6 +61,10 @@ class ContentManagerViewModel(
     sealed interface DeleteState {
         data object Idle : DeleteState
         data class Confirm(val item: ContentEntry) : DeleteState
+        /** The trash has no room for [item]: empty it, or delete [item] for good. */
+        data class TrashFull(val item: ContentEntry, val used: Long, val quota: Long) : DeleteState
+        data class ConfirmPurge(val entry: TrashedContent) : DeleteState
+        data object ConfirmEmptyTrash : DeleteState
     }
 
     private val _deleteState = MutableStateFlow<DeleteState>(DeleteState.Idle)
@@ -66,15 +83,21 @@ class ContentManagerViewModel(
             EmulatorRuntime.ensureLoaded()
             val emu = EmulatorRuntime.emulator
                 ?: return@withContext ListState.Error("Emulator not loaded.")
+            // Settle a removal or restore a killed process left half done, before listing.
+            runCatching { StorageAccess.acquire().use { trash.recover(it) } }
             val root = ContentPaths.contentRoot().absolutePath
             try {
                 val dlc = emu.list_content(root, titleId, ContentPaths.DLC_CONTENT_TYPE)
                     ?: return@withContext ListState.Error("Couldn't read installed content.")
                 val updates = emu.list_content(root, titleId, ContentPaths.TU_CONTENT_TYPE)
                     ?: return@withContext ListState.Error("Couldn't read installed content.")
+                val trashed = runCatching { trash.list() }.getOrDefault(emptyList())
                 ListState.Loaded(
                     dlc = dlc.toEntries(ContentPaths.DLC_CONTENT_TYPE),
                     updates = updates.toEntries(ContentPaths.TU_CONTENT_TYPE),
+                    trashed = trashed.filter { it.titleId.equals(titleId, ignoreCase = true) },
+                    trashUsed = trashed.sumOf { it.bytes },
+                    trashQuota = trash.quotaBytes,
                 )
             } catch (t: RuntimeException) {
                 ListState.Error(t.message ?: "Couldn't read installed content.")
@@ -104,7 +127,62 @@ class ContentManagerViewModel(
 
     fun requestDelete(item: ContentEntry) { _deleteState.value = DeleteState.Confirm(item) }
 
+    /** L12: to the trash (restorable). A full trash asks what to do instead of deleting. */
     fun delete(item: ContentEntry) = viewModelScope.launch {
+        _deleteState.value = DeleteState.Idle
+        _state.value = ContentInstallState.Busy("Moving to the trash…")
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                StorageAccess.acquire().use { trash.moveToTrash(it, titleId, item.contentType, item.pkgDir, item.displayName) }
+            }
+        }
+        result.onSuccess {
+            _state.value = ContentInstallState.Done("Moved “${item.displayName}” to the trash. Restore it from the Trash tab.")
+            refresh()
+        }.onFailure { e ->
+            if (e is TrashFullException) {
+                _state.value = ContentInstallState.Idle
+                _deleteState.value = DeleteState.TrashFull(item, e.usedBytes, e.quotaBytes)
+            } else {
+                _state.value = ContentInstallState.Failed(
+                    if (e is xendroid.compose.archive.ContentBusyException) "Close the running game first." else "Couldn't move it to the trash: ${e.message}")
+            }
+        }
+    }
+
+    fun restore(entry: TrashedContent) = viewModelScope.launch {
+        _state.value = ContentInstallState.Busy("Restoring…")
+        val result = withContext(Dispatchers.IO) {
+            runCatching { StorageAccess.acquire().use { trash.restore(it, entry.id) } }
+        }
+        result.onSuccess {
+            _state.value = ContentInstallState.Done("Restored “${entry.displayName}”.")
+            refresh()
+        }.onFailure { _state.value = ContentInstallState.Failed(it.message ?: "Couldn't restore it.") }
+    }
+
+    fun requestPurge(entry: TrashedContent) { _deleteState.value = DeleteState.ConfirmPurge(entry) }
+    fun requestEmptyTrash() { _deleteState.value = DeleteState.ConfirmEmptyTrash }
+
+    /** Deletes trashed packages for good: one, or ([entry] null) the whole trash, every game's. */
+    fun purge(entry: TrashedContent?) = viewModelScope.launch {
+        _deleteState.value = DeleteState.Idle
+        _state.value = ContentInstallState.Busy("Deleting…")
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                StorageAccess.acquire().use { lease ->
+                    if (entry == null) trash.purgeAll(lease) else { trash.purge(lease, entry.id); 1 }
+                }
+            }
+        }
+        result.onSuccess { count ->
+            _state.value = ContentInstallState.Done(if (entry == null) "Emptied the trash ($count item(s))." else "Deleted “${entry.displayName}” for good.")
+            refresh()
+        }.onFailure { _state.value = ContentInstallState.Failed(it.message ?: "Couldn't delete it.") }
+    }
+
+    /** Skips the trash: the package's files are deleted now (asked when the trash is full). */
+    fun deleteForGood(item: ContentEntry) = viewModelScope.launch {
         _deleteState.value = DeleteState.Idle
         _state.value = ContentInstallState.Busy("Removing…")
         val status = withContext(Dispatchers.IO) {

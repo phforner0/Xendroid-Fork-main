@@ -67,7 +67,8 @@ fun ContentManagerScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            val tabs = listOf("DLC", "Updates")
+            val trashCount = (listState as? ListState.Loaded)?.trashed?.size ?: 0
+            val tabs = listOf("DLC", "Updates", if (trashCount > 0) "Trash ($trashCount)" else "Trash")
             TabRow(selectedTabIndex = selectedTab) {
                 tabs.forEachIndexed { index, label ->
                     Tab(
@@ -81,7 +82,9 @@ fun ContentManagerScreen(
                 when (val s = listState) {
                     ListState.Loading -> CircularProgressIndicator()
                     is ListState.Error -> Text(s.message, modifier = Modifier.padding(24.dp))
-                    is ListState.Loaded -> {
+                    is ListState.Loaded -> if (selectedTab == 2) {
+                        TrashList(s, onRestore = vm::restore, onPurge = vm::requestPurge, onEmpty = vm::requestEmptyTrash)
+                    } else {
                         val items = if (selectedTab == 0) s.dlc else s.updates
                         if (items.isEmpty()) {
                             Text(
@@ -105,20 +108,93 @@ fun ContentManagerScreen(
         onConfirmOverwrite = vm::confirmOverwrite,
     )
 
-    (deleteState as? DeleteState.Confirm)?.let { s ->
-        AlertDialog(
+    when (val s = deleteState) {
+        is DeleteState.Confirm -> AlertDialog(
             onDismissRequest = vm::dismiss,
             title = { Text("Remove content?") },
             text = {
-                Text("Remove “${s.item.displayName}”? This deletes its files for this game.")
+                Text("Move “${s.item.displayName}” to the trash? The game stops seeing it; you can restore " +
+                    "it from the Trash tab, or delete it for good there.")
             },
-            confirmButton = {
-                TextButton(onClick = { vm.delete(s.item) }) { Text("Remove") }
+            confirmButton = { TextButton(onClick = { vm.delete(s.item) }) { Text("Move to trash") } },
+            dismissButton = { TextButton(onClick = vm::dismiss) { Text("Cancel") } },
+        )
+        is DeleteState.TrashFull -> AlertDialog(
+            onDismissRequest = vm::dismiss,
+            title = { Text("The trash is full") },
+            text = {
+                Text("The trash holds ${humanReadableSize(s.used)} of ${humanReadableSize(s.quota)}, so " +
+                    "“${s.item.displayName}” does not fit. Empty the trash (every game's) first, or delete this " +
+                    "one for good now: that cannot be undone.")
             },
+            confirmButton = { TextButton(onClick = { vm.deleteForGood(s.item) }) { Text("Delete for good") } },
             dismissButton = {
-                TextButton(onClick = vm::dismiss) { Text("Cancel") }
+                Row {
+                    TextButton(onClick = vm::requestEmptyTrash) { Text("Empty trash") }
+                    TextButton(onClick = vm::dismiss) { Text("Cancel") }
+                }
             },
         )
+        is DeleteState.ConfirmPurge -> AlertDialog(
+            onDismissRequest = vm::dismiss,
+            title = { Text("Delete for good?") },
+            text = { Text("“${s.entry.displayName}” (${humanReadableSize(s.entry.bytes)}) will be deleted. This cannot be undone.") },
+            confirmButton = { TextButton(onClick = { vm.purge(s.entry) }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = vm::dismiss) { Text("Cancel") } },
+        )
+        DeleteState.ConfirmEmptyTrash -> AlertDialog(
+            onDismissRequest = vm::dismiss,
+            title = { Text("Empty the trash?") },
+            text = { Text("Every package in the trash, of every game, will be deleted. This cannot be undone.") },
+            confirmButton = { TextButton(onClick = { vm.purge(null) }) { Text("Empty trash") } },
+            dismissButton = { TextButton(onClick = vm::dismiss) { Text("Cancel") } },
+        )
+        DeleteState.Idle -> Unit
+    }
+}
+
+/** L12: this game's packages in the trash, and how full the trash (every game's) is. */
+@Composable
+private fun TrashList(
+    state: ListState.Loaded,
+    onRestore: (xendroid.compose.saves.TrashedContent) -> Unit,
+    onPurge: (xendroid.compose.saves.TrashedContent) -> Unit,
+    onEmpty: () -> Unit,
+) {
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            ListItem(
+                headlineContent = { Text("Trash: ${humanReadableSize(state.trashUsed)} of ${humanReadableSize(state.trashQuota)}") },
+                supportingContent = {
+                    Text("Removed DLC and title updates wait here until you restore them or delete them for good. " +
+                        "Nothing is deleted on its own.")
+                },
+                trailingContent = if (state.trashUsed > 0) {
+                    { TextButton(onClick = onEmpty) { Text("Empty") } }
+                } else null,
+            )
+            HorizontalDivider()
+        }
+        if (state.trashed.isEmpty()) {
+            item { Text("Nothing of this game is in the trash.", Modifier.padding(24.dp)) }
+        }
+        items(state.trashed, key = { it.id }) { entry ->
+            ListItem(
+                headlineContent = { Text(entry.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                supportingContent = {
+                    Text((if (entry.contentType == xendroid.compose.core.ContentPaths.TU_CONTENT_TYPE) "Title update" else "DLC") +
+                        " · ${humanReadableSize(entry.bytes)} · removed " +
+                        java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(entry.deletedAt)))
+                },
+                trailingContent = {
+                    Row {
+                        TextButton(onClick = { onRestore(entry) }) { Text("Restore") }
+                        TextButton(onClick = { onPurge(entry) }) { Text("Delete") }
+                    }
+                },
+            )
+            HorizontalDivider()
+        }
     }
 }
 
