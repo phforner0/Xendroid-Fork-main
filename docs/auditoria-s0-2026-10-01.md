@@ -349,3 +349,11 @@ com comandos e resultados exatos.
    ele manda, sem briga com a câmera. Abrir o menu no meio do gesto e voltar: a câmera não fica
    girando sozinha. Girar a tela (se o jogo permitir): nada fica preso. Anotar se 1,2 dp/ms é
    rápido/lento demais (é o único ajuste por enquanto).
+32. Lote 10 — teclado do jogo (U10): num jogo que pede nome (ex.: criar perfil/save com
+   nome), só com controle: o painel mostra a grade com "q" destacado; D-pad/analógico movem
+   (segurar: ritmo legível), A digita, L3 deixa a próxima letra maiúscula, R3 vai aos símbolos,
+   X/B apagam, LB/RB movem o cursor dentro do texto, Start conclui e o jogo recebe o nome. Num
+   prompt com limite curto (ex.: 15), digitar além: para no limite. Digitar um emoji pelo teclado
+   do sistema e concluir: o jogo não trava nem mostra lixo. B com o texto vazio cancela e o jogo
+   segue sem botão preso. Por toque: tocar no campo abre o teclado do sistema e tocar nas teclas
+   da grade também digita.

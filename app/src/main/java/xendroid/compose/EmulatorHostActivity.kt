@@ -76,7 +76,6 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.viewinterop.AndroidView
 import xendroid.compose.ui.disc.DiscSwapPanel
 import xendroid.compose.ui.keyboard.GuestKeyboardPanel
-import xendroid.compose.ui.keyboard.clampToUtf16Units
 import xendroid.compose.ui.messagebox.GuestMessageBoxPanel
 import xendroid.compose.ui.ingame.InGameAction
 import xendroid.compose.ui.ingame.InGameMenu
@@ -375,7 +374,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         mutableStateOf<Emulator.MessageBoxRequest?>(null)
 
     private val panelSelectedState = mutableIntStateOf(0)
-    private val keyboardTextState = mutableStateOf("")
+    /** U10: the guest's text prompt as typed so far (grid highlight, caret, page, shift). */
+    private val keyboardGrid = mutableStateOf(xendroid.compose.ui.keyboard.KeyboardGrid())
+    private val gridRepeat = xendroid.compose.gamepad.NavRepeat()
+    private var gridHatDirection = 4   // (dy + 1) * 3 + (dx + 1); 4 = centred
 
     @Volatile
     private var keyMap: Map<Int, Int> =
@@ -989,6 +991,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 launch {
                                     while (isActive) {
                                         delay(50)
+                                        // U10: the same for the keyboard grid, in two dimensions.
+                                        if (keyboardRequestState.value != null && gridHatDirection != 4 &&
+                                            gridRepeat.press(gridHatDirection, SystemClock.uptimeMillis())) {
+                                            keyboardGrid.value = keyboardGrid.value.move(gridHatDirection % 3 - 1, gridHatDirection / 3 - 1)
+                                        }
                                         // U04: a stick or hat held on a menu keeps moving at the menu's pace.
                                         val heldDirection = if (panelNavPrev) -1 else if (panelNavNext) 1 else 0
                                         if (heldDirection != 0) panelNav()?.let { nav ->
@@ -1243,20 +1250,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             .keyboardRequest()
                                             ?.let { req ->
 
-                                                keyboardTextState.value =
-                                                    clampToUtf16Units(
-                                                        req.defaultText
-                                                            .orEmpty(),
-
-                                                        if (
-                                                            req.maxLength <=
-                                                                0
-                                                        ) {
-                                                            Int.MAX_VALUE
-                                                        } else {
-                                                            req.maxLength
-                                                        }
-                                                    )
+                                                val maxUnits = if (req.maxLength <= 0) Int.MAX_VALUE else req.maxLength
+                                                keyboardGrid.value = xendroid.compose.ui.keyboard.KeyboardGrid(maxUnits = maxUnits)
+                                                    .withText(req.defaultText.orEmpty())
+                                                gridHatDirection = 4
+                                                gridRepeat.release()
 
                                                 panelSelectedState.intValue =
                                                     0
@@ -1278,16 +1276,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     GuestKeyboardPanel(
                                         request = req,
 
-                                        text =
-                                            keyboardTextState.value,
+                                        grid = keyboardGrid.value,
 
-                                        onTextChange = {
-                                            keyboardTextState.value =
-                                                it
-                                        },
-
-                                        selected =
-                                            panelSelectedState.intValue,
+                                        onGridChange = { keyboardGrid.value = it },
 
                                         onAccept = {
                                             text ->
@@ -1724,6 +1715,14 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     // class is library-restricted. Keep the restriction exception local to this override.
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // U10: a controller types on the grid; the focused text field must not eat its D-pad.
+        if (keyboardRequestState.value != null && !editorOpen.value && isControllerEvent(event)) {
+            return when (event.action) {
+                KeyEvent.ACTION_DOWN -> onKeyDown(event.keyCode, event)
+                KeyEvent.ACTION_UP -> onKeyUp(event.keyCode, event)
+                else -> true
+            }
+        }
         if (editorOpen.value && !hasGuestPrompt()) {
             val code = xendroid.compose.gamepad.MenuButtons.frontendKey(event.keyCode, swapConfirm)
                 ?: return super.dispatchKeyEvent(event)
@@ -1756,6 +1755,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             if (event.repeatCount == 0) {
                 if (menuState.value.open) backMenu() else openMenu(pause = true)
             }
+            consumedMenuKeys.add(identity)
+            return true
+        }
+
+        if (keyboardRequestState.value != null && keyboardKeyDown(keyCode, event)) {
             consumedMenuKeys.add(identity)
             return true
         }
@@ -1881,6 +1885,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         event: MotionEvent
     ): Boolean {
         if (editorOpen.value && !hasGuestPrompt()) return super.onGenericMotionEvent(event)
+        if (keyboardRequestState.value != null &&
+            event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK) {
+            keyboardHat(event)
+            return true
+        }
         panelNav()?.let { nav ->
             panelHat(
                 nav,
@@ -2251,7 +2260,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 { i ->
                     if (i == 0) {
                         acceptKeyboard(
-                            keyboardTextState.value
+                            keyboardGrid.value.text
                         )
                     } else {
                         cancelKeyboard()
@@ -2881,6 +2890,71 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             null
     }
 
+    private fun isControllerEvent(event: KeyEvent): Boolean =
+        event.source and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
+            event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
+
+    /**
+     * U10: the guest keyboard with a controller, Xbox 360 style: D-pad/stick move the highlight,
+     * confirm types it, X deletes, Y adds a space, LB/RB move the cursor, L3 shift, R3 symbols,
+     * Start answers, Back/Select cancels; cancel (B) deletes, and cancels once the text is empty.
+     */
+    private fun keyboardKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val grid = keyboardGrid.value
+        val step = when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> 0 to -1
+            KeyEvent.KEYCODE_DPAD_DOWN -> 0 to 1
+            KeyEvent.KEYCODE_DPAD_LEFT -> -1 to 0
+            KeyEvent.KEYCODE_DPAD_RIGHT -> 1 to 0
+            else -> null
+        }
+        if (step != null) {
+            if (event.repeatCount == 0) gridRepeat.release()
+            if (gridRepeat.press(keyCode, event.eventTime)) keyboardGrid.value = grid.move(step.first, step.second)
+            return true
+        }
+        if (event.repeatCount > 0) return true
+        when (keyCode) {
+            KeyEvent.KEYCODE_BUTTON_X -> keyboardGrid.value = grid.backspace()
+            KeyEvent.KEYCODE_BUTTON_Y -> keyboardGrid.value = grid.type(" ")
+            KeyEvent.KEYCODE_BUTTON_L1 -> keyboardGrid.value = grid.caretLeft()
+            KeyEvent.KEYCODE_BUTTON_R1 -> keyboardGrid.value = grid.caretRight()
+            KeyEvent.KEYCODE_BUTTON_THUMBL -> keyboardGrid.value = grid.toggleShift()
+            KeyEvent.KEYCODE_BUTTON_THUMBR -> keyboardGrid.value = grid.togglePage()
+            KeyEvent.KEYCODE_BUTTON_START -> acceptKeyboard(grid.text)
+            KeyEvent.KEYCODE_BUTTON_SELECT -> cancelKeyboard()
+            else -> when (xendroid.compose.gamepad.MenuButtons.intentOf(keyCode, swapConfirm)) {
+                xendroid.compose.gamepad.MenuButtons.Intent.CONFIRM -> {
+                    val (next, outcome) = grid.press()
+                    when (outcome) {
+                        xendroid.compose.ui.keyboard.KeyboardGrid.Outcome.DONE -> acceptKeyboard(next.text)
+                        xendroid.compose.ui.keyboard.KeyboardGrid.Outcome.CANCEL -> cancelKeyboard()
+                        xendroid.compose.ui.keyboard.KeyboardGrid.Outcome.NONE -> keyboardGrid.value = next
+                    }
+                }
+                xendroid.compose.gamepad.MenuButtons.Intent.CANCEL ->
+                    if (grid.text.isEmpty()) cancelKeyboard() else keyboardGrid.value = grid.backspace()
+                else -> return false
+            }
+        }
+        return true
+    }
+
+    /** U10: the stick or hat over the keyboard grid, in two dimensions, at the menu pace. */
+    private fun keyboardHat(event: MotionEvent) {
+        val x = event.getAxisValue(MotionEvent.AXIS_HAT_X) + event.getAxisValue(MotionEvent.AXIS_X)
+        val y = event.getAxisValue(MotionEvent.AXIS_HAT_Y) + event.getAxisValue(MotionEvent.AXIS_Y)
+        val dx = if (x < -0.5f) -1 else if (x > 0.5f) 1 else 0
+        val dy = if (y < -0.5f) -1 else if (y > 0.5f) 1 else 0
+        val direction = (dy + 1) * 3 + (dx + 1)
+        if (direction == gridHatDirection) return
+        gridHatDirection = direction
+        gridRepeat.release()
+        if (direction != 4 && gridRepeat.press(direction, SystemClock.uptimeMillis())) {
+            keyboardGrid.value = keyboardGrid.value.move(dx, dy)
+        }
+    }
+
     private fun acceptKeyboard(
         text: String
     ) {
@@ -2888,10 +2962,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             keyboardRequestState.value
                 ?: return
 
+        // U10: valid UTF-16 only (a lone surrogate would become invalid UTF-8 in the guest).
         session.keyboardSubmit(
             req.id,
             true,
-            text
+            xendroid.compose.ui.keyboard.KeyboardGrid.sanitize(text)
         )
 
         keyboardRequestState.value =
