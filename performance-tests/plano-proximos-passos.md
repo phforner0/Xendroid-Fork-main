@@ -1,4 +1,4 @@
-# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9, a v5, a reanálise v6, o fechamento dela no AB11, a reanálise v7 e o fechamento dela no AB12)
+# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9, a v5, a reanálise v6, o fechamento dela no AB11, a reanálise v7, o fechamento dela no AB12 e a reanálise v8)
 
 **Data:** 2026-09-30. **Base:** reanálise de `ab2` a `ab8-results.md`, dos logs
 com timestamps do build 36 (`b36-depth1x-ts`), do perfil de CPU do build 42
@@ -331,6 +331,183 @@ GPU no teto de 30 fps: ~22,3 ms no fim da v6, **17,7 ms** no fim da v7:
 | 11 | opções de qualidade no app: documentadas para a interface Kotlin | documentado |
 | 12 | CPU por draw: perfil com símbolos, nenhum ponto dominante | documentado |
 
+## Reanálise v8 (2026-10-02, b77; S53–S55 pela rede)
+
+Base: o build final da v7 (b77), com os padrões e os quirks.
+- S53 (`b77-diag`, `b77-draws`):
+  - timestamps por passe e por resolve;
+  - estatísticas do Turnip por pipeline (PipeStats), com o uso por passe
+    (PipeUse);
+  - um frame de rastreamento da EDRAM;
+  - o custo por parte dos draws.
+- S54 (`b77-sys`):
+  - estatísticas de replay (`vulkan_replay_stats`);
+  - CPU e memória do sistema;
+  - perfil de CPU com símbolos;
+  - avisos de desempenho do Turnip (`turnip_debug = "sysmem,perf"`).
+- S55 (`b77-sys`): contadores de hardware da CPU por thread
+  (`simpleperf stat`).
+- Os logs da validação final (S52, parado; o log é coletado antes do trecho
+  dirigindo).
+
+### Achados
+
+1. **Mapa atual** (S53, com timestamps): GPU 19,1 ms/frame.
+
+   | Parte | ms/frame | S42 (b65) |
+   |---|---|---|
+   | pixels | 8,6 (45%) | 9,5 |
+   | vértices | 1,3 (7%) | 3,3 |
+   | custo fixo por draw (~1960 draws, ~1,1 µs cada) | 2,2 (12%) | 3,5 |
+   | resto (resolves, cargas de textura, passes) | 7,0 (37%) | 7,2 |
+
+   A v7 tirou sobretudo vértices e custo por draw (com as faixas juntas). O
+   resto não mudou e virou o segundo maior bloco.
+
+2. **Por passe** (S53, média dos últimos 22 s; GPU 17,7 ms/frame nesse log):
+
+   | Trabalho | ms/frame | Passes/frame | Draws/frame |
+   |---|---|---|---|
+   | passe principal 1280x720 4x (as 3 faixas juntas) | 6,6 | 7,1 | 869 |
+   | passes 1x de 1280 de largura | 3,1 | 41 | 509, dos quais ~300 só de depth (em parte com os VS do atlas de sombra) |
+   | cadeia minúscula (≤128x128) | 0,63 | 49 | 48 |
+   | 6 faces 2x do cube map | 0,62 | 8 | 245 |
+   | atlas de sombra 1040x2528 | 0,40 | 4 | 156 |
+   | resolves | 5,3 | — | 101 resolves |
+   | cargas e cópias de textura | ~0,7 | — | — |
+
+3. **Os pixels continuam limitados por amostra**, não pelo pixel shader. A taxa
+   de shading 2x2 só tirava 0,8 ms (AB11), contra −4,5 ms do MSAA 2x lógico;
+   cortar ALU dos pixel shaders (FP16, por exemplo) tende a render pouco. No
+   passe principal, metade dos draws com pixel shader usa *alpha to coverage* e
+   17% usa teste alfa. O S54 checou:
+   - **UBWC**: com `TU_DEBUG=perf`, o Turnip não desliga a compressão de
+     nenhuma imagem do Forza. Pelo código do Mesa (`tu_image.cc`), o
+     `D32_SFLOAT_S8_UINT` do depth float24 comprime o plano de profundidade; só
+     o plano de stencil fica sem UBWC.
+   - **LRZ**: 172 mil avisos, todos pelos motivos do AB3: o quad de clear com
+     depth *always* que abre o passe, `CmdClearAttachments`, stencil escrito
+     pelo teste de depth, pixel shader que escreve depth.
+   - **Shading por amostra**: nenhum pipeline roda por amostra; só a conversão
+     float24 no pixel shader faria isso, e ela está desligada.
+
+4. **Resolves: 5,3 ms para 101 resolves por frame.**
+
+   | Grupo | ms/frame | Custo por pixel |
+   |---|---|---|
+   | 3 faixas 4x (cor e depth) | 1,60 | 0,91–0,93 ns |
+   | tela cheia 1x (2× cor 2_10_10_10 com clear, 2× 8888, 1× depth) | 1,45 | 0,27 ns (depth) a 0,40 ns |
+   | depth das sombras (1024², 2× 520², 512²) | 0,40 | 0,19 ns |
+   | cube map e médios (6× 256x256 2x, 6× 320x192, 2× 640x360) | 0,83 | — |
+   | ~60 minúsculos (≤ 160 px) | 1,02 | 15–25 µs cada, ~7 µs de dispatch |
+
+   - Gravar a memória do guest não custa nada (sonda do AB9). O custo é ler o
+     render target e gravar a textura.
+   - Os resolves 4x custam por pixel 2,3–3,4× os 1x: a leitura MSAA de uma
+     amostra (depth) ou a média de quatro (cor).
+   - Todo resolve de depth busca também o stencil
+     (`kDirectHostResolveDepthFlagHasStencil` sempre ligado), e o plano de
+     stencil do D32S8 não tem UBWC.
+   - As 3 faixas ainda saem em 3 resolves de cor e 3 de depth.
+
+5. **Quebras de passe**: 122 passes por frame, 93,5 reabertos no mesmo
+   framebuffer depois das barreiras dos resolves. São dependências reais (o
+   resolve no passe do AB12 só tirou 0,15 ms).
+
+6. **Estado por draw** (S54, `VkReplay`), por frame:
+   - 1906 draws;
+   - 2870 `BindDescriptorSets` (1,5 por draw) e 3180 sets de descritores
+     escritos;
+   - 610 trocas de pipeline;
+   - ~1370 comandos de estado dinâmico, ~300 deles repetidos;
+   - 229 barreiras, 157 dispatches, 87 `ClearAttachments`.
+
+   As constantes ficam num UBO dinâmico, religado a cada draw que muda
+   constantes. O custo fixo de ~1,1 µs por draw na GPU deve estar na carga de
+   estado e de constantes, já que o preâmbulo não limita (AB12). O driver expõe
+   `VK_KHR_push_descriptor`, `VK_EXT_descriptor_buffer` e `VK_EXT_multi_draw`,
+   mas não `VK_KHR_performance_query`: não há contadores da GPU.
+
+7. **CPU** (perfil de 15 s do S54 e contadores de hardware do S55, parado). O
+   processo usa 3,0 núcleos.
+
+   | Thread | Núcleos | Instruções/frame | Ciclos/frame | IPC |
+   |---|---|---|---|---|
+   | Guest CPU 5 (a mais ocupada do jogo) | 0,62 | 107 M | 41 M | 2,6 |
+   | GPU Commands | 0,61 | 53 M | 36,5 M | 1,46 (38% de *stall* de backend) |
+   | demais Guest CPU (0–4) | 1,34 | 120 M | 83 M | 1,3–2,3 |
+   | XMA | 0,15 | 3,7 M | 7,6 M | 0,5 (54% de *stall* de frontend) |
+
+   - Nas threads do jogo, 82% do tempo é código JIT e 9% são syscalls (futex
+     de esperas reais).
+   - A thread de comandos executa ~18 mil instruções por draw do jogo (2916
+     draws do guest por frame). O tempo dela se divide em:
+     - emulador, 60%;
+     - libc, 19% (`memmove` 8,7%, syscall 3,3%, `mprotect` 1,9%);
+     - Turnip, 17%;
+     - `clock_gettime`, 3% — vem só dos logs de tempo dos testes.
+   - `LoadShader` calcula o XXH3 do microcódigo a cada `IM_LOAD`
+     (`LoadShader` 1,8% e XXH3 1,4% da thread).
+
+8. **Medir CPU por tempo engana; por instruções, não.**
+   - O tempo de draw da thread de comandos varia entre aberturas do mesmo
+     build e da mesma config: no b76, 15,4 e 9,3 ms/frame nos dois braços
+     base (5,1 e 3,2 µs por draw).
+   - Do b70 para o b77, o aumento se espalha por quase todas as funções. O que
+     a v7 acrescentou por draw (descarte das faixas, sinais das texturas
+     usadas) custa menos de 0,3 ms/frame; o resto é núcleo e frequência.
+   - Por contadores de hardware (`perf_event_paranoid = −1`), duas janelas de
+     10 s na mesma abertura deram 53,1 e 53,3 M instruções/frame na thread de
+     comandos e 106 e 108 M na Guest CPU 5: ~1% de diferença. Falta
+     medir a repetição entre aberturas.
+   - As threads rodam em média a 1,5–1,9 GHz, só nos núcleos 2–6. Durante o
+     jogo, o sistema limita os clusters de 3,0 e 2,8 GHz e o X4 a ~2,7 GHz.
+   - Os dois processos do app estão no cgroup `top-app`.
+
+9. **Sistema**:
+   - Fora o emulador, kernel, interrupções e serviços somam ~1 núcleo.
+   - Não há recuperação de memória durante o jogo (0 páginas varridas/s, 3
+     *swap-ins*/s); o swap de ~3 GB é histórico. O emulador ocupa 1,9 GB de
+     RSS.
+   - A sessão de *performance hint* do áudio falha (`createSession failed (10
+     threads)`), então o app não usa ADPF.
+
+10. **Fluidez** (S52, parado no ponto de referência, com o tráfego passando):
+    frames acima de 37 ms são 0,1–0,3% do total. Os piores (45–50 ms, ~2 em
+    40 s) vêm de um envio com 22–25 ms de GPU (o normal é ≤ 10 ms). Um deles
+    coincide com o jogo lendo do disco um carro do tráfego, o que gera uma
+    rajada de cargas de textura num frame só. Os logs do S52 terminam antes do
+    trecho dirigindo.
+
+11. **60 fps**:
+    - A GPU precisaria de ≤ 16,7 ms e está em 17,7; o MSAA 2x lógico
+      resolveria.
+    - O limite é a CPU: a Guest CPU 5 gasta 41 M ciclos por frame e a thread
+      de comandos 36,5 M. A 60 fps, cada uma precisaria de 81–91% de um
+      núcleo no teto atual de 2,7 GHz, sem folga para picos.
+    - Também faltaria um patch da comunidade (baixá-lo exige permissão).
+
+### Caminhos (v8)
+
+| # | Caminho | Evidência | Ganho estimado | Esforço |
+|---|---|---|---|---|
+| 1 | **CPU por contadores de hardware nas ferramentas de A/B**: instruções e ciclos por frame por thread (`simpleperf stat`) no `restart_ab` e no `forza_auto_ab`; refazer com essa métrica os A/B de CPU descartados pelo ruído (AB9: `a64_vmx_nan_fixup`, sincronização de pilha, inline de folhas) | achado 8 | metodologia; destrava os itens 2, 3 e 7 | pequeno |
+| 2 | **Thread de comandos mais leve**: perfil por instruções (`simpleperf record -e instructions`); shader em cache por endereço, com vigia de escrita, sem XXH3 a cada `IM_LOAD`; descobrir o que o `memmove` copia; menos `mprotect` e syscalls por frame; texturas por `VK_KHR_push_descriptor` | achados 6 e 7 | 15–30% dos 36,5 M ciclos/frame (~0,1–0,2 núcleo) | médio |
+| 3 | **ADPF**: sessão de *performance hint* para as threads do frame (comandos, Guest CPU 5, 0 e 1), com alvo de 33,3 ms e a duração real de cada frame; consertar a sessão do áudio | achado 9 | energia e variância (medir por ciclos/frame e frequência média) | pequeno/médio |
+| 4 | **Resolves**: (a) as 3 faixas num resolve de 1280x720 por tipo (cor e depth); (b) sonda que pula o stencil nos resolves de depth e, se render, buscá-lo só quando o destino lê o stencil; (c) resolve direto nas faces e mips do cube map (carga + cópia de 0,25 ms) | achado 4 | (a) ~0,1 ms; (b) 0–0,4 ms; (c) ≤ 0,25 ms | pequeno/médio |
+| 5 | **Picos de streaming**: espalhar as cargas de textura de um frame (orçamento por frame) | achado 10 | picos de 45–50 ms abaixo de 37 ms | médio |
+| 6 | **Opções no app** (a interface Kotlin é do usuário): MSAA 2x lógico (`msaa_4x_as_2x`, troca em tempo real), VRS 2x1, A2C → teste alfa; e o inverso, **AF 16x** (`anisotropic_override = 5`), gastando parte da folga da GPU em estradas mais nítidas (medir custo e imagem) | achados 1 e 3 | −4,5 / −0,7 / ~−1,2 ms; AF: a medir | pequeno |
+| 7 | **JIT**: medir por instruções e reduzir as instruções emitidas por instrução PPC (registradores do guest mantidos entre blocos, CR mortos, emulação do VMX) | achado 7: 1,96 núcleo nas threads do jogo, 82% em código JIT, IPC 2,6 na Guest CPU 5 | 10–30% do código do jogo | muito grande |
+| 8 | **Validação e generalização**: noite, chuva, cidade, túneis e replays; os quirks exatos como padrão depois de 2–3 outros títulos | — | fidelidade; todos os jogos | médio |
+| 9 | **60 fps** (pesquisa; baixar o patch exige permissão) | achado 11 | só com os itens 2 e 7 e o MSAA 2x; hoje no limite da CPU | médio |
+
+Ordem sugerida:
+- primeiro o 1: é pequeno e torna mensuráveis os itens de CPU;
+- depois o 2 e o 4 (thread de comandos e resolves), medidos com a métrica nova
+  e com timestamps;
+- o 6 depende da interface do usuário;
+- o 7 é o maior ganho de CPU que resta e também o maior risco.
+
 ## Becos sem saída (não repetir sem fato novo)
 
 LRZ (AB3); extents reais no tiling predicado; thread de replay; estacionar todo
@@ -355,4 +532,11 @@ decodificadas na CPU (o preâmbulo encolhe 24% sem ganho — ele não limita);
 resolve no passe com a conversão 7e3 (73% dos resolves no passe, −0,15 ms, +68
 passes); resolves de profundidade gravando na textura 8888 que lê a mesma
 memória (ela ainda perde uma escrita). O LOD implícito, neutro no AB10, rende
-−1,6 ms com os sinais especializados (AB12).
+−1,6 ms com os sinais especializados (AB12). Da v8:
+D24S8 no lugar do D32S8 para o depth float24 (a profundidade já tem UBWC; só o
+stencil não tem, e os draws observados testam com `GEQUAL`, Z invertido, que
+perderia precisão longe); UBWC perdido (nenhuma imagem do Forza, S54); LRZ
+(as mesmas causas do AB3); memória (sem recuperação de páginas durante o
+jogo); cpuset (o processo `:emu` está em `top-app`); contadores da GPU (sem
+`VK_KHR_performance_query`); perfil do sistema inteiro (`simpleperf record -a`
+recusado); a CPU por draw "maior" na v7 (é núcleo e frequência).
