@@ -381,3 +381,16 @@ com comandos e resultados exatos.
    o global. Repetir mudando o limite à mão depois de aplicar: restaurar mantém o valor escolhido.
    Trocar `"version":1` por 2 ou acrescentar um campo desconhecido em `requires`: o cartão mostra o
    arquivo como recusado. Pôr `"requires":{"gpuContains":["Mali"]}` num Adreno: "Not offered on this phone".
+36. Lote 11 — catálogo remoto (C04), só quando houver um publicador: gerar a chave
+   (`openssl ecparam -name prime256v1 -genkey -noout -out chave.pem`; pública:
+   `openssl ec -in chave.pem -pubout -outform DER | base64 -w0`), montar `payload.json`
+   (`{"format":"xendroid-compat-catalog","version":1,"origin":"<URL exata>","sequence":1,
+   "generatedAt":<ms>,"expiresAt":<ms>,"titles":{"<Title ID>":[{"status":"PLAYABLE","build":"<versionName
+   do APK>","gpu":"<GPU do aparelho>","date":"AAAA-MM-DD"}]}}`), assinar
+   (`openssl dgst -sha256 -sign chave.pem -out sig.der payload.json`), publicar o envelope
+   (`{"format":"xendroid-catalog-envelope","version":1,"keyId":"k1","payload":"<base64 payload.json>",
+   "signature":"<base64 sig.der>"}`) numa URL HTTPS e compilar com `-PxendroidCatalogUrl=<URL>
+   -PxendroidCatalogKeys=k1:<pública>`. Ficha do jogo → "Catalog results" → "No catalog downloaded
+   yet" → Refresh → "This build and GPU: Playable ×1". Modo avião: a cópia continua. Publicar com
+   `sequence` 0: "Catalog not taken: older than the copy…". Mudar um byte do payload sem reassinar:
+   "the signature does not match". A chave privada nunca entra no repositório.

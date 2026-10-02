@@ -153,6 +153,16 @@ class GameLibraryViewModel(
         /** L06: patch entries enabled and shipped for the title; null when none ship for it. */
         val patchesEnabled: Int? = null,
         val patchesTotal: Int? = null,
+        /** C04: the catalog's results for the game; null when this build has no catalog. */
+        val catalog: CatalogView? = null,
+    )
+
+    /** C04: the kept catalog copy (null = never downloaded) and the game's results by setup. */
+    data class CatalogView(
+        val copy: xendroid.compose.compatibility.CompatCatalogStore.Copy?,
+        val results: List<xendroid.compose.compatibility.CompatCatalog.SetupResults>,
+        val refreshing: Boolean = false,
+        val message: String? = null,
     )
     private val _details = MutableStateFlow<GameDetails?>(null)
     val details: StateFlow<GameDetails?> = _details.asStateFlow()
@@ -164,9 +174,9 @@ class GameLibraryViewModel(
     private fun validTitle(game: Game): String? =
         game.titleId?.uppercase()?.takeIf { it.matches(Regex("[0-9A-F]{8}")) && it != "00000000" }
 
-    fun loadDetails(game: Game) {
+    fun loadDetails(game: Game, catalogMessage: String? = null) {
         val title = validTitle(game)
-        _details.value = GameDetails(game.identityKey, title, null, null)
+        if (_details.value?.identityKey != game.identityKey) _details.value = GameDetails(game.identityKey, title, null, null)
         if (title == null) return
         viewModelScope.launch {
             val loaded = withContext(Dispatchers.IO) {
@@ -177,12 +187,51 @@ class GameLibraryViewModel(
                         .onFailure { Log.w("GameLibrary", "Listing installed content failed", it) }.getOrNull()
                     val patches = runCatching { patchesOf(title) }
                         .onFailure { Log.w("GameLibrary", "Reading patches failed", it) }.getOrNull()
+                    val gpu = lastRun?.driver?.gpu?.ifBlank { null } ?: EmulatorRuntime.gpuDeviceName
                     GameDetails(game.identityKey, title, compatibilityStore.get(title), lastRun,
                         lastRun?.let { runs.events(it.runId) }, content?.first, content?.second,
-                        patches?.first, patches?.second)
+                        patches?.first, patches?.second, catalogView(title, gpu, catalogMessage))
                 }.onFailure { Log.w("GameLibrary", "Reading game details failed", it) }.getOrNull()
             }
             if (loaded != null && _details.value?.identityKey == game.identityKey) _details.value = loaded
+        }
+    }
+
+    /** C04: off unless the build names a catalog and its publisher's keys. */
+    private val catalogStore: xendroid.compose.compatibility.CompatCatalogStore? by lazy {
+        xendroid.compose.compatibility.CatalogConfig.parse(xendroid.compose.BuildConfig.CATALOG_URL,
+            xendroid.compose.BuildConfig.CATALOG_KEYS)?.let { config ->
+            xendroid.compose.compatibility.CompatCatalogStore(
+                java.io.File(xendroid.compose.Application.get_internal_data_dir(), "catalog"), config,
+                xendroid.compose.compatibility.CatalogHttp::fetch)
+        }
+    }
+
+    private fun catalogView(title: String, gpu: String?, message: String?): CatalogView? {
+        val store = catalogStore ?: return null
+        val copy = runCatching { store.copy() }.onFailure { Log.w("GameLibrary", "Reading the catalog failed", it) }.getOrNull()
+        return CatalogView(copy, copy?.let {
+            xendroid.compose.compatibility.CompatCatalog.resultsFor(it.payload, title, xendroid.compose.BuildConfig.VERSION_NAME, gpu)
+        }.orEmpty(), message = message)
+    }
+
+    /** C04: downloads the catalog now (only when the player asks); the kept copy stays on any problem. */
+    fun refreshCatalog(game: Game) {
+        val store = catalogStore ?: return
+        _details.value = _details.value?.let { it.copy(catalog = it.catalog?.copy(refreshing = true, message = null)) }
+        viewModelScope.launch {
+            val message = withContext(Dispatchers.IO) {
+                when (val result = runCatching { store.refresh() }.getOrElse {
+                    xendroid.compose.compatibility.CompatCatalogStore.Refresh.Failed(it.message ?: "error")
+                }) {
+                    is xendroid.compose.compatibility.CompatCatalogStore.Refresh.Updated -> "Catalog updated (publication ${result.sequence})."
+                    xendroid.compose.compatibility.CompatCatalogStore.Refresh.Unchanged -> "The catalog is up to date."
+                    is xendroid.compose.compatibility.CompatCatalogStore.Refresh.Refused ->
+                        "Catalog not taken: ${result.reason}. The copy already here stays."
+                    is xendroid.compose.compatibility.CompatCatalogStore.Refresh.Failed -> "Could not download the catalog: ${result.reason}."
+                }
+            }
+            loadDetails(game, message)
         }
     }
 

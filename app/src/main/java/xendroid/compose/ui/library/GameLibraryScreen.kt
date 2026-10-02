@@ -760,6 +760,7 @@ fun GameLibraryScreen(
                         },
                         modifier = Modifier.clickable { ratingOpen = true },
                     )
+                    info.catalog?.let { catalog -> CatalogResultsItem(catalog) { viewModel.refreshCatalog(game) } }
                     info.lastRunEvents?.takeIf { it.events.isNotEmpty() }?.let { log ->
                         ListItem(
                             headlineContent = { Text("Last run timeline") },
@@ -1169,4 +1170,35 @@ private fun launchGame(context: Context, viewModel: GameLibraryViewModel, game: 
         EmuProcessLink.killStaleEmu(context)
         context.startActivity(viewModel.buildLaunchIntent(game))
     }
+}
+
+/** C04: what the signed catalog says about the game, one line per build/GPU/driver, this phone's first. */
+@Composable
+private fun CatalogResultsItem(catalog: GameLibraryViewModel.CatalogView, onRefresh: () -> Unit) {
+    ListItem(
+        headlineContent = { Text("Catalog results") },
+        supportingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                val copy = catalog.copy
+                if (copy == null) {
+                    Text("No catalog downloaded yet.")
+                } else {
+                    Text("Signed catalog, publication ${copy.payload.sequence}, downloaded " +
+                        java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(copy.fetchedAt)) +
+                        if (copy.freshness == xendroid.compose.compatibility.CompatCatalog.Freshness.STALE) "; out of date, refresh it" else "")
+                    if (catalog.results.isEmpty()) Text("No results for this game.")
+                    catalog.results.take(4).forEach { setup ->
+                        Text((if (setup.thisSetup) "This build and GPU" else "Build ${setup.build} · ${setup.gpu}") +
+                            (if (setup.driver.isNotEmpty()) " · ${setup.driver}" else "") + ": ${setup.summary} (${setup.latestDate})")
+                    }
+                    if (catalog.results.size > 4) Text("${catalog.results.size - 4} other setup(s).")
+                    if (catalog.results.any { !it.thisSetup }) Text("Results of other builds, GPUs or drivers may not hold here.")
+                }
+                catalog.message?.let { Text(it) }
+            }
+        },
+        trailingContent = {
+            TextButton(onClick = onRefresh, enabled = !catalog.refreshing) { Text(if (catalog.refreshing) "Downloading…" else "Refresh") }
+        },
+    )
 }

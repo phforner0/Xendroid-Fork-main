@@ -374,6 +374,15 @@ Testes JVM cobrem finalização concorrente, reconciliação e poda.
   (exige o teste que verificou; **vazio** — nenhum perfil foi verificado ainda) e arquivos de
   fornecedor/jogador em `settings-profiles/`, marcados como não revisados; nada de feed. Falta: o
   primeiro perfil verificado de verdade (exige jogo + aparelho + C07) e uso no aparelho (roteiro 35).
+- **Estado C04 (2026-10-02, Parcial: cliente Impl. + Local, desligado):** catálogo remoto só
+  leitura (`compatibility/CompatCatalog.kt`, `CompatCatalogStore.kt`, `CatalogHttp.kt`): envelope
+  assinado (ECDSA P-256, chaves fixadas no build, rotação por `keyId`), conteúdo versionado e lido
+  estritamente, origem igual à URL configurada, sequência sem rollback, validade/TTL (7 dias após o
+  download, "out of date" por 90 dias, depois oculto), cópia offline reverificada a cada leitura,
+  download só por pedido do jogador, resultados agrupados por build + GPU + driver sem mistura. Sem
+  publicador e sem chave, o build sai com o catálogo desligado (nada aparece). Falta: decidir quem
+  publica (servidor/repositório e guarda da chave privada, projeto separado — não inventar endpoint)
+  e o uso no aparelho (roteiro 36).
 
 Módulos novos sugeridos `compatibility/`, `sessions/`, `benchmark/`. Reusar coletor
 de HUD e evitar lançar outro poller por card. Extrair percentis de buffer limitado
