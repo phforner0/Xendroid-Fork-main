@@ -365,7 +365,11 @@ com comandos e resultados exatos.
    o gamertag no jogo/dashboard e que os saves são os dele). A ficha passa a dizer "Signs in as
    <outro>". Marcar "Don't ask again": o próximo jogo abre direto; em Perfis, "Ask who plays…"
    desligado; ligar de novo: volta a perguntar. Mandar o perfil ativo para a lixeira e abrir um
-   jogo com um só perfil restante: abre com ele, sem erro de perfil.
+   jogo com um só perfil restante: abre com ele, sem erro de perfil. Lote 12c: com três perfis e
+   dois controles, Perfis → "Other players" → Player 2 → outro perfil; abrir um jogo multijogador
+   local: o P2 entra logado com esse perfil (gamertag na tela do jogo) e os saves dele são os dele.
+   Escolher no "Play as" o perfil do P2: o diálogo avisa e o P2 fica sem ninguém. Mandar o perfil do
+   P2 para a lixeira: em Perfis, Player 2 volta a "Nobody signs in".
 34. Lote 11 — comparar runs (C07): num jogo, fazer 4 runs da mesma cena (≥ 30 s cada), na ordem
    A (FG off) · B (FG on) · B · A, fechando o jogo entre eles e esperando a bateria voltar à mesma
    temperatura; em cada um, Session → "Mark scene…" no começo da cena. ⋮ → "Compare runs" → o jogo:

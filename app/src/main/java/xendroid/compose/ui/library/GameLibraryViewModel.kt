@@ -286,9 +286,27 @@ class GameLibraryViewModel(
         ?.list_profiles(ContentPaths.contentRoot().absolutePath)
         ?.map { xendroid.compose.data.PlayableProfile(it.xuid, it.gamertag.orEmpty()) }.orEmpty()
 
-    private fun configuredXuid(): String? {
+    private fun configuredXuid(): String? = configuredSlots()[0]
+
+    /** U11: the profile of each player slot (P1–P4) in the config; null = nobody. */
+    private fun configuredSlots(): List<String?> {
         val handle = xendroid.compose.settings.ConfigStore(appContext).openLiveSnapshot()
-        return try { handle.getString("Profiles", "logged_profile_slot_0_xuid")?.ifBlank { null } } finally { handle.closeDiscard() }
+        return try {
+            xendroid.compose.data.ProfileSlots.normalize(List(xendroid.compose.data.ProfileSlots.COUNT) { slot ->
+                handle.getString(xendroid.compose.data.ProfileSlots.SECTION, xendroid.compose.data.ProfileSlots.key(slot))
+            })
+        } finally { handle.closeDiscard() }
+    }
+
+    /** Writes the slots that differ from [before], under the config lock. */
+    private fun writeSlots(before: List<String?>, after: List<String?>) {
+        val changes = xendroid.compose.data.ProfileSlots.changes(before, after)
+        if (changes.isEmpty()) return
+        xendroid.compose.settings.ConfigStore(appContext).editLiveConfig { handle ->
+            changes.forEach { (slot, xuid) ->
+                handle.putString(xendroid.compose.data.ProfileSlots.SECTION, xendroid.compose.data.ProfileSlots.key(slot), xuid)
+            }
+        }
     }
 
     private fun refreshActiveProfile() {
@@ -296,18 +314,23 @@ class GameLibraryViewModel(
         _activeProfile.value = localProfiles().firstOrNull { it.xuid.equals(xuid, ignoreCase = true) }?.gamertag
     }
 
-    /** U11: launch as the configured profile, or ask (see [xendroid.compose.data.ProfilePick]). */
+    /** U11: launch as the configured profile, or ask (see [xendroid.compose.data.ProfilePick]).
+     *  Player slots naming a profile that is gone (or twice) are cleared first. */
     suspend fun profileDecision(): xendroid.compose.data.ProfilePick.Decision = withContext(Dispatchers.IO) {
         EmulatorRuntime.ensureLoaded()
-        xendroid.compose.data.ProfilePick.decide(localProfiles(), configuredXuid(), askProfileBeforePlaying)
+        val profiles = localProfiles()
+        val before = configuredSlots()
+        val slots = if (profiles.isEmpty()) before else xendroid.compose.data.ProfileSlots.reconcile(before, profiles.map { it.xuid })
+        runCatching { writeSlots(before, slots) }.onFailure { Log.w("GameLibrary", "Clearing stale player slots failed", it) }
+        xendroid.compose.data.ProfilePick.decide(profiles, slots[0], askProfileBeforePlaying, slots)
     }
 
-    /** Signs [xuid] in for the next boot (the config's slot 0, under the config lock). */
+    /** Signs [xuid] in as P1 for the next boot (under the config lock); another player slot
+     *  that had it signs in nobody. */
     suspend fun playAs(xuid: String, dontAskAgain: Boolean) = withContext(Dispatchers.IO) {
         if (dontAskAgain) askProfileBeforePlaying = false
-        xendroid.compose.settings.ConfigStore(appContext).editLiveConfig {
-            it.putString("Profiles", "logged_profile_slot_0_xuid", xuid.uppercase())
-        }
+        val before = configuredSlots()
+        writeSlots(before, xendroid.compose.data.ProfileSlots.assign(before, 0, xuid))
         runCatching { refreshActiveProfile() }
     }
 

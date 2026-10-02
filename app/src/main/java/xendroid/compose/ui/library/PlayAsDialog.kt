@@ -34,6 +34,7 @@ fun PlayAsDialog(
     preselected: String,
     onPlay: (xuid: String, dontAskAgain: Boolean) -> Unit,
     onDismiss: () -> Unit,
+    otherPlayers: Map<String, Int> = emptyMap(),
 ) {
     var chosen by remember { mutableStateOf(preselected) }
     var dontAsk by remember { mutableStateOf(false) }
@@ -45,8 +46,13 @@ fun PlayAsDialog(
                 profiles.forEach { profile ->
                     Row(Modifier.fillMaxWidth().clickable { chosen = profile.xuid }, verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = chosen == profile.xuid, onClick = { chosen = profile.xuid })
-                        Text(profile.gamertag.ifBlank { profile.xuid })
+                        Text(profile.gamertag.ifBlank { profile.xuid } +
+                            (otherPlayers[profile.xuid.uppercase()]?.let { " · P$it" } ?: ""))
                     }
+                }
+                otherPlayers[chosen.uppercase()]?.let { player ->
+                    Text("It plays as P$player now; choosing it here moves it to P1 and P$player signs in nobody.",
+                        style = MaterialTheme.typography.bodySmall)
                 }
                 Row(Modifier.fillMaxWidth().clickable { dontAsk = !dontAsk }, verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = dontAsk, onCheckedChange = { dontAsk = it })

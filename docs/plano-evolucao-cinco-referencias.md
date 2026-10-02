@@ -515,7 +515,9 @@ devem preservar direct launch e [contrato de frontend externo](frontend-integrat
 **Estado U11 (2026-10-02, v1, Impl. + Local):** "Play as" antes do boot com vários perfis
 (`data/ProfilePick.kt`), escolha gravada no slot 0 do config, opção de não perguntar (e de voltar
 a perguntar em Perfis), "Signs in as …" na ficha; perfil configurado que sumiu é corrigido em vez
-de bootar sem perfil. Falta: perfis para P2–P4 e validação no aparelho (roteiro 33).
+de bootar sem perfil. Lote 12c: perfis de P2–P4 (`data/ProfileSlots.kt`, "Other players" em
+Perfis), um perfil por jogador, slots de perfis apagados limpos. Falta: validação no aparelho
+(roteiro 33).
 
 **Estado U10 (2026-10-02, v1, Impl. + Local):** teclado do jogo digitável por controle
 (`ui/keyboard/KeyboardGrid.kt` no `GuestKeyboardPanel`): grade com destaque, atalhos do 360,

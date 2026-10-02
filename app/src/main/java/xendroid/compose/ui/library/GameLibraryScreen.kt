@@ -236,6 +236,7 @@ fun GameLibraryScreen(
         PlayAsDialog(
             profiles = ask.profiles,
             preselected = ask.preselected,
+            otherPlayers = ask.otherPlayers,
             onPlay = { xuid, dontAsk ->
                 playAs = null
                 scope.launch {

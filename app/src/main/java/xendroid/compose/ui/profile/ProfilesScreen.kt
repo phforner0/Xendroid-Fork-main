@@ -102,6 +102,8 @@ fun ProfilesScreen(
                     } else {
                         ProfileList(
                             profiles = s.profiles,
+                            slots = s.slots,
+                            onPlayer = vm::setPlayer,
                             trash = trash,
                             onSelect = vm::setActive,
                             onRename = { editing = Editing.Rename(it) },
@@ -195,6 +197,8 @@ private fun deleteSummaryText(entry: ProfileEntry, summary: ProfileContentSummar
 @Composable
 private fun ProfileList(
     profiles: List<ProfileEntry>,
+    slots: List<String?>,
+    onPlayer: (slot: Int, xuid: String?) -> Unit,
     trash: List<TrashedProfile>,
     onSelect: (String) -> Unit,
     onRename: (ProfileEntry) -> Unit,
@@ -211,12 +215,15 @@ private fun ProfileList(
                     Text(p.gamertag.ifBlank { p.xuid },
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
-                supportingContent = if (p.isActive) ({ Text("Active") }) else null,
+                supportingContent = (if (p.isActive) "Active · P1" else
+                    xendroid.compose.data.ProfileSlots.otherPlayerOf(slots, p.xuid)?.let { "Signs in as P$it" })
+                    ?.let { label -> { Text(label) } },
                 trailingContent = { RowMenu(p, onRename, onDelete) },
                 modifier = Modifier.clickable { onSelect(p.xuid) },
             )
             HorizontalDivider()
         }
+        if (profiles.size > 1) item(key = "players") { OtherPlayersSection(profiles, slots, onPlayer) }
         if (trash.isNotEmpty()) {
             item(key = "trash-header") {
                 Text("Trash · restorable with their saves",
@@ -416,6 +423,52 @@ private fun ChoiceField(
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** U11: the profiles players 2–4 sign in with when a game starts (P1 is the active one). */
+@Composable
+private fun OtherPlayersSection(profiles: List<ProfileEntry>, slots: List<String?>, onPlayer: (Int, String?) -> Unit) {
+    var picking by remember { mutableStateOf<Int?>(null) }
+    Column {
+        Text("Other players", style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 4.dp))
+        for (slot in 1 until xendroid.compose.data.ProfileSlots.COUNT) {
+            val xuid = slots.getOrNull(slot)
+            ListItem(
+                headlineContent = { Text("Player ${slot + 1}") },
+                supportingContent = {
+                    Text(profiles.firstOrNull { it.xuid.equals(xuid, ignoreCase = true) }?.gamertag?.ifBlank { null } ?: xuid
+                        ?: "Nobody signs in")
+                },
+                modifier = Modifier.clickable { picking = slot },
+            )
+        }
+        Text("A profile signs in for one player at a time; the controller of each player uses it. Applies on the next game launch.",
+            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
+        HorizontalDivider(Modifier.padding(top = 8.dp))
+    }
+    picking?.let { slot ->
+        val p1 = slots.getOrNull(0)
+        AlertDialog(
+            onDismissRequest = { picking = null },
+            title = { Text("Player ${slot + 1} signs in as") },
+            text = {
+                Column {
+                    ListItem(headlineContent = { Text("Nobody") },
+                        modifier = Modifier.clickable { picking = null; onPlayer(slot, null) })
+                    profiles.filterNot { it.xuid.equals(p1, ignoreCase = true) }.forEach { p ->
+                        val other = xendroid.compose.data.ProfileSlots.otherPlayerOf(slots, p.xuid)?.takeIf { it != slot + 1 }
+                        ListItem(
+                            headlineContent = { Text(p.gamertag.ifBlank { p.xuid }) },
+                            supportingContent = other?.let { { Text("Moves from player $it") } },
+                            modifier = Modifier.clickable { picking = null; onPlayer(slot, p.xuid) },
+                        )
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { picking = null }) { Text("Cancel") } },
         )
     }
 }

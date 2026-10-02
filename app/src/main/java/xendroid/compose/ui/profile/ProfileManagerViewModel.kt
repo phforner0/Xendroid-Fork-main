@@ -21,6 +21,7 @@ import xendroid.compose.core.EmulatorRuntime
 import xendroid.compose.core.Gamertag
 import xendroid.compose.core.ProfilePaths
 import xendroid.compose.core.StorageAccess
+import xendroid.compose.data.ProfileSlots
 import xendroid.compose.saves.ProfileContentSummary
 import xendroid.compose.saves.ProfileTrash
 import xendroid.compose.saves.TrashedProfile
@@ -44,7 +45,8 @@ class ProfileManagerViewModel(
 
     sealed interface ListState {
         data object Loading : ListState
-        data class Loaded(val profiles: List<ProfileEntry>) : ListState
+        /** [slots]: the profile (XUID) each player P1–P4 signs in with; null = nobody. */
+        data class Loaded(val profiles: List<ProfileEntry>, val slots: List<String?> = List(ProfileSlots.COUNT) { null }) : ListState
         data class Error(val message: String) : ListState
     }
 
@@ -81,8 +83,13 @@ class ProfileManagerViewModel(
                 ?: return@withContext ListState.Error("Emulator not loaded.")
             val root = ContentPaths.contentRoot().absolutePath
             try {
-                val active = activeXuid()
-                val profiles = emu.list_profiles(root)?.map {
+                val listed = emu.list_profiles(root)
+                // U11: a player slot naming a profile that is gone (or twice) signs in nobody.
+                val before = readSlots()
+                val slots = if (listed == null) before else ProfileSlots.reconcile(before, listed.map { it.xuid })
+                runCatching { writeSlots(before, slots) }.onFailure { Log.w(TAG, "Clearing stale player slots failed", it) }
+                val active = slots[0].orEmpty()
+                val profiles = listed?.map {
                     ProfileEntry(
                         xuid = it.xuid,
                         gamertag = it.gamertag ?: "",
@@ -93,7 +100,7 @@ class ProfileManagerViewModel(
                     )
                 }?.sortedBy { it.gamertag.lowercase() }
                     ?: return@withContext ListState.Error("Couldn't read profiles.")
-                ListState.Loaded(profiles)
+                ListState.Loaded(profiles, slots)
             } catch (t: RuntimeException) {
                 ListState.Error(t.message ?: "Couldn't read profiles.")
             }
@@ -167,6 +174,28 @@ class ProfileManagerViewModel(
         refresh()
     }
 
+    /** U11: the profile player [slot] + 1 (P2–P4) signs in with; null = nobody. P1's profile
+     *  is refused: P1 is chosen before each game. */
+    fun setPlayer(slot: Int, xuid: String?) = viewModelScope.launch {
+        require(slot in 1 until ProfileSlots.COUNT) { "P1 is set with the active profile" }
+        _opState.value = runCatching {
+            withContext(Dispatchers.IO) {
+                val before = readSlots()
+                if (xuid != null && before[0].equals(xuid, ignoreCase = true)) {
+                    return@withContext OpState.Failed("That profile plays as P1. Pick another one, or make another profile active first.")
+                }
+                writeSlots(before, ProfileSlots.assign(before, slot, xuid))
+                OpState.Done(if (xuid == null) "P${slot + 1} will not sign in. Applies on next game launch."
+                    else "P${slot + 1} profile set. Applies on next game launch.")
+            }
+        }.getOrElse {
+            if (it is CancellationException) throw it
+            Log.w(TAG, "Setting a player's profile failed", it)
+            OpState.Failed(reason("Couldn't set that player's profile; the configuration was kept", it))
+        }
+        refresh()
+    }
+
     /** First step of a delete: measure what content/<XUID> holds so the dialog can say it. */
     fun requestDelete(entry: ProfileEntry) = viewModelScope.launch {
         _opState.value = OpState.Busy("Checking the profile's saved data…")
@@ -219,18 +248,28 @@ class ProfileManagerViewModel(
         else -> "$action: ${e.message ?: e.javaClass.simpleName}"
     }
 
-    private fun activeXuid(): String {
+    private fun activeXuid(): String = readSlots()[0].orEmpty()
+
+    /** P1 signs in with [xuid] ("" = nobody); another player slot that had it is freed. */
+    private fun writeActiveXuid(xuid: String) {
+        val before = readSlots()
+        writeSlots(before, ProfileSlots.assign(before, 0, xuid.ifBlank { null }))
+    }
+
+    private fun readSlots(): List<String?> {
         val h = configStore.openLiveSnapshot()
         return try {
-            h.getString("Profiles", "logged_profile_slot_0_xuid") ?: ""
+            ProfileSlots.normalize(List(ProfileSlots.COUNT) { slot -> h.getString(ProfileSlots.SECTION, ProfileSlots.key(slot)) })
         } finally {
             h.closeDiscard()
         }
     }
 
-    private fun writeActiveXuid(xuid: String) {
+    private fun writeSlots(before: List<String?>, after: List<String?>) {
+        val changes = ProfileSlots.changes(before, after)
+        if (changes.isEmpty()) return
         configStore.editLiveConfig { h ->
-            h.putString("Profiles", "logged_profile_slot_0_xuid", xuid)
+            changes.forEach { (slot, xuid) -> h.putString(ProfileSlots.SECTION, ProfileSlots.key(slot), xuid) }
         }
     }
 
