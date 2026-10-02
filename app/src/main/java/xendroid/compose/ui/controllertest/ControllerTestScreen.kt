@@ -56,6 +56,9 @@ import androidx.compose.ui.unit.dp
 import xendroid.compose.gamepad.ControllerTestModel
 import xendroid.compose.gamepad.GamepadCapture
 import xendroid.compose.gamepad.PadAxes
+import xendroid.compose.gamepad.RumbleIntensity
+import xendroid.compose.gamepad.RumbleSettings
+import xendroid.compose.gamepad.rumbleAmplitude
 import xendroid.compose.gamepad.TestedDevice
 
 /** How long B must be held to leave with a controller only. */
@@ -74,6 +77,14 @@ fun ControllerTestScreen(onBack: () -> Unit) {
     var devices by remember { mutableStateOf(emptyList<TestedDevice>()) }
     var events by remember { mutableStateOf(emptyList<String>()) }
     val gyro = remember { mutableStateMapOf<Int, FloatArray>() }
+    // U08: each controller's own rumble intensity (the game reads it at the next start). Only its
+    // own file is written here: the default lives with the game process's options.
+    val rumblePrefs = remember { context.getSharedPreferences(RumbleSettings.DEVICES_PREFS, Context.MODE_PRIVATE) }
+    var rumble by remember {
+        mutableStateOf(RumbleSettings.decode(
+            context.getSharedPreferences(RumbleSettings.PREFS, Context.MODE_PRIVATE).getString(RumbleSettings.DEFAULT_KEY, null),
+            rumblePrefs.getString(RumbleSettings.DEVICES_KEY, null)))
+    }
     fun publish() { devices = model.all; events = model.events }
 
     DisposableEffect(Unit) {
@@ -131,7 +142,14 @@ fun ControllerTestScreen(onBack: () -> Unit) {
                     "Hold B for a second, or use Back, to leave.", style = MaterialTheme.typography.bodySmall)
             }
             if (devices.isEmpty()) item { Text("No controller connected. Pair one over Bluetooth or plug it in.") }
-            items(devices, key = { it.id }) { device -> DeviceCard(device, model, gyro[device.id]) { vibrate(device.id) } }
+            items(devices, key = { it.id }) { device ->
+                DeviceCard(device, model, gyro[device.id], rumble,
+                    onRumble = {
+                        rumble = rumble.cycleDevice(device.descriptor)
+                        rumblePrefs.edit().putString(RumbleSettings.DEVICES_KEY, rumble.encodeDevices()).apply()
+                    },
+                ) { vibrate(device.id, rumble.forDevice(device.descriptor)) }
+            }
             if (events.isNotEmpty()) {
                 item { Text("Connections", style = MaterialTheme.typography.titleSmall) }
                 items(events.take(10)) { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -184,10 +202,12 @@ private fun handle(event: InputEvent, model: ControllerTestModel, onBack: () -> 
     return true
 }
 
-/** A short pulse, only because the user asked for it. */
-private fun vibrate(id: Int) {
+/** A short pulse at the controller's rumble intensity, only because the user asked for it. */
+private fun vibrate(id: Int, intensity: RumbleIntensity) {
     val device = InputDevice.getDevice(id) ?: return
-    val effect = VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE)
+    val amplitude = rumbleAmplitude(0xFFFFL, intensity)
+    if (amplitude == 0) return
+    val effect = VibrationEffect.createOneShot(300, amplitude)
     runCatching {
         if (Build.VERSION.SDK_INT >= 31) device.vibratorManager.defaultVibrator.vibrate(effect)
         else @Suppress("DEPRECATION") device.vibrator.vibrate(effect)
@@ -196,7 +216,8 @@ private fun vibrate(id: Int) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DeviceCard(device: TestedDevice, model: ControllerTestModel, gyro: FloatArray?, onVibrate: () -> Unit) {
+private fun DeviceCard(device: TestedDevice, model: ControllerTestModel, gyro: FloatArray?, rumble: RumbleSettings,
+                       onRumble: () -> Unit, onVibrate: () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(device.name + if (device.connected) "" else " · disconnected", style = MaterialTheme.typography.titleMedium)
@@ -230,8 +251,17 @@ private fun DeviceCard(device: TestedDevice, model: ControllerTestModel, gyro: F
                 Text(gyro?.let { "Gyro (rad/s) x %.2f · y %.2f · z %.2f".format(it[0], it[1], it[2]) } ?: "Gyro: move the controller",
                     style = MaterialTheme.typography.bodySmall)
             }
-            if (device.canVibrate && device.connected) OutlinedButton(onClick = onVibrate) { Text("Vibrate 0.3 s") }
-            else Text("No vibration motor reported by Android", style = MaterialTheme.typography.bodySmall)
+            if (device.canVibrate) {
+                val own = rumble.perDevice[device.descriptor]
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = onRumble) {
+                        Text("Game rumble: " + (own?.label ?: "default (in-game menu)"))
+                    }
+                    if (device.connected) OutlinedButton(onClick = onVibrate, enabled = rumble.forDevice(device.descriptor) != RumbleIntensity.OFF) {
+                        Text("Vibrate 0.3 s")
+                    }
+                }
+            } else Text("No vibration motor reported by Android", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

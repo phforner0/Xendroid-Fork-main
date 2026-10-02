@@ -563,7 +563,8 @@ layout de toque por Title ID e orientação ("This game only" no editor dentro d
 com retorno ao compartilhado. U06 v2 (lote 12d) — layouts nomeados (salvar/aplicar com prévia do
 que muda/apagar), arquivo `xendroid-touch-layout` versionado com importação validada, e campos e
 controles desconhecidos preservados (corrige a perda deles a cada edição). U08 (parte) — intensidade
-de rumble Off/Low/Medium/High aplicada ao controle de cada jogador. U09 (parte, lote 3) —
+de rumble Off/Low/Medium/High aplicada ao controle de cada jogador; lote 12g: intensidade
+própria por controle (pelo descritor), escolhida em Test controllers. U09 (parte, lote 3) —
 estado do boot.
 
 Referências concretas [X1/X2], [B3], [D1/D2], [E2/E5]. O visual Blades/Metro pode

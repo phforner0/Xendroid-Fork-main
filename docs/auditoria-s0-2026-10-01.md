@@ -425,3 +425,8 @@ com comandos e resultados exatos.
    Configurações → Vulkan → "Custom Vulkan driver" aparece com o título e "Unavailable: custom
    drivers load only on Adreno GPUs…; Games run on the system driver.", sem botão de escolher
    arquivo; o mesmo nos ajustes de um jogo. Num Adreno, nada muda.
+41. Lote 12 — vibração por controle (U08): com dois controles, Test controllers → no primeiro,
+   "Game rumble" até High; no segundo, até Off. "Vibrate 0.3 s" do primeiro vibra forte e o do
+   segundo fica desabilitado. Num jogo com vibração e os dois controles como P1/P2: só o P1 vibra; o
+   menu (Controls) mostra "… · P1 (High), P2 (Off)". Mudar o padrão no menu não altera esses dois.
+   Desconectar e reconectar o primeiro: continua High.

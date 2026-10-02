@@ -171,10 +171,14 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
     /** Device id -> descriptor of each known controller (a removed device can no longer be asked). */
     private val controllerKeys = mutableMapOf<Int, String>()
-    /** I04/U08: guest rumble on physical controllers only (never the phone), per the user's intensity. */
-    private val rumbleIntensity by lazy {
-        mutableStateOf(xendroid.compose.gamepad.RumbleIntensity.parse(
-            getSharedPreferences("touch_options", MODE_PRIVATE).getString("controller_rumble", null)))
+    /** I04/U08: guest rumble on physical controllers only (never the phone): each controller's own
+     *  intensity (set in Test controllers), else the default the in-game menu changes. */
+    private val rumbleSettings by lazy {
+        mutableStateOf(xendroid.compose.gamepad.RumbleSettings.decode(
+            getSharedPreferences(xendroid.compose.gamepad.RumbleSettings.PREFS, MODE_PRIVATE)
+                .getString(xendroid.compose.gamepad.RumbleSettings.DEFAULT_KEY, null),
+            getSharedPreferences(xendroid.compose.gamepad.RumbleSettings.DEVICES_PREFS, MODE_PRIVATE)
+                .getString(xendroid.compose.gamepad.RumbleSettings.DEVICES_KEY, null)))
     }
     private val rumbleAmplitudes = mutableMapOf<Int, Int>()
 
@@ -222,7 +226,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun driveRumble(state: LongArray) {
         controllerSlots.players.forEachIndexed { slot, key ->
             val deviceId = key?.let { k -> controllerKeys.entries.firstOrNull { it.value == k }?.key } ?: return@forEachIndexed
-            val amplitude = xendroid.compose.gamepad.rumbleAmplitude(state.getOrElse(slot) { 0L }, rumbleIntensity.value)
+            val amplitude = xendroid.compose.gamepad.rumbleAmplitude(state.getOrElse(slot) { 0L }, rumbleSettings.value.forDevice(key))
             val vibrator = controllerVibrator(deviceId) ?: return@forEachIndexed
             if (amplitude > 0) {
                 // Short overlapping shots: stops by itself if this loop does.
@@ -1031,7 +1035,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         }
                                         val playing = foregroundState.value && !menuState.value.open && !session.isPaused()
                                         val phones = phoneControllers.host != null
-                                        val controllerRumble = rumbleIntensity.value != xendroid.compose.gamepad.RumbleIntensity.OFF
+                                        val controllerRumble = rumbleSettings.value.anyOn
                                         val guest = if (playing && (controllerRumble || phones)) session.rumbleState() else null
                                         if (phones) runCatching { phoneControllers.tick(playing, guest) }
                                         val state = if (controllerRumble) guest else null
@@ -1238,10 +1242,13 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                 else stringResource(R.string.menu_gyro_camera_value, if (gyroEnabled.value) on else off),
                                             InGameAction.GYRO_SENSITIVITY to stringResource(R.string.menu_gyro_sensitivity_value, listOf(
                                                 stringResource(R.string.menu_low), stringResource(R.string.menu_normal), stringResource(R.string.menu_high))[gyroSensitivity.intValue]),
-                                            InGameAction.CONTROLLER_RUMBLE to stringResource(R.string.menu_rumble_value, rumbleIntensity.value.label,
+                                            InGameAction.CONTROLLER_RUMBLE to stringResource(R.string.menu_rumble_value, rumbleSettings.value.default.label,
                                                 controllerSlots.players.withIndex()
                                                     .filter { it.value != null && !it.value!!.startsWith(xendroid.compose.companion.CompanionHost.KEY_PREFIX) }
-                                                    .joinToString(", ") { "P${it.index + 1}" }.ifEmpty { stringResource(R.string.menu_no_controller) }),
+                                                    .joinToString(", ") { player ->
+                                                        // U08: a controller with its own intensity says it.
+                                                        "P${player.index + 1}" + (player.value?.let { rumbleSettings.value.perDevice[it] }?.let { " (${it.label})" } ?: "")
+                                                    }.ifEmpty { stringResource(R.string.menu_no_controller) }),
                                             InGameAction.PHONE_CONTROLLERS to phoneControllersLabel.value,
                                             InGameAction.TOUCH_CAMERA to stringResource(R.string.menu_touch_camera, if (touchCamera.value) on else off),
                                             InGameAction.MARK_SCENE to stringResource(R.string.menu_mark_scene, sceneMarkers.intValue),
@@ -2467,9 +2474,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             return
         }
         if (action == InGameAction.CONTROLLER_RUMBLE) {
-            rumbleIntensity.value = rumbleIntensity.value.next()
-            getSharedPreferences("touch_options", MODE_PRIVATE).edit()
-                .putString("controller_rumble", rumbleIntensity.value.name).apply()
+            rumbleSettings.value = rumbleSettings.value.cycleDefault()
+            getSharedPreferences(xendroid.compose.gamepad.RumbleSettings.PREFS, MODE_PRIVATE).edit()
+                .putString(xendroid.compose.gamepad.RumbleSettings.DEFAULT_KEY, rumbleSettings.value.default.name).apply()
             stopRumble()
             return
         }
