@@ -15,6 +15,14 @@ common=(-O1 -I "$cpp" -I "$cpp/xenia/src" -I "$cpp/xenia/third_party/Vulkan-Head
 "$build/policy-test"
 "${cxx[@]}" "${common[@]}" "$test/winfg_software_test.cc" "$cpp/third_party/winfg/src/framegen.cpp" "$vk_library" -o "$build/winfg-test"
 "$build/winfg-test"
+# Motion (F09): multi-scale texture panning at 256 px, 4 consecutive pairs, the presenter's
+# model 3. Args: preset shift model pairs pattern size. A still image must come out unchanged;
+# moving content must be estimated better than by repeating either source frame.
+"${cxx[@]}" "${common[@]}" -DTEST_MOTION "$test/winfg_software_test.cc" "$cpp/third_party/winfg/src/framegen.cpp" "$vk_library" -o "$build/winfg-motion-test"
+for run in "2 0 3 4 2 64" "2 2 3 4 2 256" "2 8 3 4 2 256" "0 8 3 4 2 256"; do
+    # shellcheck disable=SC2086
+    "$build/winfg-motion-test" $run | grep "Motion half-way"
+done
 "${GLSLANG:-glslangValidator}" -V --target-env vulkan1.0 "$cpp/xenia/src/xenia/ui/vulkan/shaders/xendroid_color_filter.comp" -o "$build/color.spv"
 "${cxx[@]}" "${common[@]}" -DTEST_COLOR "$test/winfg_software_test.cc" "$vk_library" -o "$build/color-test"
 for mode in 1 2 3; do "$build/color-test" "$build/color.spv" "$mode"; done

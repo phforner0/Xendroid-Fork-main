@@ -590,6 +590,15 @@ input-to-frame e a fila pendente (F02).
 scene-cut fallback e movimento determinístico. Imagem constante é só teste básico
 de compute. Aplicar FG antes de HUD Android e preservar layers de diálogos.
 
+**Estado F09 (2026-10-02, fatia 8b, Local em Vulkan por software):** teste de movimento
+determinístico (`TEST_MOTION`: quadrado liso, textura fina, textura em várias escalas;
+vários pares; erro contra o meio ideal e os quadros-fonte) com guardas no
+`tools/test-presentation-host.sh`. Win-FG (modelo 3) ganha de repetir um quadro-fonte até
+16 px/quadro em 256 px com textura multiescala; não interpola objetos lisos pequenos; com só
+detalhe fino perde para "repetir" acima de ~4 px. Medições em
+`performance-tests/experiencia-em-jogo-2026-10-02.md`. Falta: oclusão, HUD, corte de cena,
+checkerboard e o A/B no aparelho.
+
 **F10 — liberação:** debug-only e off-by-default continuam até Android/integration
 e aparelho passarem. Nenhuma versão atual foi comprovada superior no mesmo jogo/
 aparelho. 3×/4× mostram capacidade de multiplicar, não ganho da simulação.

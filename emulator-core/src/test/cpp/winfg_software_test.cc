@@ -1,5 +1,7 @@
 #include <vulkan/vulkan.h>
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -16,6 +18,12 @@
 
 struct Image { VkImage image{}; VkImageView view{}; VkDeviceMemory memory{}; };
 int main(int argc, char** argv) {
+#ifdef TEST_MOTION
+  // motion-test [preset 0..2] [shift px] [model 3|4] [pairs] [pattern 0 square|1 noise pan] [size px]
+  const uint32_t kSize = argc > 6 ? uint32_t(std::max(32, std::atoi(argv[6]))) : 64;
+#else
+  constexpr uint32_t kSize = 64;
+#endif
   VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO}; app.apiVersion = VK_API_VERSION_1_3;
   VkInstanceCreateInfo instance_info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO}; instance_info.pApplicationInfo = &app;
   VkInstance instance; VK_CHECK(vkCreateInstance(&instance_info, nullptr, &instance));
@@ -86,7 +94,7 @@ int main(int argc, char** argv) {
   };
   auto image = [&](Image& out) {
     VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO}; info.imageType = VK_IMAGE_TYPE_2D;
-    info.format = VK_FORMAT_R8G8B8A8_UNORM; info.extent = {64, 64, 1}; info.mipLevels = info.arrayLayers = 1;
+    info.format = VK_FORMAT_R8G8B8A8_UNORM; info.extent = {kSize, kSize, 1}; info.mipLevels = info.arrayLayers = 1;
     info.samples = VK_SAMPLE_COUNT_1_BIT; info.tiling = VK_IMAGE_TILING_OPTIMAL;
     info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     assert(vkCreateImage(device, &info, nullptr, &out.image) == VK_SUCCESS);
@@ -100,7 +108,7 @@ int main(int argc, char** argv) {
     assert(vkCreateImageView(device, &view, nullptr, &out.view) == VK_SUCCESS);
   };
   Image previous, current, generated; image(previous); image(current); image(generated);
-  VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; buffer_info.size = 64 * 64 * 4;
+  VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; buffer_info.size = VkDeviceSize(kSize) * kSize * 4;
   buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   VkBuffer buffer; VK_CHECK(vkCreateBuffer(device, &buffer_info, nullptr, &buffer));
   VkMemoryRequirements requirements; vkGetBufferMemoryRequirements(device, buffer, &requirements);
@@ -118,11 +126,16 @@ int main(int argc, char** argv) {
   auto lsfg_engine = std::make_unique<lsfg::Engine>();
   assert(lsfg_engine->init(device, physical, argv[1]));
   lsfg_engine->configure(multiplier, 0, 1.0f, 120.0f);
-  assert(lsfg_engine->prepare(64, 64, VK_FORMAT_R8G8B8A8_UNORM));
+  assert(lsfg_engine->prepare(kSize, kSize, VK_FORMAT_R8G8B8A8_UNORM));
 #elif !defined(TEST_COLOR)
   winfg::FrameGen engine; assert(engine.init(&dd, &id, physical, device, family, queue));
   winfg::Config cfg; cfg.enabled = true; cfg.model = 3; cfg.gmMode = 2; cfg.frMode = 2; cfg.perfPreset = 2;
-  engine.configure(cfg); assert(engine.onResize({64, 64}, VK_FORMAT_R8G8B8A8_UNORM));
+#ifdef TEST_MOTION
+  // motion-test [preset 0..2] [shift px] [model 3|4]: the presenter uses model 3.
+  if (argc > 1) cfg.perfPreset = std::atoi(argv[1]);
+  if (argc > 3) cfg.model = std::atoi(argv[3]);
+#endif
+  engine.configure(cfg); assert(engine.onResize({kSize, kSize}, VK_FORMAT_R8G8B8A8_UNORM));
 #endif
 #ifdef TEST_COLOR
   assert(argc == 3);
@@ -166,11 +179,83 @@ int main(int argc, char** argv) {
   };
   const VkClearColorValue color{{0.25f, 0.5f, 0.75f, 1.0f}};
   const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+#ifdef TEST_MOTION
+  // Deterministic motion (F09). Pattern 0: a bright 8x8 square on a dark background;
+  // pattern 1: smooth value noise over the whole frame (a camera pan). The content moves
+  // `shift` px to the right per source frame, and `frames` consecutive pairs are generated
+  // so the engine's temporal flow predictor sees steady motion. The last half-way frame
+  // is compared with the ideal one (content half a step along), the current and the previous.
+  constexpr int kDark = 32, kBright = 224;
+  const int kSquareY = int(kSize) / 2 - 4, kSquareX = int(kSize) / 2 - 4;
+  const int shift = argc > 2 ? std::atoi(argv[2]) : 8;
+  const int frames = argc > 4 ? std::max(1, std::atoi(argv[4])) : 1;
+  const int pattern = argc > 5 ? std::atoi(argv[5]) : 0;
+  // The square sits at x = kSquareX..kSquareX+7 half-way through the last pair.
+  const double square_base = kSquareX - shift / 2.0 - double(frames - 1) * shift;
+  auto lattice = [](int gx, int gy) {
+    uint32_t h = uint32_t(gx) * 73856093u ^ uint32_t(gy) * 19349663u;
+    h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
+    return double(h & 0xFF);
+  };
+  // Bilinear value noise on a `cell` px lattice, 0..255.
+  auto noise = [&](double u, double v, double cell, int seed) {
+    const double gx = std::floor(u / cell), gy = std::floor(v / cell);
+    const double tx = u / cell - gx, ty = v / cell - gy;
+    const int ix = int(gx) + seed * 7919, iy = int(gy) - seed * 104729;
+    const double a = lattice(ix, iy), b = lattice(ix + 1, iy), c = lattice(ix, iy + 1), d = lattice(ix + 1, iy + 1);
+    const double top = a + (b - a) * tx, bottom = c + (d - c) * tx;
+    return top + (bottom - top) * ty;
+  };
+  auto content = [&](double offset, int x, int y) -> double {
+    const double u = x - offset;
+    // Pattern 1: one 6 px octave (fine detail only); pattern 2: four octaves, 48 to 6 px,
+    // closer to real images, which carry detail at every scale. Both 48..208.
+    if (pattern == 1) return 48.0 + noise(u, y, 6.0, 0) * 160.0 / 255.0;
+    if (pattern == 2) {
+      const double sum = 0.4 * noise(u, y, 48.0, 1) + 0.3 * noise(u, y, 24.0, 2) +
+                         0.2 * noise(u, y, 12.0, 3) + 0.1 * noise(u, y, 6.0, 4);
+      return 48.0 + sum * 160.0 / 255.0;
+    }
+    const double cover = (y >= kSquareY && y < kSquareY + 8)
+        ? std::clamp(std::min(u + 1.0, square_base + 8.0) - std::max(u, square_base), 0.0, 1.0) : 0.0;
+    return kDark + (kBright - kDark) * cover;
+  };
+  VkBufferCreateInfo staging_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO}; staging_info.size = 2 * VkDeviceSize(kSize) * kSize * 4;
+  staging_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  VkBuffer staging; VK_CHECK(vkCreateBuffer(device, &staging_info, nullptr, &staging));
+  VkMemoryRequirements staging_needs; vkGetBufferMemoryRequirements(device, staging, &staging_needs);
+  VkMemoryAllocateInfo staging_memory_info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO}; staging_memory_info.allocationSize = staging_needs.size;
+  staging_memory_info.memoryTypeIndex = memory_type(staging_needs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+  VkDeviceMemory staging_memory; VK_CHECK(vkAllocateMemory(device, &staging_memory_info, nullptr, &staging_memory));
+  VK_CHECK(vkBindBufferMemory(device, staging, staging_memory, 0));
+  void* staging_pixels; VK_CHECK(vkMapMemory(device, staging_memory, 0, staging_info.size, 0, &staging_pixels));
+  // Source pair `pair` (1-based): previous = content at (pair-1)*shift, current = pair*shift.
+  auto upload_pair = [&](int pair, VkImageLayout from) {
+    for (int frame = 0; frame < 2; ++frame) {
+      auto* rgba = static_cast<uint8_t*>(staging_pixels) + size_t(frame) * kSize * kSize * 4;
+      const double offset = double(pair - 1 + frame) * shift;
+      for (int y = 0; y < int(kSize); ++y) for (int x = 0; x < int(kSize); ++x) {
+        uint8_t* p = rgba + (size_t(y) * kSize + x) * 4;
+        p[0] = p[1] = p[2] = uint8_t(std::lround(content(offset, x, y))); p[3] = 255;
+      }
+    }
+    int frame_index = 0;
+    for (auto input : {previous.image, current.image}) {
+      barrier(input, from, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+      VkBufferImageCopy upload{}; upload.bufferOffset = VkDeviceSize(frame_index++) * kSize * kSize * 4;
+      upload.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}; upload.imageExtent = {kSize, kSize, 1};
+      vkCmdCopyBufferToImage(command, staging, input, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &upload);
+      barrier(input, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
+  };
+  upload_pair(1, VK_IMAGE_LAYOUT_UNDEFINED);
+#else
   for (auto input : {previous.image, current.image}) {
     barrier(input, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     vkCmdClearColorImage(command, input, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &color, 1, &range);
     barrier(input, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   }
+#endif
   barrier(generated.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 #ifdef TEST_LSFG
   VK_CHECK(vkEndCommandBuffer(command));
@@ -181,9 +266,9 @@ int main(int argc, char** argv) {
     VK_CHECK(vkResetCommandPool(device, pool, 0)); VK_CHECK(vkBeginCommandBuffer(command, &begin));
     barrier(current.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
     generations = lsfg_engine->planAt(multiplier - 1, frame, std::chrono::steady_clock::time_point(std::chrono::milliseconds(frame * 34)));
-    lsfg_engine->process(command, current.image, 64, 64, generations);
+    lsfg_engine->process(command, current.image, kSize, kSize, generations);
     for (unsigned generation = 0; generation < generations; ++generation) {
-      lsfg_engine->generateInto(command, generation, 0, generated.image, generated.view, 64, 64);
+      lsfg_engine->generateInto(command, generation, 0, generated.image, generated.view, kSize, kSize);
       // Multiple syntheses may reuse the readback target after a write/write barrier.
       barrier(generated.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL);
     }
@@ -203,22 +288,79 @@ int main(int argc, char** argv) {
   vkCmdDispatch(command, 8, 8, 1);
 #else
   assert(engine.record(command, previous.view, current.view, generated.view, 0.5f));
+#ifdef TEST_MOTION
+  for (int pair = 2; pair <= frames; ++pair) {
+    VK_CHECK(vkEndCommandBuffer(command));
+    VkSubmitInfo step{VK_STRUCTURE_TYPE_SUBMIT_INFO}; step.commandBufferCount = 1; step.pCommandBuffers = &command;
+    VK_CHECK(vkQueueSubmit(queue, 1, &step, VK_NULL_HANDLE)); VK_CHECK(vkQueueWaitIdle(queue));
+    VK_CHECK(vkResetCommandPool(device, pool, 0)); VK_CHECK(vkBeginCommandBuffer(command, &begin));
+    upload_pair(pair, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    barrier(generated.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL);
+    assert(engine.record(command, previous.view, current.view, generated.view, 0.5f));
+  }
+#endif
 #endif
   barrier(generated.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-  VkBufferImageCopy copy{}; copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}; copy.imageExtent = {64, 64, 1};
+  VkBufferImageCopy copy{}; copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}; copy.imageExtent = {kSize, kSize, 1};
   vkCmdCopyImageToBuffer(command, generated.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &copy);
   VK_CHECK(vkEndCommandBuffer(command));
   VkSubmitInfo submission{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submission.commandBufferCount = 1; submission.pCommandBuffers = &command;
   VK_CHECK(vkQueueSubmit(queue, 1, &submission, VK_NULL_HANDLE)); VK_CHECK(vkQueueWaitIdle(queue));
-  void* mapped; VK_CHECK(vkMapMemory(device, readback, 0, 64 * 64 * 4, 0, &mapped));
+  void* mapped; VK_CHECK(vkMapMemory(device, readback, 0, VkDeviceSize(kSize) * kSize * 4, 0, &mapped));
   const auto pixels = static_cast<const uint8_t*>(mapped);
+#ifdef TEST_MOTION
+  {
+    // Mean absolute error inside an 8 px margin (content enters and leaves at the edges)
+    // against the ideal half-way frame, the current source and the previous one.
+    const double last = double(frames);
+    double error_ideal = 0, error_current = 0, error_previous = 0;
+    int counted = 0;
+    for (int y = 8; y < int(kSize) - 8; ++y) for (int x = 8; x < int(kSize) - 8; ++x, ++counted) {
+      const double v = pixels[(size_t(y) * kSize + x) * 4];
+      error_ideal += std::abs(v - content((last - 0.5) * shift, x, y));
+      error_current += std::abs(v - content(last * shift, x, y));
+      error_previous += std::abs(v - content((last - 1) * shift, x, y));
+    }
+    std::printf("Motion half-way frame (pattern %d, shift %d px, %d pairs, preset %d, model %d): mean abs error "
+                "vs ideal %.2f, vs current %.2f, vs previous %.2f",
+                pattern, shift, frames, cfg.perfPreset, cfg.model, error_ideal / counted, error_current / counted,
+                error_previous / counted);
+    if (pattern == 0) {
+      // Full-brightness pixels and their centroid; half-bright ones are what a cross-fade leaves.
+      int bright = 0, half = 0;
+      double sum_x = 0;
+      for (int y = 0; y < int(kSize); ++y) for (int x = 0; x < int(kSize); ++x) {
+        const int v = pixels[(size_t(y) * kSize + x) * 4];
+        if (v >= kDark + (kBright - kDark) * 3 / 4) { ++bright; sum_x += x; }
+        else if (v >= kDark + (kBright - kDark) / 4) ++half;
+      }
+      std::printf("; square: %d bright pixels (64 expected), centroid x %.2f (ideal %.2f, current %.2f), %d half-bright",
+                  bright, bright ? sum_x / bright : -1.0, kSquareX + 3.5, kSquareX + 3.5 + shift / 2.0, half);
+    }
+    // Regression guard on multi-scale content (pattern 2): a still image comes out unchanged,
+    // and a moving one is estimated better by the half-way frame than by repeating either
+    // source. Software Vulkan and synthetic content: a guard, not proof of quality in games.
+    bool ok = true;
+    if (pattern == 2) {
+      ok = shift == 0 ? error_ideal / counted <= 1.0 : error_ideal < error_current && error_ideal < error_previous;
+    }
+    std::printf("%s\n", pattern == 2 ? (ok ? " -> passed" : " -> FAILED") : " (measurement only)");
+    vkUnmapMemory(device, readback);
+    vkDestroyBuffer(device, staging, nullptr); vkFreeMemory(device, staging_memory, nullptr);
+    engine.destroy();
+    for (auto img : {previous, current, generated}) { vkDestroyImageView(device, img.view, nullptr); vkDestroyImage(device, img.image, nullptr); vkFreeMemory(device, img.memory, nullptr); }
+    vkDestroyBuffer(device, buffer, nullptr); vkFreeMemory(device, readback, nullptr); vkDestroyCommandPool(device, pool, nullptr);
+    vkDestroyDevice(device, nullptr); vkDestroyInstance(instance, nullptr);
+    return ok ? 0 : 4;
+  }
+#endif
   int expected[3] = {64, 128, 191};
 #ifdef TEST_COLOR
   if (filter_mode == 1) expected[0] = expected[1] = expected[2] = 118;
   if (filter_mode == 2) { expected[0] = 56; expected[1] = 128; expected[2] = 199; }
   if (filter_mode == 3) { expected[0] = 67; expected[1] = 128; expected[2] = 176; }
 #endif
-  for (int i = 0; i < 64 * 64; ++i) {
+  for (int i = 0; i < int(kSize * kSize); ++i) {
     if (std::abs(int(pixels[i * 4]) - expected[0]) > 2 || std::abs(int(pixels[i * 4 + 1]) - expected[1]) > 2 ||
         std::abs(int(pixels[i * 4 + 2]) - expected[2]) > 2 || pixels[i * 4 + 3] < 253) {
       std::fprintf(stderr, "Invalid synthesis pixel %d: %u %u %u %u\n", i, pixels[i*4], pixels[i*4+1], pixels[i*4+2], pixels[i*4+3]); return 3;
