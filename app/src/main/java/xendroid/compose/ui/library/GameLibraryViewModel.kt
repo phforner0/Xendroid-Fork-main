@@ -196,7 +196,7 @@ class GameLibraryViewModel(
                 when (val r = repo.scan()) {
                     GameLibraryRepository.ScanResult.NoFolder -> LibraryUiState.NoFolder
                     GameLibraryRepository.ScanResult.PermissionLost -> LibraryUiState.PermissionLost
-                    is GameLibraryRepository.ScanResult.Games -> LibraryUiState.Loaded(r.games)
+                    is GameLibraryRepository.ScanResult.Games -> LibraryUiState.Loaded(r.games, r.unavailableRoots)
                 }
             }.getOrElse { LibraryUiState.Error(it.message ?: "Failed to load library") }
             // A warm-cache rescan finishes faster than the PullToRefreshBox reveal animation,
@@ -210,11 +210,29 @@ class GameLibraryViewModel(
         }
     }
 
-    /** Real-path (All Files Access) folder chosen in the built-in browser: persist the
-     *  abs path + rescan. */
+    /** L03: the library's game folders, in order (the first receives full-game installs). */
+    private val _folders = MutableStateFlow<List<String>>(emptyList())
+    val folders: StateFlow<List<String>> = _folders
+
+    fun loadFolders() {
+        viewModelScope.launch { _folders.value = repo.gameDirPaths() }
+    }
+
+    /** Real-path (All Files Access) folder chosen in the built-in browser: added to the
+     *  library's folders (a readable directory only) + rescan. */
     fun onRealPathFolderPicked(path: String) {
         viewModelScope.launch {
-            repo.saveGameDirPath(path)
+            repo.addGameDirPath(path)
+            _folders.value = repo.gameDirPaths()
+            refresh()
+        }
+    }
+
+    /** Stops scanning [path] (its files stay where they are) + rescan. */
+    fun removeFolder(path: String) {
+        viewModelScope.launch {
+            repo.removeGameDirPath(path)
+            _folders.value = repo.gameDirPaths()
             refresh()
         }
     }

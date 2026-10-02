@@ -31,23 +31,27 @@ class GameLibraryRepository(
     sealed interface ScanResult {
         data object NoFolder : ScanResult
         data object PermissionLost : ScanResult
-        data class Games(val games: List<Game>) : ScanResult
+        /** [unavailableRoots]: folders that could not be read this time (the others were scanned). */
+        data class Games(val games: List<Game>, val unavailableRoots: List<String> = emptyList()) : ScanResult
     }
 
     /** Validates the path is a readable directory FIRST so a later scan can't fail
-     *  PermissionLost on an unreadable dir. Returns whether it was saved. */
-    suspend fun saveGameDirPath(path: String): Boolean = withContext(Dispatchers.IO) {
+     *  PermissionLost on an unreadable dir; then adds it to the library's folders (L03). */
+    suspend fun addGameDirPath(path: String): Boolean = withContext(Dispatchers.IO) {
         val dir = File(path)
         if (!dir.isDirectory || dir.listFiles() == null) {
-            Log.w(tag, "saveGameDirPath rejected (not a readable dir): $path")
+            Log.w(tag, "addGameDirPath rejected (not a readable dir): $path")
             return@withContext false
         }
-        prefs.setGameDirPath(path)
+        prefs.addGameDirPath(path)
         true
     }
 
-    suspend fun currentGameDirPath(): String? = withContext(Dispatchers.IO) {
-        prefs.gameDirPath.firstOrNull()
+    /** Stops scanning [path]; nothing in it is deleted. */
+    suspend fun removeGameDirPath(path: String) = withContext(Dispatchers.IO) { prefs.removeGameDirPath(path) }
+
+    suspend fun gameDirPaths(): List<String> = withContext(Dispatchers.IO) {
+        prefs.gameDirPaths.firstOrNull().orEmpty()
     }
 
     suspend fun scan(): ScanResult = withContext(Dispatchers.IO) {
@@ -55,8 +59,12 @@ class GameLibraryRepository(
     }
 
     private suspend fun scanLocked(): ScanResult {
-        val dir = prefs.gameDirPath.firstOrNull() ?: return ScanResult.NoFolder
-        return scanRealPathLocked(dir)
+        val roots = prefs.gameDirPaths.firstOrNull().orEmpty()
+        if (roots.isEmpty()) return ScanResult.NoFolder
+        val plan = LibraryRoots.plan(roots, canonical = { canonicalOf(File(it)) },
+            readable = { File(it).let { dir -> dir.isDirectory && dir.listFiles() != null } })
+        if (plan.scan.isEmpty()) return ScanResult.PermissionLost
+        return scanRealPathsLocked(plan.scan, plan.unavailable)
     }
 
     /** Resolve a game's title id for the per-game config path (boot-free).
@@ -116,23 +124,33 @@ class GameLibraryRepository(
                     e.discNumber, e.discCount)
     }
 
-    /** Walk the games dir and every subdirectory, classify each entry, sort. A null listing
-     *  on the ROOT (grant revoked) -> [ScanResult.PermissionLost]; an unreadable subdirectory
-     *  is skipped. */
-    private fun scanRealPathLocked(dirPath: String): ScanResult {
-        val root = File(dirPath)
-        val children = root.listFiles() ?: return ScanResult.PermissionLost
-
+    /** Walk each games folder and every subdirectory, classify each entry, sort. A root that
+     *  stopped being listable since planning joins [unavailable]; none listable at all
+     *  (grant revoked) -> [ScanResult.PermissionLost]; an unreadable subdirectory is skipped.
+     *  One visited set across roots, and one entry per launch path. */
+    private fun scanRealPathsLocked(roots: List<String>, unavailable: List<String>): ScanResult {
         // Load the extraction cache once; mutate during classify; persist once after.
         metadataCache.load()
         val games = ArrayList<Game>()
         val visited = HashSet<String>()
-        canonicalOf(root)?.let { visited.add(it) }
-        collectGames(children, depth = 1, visited, games)
-        games.sortBy { it.name.lowercase() }
-        metadataCache.retainOnly(games.mapTo(HashSet()) { it.launchUri })
+        val missing = unavailable.toMutableList()
+        var scanned = 0
+        for (dirPath in roots) {
+            val root = File(dirPath)
+            val children = root.listFiles()
+            if (children == null) { missing += dirPath; continue }
+            scanned++
+            canonicalOf(root)?.let { visited.add(it) }
+            collectGames(children, depth = 1, visited, games)
+        }
+        if (scanned == 0) return ScanResult.PermissionLost
+        val unique = games.distinctBy { it.launchUri }.sortedBy { it.name.lowercase() }
+        // What this scan saw stays cached, and so do the entries of a folder that is only away
+        // (an SD card out): they are reused, not re-extracted, when it comes back.
+        val away = missing.map { it.trimEnd('/') + "/" }
+        metadataCache.retainOnly(unique.mapTo(HashSet()) { it.launchUri }) { key -> away.any(key::startsWith) }
         metadataCache.save()
-        return ScanResult.Games(games)
+        return ScanResult.Games(unique, missing)
     }
 
     /** Classify [children], then descend into every subdirectory that is not itself a game.

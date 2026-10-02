@@ -85,8 +85,8 @@ class GameMetadataCache(cacheDir: File) {
     /** Drop entries whose key is NOT in [liveKeys] (games no longer in the library), so
      *  the cache stays bounded to the current library instead of growing monotonically as
      *  games come and go. Call once per scan (with the current launch uris) before [save]. */
-    fun retainOnly(liveKeys: Set<String>) = synchronized(lock) {
-        entries.keys.retainAll(liveKeys)
+    fun retainOnly(liveKeys: Set<String>, alsoKeep: (String) -> Boolean = { false }) = synchronized(lock) {
+        entries.keys.retainAll { it in liveKeys || alsoKeep(it) }
     }
 
     /** Persist the in-memory cache to disk (call once after the scan). Writes a fresh

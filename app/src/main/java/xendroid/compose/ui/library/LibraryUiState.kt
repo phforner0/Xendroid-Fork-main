@@ -9,8 +9,9 @@ sealed interface LibraryUiState {
     data object NoFolder : LibraryUiState
     /** Scanning the chosen folder. */
     data object Loading : LibraryUiState
-    /** Scan finished. [games] may be empty (folder has no recognized titles). */
-    data class Loaded(val games: List<Game>) : LibraryUiState
+    /** Scan finished. [games] may be empty (folder has no recognized titles); [unavailableRoots]
+     *  are game folders that could not be read this time (L03: the others were scanned). */
+    data class Loaded(val games: List<Game>, val unavailableRoots: List<String> = emptyList()) : LibraryUiState
     /** A games dir is persisted but it became unreadable (All Files Access grant gone). */
     data object PermissionLost : LibraryUiState
     /** Device has no Vulkan -> emulator cannot run; hard gate. */

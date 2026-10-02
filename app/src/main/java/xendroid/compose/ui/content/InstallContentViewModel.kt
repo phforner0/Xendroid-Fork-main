@@ -114,7 +114,8 @@ class InstallContentViewModel(
     private suspend fun validateGameCopy(src: File, name: String): PreCheck {
         val gamesDir = gamesDirOrNull() ?: return PreCheck.Reject(NO_GAMES_FOLDER)
         val dest = File(gamesDir, src.name)
-        if (src.canonicalPath.startsWith(gamesDir.canonicalPath + File.separator) ||
+        // Already inside any of the library's folders (L03), or the very file it would become.
+        if (allGamesDirs().any { src.canonicalPath.startsWith(it.canonicalPath + File.separator) } ||
             src.canonicalFile == dest.canonicalFile
         ) {
             return PreCheck.Done(
@@ -173,8 +174,11 @@ class InstallContentViewModel(
             "Installed $installed package(s) from the disc. Boot the play disc to use them.")
     }
 
-    private suspend fun gamesDirOrNull(): File? =
-        prefs.gameDirPath.firstOrNull()?.takeIf { it.isNotBlank() }?.let { File(it) }
+    /** Full games are copied into the library's first folder (L03: there can be several). */
+    private suspend fun gamesDirOrNull(): File? = allGamesDirs().firstOrNull()
+
+    private suspend fun allGamesDirs(): List<File> =
+        prefs.gameDirPaths.firstOrNull().orEmpty().filter { it.isNotBlank() }.map { File(it) }
 
     private suspend fun runInstall(srcPath: String, name: String, label: String?) {
         _state.value = ContentInstallState.Busy("Installing…", 0f)

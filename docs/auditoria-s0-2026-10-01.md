@@ -234,3 +234,11 @@ com comandos e resultados exatos.
    Configurações (Developer) → Console, User language = pt e User country = BR. "Open
    Profiles" abre Perfis e, ao voltar, o assistente continua; "Done" sem escolher modo deixa
    Player. Reabrir a biblioteca: não aparece de novo; ⋮ → "Setup assistant" reabre.
+18. Lote 9 — várias pastas (L03): com a pasta de antes, ⋮ → "Game folders" lista ela como a
+   primeira ("installs go here"). "Add folder" → uma pasta no cartão SD com outros jogos: a
+   biblioteca mostra os dois conjuntos, sem repetir. Adicionar uma subpasta da primeira (e
+   `/sdcard/…` para a mesma pasta): nada se repete. Tirar o cartão (ou revogar o acesso) e
+   puxar para atualizar: aparece "1 game folder(s) not available now…", os jogos da memória
+   interna continuam; recolocar e atualizar: voltam sem demora de extração. "Remove" numa
+   pasta: os jogos dela somem da lista e os arquivos continuam no lugar (conferir no
+   gerenciador de arquivos).

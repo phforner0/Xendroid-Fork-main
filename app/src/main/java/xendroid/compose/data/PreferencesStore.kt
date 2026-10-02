@@ -39,14 +39,25 @@ class PreferencesStore(private val appContext: Context) {
         appContext.dataStore.edit { prefs -> prefs[favoriteIdsKey] = prefs[favoriteIdsKey].orEmpty() + ids }
     }
 
-    /** The persisted real-path games dir (absolute host path), or null. */
-    val gameDirPath: Flow<String?> =
-        appContext.dataStore.data.map { it[gameDirPathKey] }
+    /** L03: every games folder, in the user's order; an older install's single folder comes first. */
+    private val gameDirPathsKey = stringPreferencesKey("game_dir_paths")
 
-    /** Store (or update) the real-path games dir (absolute host path). */
-    suspend fun setGameDirPath(path: String) {
-        appContext.dataStore.edit {
-            it[gameDirPathKey] = path
+    val gameDirPaths: Flow<List<String>> =
+        appContext.dataStore.data.map { LibraryRoots.decode(it[gameDirPathsKey], it[gameDirPathKey]) }
+
+    /** Adds a games folder (absolute host path); one already listed is not added twice. */
+    suspend fun addGameDirPath(path: String) {
+        appContext.dataStore.edit { prefs ->
+            val roots = LibraryRoots.decode(prefs[gameDirPathsKey], prefs[gameDirPathKey])
+            prefs[gameDirPathsKey] = LibraryRoots.encode(LibraryRoots.add(roots, path))
+        }
+    }
+
+    /** Stops scanning a folder; its files are never touched. */
+    suspend fun removeGameDirPath(path: String) {
+        appContext.dataStore.edit { prefs ->
+            val roots = LibraryRoots.decode(prefs[gameDirPathsKey], prefs[gameDirPathKey])
+            prefs[gameDirPathsKey] = LibraryRoots.encode(LibraryRoots.remove(roots, path))
         }
     }
 }

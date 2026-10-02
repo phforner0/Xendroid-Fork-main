@@ -149,6 +149,19 @@ fun GameLibraryScreen(
         return
     }
 
+    // L03: the library's game folders (add, remove; files are never touched).
+    var foldersOpen by remember { mutableStateOf(false) }
+    if (foldersOpen) {
+        val folders by viewModel.folders.collectAsStateWithLifecycle()
+        GameFoldersDialog(
+            folders = folders,
+            unavailable = (state as? LibraryUiState.Loaded)?.unavailableRoots.orEmpty(),
+            onAdd = { foldersOpen = false; startRealPathMode() },
+            onRemove = viewModel::removeFolder,
+            onDismiss = { foldersOpen = false },
+        )
+    }
+
     // L01: once, until finished or skipped; reopened from the menu. Not over the no-Vulkan
     // gate, which already explains why games cannot run.
     var assistantOpen by rememberSaveable { mutableStateOf(!FirstRunStore.done(context)) }
@@ -198,8 +211,12 @@ fun GameLibraryScreen(
                         // empty state explains why.
                         if (AllFilesAccess.isSupported) {
                             DropdownMenuItem(
-                                text = { Text("Set game folder") },
+                                text = { Text("Add game folder") },
                                 onClick = { menuOpen = false; startRealPathMode() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Game folders") },
+                                onClick = { menuOpen = false; viewModel.loadFolders(); foldersOpen = true },
                             )
                         }
                         DropdownMenuItem(
@@ -303,6 +320,13 @@ fun GameLibraryScreen(
                             }
                         }
                         Column(Modifier.fillMaxSize()) {
+                            if (s.unavailableRoots.isNotEmpty()) {
+                                TextButton(onClick = { viewModel.loadFolders(); foldersOpen = true },
+                                    modifier = Modifier.padding(horizontal = 8.dp)) {
+                                    Text("${s.unavailableRoots.size} game folder(s) not available now " +
+                                        "(SD card or permission?): their games are hidden. Manage folders")
+                                }
+                            }
                             OutlinedTextField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },

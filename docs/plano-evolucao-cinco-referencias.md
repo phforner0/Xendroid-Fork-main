@@ -383,6 +383,12 @@ de deltas guest; registrar unavailable/stale e aquecimento. Referências [X2–X
 | L11 | Mods Xbox opt-in | Somente formatos suportados por Xenia/patch/override de arquivos; namespace separado, ordem e conflitos explícitos, não substituir um save/DLC; não portar mods/Workshop Steam |
 | L12 | Lixeira de dados gerenciados | Mover somente dados internos elegíveis para namespace isolado sob lease/journal; restauração com preview de conflitos, cota e limpeza explícita; remover referência da biblioteca não exclui ROM externa |
 
+**Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
+(migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
+mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF
+de árvore: exige ponte de leitura no core (mmap/seek) ou staging controlado — bloqueio
+técnico registrado, sem converter URI em caminho. Aparelho: roteiro 18.
+
 **Estado L01 (2026-10-02, v1, Impl. + Local):** assistente inicial sobre a biblioteca
 (uma vez; reabre no menu): checagem de Vulkan/arm64/Android, pasta de jogos, idioma e região
 dos jogos a partir do locale do telefone (pt-BR → pt/BR), perfil, driver opcional e modo
