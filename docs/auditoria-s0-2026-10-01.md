@@ -303,6 +303,13 @@ com comandos e resultados exatos.
    o jogo aberto: lê. Num app de terceiros que pede uma pasta (ex.: um editor de texto com
    "abrir pasta"), conceder a raiz do XenDroid e conferir que ele só vê o mesmo conteúdo.
    Depois de atualizar o APK, um atalho/permissão antiga para a pasta continua abrindo.
+   Lote 12r: na raiz aparece "Games by title" (pt-BR: "Jogos por título"): uma pasta por jogo com
+   saves ou config, com o nome do jogo já jogado; dentro dela, "Saves and data · profile <XUID>"
+   abre a pasta real do jogo naquele perfil, "DLC and title updates" a do console, e aparecem a
+   config do jogo e os arquivos de patch. Essas pastas de reunião não oferecem renomear, mover
+   nem apagar. Com um jogo aberto, nenhum item oferece apagar/renomear/mover e a raiz diz
+   "Read-only while a game runs…"; copiar um save para Downloads funciona; fechar o jogo e
+   reabrir a pasta: as opções voltam.
 25. Lote 9 — catálogo de patches (L10): com o APK anterior, ligar um patch de um jogo; instalar
    este APK por cima e abrir Game patches: o patch continua ligado e, se o catálogo do jogo
    mudou, aparece "Updated to the patches of this app version… Undo/OK" (Undo volta ao arquivo

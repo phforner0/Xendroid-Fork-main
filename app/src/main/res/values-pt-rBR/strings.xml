@@ -950,4 +950,8 @@
     <string name="pt_version_unknown">Jogue uma vez aqui para ver quais arquivos de patch são para a sua versão.</string>
     <string name="pt_version_yours">Para a versão que você jogou por último</string>
     <string name="pt_version_other">Para outra versão do jogo: não vale na sua</string>
+    <string name="ud_games">Jogos por título</string>
+    <string name="ud_read_only_now">Somente leitura enquanto um jogo roda ou dados estão sendo alterados</string>
+    <string name="ud_profile_data">Saves e dados · perfil %1$s</string>
+    <string name="ud_console_data">DLC e atualizações de título</string>
 </resources>

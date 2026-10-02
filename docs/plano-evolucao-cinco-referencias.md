@@ -430,8 +430,11 @@ movido para `:app` (`DocumentsProvider.kt` + `userdata/UserDataFiles.kt`): só a
 do usuário e o que está dentro dela (links e `..` resolvidos), caches do emulador e controles
 internos fora, nomes limpos sem substituir, mudanças e escritas sob o lease (achados STO-01 e
 STO-02 da auditoria). A DLL do LSFG e o cache dele ficam no armazenamento interno, fora da
-raiz. Falta: visão "por jogo" (saves/config de um título) e snapshots read-only enquanto o
-jogo roda (hoje a escrita é recusada); validação no aparelho (roteiro 24).
+raiz. Lote 12r: "Jogos por título" (saves por perfil, DLC/atualizações, config e patches de
+cada jogo, em pastas de reunião somente leitura cujas entradas são os arquivos reais) e tudo
+somente leitura enquanto o lease está tomado (um jogo roda). Não há cópia instantânea: ler
+um save enquanto o jogo grava ainda pode pegar o meio da escrita. Falta: validação no
+aparelho (roteiro 24).
 
 **Estado L12 (2026-10-02, v1, Impl. + Local):** lixeira para DLC/TU removidos
 (`saves/ContentTrash.kt`), com lease, journal por nome de pasta (`.partial`/`.restoring`) e

@@ -950,4 +950,8 @@
     <string name="pt_version_unknown">Play the game once here to see which patch files are for your version.</string>
     <string name="pt_version_yours">For the version you last played</string>
     <string name="pt_version_other">For another version of the game: it will not apply to yours</string>
+    <string name="ud_games">Games by title</string>
+    <string name="ud_read_only_now">Read-only while a game runs or data is being changed</string>
+    <string name="ud_profile_data">Saves and data · profile %1$s</string>
+    <string name="ud_console_data">DLC and title updates</string>
 </resources>
