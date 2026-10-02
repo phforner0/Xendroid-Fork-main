@@ -556,7 +556,9 @@ Falta: validação no aparelho (roteiro 27).
 **Estado 2026-10-02:** U03 (parte) — driver pedido × carregado na linha do driver,
 pela identidade gravada no run, sem falso alarme para runs anteriores à troca. U06 v1 —
 layout de toque por Title ID e orientação ("This game only" no editor dentro do jogo),
-com retorno ao compartilhado; nomes/presets avulsos ainda não. U08 (parte) — intensidade
+com retorno ao compartilhado. U06 v2 (lote 12d) — layouts nomeados (salvar/aplicar com prévia do
+que muda/apagar), arquivo `xendroid-touch-layout` versionado com importação validada, e campos e
+controles desconhecidos preservados (corrige a perda deles a cada edição). U08 (parte) — intensidade
 de rumble Off/Low/Medium/High aplicada ao controle de cada jogador. U09 (parte, lote 3) —
 estado do boot.
 

@@ -410,3 +410,9 @@ com comandos e resultados exatos.
    uma queda para a metade). Ir para a Home por ~10 s e voltar: o jogo segue sem acelerar para
    "recuperar" o tempo, e o `xe.log` tem uma linha "Guest vblank resynced after a stall (1 so far, …)".
    Com o cap desligado, o comportamento ilimitado não muda.
+38. Lote 12 — layouts de toque (U06): no editor (biblioteca ou dentro do jogo), mover dois botões,
+   "Layouts" → nome "Corrida" → Save; Reset; "Layouts" → Corrida → Apply…: a prévia diz "Controls: 2
+   moved"; aplicar e "Save & Quit": o jogo usa o layout. Export → salvar o arquivo; noutro aparelho
+   (ou depois de apagar o layout) Import → o mesmo layout volta. Editar o arquivo pondo `"version":2`:
+   "Made by a newer XenDroid"; pôr `"x":1.5` num botão: "… is off the screen". Com "This game only",
+   salvar e aplicar mexem só no layout do jogo.

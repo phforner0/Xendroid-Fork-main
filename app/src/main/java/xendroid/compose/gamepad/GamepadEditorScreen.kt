@@ -78,6 +78,7 @@ fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit, inGam
     var snap by remember { mutableStateOf(true) }
     var showGlobals by remember { mutableStateOf(false) }
     var chromeCollapsed by remember { mutableStateOf(false) }
+    var layoutsOpen by remember { mutableStateOf(false) }
     // U06: with a game running, edits can go to that game's own layout instead of the shared one.
     val perGame = titleId != null && working.hasOwnLayout(titleId, landscape)
     val editScope = if (perGame) titleId else null
@@ -139,7 +140,9 @@ fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit, inGam
     }
 
     fun mutateControls(transform: (List<OnScreenControl>) -> List<OnScreenControl>) {
-        working = working.withLayout(editScope, landscape, transform(base).toDto())
+        // U06: controls and fields this build does not know stay in the stored layout.
+        working = working.withLayout(editScope, landscape,
+            transform(base).toDto().preserving(working.layoutFor(editScope, landscape)))
     }
     fun mutateGlobals(transform: (GamepadGlobalsDto) -> GamepadGlobalsDto) {
         working = working.copy(globals = transform(working.globals))
@@ -211,14 +214,16 @@ fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit, inGam
                 }
             },
             onReset = {
-                working = working.withLayout(editScope, landscape, defaultLayout(landscape).toDto())
+                working = working.withLayout(editScope, landscape,
+                    defaultLayout(landscape).toDto().preserving(working.layoutFor(editScope, landscape)))
             },
+            onLayouts = { layoutsOpen = true },
             // Turning it on starts the game's own layout from what it plays with now; off goes
             // back to the shared layout (the game's copy is dropped on save).
             perGame = if (titleId != null) perGame else null,
             onTogglePerGame = {
                 working = if (perGame) working.withoutOwnLayout(titleId, landscape)
-                else working.withLayout(titleId, landscape, base.toDto())
+                else working.withLayout(titleId, landscape, base.toDto().preserving(working.layoutFor(null, landscape)))
             },
             onHideShow = {
                 val id = selected ?: return@EditorChrome
@@ -235,6 +240,10 @@ fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit, inGam
                 }
             } },
         )
+        if (layoutsOpen) {
+            LayoutPresetsDialog(config = working, editScope = editScope, landscape = landscape,
+                onChange = { working = it }, onDismiss = { layoutsOpen = false })
+        }
     }
 }
 
@@ -252,6 +261,7 @@ private fun EditorChrome(
     selectedScale: Float?,
     onScaleSelected: (Float) -> Unit,
     onReset: () -> Unit,
+    onLayouts: () -> Unit,
     /** Null when no game is running (only the shared layout can be edited). */
     perGame: Boolean?,
     onTogglePerGame: () -> Unit,
@@ -300,6 +310,7 @@ private fun EditorChrome(
                     FilterChip(selected = perGame, onClick = onTogglePerGame, label = { Text("This game only") })
                 }
                 TextButton(onClick = onReset) { Text("Reset") }
+                TextButton(onClick = onLayouts) { Text("Layouts") }
                 TextButton(onClick = onHideShow, enabled = hasSelection) { Text("Hide / Show") }
                 TextButton(onClick = onToggleGlobals) { Text("Globals") }
                 TextButton(onClick = onToggleCollapse) { Text("Collapse ▾") }
