@@ -40,6 +40,9 @@ fun PerGameSettingsScreen(
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     val ready by vm.ready.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
+    val profiles by vm.profilesState.collectAsStateWithLifecycle()
+    val preview by vm.profilePreview.collectAsStateWithLifecycle()
+    val profileMessage by vm.profileMessage.collectAsStateWithLifecycle()
 
     // Durable flush on pause; re-open on resume. Dispose flush = backstop. (Mirrors SettingsScreen.)
     val owner = LocalLifecycleOwner.current
@@ -68,6 +71,14 @@ fun PerGameSettingsScreen(
             dismissButton = { TextButton(onClick = vm::clearError) { Text("Close") } },
         )
     }
+    preview?.let { ProfilePreviewDialog(it, onConfirm = vm::confirmPreview, onDismiss = vm::dismissPreview) }
+    profileMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = vm::clearProfileMessage,
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = vm::clearProfileMessage) { Text("OK") } },
+        )
+    }
     val section = selected
     if (section == null) {
         PerGameIndex(
@@ -76,6 +87,9 @@ fun PerGameSettingsScreen(
             overriddenCountOf = { cat -> cat.settings.count { overrides.containsKey(it.key) } },
             onOpen = { selected = it },
             onBack = { vm.flush(); onBack() },
+            header = if (profiles.isEmpty) null else {
+                { RecommendedProfilesCard(profiles, vm::previewProfile, vm::previewRestore, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            },
         )
     } else {
         BackHandler { selected = null }
@@ -96,6 +110,7 @@ private fun PerGameIndex(
     overriddenCountOf: (SettingsCategory) -> Int,
     onOpen: (SettingsCategory) -> Unit,
     onBack: () -> Unit,
+    header: (@Composable () -> Unit)? = null,
 ) {
     Scaffold(
         topBar = {
@@ -120,6 +135,7 @@ private fun PerGameIndex(
                 )
                 HorizontalDivider()
             }
+            header?.let { item(key = "recommended") { it() } }
             items(categories, key = { it.title }) { cat ->
                 val overridden = overriddenCountOf(cat)
                 ListItem(

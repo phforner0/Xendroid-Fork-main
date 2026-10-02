@@ -365,6 +365,15 @@ Testes JVM cobrem finalização concorrente, reconciliação e poda.
   temperatura inicial antes de qualquer número, diferenças por par com veredito só quando todos
   concordam; marcador de cena no menu em jogo. Falta: fixar/registrar limite de FPS e Hz no run
   (hoje não são gravados) e uso no aparelho (roteiro 34).
+- **Estado C05 (2026-10-02, Parcial: mecanismo Impl. + Local):** perfis de ajustes por jogo
+  (`compatibility/SettingsProfiles.kt`, `SettingsProfileStore.kt`, cartão em Ajustes do jogo):
+  lista permitida de chaves e valores, pré-requisitos de GPU/driver/fabricante/modelo/API/build com
+  o motivo quando não se aplicam, motivo e testes de verificação, prévia linha a linha, ajuste do
+  jogador sempre mantido, gravação sob trava recusada se o arquivo mudou desde a prévia e "Restore
+  previous" que só desfaz o que ainda tem o valor do perfil. Fontes locais apenas: o asset do app
+  (exige o teste que verificou; **vazio** — nenhum perfil foi verificado ainda) e arquivos de
+  fornecedor/jogador em `settings-profiles/`, marcados como não revisados; nada de feed. Falta: o
+  primeiro perfil verificado de verdade (exige jogo + aparelho + C07) e uso no aparelho (roteiro 35).
 
 Módulos novos sugeridos `compatibility/`, `sessions/`, `benchmark/`. Reusar coletor
 de HUD e evitar lançar outro poller por card. Extrair percentis de buffer limitado

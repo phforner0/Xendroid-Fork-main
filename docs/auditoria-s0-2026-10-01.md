@@ -369,3 +369,15 @@ com comandos e resultados exatos.
    marcar os runs A/B: sem avisos, "B − A per pair" com dois números e o veredito. Marcar na ordem
    AABB (ou trocar o driver num run): aparecem os avisos e "Fix the warnings first". Anotar o
    resultado no relatório de FG (é a forma de A/B que o plano pede).
+35. Lote 11 — perfis recomendados (C05): com o Files app (ou `adb push` para
+   `/sdcard/Android/data/<pacote>/files/compose/settings-profiles/`), pôr um arquivo
+   `teste.json` com `{"format":"xendroid-settings-profiles","version":1,"profiles":[{"id":"teste-30",
+   "name":"Teste 30 FPS","titleIds":["<Title ID de um jogo instalado>"],"reason":"teste do mecanismo",
+   "settings":{"GPU|framerate_limit":"30","Console|widescreen":"true"}}]}`. Em Ajustes do jogo deve
+   aparecer "Recommended settings" com "From the file teste.json…; not reviewed by XenDroid". Definir
+   antes, só para esse jogo, `Console|widescreen` = off: a prévia mostra o limite 60 → 30 e
+   "Widescreen: stays Off, as you chose". Aplicar: em GPU, "Frame rate limit" do jogo passa a 30 e o
+   widescreen continua off; o jogo abre a 30 FPS. "Restore previous settings": o limite volta a seguir
+   o global. Repetir mudando o limite à mão depois de aplicar: restaurar mantém o valor escolhido.
+   Trocar `"version":1` por 2 ou acrescentar um campo desconhecido em `requires`: o cartão mostra o
+   arquivo como recusado. Pôr `"requires":{"gpuContains":["Mali"]}` num Adreno: "Not offered on this phone".

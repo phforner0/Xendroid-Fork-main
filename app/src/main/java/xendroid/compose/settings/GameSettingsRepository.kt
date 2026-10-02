@@ -10,7 +10,7 @@ import java.io.File
  * keys override). Flush patches only edited keys into the latest native TOML table,
  * preserving unknown cvars, arrays and nested tables as well as other writers' edits.
  */
-class GameSettingsRepository(private val store: ConfigStore, private val titleId: String) {
+class GameSettingsRepository(private val store: ConfigStore, val titleId: String) {
     val persistenceKey: String get() = "game:${titleId.uppercase()}"
 
     /** key -> override raw String (only the keys the user explicitly set for THIS game). */
@@ -127,6 +127,40 @@ class GameSettingsRepository(private val store: ConfigStore, private val titleId
         }
         pending.clear()
         reload()
+    }
+
+    /** C05: this game's own values (key -> raw), as a profile plan compares them. */
+    @Synchronized
+    fun overrideValues(): Map<String, String> { ensureOpen(); return overrides.toMap() }
+
+    /** C05: the global values this game follows where it has none of its own. */
+    @Synchronized
+    fun inheritedValues(): Map<String, String?> { ensureOpen(); return SettingsSchema.allSettings.associate { it.key to inheritedRaw(it) } }
+
+    /** A reviewed plan no longer matches the file: someone changed this game's settings since. */
+    class StalePlanException : IllegalStateException("This game's settings changed since the preview")
+
+    /**
+     * C05: writes a reviewed profile plan (key -> raw, null = remove) under the file's lock.
+     * [expected] is this game's value of each key when the plan was shown; if the file says
+     * otherwise now, nothing is written. Unsaved edits are saved first, so they are never lost
+     * and the plan never silently overwrites them.
+     */
+    @Synchronized
+    fun applyPlan(expected: Map<String, String?>, writes: Map<String, String?>) {
+        flush()
+        store.editGameConfig(titleId) { handle ->
+            for ((key, value) in expected) {
+                val s = SettingsSchema.byKey[key] ?: throw StalePlanException()
+                if (handle.getString(s.section, s.name) != value) throw StalePlanException()
+            }
+            for ((key, raw) in writes) {
+                val s = SettingsSchema.byKey[key] ?: throw StalePlanException()
+                if (raw == null) handle.remove(s.section, s.name) else handle.putSetting(s, raw)
+            }
+        }
+        opened = false
+        ensureOpen()
     }
 
     private fun schemaDefaultString(s: Setting): String = when (s) {

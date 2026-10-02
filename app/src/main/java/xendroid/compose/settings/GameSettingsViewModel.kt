@@ -12,6 +12,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import xendroid.compose.compatibility.AppliedProfile
+import xendroid.compose.compatibility.DeviceFacts
+import xendroid.compose.compatibility.LoadedProfile
+import xendroid.compose.compatibility.SettingsProfileStore
+import xendroid.compose.compatibility.SettingsProfiles
 
 /**
  * Drives the per-game override editor. Implements [SettingsHost] so it reuses the same
@@ -19,7 +24,11 @@ import kotlinx.coroutines.launch
  * ([setOverride]) + the inherited-value display. The repo keeps the override set sparse
  * and patches just edited keys on [flush], preserving unknown TOML entries.
  */
-class GameSettingsViewModel(private val repo: GameSettingsRepository) : ViewModel(), SettingsHost {
+class GameSettingsViewModel(
+    private val repo: GameSettingsRepository,
+    private val profiles: SettingsProfileStore? = null,
+    private val facts: () -> DeviceFacts? = { null },
+) : ViewModel(), SettingsHost {
 
     val categories: List<SettingsCategory> = SettingsSchema.categories
     override val isCustomDriverSupported get() = repo.isCustomDriverSupported
@@ -49,6 +58,7 @@ class GameSettingsViewModel(private val repo: GameSettingsRepository) : ViewMode
                 reloadAll()
                 _ready.value = true
                 _error.value = null
+                loadProfiles()
             }.onFailure { _ready.value = false; fail(it) }
         }
     }
@@ -91,6 +101,111 @@ class GameSettingsViewModel(private val repo: GameSettingsRepository) : ViewMode
 
     fun flush() {
         saveScope.launch { runCatching { repo.flush() }.onFailure { fail(it) } }
+    }
+
+    // ---- C05: recommended settings profiles ----
+
+    /** Profiles for this game: [offered] here, [notHere] with why not, files [skipped] with why. */
+    data class ProfilesState(
+        val offered: List<LoadedProfile> = emptyList(),
+        val notHere: List<Pair<LoadedProfile, List<String>>> = emptyList(),
+        val skipped: List<String> = emptyList(),
+        val applied: AppliedProfile? = null,
+        val facts: DeviceFacts? = null,
+    ) {
+        val isEmpty: Boolean get() = offered.isEmpty() && notHere.isEmpty() && skipped.isEmpty() && applied == null
+    }
+
+    /** A plan waiting for the player's confirmation. */
+    sealed interface ProfilePreview {
+        val plan: SettingsProfiles.Plan
+        data class Apply(val profile: LoadedProfile, override val plan: SettingsProfiles.Plan) : ProfilePreview
+        data class Restore(val record: AppliedProfile, override val plan: SettingsProfiles.Plan) : ProfilePreview
+    }
+
+    private val _profiles = MutableStateFlow(ProfilesState())
+    val profilesState: StateFlow<ProfilesState> = _profiles.asStateFlow()
+    private val _preview = MutableStateFlow<ProfilePreview?>(null)
+    val profilePreview: StateFlow<ProfilePreview?> = _preview.asStateFlow()
+    private val _profileMessage = MutableStateFlow<String?>(null)
+    val profileMessage: StateFlow<String?> = _profileMessage.asStateFlow()
+
+    private fun loadProfiles() {
+        val store = profiles ?: return
+        runCatching {
+            val parsed = store.load()
+            val device = facts()
+            val (here, elsewhere) = store.forTitle(parsed.profiles, repo.titleId)
+                .map { p -> p to (device?.let { SettingsProfiles.unmet(p.profile.requires, it) } ?: listOf("this phone is not known yet")) }
+                .partition { it.second.isEmpty() }
+            _profiles.value = ProfilesState(here.map { it.first }, elsewhere, parsed.skipped, store.applied(repo.titleId), device)
+        }.onFailure { Log.w("GameSettingsViewModel", "Loading settings profiles failed", it) }
+    }
+
+    /** Shows what applying [profile] would change; the player's own settings stay. */
+    fun previewProfile(profile: LoadedProfile) {
+        if (_profiles.value.applied != null) {
+            _profileMessage.value = "Restore the settings from before the applied profile first."
+            return
+        }
+        saveScope.launch {
+            runCatching {
+                _preview.value = ProfilePreview.Apply(profile,
+                    SettingsProfiles.plan(profile.profile, repo.overrideValues(), repo.inheritedValues()))
+            }.onFailure { fail(it) }
+        }
+    }
+
+    /** Shows what "Restore previous" would put back. */
+    fun previewRestore() {
+        val record = _profiles.value.applied ?: return
+        saveScope.launch {
+            runCatching {
+                _preview.value = ProfilePreview.Restore(record,
+                    SettingsProfiles.restorePlan(record, repo.overrideValues(), repo.inheritedValues()))
+            }.onFailure { fail(it) }
+        }
+    }
+
+    fun dismissPreview() { _preview.value = null }
+    fun clearProfileMessage() { _profileMessage.value = null }
+
+    /** Writes the previewed plan, exactly; refused when this game's settings changed meanwhile. */
+    fun confirmPreview() {
+        val preview = _preview.value ?: return
+        _preview.value = null
+        val store = profiles ?: return
+        saveScope.launch {
+            runCatching {
+                when (preview) {
+                    is ProfilePreview.Apply -> {
+                        if (preview.plan.writes.isEmpty()) return@runCatching
+                        // Recorded first: if the write never lands, restoring finds nothing of it to undo.
+                        store.recordApplied(repo.titleId, preview.profile, preview.plan)
+                        try {
+                            repo.applyPlan(preview.plan.expected, preview.plan.writes)
+                        } catch (t: Throwable) {
+                            runCatching { store.clearApplied(repo.titleId) }
+                            throw t
+                        }
+                        _profileMessage.value = "Applied “${preview.profile.profile.name}”: ${preview.plan.writes.size} " +
+                            "setting(s) for this game. They take effect the next time it starts."
+                    }
+                    is ProfilePreview.Restore -> {
+                        if (preview.plan.writes.isNotEmpty()) repo.applyPlan(preview.plan.expected, preview.plan.writes)
+                        store.clearApplied(repo.titleId)
+                        _profileMessage.value = "Put back the settings from before “${preview.record.profileName}”" +
+                            (if (preview.plan.writes.size < preview.record.written.size) "; the ones you changed since stay." else ".")
+                    }
+                }
+                reloadAll()
+                loadProfiles()
+            }.onFailure {
+                if (it is GameSettingsRepository.StalePlanException) {
+                    _profileMessage.value = "This game's settings changed since the preview, so nothing was written. Review it again."
+                } else fail(it)
+            }
+        }
     }
 
     /** Re-read after a pause; the override set is already in memory so this is cheap. */

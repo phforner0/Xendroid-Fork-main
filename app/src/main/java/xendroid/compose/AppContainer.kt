@@ -63,6 +63,35 @@ class AppContainer(context: Context) {
             }
         }
 
+    // C05: recommended settings per game. The app's own list ships as an asset; a vendor's or the
+    // player's file goes in settings-profiles/ of the user data; what was applied is kept privately.
+    private val settingsProfiles by lazy {
+        xendroid.compose.compatibility.SettingsProfileStore(
+            bundled = {
+                runCatching {
+                    appContext.assets.open(xendroid.compose.compatibility.SettingsProfileStore.ASSET)
+                        .use { it.readBytes().toString(Charsets.UTF_8) }
+                }.getOrNull()
+            },
+            localDir = java.io.File(Utils.get_storage_root_path(), xendroid.compose.compatibility.SettingsProfileStore.LOCAL_FOLDER),
+            recordsDir = java.io.File(Application.get_internal_data_dir(), "settings-profiles-applied"),
+        )
+    }
+
+    /** The phone as profile requirements see it: GPU and driver of the game's last run. */
+    private fun deviceFacts(titleId: String): xendroid.compose.compatibility.DeviceFacts {
+        val driver = runCatching { xendroid.compose.sessions.SessionRuns.store().lastRun(titleId)?.driver }.getOrNull()
+        return xendroid.compose.compatibility.DeviceFacts(
+            gpu = driver?.gpu?.ifBlank { null } ?: xendroid.compose.core.EmulatorRuntime.gpuDeviceName,
+            driverLabel = driver?.label,
+            driverLoader = driver?.loader?.ifBlank { null },
+            manufacturer = android.os.Build.MANUFACTURER.orEmpty(),
+            model = android.os.Build.MODEL.orEmpty(),
+            androidSdk = android.os.Build.VERSION.SDK_INT,
+            appVersionCode = BuildConfig.VERSION_CODE,
+        )
+    }
+
     fun settingsViewModelFactory(): ViewModelProvider.Factory =
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -79,7 +108,9 @@ class AppContainer(context: Context) {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 require(modelClass == GameSettingsViewModel::class.java) { "Unknown ViewModel ${modelClass.name}" }
-                return GameSettingsViewModel(GameSettingsRepository(configStore, titleId)) as T
+                return GameSettingsViewModel(GameSettingsRepository(configStore, titleId), settingsProfiles) {
+                    deviceFacts(titleId)
+                } as T
             }
         }
 
