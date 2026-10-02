@@ -171,6 +171,50 @@ class RunPerformanceTest {
         assertNull(RunPerformanceAccumulator().snapshot().audioBlocks)
     }
 
+    @Test fun frameGenerationGpuTimesAreThisRunsDeltasWithUpperBounds() {
+        val acc = RunPerformanceAccumulator()
+        // Earlier runs of this process already counted some passes: only this run's count.
+        val before = LongArray(66).also { it[10] = 5; it[65] = 1 }
+        acc.frameGeneration(before, lateSkips = 2, replacedGuestFrames = 7)
+        acc.sample(true, 30.0, presentCount = 0, generatedCount = 0, frameGenerationActive = false, guestFrames = 0)
+        acc.sample(true, 30.0, presentCount = 60, generatedCount = 30, frameGenerationActive = true, guestFrames = 30)
+        // +100 timed passes (80 at 2.50-2.75 ms, 15 at 3.25-3.50 ms, 5 at 16 ms or more), +3 untimed.
+        val after = before.copyOf().also { it[10] += 80; it[13] += 15; it[64] += 5; it[65] += 3 }
+        acc.frameGeneration(after, lateSkips = 6, replacedGuestFrames = 9)
+        val perf = acc.snapshot()
+        assertEquals(100L, perf.timedGenerations)
+        assertEquals(3L, perf.generationGpuUntimed)
+        assertEquals(4L, perf.lateSyntheticSkips)
+        assertEquals(2L, perf.replacedGuestFrames)
+        assertEquals(2.75, perf.generationGpuUpperMs(0.5)!!, 1e-9)
+        assertEquals(3.5, perf.generationGpuUpperMs(0.95)!!, 1e-9)
+        assertEquals(RunPerformance.GENERATION_GPU_OPEN_MS, perf.generationGpuUpperMs(0.99)!!, 1e-9)
+        assertEquals("30 synthetic frames over 1 s · GPU per generation pass: median under 2.75 ms, 95th under 3.50 ms, " +
+            "99th 16 ms or more (100 timed, 3 not timed) · 4 late outputs skipped · 2 guest frames replaced before being shown",
+            describeFrameGeneration(perf))
+    }
+
+    @Test fun frameGenerationWithoutTimingsSaysSoAndARunWithoutItShowsNothing() {
+        val untimed = RunPerformanceAccumulator()
+        untimed.frameGeneration(LongArray(66), 0, 0)
+        untimed.frameGeneration(LongArray(66).also { it[65] = 40 }, 0, 0)
+        assertEquals("0 synthetic frames over 0 s · GPU time not measured (40 passes could not be timed)",
+            describeFrameGeneration(untimed.snapshot()))
+
+        val none = RunPerformanceAccumulator()
+        none.frameGeneration(LongArray(66), 0, 0)
+        none.sample(true, 30.0, presentCount = 0, generatedCount = 0, frameGenerationActive = false, guestFrames = 0)
+        none.sample(true, 30.0, presentCount = 30, generatedCount = 0, frameGenerationActive = false, guestFrames = 30)
+        none.frameGeneration(LongArray(66), 0, 0)
+        val perf = none.snapshot()
+        assertTrue(perf.generationGpuHistogram.isEmpty())
+        assertNull(perf.generationGpuUntimed)
+        assertNull(perf.lateSyntheticSkips)
+        assertNull(perf.replacedGuestFrames)
+        assertNull(perf.generationGpuUpperMs(0.5))
+        assertNull(describeFrameGeneration(perf))
+    }
+
     @Test fun batteryKeepsStartMaxAndEnd() {
         val acc = RunPerformanceAccumulator()
         acc.battery(null)

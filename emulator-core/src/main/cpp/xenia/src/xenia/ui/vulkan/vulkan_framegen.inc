@@ -34,6 +34,7 @@ struct VulkanPresenter::FrameGenContext {
   bool generated_initialized = false;
   bool query_pending = false;
   VkQueryPool timestamps = VK_NULL_HANDLE;
+  uint32_t timestamp_valid_bits = 0;  // of the graphics/compute queue family
   const VulkanDevice* device;
   int preset = -1;
   std::vector<std::shared_ptr<GuestOutputImage>> source_references;
@@ -208,18 +209,28 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
     ifn.vkGetPhysicalDeviceQueueFamilyProperties(vulkan_device_->physical_device(), &families, nullptr);
     std::vector<VkQueueFamilyProperties> queues(families);
     ifn.vkGetPhysicalDeviceQueueFamilyProperties(vulkan_device_->physical_device(), &families, queues.data());
-    if (queues[vulkan_device_->queue_family_graphics_compute()].timestampValidBits && vulkan_device_->properties().timestampPeriod > 0) {
+    const uint32_t valid_bits = queues[vulkan_device_->queue_family_graphics_compute()].timestampValidBits;
+    if (valid_bits && vulkan_device_->properties().timestampPeriod > 0) {
       VkQueryPoolCreateInfo info{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
       info.queryType = VK_QUERY_TYPE_TIMESTAMP; info.queryCount = 2;
-      f.vkCreateQueryPool(device, &info, nullptr, &fg_context_->timestamps);
+      if (f.vkCreateQueryPool(device, &info, nullptr, &fg_context_->timestamps) == VK_SUCCESS) {
+        fg_context_->timestamp_valid_bits = valid_bits;
+      } else {
+        fg_context_->timestamps = VK_NULL_HANDLE;
+      }
     }
   }
   auto& context = *fg_context_;
+  // F08: the previous pass's GPU time (its submission completed above). Masked to the
+  // queue's valid bits and wrap-safe; a failed read is "unavailable", never the old value.
   if (context.query_pending && context.timestamps) {
     uint64_t timestamps[2];
-    if (f.vkGetQueryPoolResults(device, context.timestamps, 0, 2, sizeof(timestamps), timestamps, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT) == VK_SUCCESS && timestamps[1] >= timestamps[0]) {
-      runtime.generation_gpu_ms = double(timestamps[1] - timestamps[0]) * vulkan_device_->properties().timestampPeriod / 1000000.0;
-    }
+    const VkResult read = f.vkGetQueryPoolResults(device, context.timestamps, 0, 2, sizeof(timestamps), timestamps,
+        sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
+    RecordGenerationGpu(runtime, read == VK_SUCCESS
+        ? TimestampElapsedNs(timestamps[0], timestamps[1], context.timestamp_valid_bits,
+                             vulkan_device_->properties().timestampPeriod)
+        : -1);
     context.query_pending = false;
   }
   if (!fg_generated_phase_ && context.current && context.current_initialized) {
@@ -291,17 +302,15 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
   if (context.kind == 1) {
     const auto generations = context.lsfg_engine->plan(runtime.frame_generation_multiplier.load() - 1, ++context.source_frames);
     context.planned_generations = generations;
-    if (context.timestamps) {
+    // Timed: this source frame's processing plus its first generated frame. A warm-up
+    // pass (no generation yet) is not a generation pass and stays out of the figures.
+    if (context.timestamps && generations) {
       f.vkCmdResetQueryPool(cmd, context.timestamps, 0, 2);
       f.vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, context.timestamps, 0);
     }
     barrier(context.current->image(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
         VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_MEMORY_READ_BIT);
     context.lsfg_engine->process(cmd, context.current->image(), extent.width, extent.height, generations);
-    if (context.timestamps && !generations) {
-      f.vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, context.timestamps, 1);
-      context.query_pending = true;
-    }
     barrier(context.current->image(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
     if (!generations) { runtime.frame_generation_state = int(FrameGenerationState::kWarmingUp); return true; }

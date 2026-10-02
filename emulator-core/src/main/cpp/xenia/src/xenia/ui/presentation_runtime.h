@@ -2,6 +2,7 @@
 #define XENIA_UI_PRESENTATION_RUNTIME_H_
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -11,6 +12,11 @@
 namespace xe::ui {
 enum class DisplayMode : int { kDefault = -1, kFit = 0, kFill = 1, kStretch = 2, kInteger = 3 };
 enum class FrameGenerationState : int { kOff, kWarmingUp, kRunning, kUnsupported, kFailed };
+
+// GPU time of one generation pass per measured synthetic frame (F08): 0.25 ms
+// buckets, the last one holds 16 ms and more.
+constexpr size_t kGenerationGpuBuckets = 65;
+constexpr int64_t kGenerationGpuBucketNs = 250000;
 
 struct PresentationRuntime {
   std::atomic<int> display_mode{-1};
@@ -39,11 +45,40 @@ struct PresentationRuntime {
   // Synthetic outputs not painted because the presenter was already past their
   // slot: they would have been presented back-to-back with the next output.
   std::atomic<uint64_t> late_synthetic_skips{0};
+  // Latest generation pass, -1 when the last one could not be timed (never a stale value).
   std::atomic<double> generation_gpu_ms{-1.0};
+  // Cumulative per process; the app takes deltas per run. Relaxed: counters only.
+  std::array<std::atomic<uint64_t>, kGenerationGpuBuckets> generation_gpu_histogram{};
+  std::atomic<uint64_t> generation_gpu_unavailable{0};
 };
 inline PresentationRuntime& RuntimePresentation() {
   static PresentationRuntime runtime;
   return runtime;
+}
+
+// Nanoseconds between two timestamps written on one queue. Only the low
+// `valid_bits` bits are meaningful (Vulkan's timestampValidBits) and the counter
+// may wrap between the two writes, so the difference is taken modulo 2^valid_bits.
+// -1 when the pair is no measurement: no valid bits, no period, or an elapsed time
+// no single generation pass takes (over a second: a reset or unwritten query).
+inline int64_t TimestampElapsedNs(uint64_t begin, uint64_t end, uint32_t valid_bits, double period_ns) {
+  if (valid_bits == 0 || !(period_ns > 0.0)) return -1;
+  const uint64_t mask = valid_bits >= 64 ? ~uint64_t(0) : (uint64_t(1) << valid_bits) - 1;
+  const double ns = double((end - begin) & mask) * period_ns;
+  if (!(ns <= 1e9)) return -1;
+  return int64_t(ns);
+}
+
+// One generation pass timed (ns >= 0) or not (ns < 0): latest value and histogram.
+inline void RecordGenerationGpu(PresentationRuntime& runtime, int64_t ns) {
+  if (ns < 0) {
+    runtime.generation_gpu_ms.store(-1.0, std::memory_order_relaxed);
+    runtime.generation_gpu_unavailable.fetch_add(1, std::memory_order_relaxed);
+    return;
+  }
+  runtime.generation_gpu_ms.store(double(ns) / 1e6, std::memory_order_relaxed);
+  const size_t bucket = std::min<size_t>(size_t(ns / kGenerationGpuBucketNs), kGenerationGpuBuckets - 1);
+  runtime.generation_gpu_histogram[bucket].fetch_add(1, std::memory_order_relaxed);
 }
 
 struct OutputRectangle { int32_t x, y; uint32_t width, height; };

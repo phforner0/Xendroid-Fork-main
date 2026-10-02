@@ -578,6 +578,14 @@ guest e submitted/synthetic, input-to-frame markers, p95/p99, dropped/pending.
 Usar `VK_KHR_present_id/present_wait`, `VK_GOOGLE_display_timing` ou estatística
 Android somente quando suportada; câmera/timing externo quando não houver fonte.
 
+**Estado F08 (2026-10-02, fatia 8a, Impl. + Local):** tempo de GPU da geração com
+`timestampValidBits` e volta do contador (`TimestampElapsedNs`, testado), falha marcada
+como indisponível em vez de valor velho, histograma por passada (0,25 ms) exportado por JNI
+e resumido por run (mediana/p95/p99, não cronometradas, saídas atrasadas puladas, quadros
+guest substituídos) na ficha e no relatório. Falta: present_id/present_wait ou
+`VK_GOOGLE_display_timing` quando o driver tiver (só no aparelho), marcadores
+input-to-frame e a fila pendente (F02).
+
 **F09 — qualidade:** checkerboard/câmera/oclusão/HUD/transição/frames duplicados,
 scene-cut fallback e movimento determinístico. Imagem constante é só teste básico
 de compute. Aplicar FG antes de HUD Android e preservar layers de diálogos.

@@ -52,6 +52,7 @@ import xendroid.compose.core.AllFilesAccess
 import xendroid.compose.core.EmuProcessLink
 import xendroid.compose.sessions.describeAudio
 import xendroid.compose.sessions.describeFrameTimes
+import xendroid.compose.sessions.describeFrameGeneration
 import xendroid.compose.sessions.describeRun
 import xendroid.compose.sessions.formatPlayTime
 import xendroid.compose.data.Game
@@ -509,6 +510,7 @@ fun GameLibraryScreen(
                                         describeFrameTimes(perf)?.let { Text("Guest frame time: $it") }
                                         perf.firstFrameSeconds?.let { Text("First frame after $it s") }
                                         describeAudio(perf)?.let { Text("Audio · $it") }
+                                        describeFrameGeneration(perf)?.let { Text("Frame generation (experimental) · $it") }
                                         perf.pipelineCreations?.takeIf { it > 0 }?.let { count ->
                                             Text("Pipelines created: $count, %.1f s spent creating them"
                                                 .format((perf.pipelineCreationMs ?: 0L) / 1000.0))

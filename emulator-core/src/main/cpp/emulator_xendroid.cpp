@@ -1300,6 +1300,21 @@ static jlongArray j_presentation_state(JNIEnv* env, jobject thiz) {
     return array;
 }
 
+// F08: GPU time per measured frame-generation pass, 0.25 ms buckets (the last one is
+// 16 ms and more), then the passes that could not be timed. Cumulative per process.
+static jlongArray j_frame_generation_gpu_histogram(JNIEnv* env, jobject thiz) {
+    const auto& runtime = xe::ui::RuntimePresentation();
+    constexpr jsize kCount = jsize(xe::ui::kGenerationGpuBuckets) + 1;
+    jlong values[kCount];
+    for (size_t i = 0; i < xe::ui::kGenerationGpuBuckets; ++i) {
+        values[i] = jlong(runtime.generation_gpu_histogram[i].load(std::memory_order_relaxed));
+    }
+    values[kCount - 1] = jlong(runtime.generation_gpu_unavailable.load(std::memory_order_relaxed));
+    auto array = env->NewLongArray(kCount);
+    if (array) env->SetLongArrayRegion(array, 0, kCount, values);
+    return array;
+}
+
 static jstring j_active_title_id(JNIEnv* env, jobject thiz) {
     const uint32_t id = ae::active_title_id();
     if (!id) return nullptr;
@@ -1999,6 +2014,7 @@ int register_xendroid_Emulator(JNIEnv* env){
             ,{"presenter_work", "()[J", (void *) j_presenter_work}
             ,{"set_frame_generation", "(ZIF)V", (void *) j_set_frame_generation}
             ,{"presentation_state", "()[J", (void *) j_presentation_state}
+            ,{"frame_generation_gpu_histogram", "()[J", (void *) j_frame_generation_gpu_histogram}
             ,{"build_lsfg_cache", "(Ljava/lang/String;Ljava/lang/String;)I", (void *) j_build_lsfg_cache}
             ,{"set_lsfg", "(ZLjava/lang/String;FI)V", (void *) j_set_lsfg}
             ,{"set_audio_volume", "(I)V", (void *) j_set_audio_volume}

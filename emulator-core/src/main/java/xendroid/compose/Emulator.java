@@ -66,6 +66,9 @@ public class Emulator extends xendroid.emulator.Emulator{
     public native long[] presenter_work();
     public native void set_frame_generation(boolean enabled, int preset, float displayHz);
     public native long[] presentation_state();
+    // GPU time per measured frame-generation pass: 0.25 ms buckets (last = 16 ms and more),
+    // then the count of passes that could not be timed. Cumulative; take deltas.
+    public native long[] frame_generation_gpu_histogram();
     public native int build_lsfg_cache(String dll, String cache);
     public native void set_lsfg(boolean enabled, String cache, float displayHz, int multiplier);
     public native void set_audio_volume(int percent);

@@ -1034,6 +1034,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         guestFrames = guestFrames,
                                     )
                                     runPerformance.frameTimes(frameTimes)
+                                    runPerformance.frameGeneration(session.frameGenerationGpuHistogram(), fgNow.lateSkips, fgNow.dropped)
                                     notePresentation(fgNow, runningNow, guestFrames ?: session.hostPresentSubmissionCount())
                                     val compileStats = session.shaderCompileStats()
                                     if (bootStatus.value != null) {
@@ -1659,6 +1660,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 val failure = launchFailure
                 runPerformance.battery(xendroid.compose.sessions.SessionRuns.batteryCelsius(applicationContext))
                 runPerformance.frameTimes(session.guestFrameTimeHistogram())
+                session.presentationState().let { fg ->
+                    runPerformance.frameGeneration(session.frameGenerationGpuHistogram(), fg.lateSkips, fg.dropped)
+                }
                 runPerformance.compiles(session.shaderCompileStats())
                 runPerformance.audio(session.audioRunStats())
                 runEvents.record("exit", if (isFinishing) "activity finished" else "activity destroyed by the system")

@@ -76,6 +76,7 @@ object RunReports {
                 (perf.fpsPercentile(0.5)?.let { ", median $it FPS" } ?: ""))
             describeFrameTimes(perf)?.let { add("Frame time: $it") }
             describeAudio(perf)?.let { add("Audio: $it") }
+            describeFrameGeneration(perf)?.let { add("Frame generation: $it") }
         }
         add("Timeline: ${report.events?.events?.size ?: 0} events")
         add("Your compatibility results: ${report.compatibility.size}" +

@@ -99,6 +99,44 @@ static void MultiplierIsClampedAndLateSyntheticFramesAreSkipped() {
   assert(!FrameGenerationSchedule::LateSynthetic(cycle, 4, FrameGenerationSchedule::Deadline(cycle, 4) + 100 * step));
 }
 
+// F08: GPU timestamps count only timestampValidBits and may wrap between two writes.
+static void TimestampsHonourValidBitsAndWrap() {
+  // Adreno-like 19.2 MHz counter: 52.083 ns per tick.
+  const double period = 1e9 / 19.2e6;
+  assert(TimestampElapsedNs(1000, 1000 + 96000, 64, period) == int64_t(96000 * period));  // 5 ms
+  assert(TimestampElapsedNs(5, 5, 64, 1.0) == 0);
+  // A 36-bit counter wrapping between the two writes: 100 ticks before the top, 50 after.
+  const uint64_t top = (uint64_t(1) << 36) - 100;
+  assert(TimestampElapsedNs(top, 50, 36, 1.0) == 150);
+  // Bits above timestampValidBits are undefined: they must not count.
+  assert(TimestampElapsedNs(0xFFFF000000000010ull, 0x0000000000000030ull, 36, 1.0) == 0x20);
+  // End before begin with no wrap possible, no valid bits, no period: no measurement.
+  assert(TimestampElapsedNs(2000, 1000, 64, 1.0) == -1);
+  assert(TimestampElapsedNs(0, 100, 0, 1.0) == -1);
+  assert(TimestampElapsedNs(0, 100, 64, 0.0) == -1);
+  assert(TimestampElapsedNs(0, 100, 64, std::nan("")) == -1);
+  // Over a second for one pass is not believable (unwritten or reset query).
+  assert(TimestampElapsedNs(0, 2000000000ull, 64, 1.0) == -1);
+}
+
+static void GenerationGpuTimesAreBucketedAndFailuresAreNotStale() {
+  PresentationRuntime runtime;
+  RecordGenerationGpu(runtime, 3100000);        // 3.1 ms -> bucket 12 (3.00..3.25 ms)
+  assert(runtime.generation_gpu_histogram[12].load() == 1);
+  assert(runtime.generation_gpu_ms.load() > 3.09 && runtime.generation_gpu_ms.load() < 3.11);
+  RecordGenerationGpu(runtime, 0);
+  assert(runtime.generation_gpu_histogram[0].load() == 1);
+  RecordGenerationGpu(runtime, 40000000);       // 40 ms -> the open last bucket
+  assert(runtime.generation_gpu_histogram[kGenerationGpuBuckets - 1].load() == 1);
+  // An untimed pass leaves no old figure behind and is counted as unavailable.
+  RecordGenerationGpu(runtime, -1);
+  assert(runtime.generation_gpu_ms.load() == -1.0);
+  assert(runtime.generation_gpu_unavailable.load() == 1);
+  uint64_t timed = 0;
+  for (const auto& bucket : runtime.generation_gpu_histogram) timed += bucket.load();
+  assert(timed == 3);
+}
+
 int main() {
   OutputRectangles();
   Cadence();
@@ -107,5 +145,7 @@ int main() {
   CadenceOverTheDisplayStopsAfterWarmup();
   PauseResetsTheCadence();
   MultiplierIsClampedAndLateSyntheticFramesAreSkipped();
+  TimestampsHonourValidBitsAndWrap();
+  GenerationGpuTimesAreBucketedAndFailuresAreNotStale();
   std::puts("presentation policy: passed");
 }
