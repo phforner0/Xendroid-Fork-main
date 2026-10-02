@@ -11,6 +11,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import xendroid.compose.companion.CompanionPadLink.State
+import xendroid.compose.companion.CompanionPadLink.Why
 import xendroid.compose.gamepad.ControllerSlots
 import xendroid.compose.gamepad.Kc
 
@@ -65,9 +66,9 @@ class CompanionPadLinkTest {
     @Test fun malformedAddressOrCodeNeverConnects() {
         val link = link()
         link.connect("192.168.1.20", "123456", "Ana")
-        assertEquals(State.Idle("Type the address the game shows, like 192.168.1.20:41234"), link.state.value)
+        assertEquals(State.Idle(Why(Why.Kind.BAD_ADDRESS)), link.state.value)
         link.connect("127.0.0.1:4000", "12345", "Ana")
-        assertEquals(State.Idle("The code is the 6 digits the game shows"), link.state.value)
+        assertEquals(State.Idle(Why(Why.Kind.BAD_CODE)), link.state.value)
     }
 
     @Test fun thePadPlaysItsSlotAndLeavingReleasesIt() {
@@ -99,15 +100,14 @@ class CompanionPadLinkTest {
         val host = host()
         val link = link()
         link.connect("127.0.0.1:${host.port}", if (host.code == "000000") "000001" else "000000", "Ana")
-        assertEquals(State.Idle("Wrong code"), link.state.value)
+        assertEquals(State.Idle(Why(Why.Kind.REJECTED, "127.0.0.1:${host.port}", code = CompanionProtocol.REJECT_PROOF)), link.state.value)
     }
 
     @Test fun nobodyListeningSaysWhatToCheck() {
         val port = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }  // free, then closed
         val link = link()
         link.connect("127.0.0.1:$port", "123456", "Ana")
-        val message = (link.state.value as State.Idle).message!!
-        assertTrue(message, message.startsWith("Could not reach the game at 127.0.0.1:$port"))
+        assertEquals(State.Idle(Why(Why.Kind.UNREACHABLE, "127.0.0.1:$port")), link.state.value)
     }
 
     @Test fun theGameEndingIsShownAndStopsTheRumble() {
@@ -118,7 +118,7 @@ class CompanionPadLinkTest {
         eventually("rumble") { rumble.lastOrNull() == (100L shl 16) or 200L }
         host.close()
         eventually("idle") { link.state.value is State.Idle }
-        assertTrue(link.state.value.toString(), (link.state.value as State.Idle).message!!.startsWith("Disconnected: "))
+        assertEquals(link.state.value.toString(), Why.Kind.DISCONNECTED, (link.state.value as State.Idle).why?.kind)
         assertEquals(0L, rumble.last())
         // And it can join again (a new game, a new code).
         val again = host()

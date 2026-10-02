@@ -1,5 +1,6 @@
 package xendroid.compose.updater
 
+import xendroid.compose.R
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -27,14 +28,14 @@ object UpdateInstaller {
     fun verify(context: Context, apk: File): String? {
         val pm = context.packageManager
         val archive = pm.getPackageArchiveInfo(apk.path, PackageManager.GET_SIGNING_CERTIFICATES)
-            ?: return "the file is not an Android package"
-        if (archive.packageName != context.packageName) return "it is another app (${archive.packageName})"
+            ?: return context.getString(R.string.upd_refuse_not_apk)
+        if (archive.packageName != context.packageName) return context.getString(R.string.upd_refuse_other_app, archive.packageName)
         val installed = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-        if (archive.longVersionCode <= installed.longVersionCode) return "it is not newer than this build"
+        if (archive.longVersionCode <= installed.longVersionCode) return context.getString(R.string.upd_refuse_not_newer)
         val theirs = signers(archive)
         val ours = signers(installed)
         if (theirs.isEmpty() || ours.isEmpty() || theirs.intersect(ours).isEmpty()) {
-            return "it is signed with another key, so Android would refuse to update"
+            return context.getString(R.string.upd_refuse_other_key)
         }
         return null
     }
@@ -55,7 +56,7 @@ object UpdateInstaller {
     fun install(context: Context, apk: File) {
         val pm = context.packageManager
         if (!pm.canRequestPackageInstalls()) {
-            Toast.makeText(context, "Allow XenDroid to install updates, then tap Download and install again",
+            Toast.makeText(context, context.getString(R.string.upd_allow_install),
                 Toast.LENGTH_LONG).show()
             context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                 Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -101,7 +102,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
             else -> {
                 val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
                 UpdateInstaller.log("Update not installed: status $status ${message.orEmpty()}")
-                Toast.makeText(context, "Update not installed${message?.let { ": $it" }.orEmpty()}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, context.getString(R.string.upd_not_installed) + message?.let { ": $it" }.orEmpty(), Toast.LENGTH_LONG).show()
             }
         }
     }

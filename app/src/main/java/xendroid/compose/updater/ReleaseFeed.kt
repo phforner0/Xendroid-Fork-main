@@ -49,7 +49,23 @@ fun chooseUpdate(releases: List<FeedRelease>, channel: UpdateChannel, installedV
         .maxByOrNull { (_, tag) -> tag.versionCode ?: 0 }?.first
 }
 
-class UpdateDownloadException(message: String) : Exception(message)
+/** Why a download cannot be used: [reason] and its [args] for the screen to say in its language
+ *  (U02); the English text is the message (logs, tests). */
+class UpdateDownloadException(val reason: Reason, vararg val args: Long) :
+    Exception(reason.english.format(*args.toTypedArray())) {
+    enum class Reason(val english: String) {
+        NO_APK("The release has no APK"),
+        NO_SHA256("The release publishes no SHA-256 for its APK"),
+        HTTP("Download failed (HTTP %d)"),
+        EMPTY("Empty download"),
+        UNEXPECTED_SIZE("Unexpected update size (%d bytes)"),
+        CANCELLED("Download cancelled"),
+        TOO_LARGE("The download is larger than the release says"),
+        STOPPED_EARLY("The download stopped early (%d of %d bytes)"),
+        MISMATCH("The download does not match the release's SHA-256"),
+        NOT_KEPT("Could not keep the download"),
+    }
+}
 
 /**
  * R03: copies [input] to [destination] only if it is exactly [expectedSize] bytes with
@@ -59,8 +75,8 @@ class UpdateDownloadException(message: String) : Exception(message)
 fun downloadVerified(input: InputStream, expectedSize: Long, expectedSha256: String, destination: File,
                      maxBytes: Long = 256L * 1024 * 1024, isCancelled: () -> Boolean = { false },
                      onProgress: (Long) -> Unit = {}): File {
-    if (expectedSize <= 0 || expectedSize > maxBytes) throw UpdateDownloadException("Unexpected update size ($expectedSize bytes)")
-    if (!expectedSha256.matches(Regex("[0-9a-f]{64}"))) throw UpdateDownloadException("The release publishes no SHA-256 for its APK")
+    if (expectedSize <= 0 || expectedSize > maxBytes) throw UpdateDownloadException(UpdateDownloadException.Reason.UNEXPECTED_SIZE, expectedSize)
+    if (!expectedSha256.matches(Regex("[0-9a-f]{64}"))) throw UpdateDownloadException(UpdateDownloadException.Reason.NO_SHA256)
     destination.parentFile?.mkdirs()
     val temporary = File(destination.parentFile, ".${destination.name}.part")
     try {
@@ -69,22 +85,22 @@ fun downloadVerified(input: InputStream, expectedSize: Long, expectedSha256: Str
         temporary.outputStream().use { out ->
             val buffer = ByteArray(64 * 1024)
             while (true) {
-                if (isCancelled()) throw UpdateDownloadException("Download cancelled")
+                if (isCancelled()) throw UpdateDownloadException(UpdateDownloadException.Reason.CANCELLED)
                 val n = input.read(buffer)
                 if (n < 0) break
                 total += n
-                if (total > expectedSize) throw UpdateDownloadException("The download is larger than the release says")
+                if (total > expectedSize) throw UpdateDownloadException(UpdateDownloadException.Reason.TOO_LARGE)
                 digest.update(buffer, 0, n)
                 out.write(buffer, 0, n)
                 onProgress(total)
             }
             out.fd.sync()
         }
-        if (total != expectedSize) throw UpdateDownloadException("The download stopped early ($total of $expectedSize bytes)")
+        if (total != expectedSize) throw UpdateDownloadException(UpdateDownloadException.Reason.STOPPED_EARLY, total, expectedSize)
         val actual = digest.digest().joinToString("") { "%02x".format(it) }
-        if (actual != expectedSha256) throw UpdateDownloadException("The download does not match the release's SHA-256")
+        if (actual != expectedSha256) throw UpdateDownloadException(UpdateDownloadException.Reason.MISMATCH)
         destination.delete()
-        if (!temporary.renameTo(destination)) throw UpdateDownloadException("Could not keep the download")
+        if (!temporary.renameTo(destination)) throw UpdateDownloadException(UpdateDownloadException.Reason.NOT_KEPT)
         return destination
     } finally {
         temporary.delete()

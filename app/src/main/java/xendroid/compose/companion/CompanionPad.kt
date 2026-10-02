@@ -40,11 +40,20 @@ class CompanionPadLink(
     private val onRumble: (motors: Long) -> Unit = {},
 ) {
     sealed interface State {
-        /** Not connected; [message] says why the last attempt or connection ended. */
-        data class Idle(val message: String? = null) : State
+        /** Not connected; [why] says why the last attempt or connection ended. */
+        data class Idle(val why: Why? = null) : State
         data object Connecting : State
         /** [slot] 1..3 = P2..P4; [latencyMs] the round trip the game measured. */
         data class Playing(val slot: Int, val latencyMs: Int? = null) : State
+    }
+
+    /**
+     * Why the phone is not connected, for its screen to say in the shown language (U02).
+     * [target]: the address tried; [code]: the game's rejection code; [detail]: the system's or
+     * the connection's own words, shown as they are.
+     */
+    data class Why(val kind: Kind, val target: String = "", val code: Int = 0, val detail: String = "") {
+        enum class Kind { BAD_ADDRESS, BAD_CODE, REJECTED, UNREACHABLE, NOT_XENDROID, FAILED, DISCONNECTED }
     }
 
     private val mutableState = MutableStateFlow<State>(State.Idle())
@@ -55,8 +64,8 @@ class CompanionPadLink(
 
     fun connect(address: String, code: String, name: String) {
         val target = CompanionTarget.parse(address)
-            ?: return idle("Type the address the game shows, like 192.168.1.20:41234")
-        if (!CompanionTarget.isCode(code)) return idle("The code is the 6 digits the game shows")
+            ?: return idle(Why(Why.Kind.BAD_ADDRESS))
+        if (!CompanionTarget.isCode(code)) return idle(Why(Why.Kind.BAD_CODE))
         val created = synchronized(this) {
             if (client != null) return
             var self: CompanionClient? = null
@@ -115,20 +124,18 @@ class CompanionPadLink(
             if (client !== which) return
             client = null
             pad = PadState.RELEASED
-            mutableState.value = State.Idle("Disconnected: $reason")
+            mutableState.value = State.Idle(Why(Why.Kind.DISCONNECTED, detail = reason))
         }
     }
 
-    private fun idle(message: String) {
-        synchronized(this) { if (client == null) mutableState.value = State.Idle(message) }
+    private fun idle(why: Why) {
+        synchronized(this) { if (client == null) mutableState.value = State.Idle(why) }
     }
 
-    private fun describe(e: Exception, target: CompanionTarget): String = when (e) {
-        is CompanionRejected -> e.message.orEmpty()
-        is ConnectException, is SocketTimeoutException, is NoRouteToHostException ->
-            "Could not reach the game at $target. Both phones must be on the same Wi-Fi or hotspot, " +
-                "with Phone controllers on in the game's menu (a new address each time it is turned on)."
-        is CompanionProtocolException -> "Not a XenDroid game at $target (${e.message})"
-        else -> "Connection failed: ${e.message ?: e.javaClass.simpleName}"
+    private fun describe(e: Exception, target: CompanionTarget): Why = when (e) {
+        is CompanionRejected -> Why(Why.Kind.REJECTED, target.toString(), code = e.reason)
+        is ConnectException, is SocketTimeoutException, is NoRouteToHostException -> Why(Why.Kind.UNREACHABLE, target.toString())
+        is CompanionProtocolException -> Why(Why.Kind.NOT_XENDROID, target.toString(), detail = e.message.orEmpty())
+        else -> Why(Why.Kind.FAILED, target.toString(), detail = e.message ?: e.javaClass.simpleName)
     }
 }

@@ -1,5 +1,6 @@
 package xendroid.compose.patches
 
+import xendroid.compose.R
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -18,7 +19,7 @@ import kotlinx.coroutines.launch
 class GamePatchesViewModel(
     private val titleId: String,
     private val store: PatchStore,
-    private val appContext: Context? = null,
+    private val appContext: Context,
 ) : ViewModel() {
 
     sealed interface UiState {
@@ -40,21 +41,21 @@ class GamePatchesViewModel(
 
     /** L11: the user's own patch file for this game, checked before the emulator ever sees it. */
     fun importUserPatch(uri: Uri) {
-        val context = appContext ?: return
+        val context = appContext
         viewModelScope.launch(Dispatchers.IO) {
             _message.value = try {
                 val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
                     ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "patch"
                 val bytes = context.contentResolver.openInputStream(uri)?.use {
                     xendroid.compose.archive.ArchiveFiles.readBounded(it, MAX_IMPORT_BYTES)
-                } ?: error("Cannot read the chosen file")
+                } ?: error(context.getString(R.string.pt_cannot_read))
                 val text = Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString()
                 val stored = store.importUserPatch(titleId, name, text)
-                "Added \"$stored\". Its patches start off; turn on the ones you want."
+                context.getString(R.string.pt_added, stored)
             } catch (e: java.nio.charset.CharacterCodingException) {
-                "Not added: the file is not UTF-8 text."
+                context.getString(R.string.pt_not_utf8)
             } catch (e: Exception) {
-                "Not added: ${e.message ?: "the file could not be read"}"
+                context.getString(R.string.pt_not_added, e.message ?: context.getString(R.string.pt_unreadable))
             }
             _state.value = compute()
         }
@@ -63,7 +64,8 @@ class GamePatchesViewModel(
     fun removeUserPatch(file: PatchFile) {
         viewModelScope.launch(Dispatchers.IO) {
             _message.value = runCatching { store.removeUserPatch(file.fileName) }
-                .fold({ "Removed \"${file.variantLabel}\"." }, { "Not removed: ${it.message}" })
+                .fold({ appContext.getString(R.string.pt_removed, file.variantLabel) },
+                    { appContext.getString(R.string.pt_not_removed, it.message ?: it.javaClass.simpleName) })
             _state.value = compute()
         }
     }
@@ -104,10 +106,10 @@ class GamePatchesViewModel(
         val files = texts.map { it.first }
         // A file the check cannot read is left out of the comparison, never hidden.
         val conflicts = PatchFileCheck.conflicts(texts.mapNotNull { (file, text) ->
-            runCatching { (if (file.mine) "yours: ${file.variantLabel}" else file.variantLabel) to PatchFileCheck.read(text) }.getOrNull()
+            runCatching { (if (file.mine) appContext.getString(R.string.pt_yours, file.variantLabel) else file.variantLabel) to PatchFileCheck.read(text) }.getOrNull()
         })
         if (files.isEmpty()) UiState.Empty else UiState.Loaded(files, conflicts)
-    }.getOrElse { UiState.Error(it.message ?: "Failed to load patches") }
+    }.getOrElse { UiState.Error(it.message ?: appContext.getString(R.string.pt_load_failed)) }
 
     private companion object {
         const val MAX_IMPORT_BYTES = 1024L * 1024

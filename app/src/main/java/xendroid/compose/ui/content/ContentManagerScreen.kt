@@ -180,7 +180,7 @@ private fun TrashList(
             ListItem(
                 headlineContent = { Text(entry.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 supportingContent = {
-                    Text(stringResource(R.string.cm_trash_entry, if (entry.contentType == xendroid.compose.core.ContentPaths.TU_CONTENT_TYPE) "Title update" else "DLC",
+                    Text(stringResource(R.string.cm_trash_entry, if (entry.contentType == xendroid.compose.core.ContentPaths.TU_CONTENT_TYPE) stringResource(R.string.cm_type_tu) else "DLC",
                         humanReadableSize(entry.bytes),
                         java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(entry.deletedAt))))
                 },

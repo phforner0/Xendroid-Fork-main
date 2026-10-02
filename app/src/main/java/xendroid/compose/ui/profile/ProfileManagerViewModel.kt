@@ -284,7 +284,13 @@ class ProfileManagerViewModel(
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         val options = BitmapFactory.Options().apply {
-            inSampleSize = AvatarPolicy.sampleSize(bounds.outWidth, bounds.outHeight)
+            inSampleSize = try {
+                AvatarPolicy.sampleSize(bounds.outWidth, bounds.outHeight)
+            } catch (e: IllegalArgumentException) {
+                error(if (bounds.outWidth > 0 && bounds.outHeight > 0)
+                    appContext.getString(R.string.pf_image_too_large, bounds.outWidth, bounds.outHeight, AvatarPolicy.MAX_SIDE)
+                    else appContext.getString(R.string.lib_not_an_image))
+            }
         }
         val src = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
             ?: error(appContext.getString(R.string.lib_not_an_image))

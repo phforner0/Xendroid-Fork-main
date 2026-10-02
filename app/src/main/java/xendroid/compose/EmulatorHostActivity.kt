@@ -160,7 +160,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     /** Seconds with concealed audio blocks; 5 quiet seconds end a burst, so sporadic dropouts stay one event pair. */
     private val audioBursts = xendroid.compose.sessions.BurstTracker(threshold = 1, quietSeconds = 5)
     /** Shown over the black screen until the first guest frame (U09); null afterwards. */
-    private val bootStatus = mutableStateOf<String?>("Starting the emulator…")
+    private val bootStatus = mutableStateOf<xendroid.compose.ui.ingame.BootStatus?>(
+        xendroid.compose.ui.ingame.BootStatus(xendroid.compose.ui.ingame.BootStatus.Stage.EMULATOR))
     private val createdAtMs = android.os.SystemClock.elapsedRealtime()
     /** Connected controllers by device id, described by vendor/product only. */
     private val controllers = mutableMapOf<Int, String>()
@@ -420,7 +421,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
             Toast.makeText(
                 this,
-                "XenDroid: no game in launch intent",
+                getString(R.string.host_no_game),
                 Toast.LENGTH_LONG
             ).show()
 
@@ -431,7 +432,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (!EmulatorRuntime.supportsVulkan) {
             Toast.makeText(
                 this,
-                "No Vulkan GPU; cannot boot",
+                getString(R.string.host_no_vulkan),
                 Toast.LENGTH_LONG
             ).show()
 
@@ -488,7 +489,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             ) {
                 Toast.makeText(
                     this@EmulatorHostActivity,
-                    "All Files Access not granted; open the library first",
+                    getString(R.string.host_no_files_access),
                     Toast.LENGTH_LONG
                 ).show()
 
@@ -515,17 +516,22 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     session.prepareStorage(onWaiting = {
                         lifecycleScope.launch {
                             Toast.makeText(this@EmulatorHostActivity,
-                                "Waiting for a save or content operation to finish…", Toast.LENGTH_SHORT).show()
+                                getString(R.string.host_waiting_storage), Toast.LENGTH_SHORT).show()
                         }
                     })
                 }.getOrElse {
                     if (it is kotlinx.coroutines.CancellationException) throw it
                     Log.e(TAG, "Preparing game storage failed", it)
-                    EmulatorSession.StorageResult.Unavailable("Game data could not be prepared: ${it.message}")
+                    EmulatorSession.StorageResult.Unavailable(EmulatorSession.StorageResult.Unavailable.Reason.FAILED,
+                        it.message ?: it.javaClass.simpleName, "Game data could not be prepared: ${it.message}")
                 }
             }
             if (storage is EmulatorSession.StorageResult.Unavailable) {
-                showLaunchFailure(storage.message)
+                showLaunchFailure(when (storage.reason) {
+                    EmulatorSession.StorageResult.Unavailable.Reason.BUSY -> getString(R.string.host_storage_busy)
+                    EmulatorSession.StorageResult.Unavailable.Reason.RECOVERY_PENDING -> getString(R.string.host_storage_recovery, storage.detail)
+                    EmulatorSession.StorageResult.Unavailable.Reason.FAILED -> getString(R.string.host_storage_failed, storage.detail)
+                }, storage.english)
                 return@launch
             }
             recordEvent("storage", "ready")
@@ -594,7 +600,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         super.onNewIntent(intent)
         val requested = FrontendLaunch.resolveForHandOff(this, intent) ?: return
         if (requested != launchedGame) {
-            Toast.makeText(this, "A game is already running. Exit it (Back → Exit game) before starting another.",
+            Toast.makeText(this, getString(R.string.host_already_running),
                 Toast.LENGTH_LONG).show()
         }
     }
@@ -725,13 +731,14 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         recordEvent("memory", "trim level $level", flush = level >= 10)
     }
 
-    private fun showLaunchFailure(message: String) {
-        launchFailure = message
-        recordEvent("error", message, flush = true)
+    /** [shown] in the dialog, in the shown language; [logged] (English) in the run's record. */
+    private fun showLaunchFailure(shown: String, logged: String = shown) {
+        launchFailure = logged
+        recordEvent("error", logged, flush = true)
         if (isFinishing || isDestroyed) return
         android.app.AlertDialog.Builder(this)
-            .setTitle("The game could not start")
-            .setMessage(message)
+            .setTitle(getString(R.string.host_launch_failed))
+            .setMessage(shown)
             .setPositiveButton(android.R.string.ok) { _, _ -> leave() }
             .setOnCancelListener { leave() }
             .show()
@@ -1124,7 +1131,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             runPerformance.firstFrame(elapsed.toInt())
                                             recordEvent("boot", "first guest frames after $elapsed s")
                                         } else {
-                                            bootStatus.value = xendroid.compose.ui.ingame.bootStatusText(activeTitle != null,
+                                            bootStatus.value = xendroid.compose.ui.ingame.bootStatus(activeTitle != null,
                                                 compileStats?.getOrNull(0) ?: 0L, compileStats?.getOrNull(2) ?: 0L, elapsed)
                                         }
                                     }
@@ -1215,6 +1222,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     // other components (ADPF, TV, phone controllers) are still English.
                                     val on = stringResource(R.string.menu_on)
                                     val off = stringResource(R.string.menu_off)
+                                    val rumbleNames = xendroid.compose.gamepad.RumbleIntensity.entries.associateWith { xendroid.compose.ui.rumbleLabel(it) }
                                     InGameMenu(
                                         state = menuState.value,
                                         paused = menuPaused.value,
@@ -1242,12 +1250,12 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                 else stringResource(R.string.menu_gyro_camera_value, if (gyroEnabled.value) on else off),
                                             InGameAction.GYRO_SENSITIVITY to stringResource(R.string.menu_gyro_sensitivity_value, listOf(
                                                 stringResource(R.string.menu_low), stringResource(R.string.menu_normal), stringResource(R.string.menu_high))[gyroSensitivity.intValue]),
-                                            InGameAction.CONTROLLER_RUMBLE to stringResource(R.string.menu_rumble_value, rumbleSettings.value.default.label,
+                                            InGameAction.CONTROLLER_RUMBLE to stringResource(R.string.menu_rumble_value, rumbleNames.getValue(rumbleSettings.value.default),
                                                 controllerSlots.players.withIndex()
                                                     .filter { it.value != null && !it.value!!.startsWith(xendroid.compose.companion.CompanionHost.KEY_PREFIX) }
                                                     .joinToString(", ") { player ->
                                                         // U08: a controller with its own intensity says it.
-                                                        "P${player.index + 1}" + (player.value?.let { rumbleSettings.value.perDevice[it] }?.let { " (${it.label})" } ?: "")
+                                                        "P${player.index + 1}" + (player.value?.let { rumbleSettings.value.perDevice[it] }?.let { " (${rumbleNames.getValue(it)})" } ?: "")
                                                     }.ifEmpty { stringResource(R.string.menu_no_controller) }),
                                             InGameAction.PHONE_CONTROLLERS to phoneControllersLabel.value,
                                             InGameAction.TOUCH_CAMERA to stringResource(R.string.menu_touch_camera, if (touchCamera.value) on else off),
@@ -1614,7 +1622,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     t
                 )
 
-                showLaunchFailure("The emulator core did not start: ${t.message ?: t.javaClass.simpleName}")
+                val detail = t.message ?: t.javaClass.simpleName
+                showLaunchFailure(getString(R.string.host_core_failed, detail), "The emulator core did not start: $detail")
             }
         } else {
             session.attachSurface(
@@ -2409,7 +2418,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     private fun chooseMenuQuit(quit: Boolean) {
         if (quit && fpsConfig.value.saving) {
-            Toast.makeText(this, "Wait for the configuration save to finish", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.host_wait_config_save), Toast.LENGTH_SHORT).show()
         } else if (quit) {
             runId?.let { id -> runCatching { xendroid.compose.sessions.SessionRuns.store().ending(id, "user exit") } }
             recordEvent("exit", "user exit")
@@ -2466,7 +2475,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (action == InGameAction.PHONE_CONTROLLERS) {
             // The native driver takes player slots only once the emulator runs a title.
             if (phoneControllers.host == null && activeTitleState.value == null) {
-                Toast.makeText(this, "Phone controllers can be turned on once the game is running", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.host_phone_wait), Toast.LENGTH_SHORT).show()
                 return
             }
             phoneControllers.toggle()
@@ -2523,7 +2532,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             lifecycleScope.launch {
                 val deleted = withContext(Dispatchers.IO) { runCatching { LsfgAssets.clear(applicationContext) } }
                 if (deleted.isSuccess) lsfgCache.value = null
-                else Toast.makeText(this@EmulatorHostActivity, "Could not remove the shader cache", Toast.LENGTH_LONG).show()
+                else Toast.makeText(this@EmulatorHostActivity, getString(R.string.host_cache_not_removed), Toast.LENGTH_LONG).show()
                 presentationState.value = session.presentationState()
             }
             return
@@ -2620,7 +2629,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                         getSharedPreferences(DISPLAY_SETTINGS_PREFS, MODE_PRIVATE).edit()
                             .putBoolean(FULLSCREEN_STRETCH_KEY, enabled).apply()
                     } else {
-                        Toast.makeText(this@EmulatorHostActivity, "Could not save display configuration", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@EmulatorHostActivity, getString(R.string.host_display_not_saved), Toast.LENGTH_LONG).show()
                     }
                     fpsConfig.value = before
                 }
@@ -2650,7 +2659,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             InGameAction.MARK_SCENE -> {
                 sceneMarkers.intValue++
                 recordEvent("marker", "scene ${sceneMarkers.intValue}", flush = true)
-                Toast.makeText(this, "Scene ${sceneMarkers.intValue} marked", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.host_scene_marked, sceneMarkers.intValue), Toast.LENGTH_SHORT).show()
             }
             InGameAction.TOUCH_CAMERA -> {
                 touchCamera.value = !touchCamera.value
@@ -2685,7 +2694,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             val result = withContext(Dispatchers.IO) { runCatching { inGameConfig.fpsSnapshot(title) } }
             fpsConfig.value = result.getOrElse {
                 Log.w(TAG, "Reading saved FPS configuration failed", it)
-                FpsConfigSnapshot(titleId = title, error = "Cannot read saved configuration; persistent actions are unavailable.")
+                FpsConfigSnapshot(titleId = title, error = getString(R.string.host_config_unreadable))
             }
         }
     }
@@ -2708,7 +2717,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                         else -> null
                     }
                     val snapshot = runCatching { inGameConfig.fpsSnapshot(title) }.getOrElse {
-                        before.copy(saving = false, error = "Saved, but unable to refresh the configuration display.")
+                        before.copy(saving = false, error = getString(R.string.host_config_not_refreshed))
                     }
                     snapshot to inherited
                 }
@@ -2723,7 +2732,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             }.onFailure {
                 Log.w(TAG, "Saving FPS configuration failed; keeping previous file", it)
                 fpsConfig.value = before
-                Toast.makeText(this@EmulatorHostActivity, "Could not save configuration; previous file kept", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@EmulatorHostActivity, getString(R.string.host_config_not_saved), Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -2750,7 +2759,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                         .onFailure { Log.w(TAG, "Sharing diagnostics failed", it) }.getOrNull()
                 }
                 if (file == null) {
-                    Toast.makeText(this@EmulatorHostActivity, "No diagnostics to share", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@EmulatorHostActivity, getString(R.string.host_no_diagnostics), Toast.LENGTH_SHORT).show()
                     return@launch
                 }
                 runCatching {
@@ -2763,10 +2772,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                         clipData = ClipData.newRawUri("XenDroid diagnostics", uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
-                    startActivity(Intent.createChooser(send, "Share XenDroid diagnostics"))
+                    startActivity(Intent.createChooser(send, getString(R.string.host_share_diagnostics)))
                 }.onFailure {
                     Log.w(TAG, "Opening diagnostics share sheet failed", it)
-                    Toast.makeText(this@EmulatorHostActivity, "Could not share diagnostics", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@EmulatorHostActivity, getString(R.string.host_share_failed), Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 sharingLogs = false

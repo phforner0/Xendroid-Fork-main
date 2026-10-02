@@ -1,5 +1,7 @@
 package xendroid.compose.ui.patches
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -43,15 +45,15 @@ fun GamePatchesScreen(
     var removing by remember { mutableStateOf<PatchFile?>(null) }
     message?.let { text ->
         AlertDialog(onDismissRequest = vm::clearMessage, text = { Text(text) },
-            confirmButton = { TextButton(onClick = vm::clearMessage) { Text("OK") } })
+            confirmButton = { TextButton(onClick = vm::clearMessage) { Text(stringResource(R.string.common_ok)) } })
     }
     removing?.let { file ->
         AlertDialog(
             onDismissRequest = { removing = null },
-            title = { Text("Remove \"${file.variantLabel}\"?") },
-            text = { Text("The file you added is deleted from the patches folder; the game's own patches stay.") },
-            confirmButton = { TextButton(onClick = { removing = null; vm.removeUserPatch(file) }) { Text("Remove") } },
-            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
+            title = { Text(stringResource(R.string.pt_remove_title, file.variantLabel)) },
+            text = { Text(stringResource(R.string.pt_remove_note)) },
+            confirmButton = { TextButton(onClick = { removing = null; vm.removeUserPatch(file) }) { Text(stringResource(R.string.common_remove)) } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 
@@ -60,19 +62,19 @@ fun GamePatchesScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (gameName.isNotBlank()) "Patches · $gameName" else "Patches",
+                        if (gameName.isNotBlank()) stringResource(R.string.pt_title_game, gameName) else stringResource(R.string.pt_title),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { pickFile.launch(arrayOf("*/*")) }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add a patch file")
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.pt_add))
                     }
                 },
             )
@@ -83,7 +85,7 @@ fun GamePatchesScreen(
                 GamePatchesViewModel.UiState.Loading -> CircularProgressIndicator()
                 GamePatchesViewModel.UiState.Empty ->
                     Text(
-                        "No bundled patches for this game. + adds a .patch.toml of your own.",
+                        stringResource(R.string.pt_empty),
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.padding(24.dp),
                     )
@@ -109,7 +111,7 @@ private fun PatchList(
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Text(
-                "Patches apply on the next launch of this game, and only if they match your game's version.",
+                stringResource(R.string.pt_note),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
@@ -118,10 +120,9 @@ private fun PatchList(
             item(key = "conflicts") {
                 OutlinedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                     Text(
-                        "These are on together and change the same memory; which one wins is not defined, so " +
-                            "turn one of each pair off:\n" + conflicts.joinToString("\n") {
-                                "• ${it.first} × ${it.second} at 0x%08X".format(it.address)
-                            },
+                        stringResource(R.string.pt_conflicts) + "\n" + conflicts.map {
+                            stringResource(R.string.pt_conflict_line, it.first, it.second, "0x%08X".format(it.address))
+                        }.joinToString("\n"),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(12.dp),
                     )
@@ -134,11 +135,11 @@ private fun PatchList(
                     Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            if (file.mine) "${file.variantLabel} · added by you" else file.variantLabel,
+                            if (file.mine) stringResource(R.string.pt_added_by_you, file.variantLabel) else file.variantLabel,
                             style = MaterialTheme.typography.titleSmall,
                             modifier = Modifier.weight(1f),
                         )
-                        if (file.mine) TextButton(onClick = { onRemove(file) }) { Text("Remove") }
+                        if (file.mine) TextButton(onClick = { onRemove(file) }) { Text(stringResource(R.string.common_remove)) }
                     }
                 }
             }
@@ -159,27 +160,26 @@ private fun PatchList(
 /** L10: news about this file's bundled catalog: applied by itself (undo) or waiting (preview). */
 @Composable
 private fun CatalogUpdateCard(update: xendroid.compose.patches.PatchUpdate, onAction: (GamePatchesViewModel.UpdateAction) -> Unit) {
-    val gone = update.dropped.takeIf { it.isNotEmpty() }?.let { " No longer in it, so now off: ${it.joinToString(", ")}." } ?: ""
+    val gone = update.dropped.takeIf { it.isNotEmpty() }?.let { " " + stringResource(R.string.pt_dropped, it.joinToString(", ")) } ?: ""
     OutlinedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         Column(Modifier.padding(12.dp)) {
             Text(
                 if (update.pending) {
-                    "This app has a newer version of these patches, but this file was changed by hand. Updating " +
-                        "keeps on what you had on (${update.keptOn.size}) and saves your file to undo.$gone"
+                    stringResource(R.string.pt_update_pending, update.keptOn.size) + gone
                 } else {
-                    "Updated to the patches of this app version; what you had on stays on (${update.keptOn.size}).$gone"
+                    stringResource(R.string.pt_updated, update.keptOn.size) + gone
                 },
                 style = MaterialTheme.typography.bodySmall,
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 if (update.pending) {
-                    TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.KEEP_MINE) }) { Text("Keep mine") }
-                    TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.APPLY) }) { Text("Update") }
+                    TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.KEEP_MINE) }) { Text(stringResource(R.string.pt_keep_mine)) }
+                    TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.APPLY) }) { Text(stringResource(R.string.pt_update)) }
                 } else {
                     if (update.canUndo) {
-                        TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.UNDO) }) { Text("Undo") }
+                        TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.UNDO) }) { Text(stringResource(R.string.pt_undo)) }
                     }
-                    TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.DISMISS) }) { Text("OK") }
+                    TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.DISMISS) }) { Text(stringResource(R.string.common_ok)) }
                 }
             }
         }
@@ -193,7 +193,7 @@ private fun PatchRow(entry: PatchEntry, onCheckedChange: (Boolean) -> Unit) {
         supportingContent = {
             val sub = listOfNotNull(
                 entry.desc?.takeIf { it.isNotBlank() },
-                entry.author?.takeIf { it.isNotBlank() }?.let { "by $it" },
+                entry.author?.takeIf { it.isNotBlank() }?.let { stringResource(R.string.pt_by, it) },
             ).joinToString("\n")
             if (sub.isNotBlank()) Text(sub)
         },

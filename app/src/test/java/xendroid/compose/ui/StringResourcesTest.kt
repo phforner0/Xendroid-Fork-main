@@ -64,6 +64,15 @@ class StringResourcesTest {
         }
     }
 
+    /** aapt folds a line break typed inside a text into a space; a new line is written \n. */
+    @Test fun noTextHasARawLineBreak() {
+        for (dir in listOf("values", "values-pt-rBR")) {
+            for ((name, value) in strings(dir)) {
+                assertTrue("$dir/$name has a raw line break (write \\n)", !value.first.contains('\n'))
+            }
+        }
+    }
+
     @Test fun theAppDeclaresTheLanguagesItShips() {
         val config = File(res, "xml/locales_config.xml").readText()
         assertTrue(config.contains("android:name=\"en\"") && config.contains("android:name=\"pt-BR\""))

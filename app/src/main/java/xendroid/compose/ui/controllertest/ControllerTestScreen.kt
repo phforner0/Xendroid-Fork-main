@@ -1,5 +1,8 @@
 package xendroid.compose.ui.controllertest
 
+import xendroid.compose.ui.rumbleLabel
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -93,7 +96,7 @@ fun ControllerTestScreen(onBack: () -> Unit) {
         val gyroListeners = HashMap<Int, Pair<android.hardware.SensorManager, SensorEventListener>>()
         fun add(id: Int) {
             val device = InputDevice.getDevice(id)?.takeIf(::isController) ?: return
-            model.connected(describe(device))
+            model.connected(describe(context, device))
             if (Build.VERSION.SDK_INT >= 31 && id !in gyroListeners) {
                 val sensors = device.sensorManager
                 sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE)?.let { sensor ->
@@ -131,17 +134,16 @@ fun ControllerTestScreen(onBack: () -> Unit) {
 
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text("Test controllers") },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+            title = { Text(stringResource(R.string.lib_menu_test_controllers)) },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back)) } },
         )
     }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
-                Text("Press every button and move every stick. What you press here reaches no game. " +
-                    "Hold B for a second, or use Back, to leave.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.ct_intro), style = MaterialTheme.typography.bodySmall)
             }
-            if (devices.isEmpty()) item { Text("No controller connected. Pair one over Bluetooth or plug it in.") }
+            if (devices.isEmpty()) item { Text(stringResource(R.string.ct_none)) }
             items(devices, key = { it.id }) { device ->
                 DeviceCard(device, model, gyro[device.id], rumble,
                     onRumble = {
@@ -151,7 +153,7 @@ fun ControllerTestScreen(onBack: () -> Unit) {
                 ) { vibrate(device.id, rumble.forDevice(device.descriptor)) }
             }
             if (events.isNotEmpty()) {
-                item { Text("Connections", style = MaterialTheme.typography.titleSmall) }
+                item { Text(stringResource(R.string.ct_connections), style = MaterialTheme.typography.titleSmall) }
                 items(events.take(10)) { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
@@ -164,13 +166,13 @@ private fun isController(device: InputDevice): Boolean {
         sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK)
 }
 
-private fun describe(device: InputDevice): TestedDevice {
+private fun describe(context: Context, device: InputDevice): TestedDevice {
     val sources = device.sources
     val names = listOfNotNull(
-        "gamepad".takeIf { sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD },
-        "joystick".takeIf { sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK },
-        "D-pad".takeIf { sources and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD },
-        "keyboard".takeIf { sources and InputDevice.SOURCE_KEYBOARD == InputDevice.SOURCE_KEYBOARD },
+        context.getString(R.string.ct_src_gamepad).takeIf { sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD },
+        context.getString(R.string.ct_src_joystick).takeIf { sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK },
+        context.getString(R.string.ct_src_dpad).takeIf { sources and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD },
+        context.getString(R.string.ct_src_keyboard).takeIf { sources and InputDevice.SOURCE_KEYBOARD == InputDevice.SOURCE_KEYBOARD },
     )
     val vibrates = if (Build.VERSION.SDK_INT >= 31) device.vibratorManager.vibratorIds.isNotEmpty()
         else @Suppress("DEPRECATION") device.vibrator.hasVibrator()
@@ -220,7 +222,7 @@ private fun DeviceCard(device: TestedDevice, model: ControllerTestModel, gyro: F
                        onRumble: () -> Unit, onVibrate: () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(device.name + if (device.connected) "" else " · disconnected", style = MaterialTheme.typography.titleMedium)
+            Text(device.name + if (device.connected) "" else " · " + stringResource(R.string.ct_disconnected), style = MaterialTheme.typography.titleMedium)
             Text("%04X:%04X · %s".format(device.vendor, device.product, device.sources.joinToString(", ")),
                 style = MaterialTheme.typography.bodySmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -239,29 +241,29 @@ private fun DeviceCard(device: TestedDevice, model: ControllerTestModel, gyro: F
                 Stick(device.axes.lx, device.axes.ly)
                 Stick(device.axes.rx, device.axes.ry)
                 Column(Modifier.weight(1f)) {
-                    Text("Game gets L %.2f, %.2f · R %.2f, %.2f".format(game.lx, game.ly, game.rx, game.ry),
+                    Text(stringResource(R.string.ct_game_gets, game.lx, game.ly, game.rx, game.ry),
                         style = MaterialTheme.typography.bodySmall)
-                    Text("LT %.2f%s".format(device.axes.lt, if (game.ltPressed) " (pressed)" else ""), style = MaterialTheme.typography.bodySmall)
+                    Text("LT %.2f".format(device.axes.lt) + if (game.ltPressed) " " + stringResource(R.string.ct_pressed) else "", style = MaterialTheme.typography.bodySmall)
                     LinearProgressIndicator(progress = { device.axes.lt.coerceIn(0f, 1f) }, Modifier.fillMaxWidth())
-                    Text("RT %.2f%s".format(device.axes.rt, if (game.rtPressed) " (pressed)" else ""), style = MaterialTheme.typography.bodySmall)
+                    Text("RT %.2f".format(device.axes.rt) + if (game.rtPressed) " " + stringResource(R.string.ct_pressed) else "", style = MaterialTheme.typography.bodySmall)
                     LinearProgressIndicator(progress = { device.axes.rt.coerceIn(0f, 1f) }, Modifier.fillMaxWidth())
                 }
             }
             if (device.hasGyro) {
-                Text(gyro?.let { "Gyro (rad/s) x %.2f · y %.2f · z %.2f".format(it[0], it[1], it[2]) } ?: "Gyro: move the controller",
+                Text(gyro?.let { stringResource(R.string.ct_gyro, it[0], it[1], it[2]) } ?: stringResource(R.string.ct_gyro_wait),
                     style = MaterialTheme.typography.bodySmall)
             }
             if (device.canVibrate) {
                 val own = rumble.perDevice[device.descriptor]
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(onClick = onRumble) {
-                        Text("Game rumble: " + (own?.label ?: "default (in-game menu)"))
+                        Text(stringResource(R.string.ct_game_rumble, own?.let { rumbleLabel(it) } ?: stringResource(R.string.ct_rumble_default)))
                     }
                     if (device.connected) OutlinedButton(onClick = onVibrate, enabled = rumble.forDevice(device.descriptor) != RumbleIntensity.OFF) {
-                        Text("Vibrate 0.3 s")
+                        Text(stringResource(R.string.ct_vibrate))
                     }
                 }
-            } else Text("No vibration motor reported by Android", style = MaterialTheme.typography.bodySmall)
+            } else Text(stringResource(R.string.ct_no_motor), style = MaterialTheme.typography.bodySmall)
         }
     }
 }

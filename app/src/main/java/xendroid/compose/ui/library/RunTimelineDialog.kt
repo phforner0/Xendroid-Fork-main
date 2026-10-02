@@ -26,7 +26,7 @@ fun RunTimelineDialog(log: RunEventLog, onDismiss: () -> Unit) {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (log.dropped > 0) Text(stringResource(R.string.timeline_dropped, log.dropped), style = MaterialTheme.typography.bodySmall)
                 log.events.forEach { Text(describeEvent(it), style = MaterialTheme.typography.bodySmall) }
-                Text("Saved every 30 s and on important events: after a crash the last seconds can be missing.",
+                Text(stringResource(R.string.timeline_note),
                     style = MaterialTheme.typography.bodySmall)
             }
         },

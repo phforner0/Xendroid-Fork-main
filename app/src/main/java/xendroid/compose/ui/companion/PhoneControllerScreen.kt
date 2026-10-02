@@ -1,5 +1,10 @@
 package xendroid.compose.ui.companion
 
+import xendroid.compose.ui.rumbleLabel
+import xendroid.compose.companion.CompanionProtocol
+import xendroid.compose.companion.CompanionPadLink.Why
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -75,10 +80,10 @@ fun PhoneControllerScreen(vm: PhoneControllerViewModel, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Use this phone as a controller") },
+                title = { Text(stringResource(R.string.lib_menu_phone_controller)) },
                 navigationIcon = {
                     IconButton(onClick = { vm.leave(); onBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
@@ -90,47 +95,44 @@ fun PhoneControllerScreen(vm: PhoneControllerViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                "On the phone running the game: open its menu (Back), Controls → Phone controllers. " +
-                    "Type the address and the code it shows. Both phones must be on the same Wi-Fi or hotspot. " +
-                    "This phone plays as P2, P3 or P4 with its touch pad. Experimental.",
+                stringResource(R.string.pc_intro),
                 style = MaterialTheme.typography.bodyMedium,
             )
             OutlinedTextField(
                 value = vm.address.value, onValueChange = { vm.address.value = it.take(21) },
-                label = { Text("Game address (IP:port)") }, singleLine = true, enabled = !connecting,
+                label = { Text(stringResource(R.string.pc_address)) }, singleLine = true, enabled = !connecting,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = vm.code.value, onValueChange = { text -> vm.code.value = text.filter(Char::isDigit).take(6) },
-                label = { Text("Code (6 digits)") }, singleLine = true, enabled = !connecting,
+                label = { Text(stringResource(R.string.pc_code)) }, singleLine = true, enabled = !connecting,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = vm.name.value, onValueChange = { vm.name.value = it.take(32) },
-                label = { Text("Name shown on the game (optional)") }, singleLine = true, enabled = !connecting,
+                label = { Text(stringResource(R.string.pc_name)) }, singleLine = true, enabled = !connecting,
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedButton(onClick = vm::cycleIntensity) {
-                Text("Vibration on this phone: ${vm.intensity.value.label}")
+                Text(stringResource(R.string.pc_vibration, rumbleLabel(vm.intensity.value)))
             }
-            (state as? State.Idle)?.message?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            (state as? State.Idle)?.why?.let {
+                Text(whyText(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             }
             if (connecting) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     CircularProgressIndicator()
-                    Text("Connecting…")
-                    OutlinedButton(onClick = vm::leave) { Text("Cancel") }
+                    Text(stringResource(R.string.pc_connecting))
+                    OutlinedButton(onClick = vm::leave) { Text(stringResource(R.string.common_cancel)) }
                 }
             } else {
-                Button(onClick = vm::connect, modifier = Modifier.fillMaxWidth()) { Text("Connect") }
+                Button(onClick = vm::connect, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pc_connect)) }
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "The game only listens on its local network, never the internet. Ten wrong codes lock pairing " +
-                    "until phone controllers are turned off and on there (a new code).",
+                stringResource(R.string.pc_footer),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -182,7 +184,7 @@ private fun PhonePad(vm: PhoneControllerViewModel, playing: State.Playing) {
             modifier = Modifier.fillMaxSize(),
         )
         Text(
-            "P${playing.slot + 1}" + (playing.latencyMs?.let { " · $it ms" } ?: "") + " · Leave",
+            "P${playing.slot + 1}" + (playing.latencyMs?.let { " · $it ms" } ?: "") + " · " + stringResource(R.string.pc_leave),
             color = Color.White,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp)
@@ -191,4 +193,22 @@ private fun PhonePad(vm: PhoneControllerViewModel, playing: State.Playing) {
                 .padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }
+}
+
+/** U02: why this phone is not connected, in the shown language; the system's own words stay as they are. */
+@Composable
+private fun whyText(why: Why): String = when (why.kind) {
+    Why.Kind.BAD_ADDRESS -> stringResource(R.string.pc_bad_address)
+    Why.Kind.BAD_CODE -> stringResource(R.string.pc_bad_code)
+    Why.Kind.REJECTED -> when (why.code) {
+        CompanionProtocol.REJECT_PROOF -> stringResource(R.string.pc_rejected_code)
+        CompanionProtocol.REJECT_FULL -> stringResource(R.string.pc_rejected_full)
+        CompanionProtocol.REJECT_VERSION -> stringResource(R.string.pc_rejected_version)
+        CompanionProtocol.REJECT_CLOSED -> stringResource(R.string.pc_rejected_closed)
+        else -> stringResource(R.string.pc_rejected_other, why.code)
+    }
+    Why.Kind.UNREACHABLE -> stringResource(R.string.pc_unreachable, why.target)
+    Why.Kind.NOT_XENDROID -> stringResource(R.string.pc_not_xendroid, why.target, why.detail)
+    Why.Kind.FAILED -> stringResource(R.string.pc_failed, why.detail)
+    Why.Kind.DISCONNECTED -> stringResource(R.string.pc_disconnected, why.detail)
 }

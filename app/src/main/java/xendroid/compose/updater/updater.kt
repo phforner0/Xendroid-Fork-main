@@ -1,5 +1,7 @@
 package xendroid.compose.updater
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -147,18 +149,32 @@ suspend fun checkForUpdates(context: Context): UpdateResult {
 /** Downloads the release's APK, verified against its published size and SHA-256. */
 suspend fun downloadUpdate(context: Context, release: FeedRelease, onProgress: (Float) -> Unit): File =
     withContext(Dispatchers.IO) {
-        val asset = apkAsset(release) ?: throw UpdateDownloadException("The release has no APK")
-        val sha = asset.sha256 ?: throw UpdateDownloadException("The release publishes no SHA-256 for its APK")
+        val asset = apkAsset(release) ?: throw UpdateDownloadException(UpdateDownloadException.Reason.NO_APK)
+        val sha = asset.sha256 ?: throw UpdateDownloadException(UpdateDownloadException.Reason.NO_SHA256)
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }   // one update at a time
         http.newCall(Request.Builder().url(asset.url).build()).execute().use { response ->
-            if (!response.isSuccessful) throw UpdateDownloadException("Download failed (HTTP ${response.code})")
-            val body = response.body ?: throw UpdateDownloadException("Empty download")
+            if (!response.isSuccessful) throw UpdateDownloadException(UpdateDownloadException.Reason.HTTP, response.code.toLong())
+            val body = response.body ?: throw UpdateDownloadException(UpdateDownloadException.Reason.EMPTY)
             downloadVerified(body.byteStream(), asset.size, sha, File(dir, "update.apk")) { bytes ->
                 onProgress(bytes.toFloat() / asset.size)
             }
         }
     }
+
+/** U02: why the download cannot be used, in the shown language. */
+private fun downloadFailureText(context: Context, e: UpdateDownloadException): String = when (e.reason) {
+    UpdateDownloadException.Reason.NO_APK -> context.getString(R.string.upd_err_no_apk)
+    UpdateDownloadException.Reason.NO_SHA256 -> context.getString(R.string.upd_err_no_sha256)
+    UpdateDownloadException.Reason.HTTP -> context.getString(R.string.upd_err_http, e.args[0])
+    UpdateDownloadException.Reason.EMPTY -> context.getString(R.string.upd_err_empty)
+    UpdateDownloadException.Reason.UNEXPECTED_SIZE -> context.getString(R.string.upd_err_size, e.args[0])
+    UpdateDownloadException.Reason.CANCELLED -> context.getString(R.string.upd_err_cancelled)
+    UpdateDownloadException.Reason.TOO_LARGE -> context.getString(R.string.upd_err_too_large)
+    UpdateDownloadException.Reason.STOPPED_EARLY -> context.getString(R.string.upd_err_stopped_early, e.args[0], e.args[1])
+    UpdateDownloadException.Reason.MISMATCH -> context.getString(R.string.upd_err_mismatch)
+    UpdateDownloadException.Reason.NOT_KEPT -> context.getString(R.string.upd_err_not_kept)
+}
 
 fun cleanChangelog(text: String): String {
     return text
@@ -185,17 +201,17 @@ fun UpdateDialog(
 
     AlertDialog(
         onDismissRequest = { if (progress == null) onDismiss() },
-        title = { Text("Update available") },
+        title = { Text(stringResource(R.string.upd_available)) },
         text = {
             Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                Text("${release.title ?: release.tagName}${if (release.prerelease) " (preview)" else ""}")
+                Text((release.title ?: release.tagName) + if (release.prerelease) " " + stringResource(R.string.upd_preview_tag) else "")
                 asset?.let {
                     Text("${it.size / (1024 * 1024)} MB · " +
-                        if (verifiable) "checked against its published SHA-256 before installing"
-                        else "no published SHA-256: open the release page to install it yourself")
+                        if (verifiable) stringResource(R.string.upd_verifiable)
+                        else stringResource(R.string.upd_not_verifiable))
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(cleanChangelog(release.notes ?: "No changelog available."))
+                Text(release.notes?.let(::cleanChangelog) ?: stringResource(R.string.upd_no_changelog))
                 progress?.let {
                     Spacer(modifier = Modifier.height(12.dp))
                     LinearProgressIndicator(progress = { it })
@@ -216,31 +232,32 @@ fun UpdateDialog(
                         val refusal = withContext(Dispatchers.IO) { UpdateInstaller.verify(context, apk) }
                         if (refusal != null) {
                             apk.delete()
-                            failure = "Not installed: $refusal"
+                            failure = context.getString(R.string.upd_not_installed_why, refusal)
                         } else {
                             UpdateInstaller.install(context, apk)
                             onDismiss()
                         }
                     } catch (e: Exception) {
                         if (e is kotlinx.coroutines.CancellationException) throw e
-                        failure = (e as? UpdateDownloadException)?.message ?: "Download failed: ${e.message ?: e.javaClass.simpleName}"
+                        failure = (e as? UpdateDownloadException)?.let { downloadFailureText(context, it) }
+                            ?: context.getString(R.string.upd_download_failed, e.message ?: e.javaClass.simpleName)
                     } finally {
                         progress = null
                     }
                 }
-            }) { Text("Download and install") }
+            }) { Text(stringResource(R.string.upd_download_install)) }
             else TextButton(onClick = {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.pageUrl)))
                 onDismiss()
-            }) { Text("Release page") }
+            }) { Text(stringResource(R.string.upd_release_page)) }
         },
         dismissButton = {
             Column {
                 TextButton(enabled = progress == null, onClick = {
                     release.tag?.versionCode?.let { skipVersion(context, it) }
                     onDismiss()
-                }) { Text("Skip this version") }
-                TextButton(enabled = progress == null, onClick = onDismiss) { Text("Later") }
+                }) { Text(stringResource(R.string.upd_skip)) }
+                TextButton(enabled = progress == null, onClick = onDismiss) { Text(stringResource(R.string.upd_later)) }
             }
         }
     )
@@ -253,9 +270,9 @@ fun LatestVersionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("No updates available") },
-        text = { Text("You're on latest version: $commitHash") },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } }
+        title = { Text(stringResource(R.string.upd_none)) },
+        text = { Text(stringResource(R.string.upd_latest, commitHash)) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_ok)) } }
     )
 }
 
@@ -268,8 +285,8 @@ fun CooldownDialog(
     val seconds = (remainingMillis / 1000) % 60
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Updater cooldown") },
-        text = { Text("Updater is in cooldown.\n\nYou can check again in ${minutes}m ${seconds}s.") },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } }
+        title = { Text(stringResource(R.string.upd_cooldown_title)) },
+        text = { Text(stringResource(R.string.upd_cooldown, minutes, seconds)) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_ok)) } }
     )
 }

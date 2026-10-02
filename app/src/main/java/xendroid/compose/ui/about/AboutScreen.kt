@@ -1,5 +1,7 @@
 package xendroid.compose.ui.about
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.webkit.WebView
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,8 +16,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import xendroid.compose.Emulator
-
-private const val TITLE = "Xendroid — Xbox 360 emulation on Android."
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,16 +32,16 @@ fun AboutScreen(onBack: () -> Unit) {
     // load_library() on delay-load devices. Guard it.
     val deviceInfo = remember {
         runCatching { Emulator.get?.simple_device_info() }.getOrNull()
-            ?: "Device info unavailable (emulator not loaded yet)."
+            ?: context.getString(R.string.ab_no_device_info)
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("About") },
+                title = { Text(stringResource(R.string.lib_menu_about)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
@@ -52,26 +52,26 @@ fun AboutScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
         ) {
             Text("xendroid", style = MaterialTheme.typography.headlineSmall)
-            Text("Version $versionName", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.ab_version, versionName), style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(16.dp))
 
-            Text("Credits", style = MaterialTheme.typography.titleMedium)
-            Text(TITLE, style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.ab_credits), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.ab_credits_text), style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(16.dp))
 
-            Text("Device", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.ab_device), style = MaterialTheme.typography.titleMedium)
             SelectionContainerText(deviceInfo)
             Spacer(Modifier.height(16.dp))
 
-            Button(onClick = { showLicenses = true }) { Text("Open-source licenses") }
+            Button(onClick = { showLicenses = true }) { Text(stringResource(R.string.ab_licenses_open)) }
         }
     }
 
     if (showLicenses) {
         AlertDialog(
             onDismissRequest = { showLicenses = false },
-            confirmButton = { TextButton(onClick = { showLicenses = false }) { Text("OK") } },
-            title = { Text("Licenses") },
+            confirmButton = { TextButton(onClick = { showLicenses = false }) { Text(stringResource(R.string.common_ok)) } },
+            title = { Text(stringResource(R.string.ab_licenses)) },
             text = {
                 AndroidView(
                     factory = { ctx ->

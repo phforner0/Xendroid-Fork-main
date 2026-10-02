@@ -1,5 +1,7 @@
 package xendroid.compose.ui.benchmark
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -75,10 +77,10 @@ fun BenchmarkScreen(onBack: () -> Unit) {
     val selected = title?.let { byTitle[it] }
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text("Compare runs") },
+            title = { Text(stringResource(R.string.lib_menu_compare_runs)) },
             navigationIcon = {
                 IconButton(onClick = { if (title != null) title = null else onBack() }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
                 }
             },
         )
@@ -86,16 +88,14 @@ fun BenchmarkScreen(onBack: () -> Unit) {
         LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
-                Text("Play the same scene with one change (driver, frame generation, FPS limit, a setting), closing the " +
-                    "game between runs, in the order A B B A. Mark a scene from the in-game menu (Session → Mark scene) to " +
-                    "line runs up. FPS here are the game's own frames.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.bm_intro), style = MaterialTheme.typography.bodySmall)
             }
             if (selected == null) {
-                if (byTitle.isEmpty()) item { Text("No finished run with measurements yet.") }
+                if (byTitle.isEmpty()) item { Text(stringResource(R.string.bm_none)) }
                 items(byTitle.entries.sortedByDescending { e -> e.value.maxOf { it.run.startedAt } }.toList(), key = { it.key }) { (id, runs) ->
                     ListItem(
                         headlineContent = { Text(MissingTitles.nameFromPath(runs.first().run.gamePath, id)) },
-                        supportingContent = { Text("$id · ${runs.size} run(s)") },
+                        supportingContent = { Text(stringResource(R.string.bm_runs, id, runs.size)) },
                         modifier = Modifier.clickable { title = id; labels.clear() },
                     )
                 }
@@ -123,13 +123,20 @@ private fun RunRow(candidate: Candidate, label: Char?, onLabel: (Char?) -> Unit)
                 .format(java.util.Date(candidate.run.startedAt)))
         },
         supportingContent = {
-            Text("median ${b.medianFps} FPS · 5th pct ${b.lowFps} · 99% of frames ${b.frameTimeP99Ms?.let { "< $it ms" } ?: "n/a"} · " +
-                "${b.sampledSeconds} s · ${b.driver ?: "driver ?"}${if (b.frameGeneration) " · FG" else ""}" +
-                (b.batteryStartC?.let { " · started %.0f °C".format(it) } ?: "") +
-                (if (b.fpsLimits.isNotEmpty()) " · limit " + b.fpsLimits.joinToString("/") { if (it == 0) "off" else "$it" } else "") +
-                (b.refreshCap?.let { if (it) " · vblank capped" else " · vblank uncapped" } ?: "") +
-                (if (b.displayHz.isNotEmpty()) " · " + b.displayHz.joinToString("/") + " Hz" else "") +
-                (if (b.markers > 0) " · ${b.markers} marker(s)" else ""))
+            val off = stringResource(R.string.bm_off)
+            Text(listOfNotNull(
+                stringResource(R.string.bm_run_line, b.medianFps, b.lowFps, b.frameTimeP99Ms?.let { "< $it ms" } ?: stringResource(R.string.bm_na)),
+                "${b.sampledSeconds} s",
+                b.driver ?: stringResource(R.string.bm_driver_unknown),
+                "FG".takeIf { b.frameGeneration },
+                b.batteryStartC?.let { stringResource(R.string.bm_started_at, it) },
+                b.fpsLimits.takeIf { it.isNotEmpty() }?.let { limits ->
+                    stringResource(R.string.bm_limit, limits.joinToString("/") { if (it == 0) off else "$it" })
+                },
+                b.refreshCap?.let { stringResource(if (it) R.string.bm_vblank_capped else R.string.bm_vblank_uncapped) },
+                b.displayHz.takeIf { it.isNotEmpty() }?.let { it.joinToString("/") + " Hz" },
+                b.markers.takeIf { it > 0 }?.let { stringResource(R.string.bm_markers, it) },
+            ).joinToString(" · "))
         },
         trailingContent = {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -145,19 +152,20 @@ private fun ResultCard(result: Benchmark.Result) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(result.verdict, style = MaterialTheme.typography.titleSmall)
-            if (result.order.isNotEmpty()) Text("Order: ${result.order}${if (result.balanced) " (balanced)" else ""}",
+            if (result.order.isNotEmpty()) Text(stringResource(R.string.bm_order, result.order) +
+                if (result.balanced) " " + stringResource(R.string.bm_balanced) else "",
                 style = MaterialTheme.typography.bodySmall)
-            if (result.changed.size == 1) Text("What changed: ${result.changed.single()}", style = MaterialTheme.typography.bodySmall)
+            if (result.changed.size == 1) Text(stringResource(R.string.bm_changed, result.changed.single()), style = MaterialTheme.typography.bodySmall)
             result.warnings.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
             listOf("A" to result.a, "B" to result.b).forEach { (name, side) ->
                 side?.let {
-                    Text("$name: ${it.runs} run(s), median %.1f FPS, 5th pct %.1f%s".format(it.medianFps, it.lowFps,
-                        it.frameTimeP99Ms?.let { p -> ", 99%% of frames < %.0f ms".format(p) } ?: ""),
+                    Text(stringResource(R.string.bm_side, name, it.runs, it.medianFps, it.lowFps) +
+                        (it.frameTimeP99Ms?.let { p -> ", " + stringResource(R.string.bm_side_p99, p) } ?: ""),
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
             if (result.pairDeltas.isNotEmpty()) {
-                Text("B − A per pair: ${result.pairDeltas.joinToString { if (it > 0) "+$it" else "$it" }} FPS (median)",
+                Text(stringResource(R.string.bm_pairs, result.pairDeltas.joinToString { if (it > 0) "+$it" else "$it" }),
                     style = MaterialTheme.typography.bodySmall)
             }
         }

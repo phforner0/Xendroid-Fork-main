@@ -30,7 +30,12 @@ class EmulatorSession {
 
     sealed interface StorageResult {
         data object Ready : StorageResult
-        data class Unavailable(val message: String) : StorageResult
+        /** Why the game data cannot be used now: the host says it in the shown language from
+         *  [reason] and [detail] (the recovery summary or the error); [english] goes to the
+         *  run's record. */
+        data class Unavailable(val reason: Reason, val detail: String = "", val english: String) : StorageResult {
+            enum class Reason { BUSY, RECOVERY_PENDING, FAILED }
+        }
     }
 
     /**
@@ -43,7 +48,7 @@ class EmulatorSession {
         val lease = try {
             xendroid.compose.archive.acquireWithRetry(timeoutMs, onBusy = onWaiting) { StorageAccess.acquire() }
         } catch (e: xendroid.compose.archive.ContentBusyException) {
-            return StorageResult.Unavailable(
+            return StorageResult.Unavailable(StorageResult.Unavailable.Reason.BUSY, english =
                 "Another save, profile or content operation is still using the game data. " +
                     "Wait for it to finish, then start the game again.")
         }
@@ -55,7 +60,8 @@ class EmulatorSession {
         }
         if (!report.clean) {
             lease.close()
-            return StorageResult.Unavailable(xendroid.compose.saves.SaveRecoveryException(report).message!!)
+            return StorageResult.Unavailable(StorageResult.Unavailable.Reason.RECOVERY_PENDING, report.summary,
+                xendroid.compose.saves.SaveRecoveryException(report).message!!)
         }
         contentLease = lease
         return StorageResult.Ready

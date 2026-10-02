@@ -1,5 +1,8 @@
 package xendroid.compose.ui.keymap
 
+import xendroid.compose.data.GameButton
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -26,14 +29,14 @@ fun KeymapScreen(vm: KeymapViewModel, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Key Mapping") },
+                title = { Text(stringResource(R.string.lib_menu_keymap)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
-                    TextButton(onClick = { vm.onResetDefaults() }) { Text("Reset") }
+                    TextButton(onClick = { vm.onResetDefaults() }) { Text(stringResource(R.string.km_reset)) }
                 },
             )
         }
@@ -41,10 +44,10 @@ fun KeymapScreen(vm: KeymapViewModel, onBack: () -> Unit) {
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
             items(state.rows, key = { it.button.index }) { row ->
                 ListItem(
-                    headlineContent = { Text(row.button.label) },
-                    supportingContent = { Text(keyLabel(row.boundKey)) },
+                    headlineContent = { Text(buttonLabel(row.button)) },
+                    supportingContent = { Text(if (row.boundKey == 0) stringResource(R.string.km_unbound) else keyLabel(row.boundKey)) },
                     trailingContent = {
-                        TextButton(onClick = { vm.onClear(row.button.index) }) { Text("Clear") }
+                        TextButton(onClick = { vm.onClear(row.button.index) }) { Text(stringResource(R.string.km_clear)) }
                     },
                     modifier = Modifier.clickable { capturing = row },
                 )
@@ -55,7 +58,7 @@ fun KeymapScreen(vm: KeymapViewModel, onBack: () -> Unit) {
 
     capturing?.let { row ->
         KeyCaptureDialog(
-            label = row.button.label,
+            label = buttonLabel(row.button),
             onKey = { code -> vm.onKeyCaptured(row.button.index, code); capturing = null },
             onDismiss = { capturing = null },
         )
@@ -70,8 +73,8 @@ private fun KeyCaptureDialog(label: String, onKey: (Int) -> Unit, onDismiss: () 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Press a key for $label") },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+        title = { Text(stringResource(R.string.km_press, label)) },
         text = {
             Box(
                 Modifier
@@ -83,12 +86,26 @@ private fun KeyCaptureDialog(label: String, onKey: (Int) -> Unit, onDismiss: () 
                             onKey(ev.nativeKeyEvent.keyCode); true
                         } else false
                     }
-            ) { Text("Waiting for a controller/keyboard button…") }
+            ) { Text(stringResource(R.string.km_waiting)) }
         },
     )
 }
 
-/** Human-readable name for a bound Android keycode (0 = unbound). */
-private fun keyLabel(code: Int): String =
-    if (code == 0) "(unbound)"
-    else AndroidKeyEvent.keyCodeToString(code).removePrefix("KEYCODE_")
+/** Human-readable name for a bound Android keycode. */
+private fun keyLabel(code: Int): String = AndroidKeyEvent.keyCodeToString(code).removePrefix("KEYCODE_")
+
+/** U02: the button's shown name; letters, Back and Start stay as printed on the controller. */
+@Composable
+private fun buttonLabel(button: GameButton): String = when (button.index) {
+    0 -> stringResource(R.string.km_btn_dpad_left)
+    1 -> stringResource(R.string.km_btn_dpad_up)
+    2 -> stringResource(R.string.km_btn_dpad_right)
+    3 -> stringResource(R.string.km_btn_dpad_down)
+    10 -> stringResource(R.string.km_btn_lb)
+    11 -> stringResource(R.string.km_btn_rb)
+    12 -> stringResource(R.string.km_btn_l3)
+    13 -> stringResource(R.string.km_btn_r3)
+    14 -> stringResource(R.string.km_btn_lt)
+    15 -> stringResource(R.string.km_btn_rt)
+    else -> button.label
+}

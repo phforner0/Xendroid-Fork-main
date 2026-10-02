@@ -72,5 +72,8 @@ class ReleaseFeedTest {
             downloadVerified(ByteArrayInputStream(data), data.size.toLong(), sha(data), out, isCancelled = { true })
         }
         assertEquals("Download cancelled", cancelled.message)
+        assertEquals(UpdateDownloadException.Reason.CANCELLED, cancelled.reason)
+        assertEquals("The download stopped early (5 of 9 bytes)",
+            UpdateDownloadException(UpdateDownloadException.Reason.STOPPED_EARLY, 5, 9).message)
     }
 }

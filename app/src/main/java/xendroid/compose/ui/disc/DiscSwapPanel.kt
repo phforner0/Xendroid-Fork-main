@@ -1,5 +1,7 @@
 package xendroid.compose.ui.disc
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -73,8 +75,8 @@ fun DiscSwapPanel(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        if (request.discNumber > 0) "Insert disc ${request.discNumber}"
-                        else "Insert disc",
+                        if (request.discNumber > 0) stringResource(R.string.disc_insert_n, request.discNumber)
+                        else stringResource(R.string.disc_insert),
                         style = MaterialTheme.typography.titleMedium,
                     )
                     val message = request.message.orEmpty().trim()
@@ -92,7 +94,7 @@ fun DiscSwapPanel(
 
                     if (count == 0) {
                         Text(
-                            "No discs for this title were found in the games folder.",
+                            stringResource(R.string.disc_none),
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = if (compact) 8.dp else 16.dp),
                         )
@@ -109,7 +111,7 @@ fun DiscSwapPanel(
                         )
                     }
                     GuestPanelOption(
-                        label = "Cancel",
+                        label = stringResource(R.string.common_cancel),
                         selected = selected == count,
                         onClick = onCancel,
                     )

@@ -1,5 +1,7 @@
 package xendroid.compose.ui.diagnostics
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -33,24 +35,24 @@ fun DiagnosticsScreen(titleId: String?, onBack: () -> Unit) {
             try {
                 val zip = withContext(Dispatchers.IO) { SessionLogs.exportRedactedForSharing(context, id) }
                 if (zip != null) context.startActivity(diagnosticsShareIntent(context, zip))
-                else Toast.makeText(context, "No diagnostics available", Toast.LENGTH_SHORT).show()
+                else Toast.makeText(context, context.getString(R.string.dg_none), Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                Toast.makeText(context, "Could not export diagnostics", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, context.getString(R.string.dg_export_failed), Toast.LENGTH_LONG).show()
             } finally { busy = false }
         }
     }
-    Scaffold(topBar = { TopAppBar(title = { Text("Diagnostics${titleId?.let { " · $it" }.orEmpty()}") }, navigationIcon = {
-        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.lib_menu_diagnostics) + titleId?.let { " · $it" }.orEmpty()) }, navigationIcon = {
+        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back)) }
     }) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp)) {
             item {
-                Text("Share a redacted copy of one session or the complete retained history. Original logs stay on the device.")
-                OutlinedButton(enabled = !busy, onClick = { share(null) }) { Text("Share all sessions") }
+                Text(stringResource(R.string.dg_intro))
+                OutlinedButton(enabled = !busy, onClick = { share(null) }) { Text(stringResource(R.string.dg_share_all)) }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
             val matching = sessions.filter { titleId == null || it.titles.contains(titleId) }
-            if (matching.isEmpty()) item { Text("No session indexed for this game yet. Older unindexed logs remain available via Share all sessions.") }
+            if (matching.isEmpty()) item { Text(stringResource(R.string.dg_no_session)) }
             items(matching, key = { it.id }) { session ->
                 ListItem(headlineContent = { Text(session.label) }, supportingContent = {
                     Text("${session.bytes / 1024} KB${session.titles.takeIf { it.isNotEmpty() }?.joinToString(prefix = " · ").orEmpty()}")

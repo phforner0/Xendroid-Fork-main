@@ -340,6 +340,13 @@ com comandos e resultados exatos.
    Lote 12j: Perfis (criar, editar, lixeira, outros jogadores), Saves (exportar, importar, restaurar)
    e Conteúdo (instalar um DLC, mandar para a lixeira, lixeira cheia) em português, inclusive as
    mensagens de erro.
+   Lote 12k: com o telefone em português, Patches de um jogo (adicionar um .patch.toml, aviso de
+   conflito), Testar controles ("Vibração no jogo: padrão (menu do jogo)" → Desligada → Baixa…),
+   Comparar execuções, Usar este telefone como controle (um código errado diz "Código errado"; com o
+   jogo fechado, "Não deu para alcançar o jogo em …"), Diagnóstico, Sobre, Mapeamento de teclas,
+   pausa, troca de disco, a faixa "Iniciando o jogo… N s" antes do primeiro quadro, comprimir um .iso
+   e Procurar atualizações aparecem em português; o aviso de pausa do atualizador quebra em duas
+   linhas.
 29. Lote 10 — navegação por controle (U04): na biblioteca, A abre o jogo e B volta; em
    Configurações → "Menus: A confirms…" → "Swap": agora B abre e A volta na hora. Abrir um jogo:
    no menu em jogo, B ativa e A fecha/cancela; dentro do jogo os botões continuam os de sempre.

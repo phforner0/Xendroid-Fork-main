@@ -123,7 +123,7 @@ fun DataBundleSection(beforeImport: () -> Unit, afterImport: () -> Unit) {
         AlertDialog(
             onDismissRequest = { failure = null },
             text = { Text(message) },
-            confirmButton = { TextButton(onClick = { failure = null }) { Text("OK") } },
+            confirmButton = { TextButton(onClick = { failure = null }) { Text(stringResource(R.string.common_ok)) } },
         )
     }
 }
