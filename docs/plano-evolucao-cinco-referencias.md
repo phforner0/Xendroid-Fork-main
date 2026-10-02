@@ -344,8 +344,10 @@ Testes JVM cobrem finalização concorrente, reconciliação e poda.
   usuário. Não há servidor nem envio automático (projeto separado, como previsto).
 - **U09 (parte, lote 3):** rótulo de estado sobre a tela preta até o primeiro quadro
   guest (iniciando / preparando gráficos com N pipelines criados / aguardando o
-  primeiro quadro, com segundos), a partir dos contadores do core. Falta: cancelar com
-  segurança durante o boot e retorno conforme a origem do launch.
+  primeiro quadro, com segundos), a partir dos contadores do core. Lote 12e: "Cancel" no
+  aviso de carregamento e saída conforme a origem (`core/GameExit.kt`: biblioteca → biblioteca;
+  atalho/frontend → de volta ao frontend, sem tarefa vazia). Falta: validação no aparelho
+  (roteiro 39).
 - **C03 v1** (`compatibility/CompatibilityStore.kt` + ficha do jogo): resultados
   escolhidos pelo usuário (Doesn't boot … Playable) por Title ID, com build, GPU, chave
   do driver do último run e edição (Media ID)/disco; nunca inferidos. A ficha mostra separadamente a evidência automática

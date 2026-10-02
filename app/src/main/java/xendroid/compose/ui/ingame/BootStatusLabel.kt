@@ -1,11 +1,14 @@
 package xendroid.compose.ui.ingame
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -22,15 +25,19 @@ fun bootStatusText(titleActive: Boolean, pipelinesCreated: Long, creatingNow: Lo
         else -> "Waiting for the first frame… $elapsedSeconds s"
     }
 
+/** [onCancel]: leave without waiting (Back opens the menu, which has Exit too); null hides it. */
 @Composable
-fun BootStatusLabel(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text,
-        color = Color.White,
-        style = MaterialTheme.typography.bodySmall,
+fun BootStatusLabel(text: String, modifier: Modifier = Modifier, onCancel: (() -> Unit)? = null) {
+    Row(
         modifier = modifier
             .padding(16.dp)
             .background(Color(0x99000000), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    )
+            .padding(horizontal = 12.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text, color = Color.White, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 4.dp))
+        if (onCancel != null) {
+            TextButton(onClick = onCancel, modifier = Modifier.padding(start = 8.dp)) { Text("Cancel", color = Color.White) }
+        }
+    }
 }

@@ -420,7 +420,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 Toast.LENGTH_LONG
             ).show()
 
-            finish()
+            leave()
             return
         }
 
@@ -431,7 +431,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 Toast.LENGTH_LONG
             ).show()
 
-            finish()
+            leave()
             return
         }
         launchedGame = gameUri
@@ -488,7 +488,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     Toast.LENGTH_LONG
                 ).show()
 
-                finish()
+                leave()
                 return@launch
             }
 
@@ -532,7 +532,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 runCatching {
                     val runs = xendroid.compose.sessions.SessionRuns.store()
                     runs.reconcile(xendroid.compose.sessions.SessionRuns.fates(applicationContext))
-                    runs.begin(launchSource(), gameUri, BuildConfig.VERSION_NAME, Process.myPid()).runId
+                    runs.begin(origin, gameUri, BuildConfig.VERSION_NAME, Process.myPid()).runId
                 }.onFailure { Log.w(TAG, "Session run record unavailable", it) }.getOrNull()
             }
             recordEvent("boot", "run started", flush = true)
@@ -593,6 +593,28 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             Toast.makeText(this, "A game is already running. Exit it (Back → Exit game) before starting another.",
                 Toast.LENGTH_LONG).show()
         }
+    }
+
+    /** U09: where this game was started from, read once (the run record and the way out). */
+    private val origin by lazy { launchSource() }
+
+    /** Leaves the way [GameExit] says for [origin]; the process ends in onDestroy. */
+    private fun leave() {
+        when (xendroid.compose.core.GameExit.way(origin, isTaskRoot)) {
+            xendroid.compose.core.GameExit.Way.FINISH -> finish()
+            xendroid.compose.core.GameExit.Way.FINISH_AND_REMOVE_TASK -> finishAndRemoveTask()
+            xendroid.compose.core.GameExit.Way.TASK_TO_BACK_THEN_FINISH -> {
+                moveTaskToBack(true)
+                finish()
+            }
+        }
+    }
+
+    /** U09: the player gave up waiting for the game to start. */
+    private fun cancelBoot() {
+        runId?.let { id -> runCatching { xendroid.compose.sessions.SessionRuns.store().ending(id, "cancelled while starting") } }
+        recordEvent("exit", "cancelled while starting", flush = true)
+        leave()
     }
 
     /** Where this launch came from, as far as Android tells us (local record only). */
@@ -706,8 +728,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         android.app.AlertDialog.Builder(this)
             .setTitle("The game could not start")
             .setMessage(message)
-            .setPositiveButton(android.R.string.ok) { _, _ -> finish() }
-            .setOnCancelListener { finish() }
+            .setPositiveButton(android.R.string.ok) { _, _ -> leave() }
+            .setOnCancelListener { leave() }
             .show()
     }
 
@@ -931,7 +953,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                             )
 
                             bootStatus.value?.let {
-                                xendroid.compose.ui.ingame.BootStatusLabel(it, Modifier.align(Alignment.BottomStart))
+                                xendroid.compose.ui.ingame.BootStatusLabel(it, Modifier.align(Alignment.BottomStart),
+                                    onCancel = if (menuState.value.open) null else ::cancelBoot)
                             }
 
                             if (
@@ -2383,7 +2406,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         } else if (quit) {
             runId?.let { id -> runCatching { xendroid.compose.sessions.SessionRuns.store().ending(id, "user exit") } }
             recordEvent("exit", "user exit")
-            finish()
+            leave()
         } else menuState.value = menuState.value.cancelQuit()
     }
 

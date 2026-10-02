@@ -416,3 +416,8 @@ com comandos e resultados exatos.
    (ou depois de apagar o layout) Import → o mesmo layout volta. Editar o arquivo pondo `"version":2`:
    "Made by a newer XenDroid"; pôr `"x":1.5` num botão: "… is off the screen". Com "This game only",
    salvar e aplicar mexem só no layout do jogo.
+39. Lote 12 — sair conforme a origem (U09): abrir um jogo por um frontend (ES-DE/Daijisho) com a
+   biblioteca fechada; no carregamento tocar "Cancel": volta ao frontend e o XenDroid não aparece
+   vazio em Recentes. Repetir com a biblioteca aberta antes (Home → frontend → jogo): ao sair pelo
+   menu (Exit), volta ao frontend e, em Recentes, a biblioteca continua lá. Pela biblioteca, sair
+   volta à biblioteca. Por um atalho fixado, sair volta à tela inicial.
