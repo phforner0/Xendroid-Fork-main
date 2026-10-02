@@ -65,6 +65,10 @@ data class GamepadGlobalsDto(
     val opacity: Float = 0.65f,            // ~65% default (spec)
     val autoHideSeconds: Float = 8f,       // 0 disables auto-hide
     val hapticsEnabled: Boolean = false,   // mirrors legacy enable_vibrator default
+    /** U07: touch camera speed, 0.5–2 (1 = full turn at 1.2 dp/ms of finger travel). */
+    val cameraSensitivity: Float = 1f,
+    /** U07: where the touch camera's area starts, as a fraction of the width (0.3–0.7). */
+    val cameraAreaStart: Float = TouchCamera.DEFAULT_AREA_START,
 )
 
 /** A game's own layout (U06); an orientation it has none for uses the shared one. */

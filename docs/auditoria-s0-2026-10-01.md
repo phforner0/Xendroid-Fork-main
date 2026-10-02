@@ -370,13 +370,18 @@ com comandos e resultados exatos.
    (anotar se o controle não vibra pelo Android). Com DualSense/Switch Pro (Android 12+): linha do
    giroscópio muda ao mexer. Apertar B não volta (é teste); segurar B por 1 s sai; o gesto de
    voltar do telefone também sai.
+   Lote 12o: com dois controles ligados, cada cartão diz "In a game started now: P1"/"P2" (em
+   pt-BR, "Num jogo aberto agora: P1"); abrir um jogo com os dois: o P1 previsto controla o P1 e o
+   outro, o P2 (o menu em jogo, Controls → jogadores, mostra a mesma ordem).
 31. Lote 10 — câmera por toque (U07): num jogo em 3ª pessoa com controles de toque, menu →
    Controls → "Touch camera · free right side: On". Deslizar o dedo no lado direito longe dos
    botões: a câmera gira na direção e na velocidade do dedo; parar o dedo (sem soltar): a câmera
    para. Tocar A/B/X/Y nesse lado: continuam sendo botões. Segurar o analógico direito da tela:
    ele manda, sem briga com a câmera. Abrir o menu no meio do gesto e voltar: a câmera não fica
    girando sozinha. Girar a tela (se o jogo permitir): nada fica preso. Anotar se 1,2 dp/ms é
-   rápido/lento demais (é o único ajuste por enquanto).
+   rápido/lento demais. Lote 12o: no editor de toque → Globals, "Touch camera speed" em 200%
+   gira o mesmo deslize duas vezes mais rápido e em 50% pela metade; "Touch camera area" em 30%
+   deixa um toque no meio da tela sem girar a câmera, em 70% ele passa a girar.
 32. Lote 10 — teclado do jogo (U10): num jogo que pede nome (ex.: criar perfil/save com
    nome), só com controle: o painel mostra a grade com "q" destacado; D-pad/analógico movem
    (segurar: ritmo legível), A digita, L3 deixa a próxima letra maiúscula, R3 vai aos símbolos,

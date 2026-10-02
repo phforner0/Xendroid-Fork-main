@@ -144,8 +144,9 @@ fun ControllerTestScreen(onBack: () -> Unit) {
                 Text(stringResource(R.string.ct_intro), style = MaterialTheme.typography.bodySmall)
             }
             if (devices.isEmpty()) item { Text(stringResource(R.string.ct_none)) }
+            val slots = ControllerTestModel.playerSlots(devices)
             items(devices, key = { it.id }) { device ->
-                DeviceCard(device, model, gyro[device.id], rumble,
+                DeviceCard(device, slots[device.id], model, gyro[device.id], rumble,
                     onRumble = {
                         rumble = rumble.cycleDevice(device.descriptor)
                         rumblePrefs.edit().putString(RumbleSettings.DEVICES_KEY, rumble.encodeDevices()).apply()
@@ -218,13 +219,18 @@ private fun vibrate(id: Int, intensity: RumbleIntensity) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DeviceCard(device: TestedDevice, model: ControllerTestModel, gyro: FloatArray?, rumble: RumbleSettings,
+private fun DeviceCard(device: TestedDevice, slot: Int?, model: ControllerTestModel, gyro: FloatArray?, rumble: RumbleSettings,
                        onRumble: () -> Unit, onVibrate: () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(device.name + if (device.connected) "" else " · " + stringResource(R.string.ct_disconnected), style = MaterialTheme.typography.titleMedium)
             Text("%04X:%04X · %s".format(device.vendor, device.product, device.sources.joinToString(", ")),
                 style = MaterialTheme.typography.bodySmall)
+            // U05: the player it would be (the order the game takes controllers in).
+            if (device.connected) {
+                Text(slot?.let { stringResource(R.string.ct_plays_as, it + 1) } ?: stringResource(R.string.ct_no_slot),
+                    style = MaterialTheme.typography.bodySmall)
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ControllerTestModel.CHECKLIST.forEach { button ->
                     val pressed = button in device.pressed

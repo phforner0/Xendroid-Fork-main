@@ -942,4 +942,8 @@
     <string name="tv_unavailable">TV · display unavailable</string>
     <string name="tv_on">TV · %1$s · %2$s Hz</string>
     <string name="tv_available">TV · %1$d external display(s) available</string>
+    <string name="ct_plays_as">In a game started now: P%1$d</string>
+    <string name="ct_no_slot">In a game started now: no free player (P1–P4 taken)</string>
+    <string name="ge_camera_speed">Touch camera speed: %1$d%%</string>
+    <string name="ge_camera_area">Touch camera area: right %1$d%% of the screen</string>
 </resources>

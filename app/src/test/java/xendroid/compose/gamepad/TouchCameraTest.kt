@@ -44,5 +44,16 @@ class TouchCameraTest {
         assertTrue(TouchCamera.inArea(600f, width = 1000))
         assertFalse(TouchCamera.inArea(300f, width = 1000))                         // the movement side
         assertFalse(TouchCamera.inArea(10f, width = 0))
+        // The player's area (U07), kept to 0.3–0.7 of the width whatever a file says.
+        assertTrue(TouchCamera.inArea(350f, width = 1000, startFraction = 0.3f))
+        assertFalse(TouchCamera.inArea(650f, width = 1000, startFraction = 0.7f))
+        assertTrue(TouchCamera.inArea(700f, width = 1000, startFraction = 0.9f))
+        assertTrue(TouchCamera.inArea(300f, width = 1000, startFraction = 0.1f))
+        assertEquals(TouchCamera.DEFAULT_AREA_START, TouchCamera.areaStart(Float.NaN), 0f)
+        // Twice as sensitive: half the finger speed turns fully; out-of-range values are bounded.
+        assertEquals(0.6f, TouchCamera.fullSpeed(1.2f, 2f), 1e-6f)
+        assertEquals(0.6f, TouchCamera.fullSpeed(1.2f, 9f), 1e-6f)
+        assertEquals(2.4f, TouchCamera.fullSpeed(1.2f, 0.1f), 1e-6f)
+        assertEquals(1.2f, TouchCamera.fullSpeed(1.2f, Float.NaN), 1e-6f)
     }
 }

@@ -942,4 +942,8 @@
     <string name="tv_unavailable">TV · tela indisponível</string>
     <string name="tv_on">TV · %1$s · %2$s Hz</string>
     <string name="tv_available">TV · %1$d tela(s) externa(s) disponível(is)</string>
+    <string name="ct_plays_as">Num jogo aberto agora: P%1$d</string>
+    <string name="ct_no_slot">Num jogo aberto agora: sem jogador livre (P1–P4 ocupados)</string>
+    <string name="ge_camera_speed">Velocidade da câmera por toque: %1$d%%</string>
+    <string name="ge_camera_area">Área da câmera por toque: %1$d%% da tela, à direita</string>
 </resources>

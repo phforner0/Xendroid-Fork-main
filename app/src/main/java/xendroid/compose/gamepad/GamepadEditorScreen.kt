@@ -361,5 +361,14 @@ private fun GlobalsEditor(
             Switch(checked = globals.hapticsEnabled,
                 onCheckedChange = { v -> mutate { it.copy(hapticsEnabled = v) } })
         }
+        // U07: the touch camera (turned on in the in-game menu): how fast it turns and how much
+        // of the right side of the screen it takes.
+        Text(stringResource(R.string.ge_camera_speed, (globals.cameraSensitivity * 100).roundToInt()))
+        Slider(value = globals.cameraSensitivity.coerceIn(0.5f, 2f), valueRange = 0.5f..2f,
+            onValueChange = { v -> mutate { it.copy(cameraSensitivity = v) } })
+        val cameraWidth = 1f - TouchCamera.areaStart(globals.cameraAreaStart)
+        Text(stringResource(R.string.ge_camera_area, (cameraWidth * 100).roundToInt()))
+        Slider(value = cameraWidth, valueRange = 0.3f..0.7f,
+            onValueChange = { v -> mutate { it.copy(cameraAreaStart = 1f - v) } })
     }
 }

@@ -73,6 +73,8 @@ fun GamepadOverlay(
     editMode: Boolean = false,
     adaptiveSticks: Boolean = false,      // opt-in: spawn near the saved stick anchor at touch-down
     touchCamera: Boolean = false,         // U07 opt-in: free right side of the screen = right stick by finger speed
+    cameraSensitivity: Float = 1f,        // U07: 0.5–2, from the layout's globals
+    cameraAreaStart: Float = TouchCamera.DEFAULT_AREA_START,  // U07: where the area starts (fraction of the width)
     gridStepsX: Int = 0,                  // editor: snap-grid cell count per axis (0 = no grid).
     gridStepsY: Int = 0,                  // x/y differ so the cells are square on a non-1:1 screen.
     selectedId: ControlId? = null,
@@ -99,8 +101,10 @@ fun GamepadOverlay(
     // per-dpad last-pressed sector set, for diffing.
     val dpadState = remember { mutableMapOf<ControlId, Set<Int>>() }
     val density = LocalDensity.current
-    // U07: full deflection at 1.2 dp per ms of finger travel (a brisk swipe).
-    val camera = remember(density) { TouchCamera(fullSpeedPxPerMs = with(density) { 1.2.dp.toPx() }) }
+    // U07: full deflection at 1.2 dp per ms of finger travel (a brisk swipe), over the sensitivity.
+    val camera = remember(density, cameraSensitivity) {
+        TouchCamera(fullSpeedPxPerMs = TouchCamera.fullSpeed(with(density) { 1.2.dp.toPx() }, cameraSensitivity))
+    }
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
     // Latest controls WITHOUT restarting the pointerInput: in edit mode every drag frame
     // produces a new `controls` list; if it keyed the pointerInput, the gesture would cancel
@@ -127,7 +131,7 @@ fun GamepadOverlay(
             // Keyed only on editMode+sizePx (stable during a gesture). controls is read live
             // via controlsState so a drag (which mutates controls every frame) never restarts
             // the gesture. selectedId is not needed here (only the draw uses it).
-            .pointerInput(editMode, sizePx, adaptiveSticks, touchCamera) {
+            .pointerInput(editMode, sizePx, adaptiveSticks, touchCamera, camera, cameraAreaStart) {
                 if (editMode) {
                     editPointerLoop(
                         controlsState, sizePx, density,
@@ -166,7 +170,7 @@ fun GamepadOverlay(
                                         } else hitTest(layout, ch.position, sizePx, density)
                                         // The on-screen right stick wins over the camera area.
                                         if (hit is OnScreenControl.AnalogStick && !hit.isLeft && camera.active) camera.reset()
-                                        if (hit == null && touchCamera && TouchCamera.inArea(ch.position.x, sizePx.width) &&
+                                        if (hit == null && touchCamera && TouchCamera.inArea(ch.position.x, sizePx.width, cameraAreaStart) &&
                                             claims.values.none { id -> layout.any { it.id == id && it is OnScreenControl.AnalogStick && !it.isLeft } } &&
                                             camera.down(pid, ch.position.x, ch.position.y, ch.uptimeMillis)
                                         ) {

@@ -14,6 +14,17 @@ class GamepadSerializerTest {
         GamepadConfigSerializer.writeTo(cfg, output)
         assertEquals(cfg.copy(version = 2), GamepadConfigSerializer.readFrom(ByteArrayInputStream(output.toByteArray())))
     }
+    @Test fun touchCameraSettingsAreKeptAndOlderFilesGetTheDefaults() = runTest {
+        val cfg = GamepadConfigDto(globals = GamepadGlobalsDto(cameraSensitivity = 1.5f, cameraAreaStart = 0.6f))
+        val output = ByteArrayOutputStream()
+        GamepadConfigSerializer.writeTo(cfg, output)
+        assertEquals(cfg.copy(version = 2), GamepadConfigSerializer.readFrom(ByteArrayInputStream(output.toByteArray())))
+        // A file from before U07's settings: the camera turns and sits as it always did.
+        val older = GamepadConfigSerializer.readFrom(ByteArrayInputStream(
+            """{"version":2,"globals":{"enabled":true,"opacity":0.5,"autoHideSeconds":8.0,"hapticsEnabled":false}}""".toByteArray()))
+        assertEquals(1f, older.globals.cameraSensitivity, 0f)
+        assertEquals(TouchCamera.DEFAULT_AREA_START, older.globals.cameraAreaStart, 0f)
+    }
     @Test fun corruptedLayoutIsNotSilentlyOverwritten() = runTest {
         try { GamepadConfigSerializer.readFrom(ByteArrayInputStream("{invalid".toByteArray())); fail("Expected parse error") }
         catch (expected: kotlinx.serialization.SerializationException) { }

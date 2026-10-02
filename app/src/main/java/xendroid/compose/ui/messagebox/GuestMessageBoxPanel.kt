@@ -1,5 +1,7 @@
 package xendroid.compose.ui.messagebox
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -37,7 +39,8 @@ fun GuestMessageBoxPanel(
     onChoose: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val buttons = request.buttons?.takeIf { it.isNotEmpty() } ?: arrayOf("OK")
+    val ok = stringResource(R.string.common_ok)
+    val buttons = request.buttons?.takeIf { it.isNotEmpty() } ?: arrayOf(ok)
 
     BoxWithConstraints(
         modifier
@@ -87,7 +90,7 @@ fun GuestMessageBoxPanel(
                 GuestPanelOptions(Modifier.padding(top = if (compact) 8.dp else 16.dp)) {
                     for (i in buttons.indices) {
                         GuestPanelOption(
-                            label = buttons[i].ifBlank { "OK" },
+                            label = buttons[i].ifBlank { ok },
                             selected = i == selected,
                             onClick = { onChoose(i) },
                         )

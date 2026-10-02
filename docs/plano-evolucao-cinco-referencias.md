@@ -363,8 +363,8 @@ Testes JVM cobrem finalização concorrente, reconciliação e poda.
   SHA-256 do pacote (diretório content-addressed) — só o nome do arquivo e o hash são
   guardados, não o caminho. A chave separa o mesmo build de driver vindo de pacotes
   diferentes; a do driver do sistema não mudou.
-- Falta: eventos nativos no flight recorder, exportação por run (C06) e catálogo
-  remoto (C04).
+- Falta: um anel de eventos nativos no flight recorder (a linha do crash nativo veio no
+  lote 12n). C06 v1 e o cliente do C04 já existem (estados abaixo).
 - **Estado C07 (2026-10-02, v1, Impl. + Local):** "Compare runs" (`sessions/Benchmark.kt`,
   `ui/benchmark/`): runs marcados A/B, checagem de ordem ABBA, duração mínima, driver, FG e
   temperatura inicial antes de qualquer número, diferenças por par com veredito só quando todos
@@ -473,8 +473,8 @@ técnico registrado, sem converter URI em caminho. Aparelho: roteiro 18.
 **Estado L01 (2026-10-02, v1, Impl. + Local):** assistente inicial sobre a biblioteca
 (uma vez; reabre no menu): checagem de Vulkan/arm64/Android, pasta de jogos, idioma e região
 dos jogos a partir do locale do telefone (pt-BR → pt/BR), perfil, driver opcional e modo
-Jogador/Desenvolvedor; offline. Falta: interface do app em pt-BR (U02) e validação no
-aparelho (roteiro 17).
+Jogador/Desenvolvedor; offline. A interface em pt-BR veio com o U02 (lotes 10b e 12h–12m).
+Falta: validação no aparelho (roteiro 17).
 
 **Estado L02 (2026-10-02, v1, Impl. + Local):** "Interface: Player/Developer" nas
 Configurações; Player mostra só "Essentials" (19 ajustes de jogador, também por jogo) e
@@ -526,19 +526,21 @@ Perfis), um perfil por jogador, slots de perfis apagados limpos. Falta: validaç
 
 **Estado U10 (2026-10-02, v1, Impl. + Local):** teclado do jogo digitável por controle
 (`ui/keyboard/KeyboardGrid.kt` no `GuestKeyboardPanel`): grade com destaque, atalhos do 360,
-limite em UTF-16 sem partir pares e saneamento de surrogates; toque segue com o IME. Falta:
-o message box (já navegável) em pt-BR e validação no aparelho (roteiro 32).
+limite em UTF-16 sem partir pares e saneamento de surrogates; toque segue com o IME. O message
+box mostra os textos do próprio jogo; o botão de reserva vem dos recursos (lote 12o). Falta:
+validação no aparelho (roteiro 32).
 
 **Estado U07 (2026-10-02, v1, Impl. + Local):** câmera por toque opt-in
 (`gamepad/TouchCamera.kt` no `GamepadOverlay`): lado direito livre vira analógico direito pela
-velocidade do dedo, zerando em repouso/soltar/cancelar; controles mantêm prioridade. Falta:
-ajuste de sensibilidade/área no editor e a sensação no aparelho (roteiro 31).
+velocidade do dedo, zerando em repouso/soltar/cancelar; controles mantêm prioridade. Lote 12o:
+velocidade e área ajustáveis no editor (Gerais). Falta: a sensação no aparelho (roteiro 31).
 
 **Estado U05 (2026-10-02, v1, Impl. + Local):** "Test controllers" na biblioteca
 (`ui/controllertest/`, `gamepad/ControllerTest.kt`): botões com checklist, analógicos sobre a
 zona morta com o valor que o jogo recebe, gatilhos, hat, giroscópio do controle (API 31+),
-vibração só por toque, reconexão pelo descritor; eventos crus capturados só nessa tela. Falta:
-mostrar o slot P1–P4 que o controle terá no jogo e validação no aparelho (roteiro 30).
+vibração só por toque, reconexão pelo descritor; eventos crus capturados só nessa tela. Lote 12o:
+o jogador P1–P4 que cada controle seria num jogo aberto agora. Falta: validação no aparelho
+(roteiro 30).
 
 **Estado U04 (2026-10-02, v1, Impl. + Local):** `gamepad/MenuButtons.kt` para biblioteca,
 menu em jogo e editor: A/B trocáveis (Configurações), Enter/Esc fixos, ritmo de direção

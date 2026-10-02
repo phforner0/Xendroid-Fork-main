@@ -10,6 +10,14 @@ class ControllerTestModelTest {
     private fun pad(id: Int, descriptor: String = "desc-$id") =
         TestedDevice(id, "Pad $id", descriptor, 0x045E, 0x028E, listOf("gamepad", "joystick"), canVibrate = true, hasGyro = false)
 
+    @Test fun aGameStartedNowTakesControllersInDeviceOrder() {
+        val model = ControllerTestModel()
+        listOf(9, 5, 12, 3, 7, 20).forEach { model.connected(pad(it)) }
+        model.disconnected(20)
+        assertEquals(mapOf(3 to 0, 5 to 1, 7 to 2, 9 to 3, 12 to null), ControllerTestModel.playerSlots(model.all))
+        assertEquals(mapOf(3 to 0, 5 to null), ControllerTestModel.playerSlots(model.all.filter { it.id <= 5 }, slots = 1))
+    }
+
     @Test fun buttonsLightWhileHeldAndStayCheckedOff() {
         val model = ControllerTestModel()
         model.connected(pad(5))

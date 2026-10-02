@@ -75,7 +75,17 @@ class TouchCamera(
     }
 
     companion object {
-        /** The area: the right part of the screen (the left is the movement side). */
-        fun inArea(x: Float, width: Int, startFraction: Float = 0.45f): Boolean = width > 0 && x >= width * startFraction
+        const val DEFAULT_AREA_START = 0.45f
+
+        /** The area: the right part of the screen (the left is the movement side), from
+         *  [startFraction] of the width (kept to 0.3–0.7, whatever a file says). */
+        fun inArea(x: Float, width: Int, startFraction: Float = DEFAULT_AREA_START): Boolean =
+            width > 0 && x >= width * areaStart(startFraction)
+
+        fun areaStart(value: Float): Float = if (value.isFinite()) value.coerceIn(0.3f, 0.7f) else DEFAULT_AREA_START
+
+        /** Finger speed for full deflection at [sensitivity] (0.5–2): more sensitive, less travel. */
+        fun fullSpeed(basePxPerMs: Float, sensitivity: Float): Float =
+            basePxPerMs / (if (sensitivity.isFinite()) sensitivity.coerceIn(0.5f, 2f) else 1f)
     }
 }
