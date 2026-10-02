@@ -1,5 +1,7 @@
 package xendroid.compose.ui.settings
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,23 +36,23 @@ fun RecommendedProfilesCard(
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Card(modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Recommended settings", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.prof_title), style = MaterialTheme.typography.titleSmall)
             state.applied?.let { applied ->
                 val date = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(applied.appliedAt))
-                Text("Applied “${applied.profileName}” on $date: ${applied.written.size} setting(s) for this game.",
+                Text(stringResource(R.string.prof_applied, applied.profileName, date, applied.written.size),
                     style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = onRestore) { Text("Restore previous settings") }
+                OutlinedButton(onClick = onRestore) { Text(stringResource(R.string.prof_restore_previous)) }
             }
             state.offered.forEach { profile -> ProfileBlock(profile, state.facts, enabled = state.applied == null, onPreview) }
             if (state.notHere.isNotEmpty()) {
-                Text("Not offered on this phone:", style = MaterialTheme.typography.bodySmall, color = muted)
+                Text(stringResource(R.string.prof_not_here), style = MaterialTheme.typography.bodySmall, color = muted)
                 state.notHere.forEach { (profile, why) ->
                     Text("• ${profile.profile.name}: ${why.joinToString("; ")}", style = MaterialTheme.typography.bodySmall, color = muted)
                 }
             }
             if (state.skipped.isNotEmpty()) {
-                Text("Skipped profile files: " + state.skipped.take(3).joinToString("; ") +
-                    (if (state.skipped.size > 3) " (and ${state.skipped.size - 3} more)" else ""),
+                Text(stringResource(R.string.prof_skipped, state.skipped.take(3).joinToString("; ")) +
+                    (if (state.skipped.size > 3) " " + stringResource(R.string.prof_skipped_more, state.skipped.size - 3) else ""),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
@@ -64,17 +66,17 @@ private fun ProfileBlock(loaded: LoadedProfile, facts: DeviceFacts?, enabled: Bo
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(profile.name, style = MaterialTheme.typography.bodyLarge)
         Text(when (loaded.source) {
-            ProfileSource.BUNDLED -> "From XenDroid, verified with the test below"
-            ProfileSource.LOCAL -> "From the file ${loaded.origin} on this phone; not reviewed by XenDroid"
+            ProfileSource.BUNDLED -> stringResource(R.string.prof_from_app)
+            ProfileSource.LOCAL -> stringResource(R.string.prof_from_file, loaded.origin)
         }, style = MaterialTheme.typography.bodySmall, color = muted)
         Text(profile.reason, style = MaterialTheme.typography.bodySmall)
         profile.evidence.firstOrNull()?.let { test ->
             val elsewhere = facts != null && !SettingsProfiles.testedOnThisGpu(profile, facts)
-            Text("Tested: ${test.result} on ${test.gpu}${if (test.driver.isNotBlank()) ", ${test.driver}" else ""}, " +
-                "build ${test.build} (${test.date})" + (if (elsewhere) ". Not tested on this GPU." else ""),
+            Text(stringResource(R.string.prof_tested, test.result, test.gpu + if (test.driver.isNotBlank()) ", ${test.driver}" else "", test.build, test.date) +
+                (if (elsewhere) stringResource(R.string.prof_other_gpu) else ""),
                 style = MaterialTheme.typography.bodySmall, color = muted)
         }
-        TextButton(onClick = { onPreview(loaded) }, enabled = enabled) { Text("Preview changes") }
+        TextButton(onClick = { onPreview(loaded) }, enabled = enabled) { Text(stringResource(R.string.prof_preview)) }
     }
 }
 
@@ -87,35 +89,35 @@ fun ProfilePreviewDialog(preview: ProfilePreview, onConfirm: () -> Unit, onDismi
         onDismissRequest = onDismiss,
         title = {
             Text(when (preview) {
-                is ProfilePreview.Apply -> "Apply “${preview.profile.profile.name}”?"
-                is ProfilePreview.Restore -> "Restore previous settings?"
+                is ProfilePreview.Apply -> stringResource(R.string.prof_apply_title, preview.profile.profile.name)
+                is ProfilePreview.Restore -> stringResource(R.string.prof_restore_title)
             })
         },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 preview.plan.lines.forEach { line ->
                     Text(when (line.kind) {
-                        Kind.CHANGE -> "${line.title}: ${line.now} → ${line.target}"
-                        Kind.PIN -> "${line.title}: ${line.target} (as now; kept for this game)"
-                        Kind.SAME -> "${line.title}: ${line.target} (already set for this game)"
-                        Kind.YOURS -> if (restore) "${line.title}: stays ${line.now}; you changed it after the profile"
-                            else "${line.title}: stays ${line.now}, as you chose (the profile suggests ${line.target})"
+                        Kind.CHANGE -> stringResource(R.string.prof_line_change, line.title, line.now, line.target)
+                        Kind.PIN -> stringResource(R.string.prof_line_pin, line.title, line.target)
+                        Kind.SAME -> stringResource(R.string.prof_line_same, line.title, line.target)
+                        Kind.YOURS -> if (restore) stringResource(R.string.prof_line_yours_restore, line.title, line.now)
+                            else stringResource(R.string.prof_line_yours, line.title, line.now, line.target)
                     }, style = MaterialTheme.typography.bodySmall)
                 }
-                Text(if (restore) "Only settings the profile wrote and you did not change since go back."
-                    else "Only this game changes, from its next start. Settings you chose for it stay, and you can restore the previous ones later.",
+                Text(if (restore) stringResource(R.string.prof_restore_note)
+                    else stringResource(R.string.prof_apply_note),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = {
             TextButton(onClick = onConfirm, enabled = restore || writes > 0) {
                 Text(when {
-                    restore -> "Restore"
-                    writes == 0 -> "Nothing to change"
-                    else -> "Apply $writes change(s)"
+                    restore -> stringResource(R.string.prof_restore)
+                    writes == 0 -> stringResource(R.string.prof_nothing)
+                    else -> stringResource(R.string.prof_apply_n, writes)
                 })
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

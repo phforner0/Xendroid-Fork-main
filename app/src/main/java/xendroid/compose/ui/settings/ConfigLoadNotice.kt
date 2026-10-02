@@ -1,5 +1,7 @@
 package xendroid.compose.ui.settings
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,8 +23,8 @@ internal fun ConfigLoadNotice(error: String?, onRetry: () -> Unit, onBack: () ->
     ) {
         if (error == null) CircularProgressIndicator() else {
             Text(error)
-            TextButton(onClick = onRetry) { Text("Retry") }
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.common_retry)) }
         }
-        TextButton(onClick = onBack) { Text("Back") }
+        TextButton(onClick = onBack) { Text(stringResource(R.string.common_back)) }
     }
 }

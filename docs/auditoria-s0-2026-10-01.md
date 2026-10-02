@@ -334,6 +334,9 @@ com comandos e resultados exatos.
    Lote 12h: com o telefone em português, a biblioteca inteira (menu ⋮, ficha do jogo, diálogos,
    assistente inicial, navegador de pastas) aparece em português, sem texto cortado; o bloco técnico
    do último run continua em inglês.
+   Lote 12i: Configurações e ajustes do jogo em português (seções, os 19 ajustes do modo Jogador
+   com descrição no toque longo, "Salvo para todos os jogos · vale na próxima abertura…", gerenciador
+   de drivers, pacote de dados, atualizações, ajustes recomendados); buscar "tela" acha "Tela larga".
 29. Lote 10 — navegação por controle (U04): na biblioteca, A abre o jogo e B volta; em
    Configurações → "Menus: A confirms…" → "Swap": agora B abre e A volta na hora. Abrir um jogo:
    no menu em jogo, B ativa e A fecha/cancela; dentro do jogo os botões continuam os de sempre.

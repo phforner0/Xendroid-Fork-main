@@ -1,5 +1,7 @@
 package xendroid.compose.ui.settings
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -62,8 +64,8 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
         AlertDialog(
             onDismissRequest = vm::clearError,
             text = { Text(error.orEmpty()) },
-            confirmButton = { TextButton(onClick = { vm.clearError(); vm.flush() }) { Text("Retry save") } },
-            dismissButton = { TextButton(onClick = vm::clearError) { Text("Close") } },
+            confirmButton = { TextButton(onClick = { vm.clearError(); vm.flush() }) { Text(stringResource(R.string.set_retry_save)) } },
+            dismissButton = { TextButton(onClick = vm::clearError) { Text(stringResource(R.string.common_close)) } },
         )
     }
     val section = selected
@@ -105,16 +107,15 @@ internal fun MenuButtonsRow() {
         androidx.compose.runtime.mutableStateOf(xendroid.compose.gamepad.MenuButtonPrefs.swapConfirm(context))
     }
     ListItem(
-        headlineContent = { Text(if (swap) "Menus: B confirms, A goes back" else "Menus: A confirms, B goes back") },
+        headlineContent = { Text(if (swap) stringResource(R.string.set_menus_b) else stringResource(R.string.set_menus_a)) },
         supportingContent = {
-            Text("For the library, the in-game menu and the layout editor; the game's own buttons never change. " +
-                "The in-game menu follows it from the next game you open.")
+            Text(stringResource(R.string.set_menus_note))
         },
         trailingContent = {
             TextButton(onClick = {
                 swap = !swap
                 xendroid.compose.gamepad.MenuButtonPrefs.setSwapConfirm(context, swap)
-            }) { Text("Swap") }
+            }) { Text(stringResource(R.string.set_swap)) }
         },
     )
 }
@@ -123,16 +124,14 @@ internal fun MenuButtonsRow() {
 @Composable
 internal fun UiModeRow(mode: UiMode, onChange: (UiMode) -> Unit) {
     ListItem(
-        headlineContent = { Text("Interface: ${mode.label}") },
+        headlineContent = { Text(stringResource(R.string.set_interface, if (mode == UiMode.PLAYER) stringResource(R.string.fr_player_short) else stringResource(R.string.fr_developer))) },
         supportingContent = {
-            Text(if (mode == UiMode.PLAYER)
-                "Essential settings only. Developer shows every engine setting and the experimental options " +
-                    "(still limited to developer builds where they are). Hidden settings keep their values."
-            else "Every engine setting. Player keeps only what players change.")
+            Text(if (mode == UiMode.PLAYER) stringResource(R.string.set_player_note)
+            else stringResource(R.string.set_developer_note))
         },
         trailingContent = {
             TextButton(onClick = { onChange(if (mode == UiMode.PLAYER) UiMode.DEVELOPER else UiMode.PLAYER) }) {
-                Text(if (mode == UiMode.PLAYER) "Switch to Developer" else "Switch to Player")
+                Text(if (mode == UiMode.PLAYER) stringResource(R.string.set_to_developer) else stringResource(R.string.set_to_player))
             }
         },
     )
@@ -150,10 +149,10 @@ private fun SettingsIndex(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.lib_settings)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
@@ -167,15 +166,15 @@ private fun SettingsIndex(
             items(categories, key = { it.title }) { cat ->
                 val modified = modifiedCountOf(cat)
                 ListItem(
-                    headlineContent = { Text(cat.title) },
+                    headlineContent = { Text(categoryTitle(cat)) },
                     supportingContent = {
                         Text(buildString {
-                            append("${cat.settings.size} settings")
-                            if (modified > 0) append("  ·  $modified changed")
+                            append(stringResource(R.string.set_count, cat.settings.size))
+                            if (modified > 0) append("  ·  " + stringResource(R.string.set_changed, modified))
                         })
                     },
                     trailingContent = {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open")
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.browse_open))
                     },
                     modifier = Modifier.clickable { onOpen(cat) },
                 )
@@ -197,23 +196,25 @@ private fun SettingsCategoryDetail(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(category.title) },
+                title = { Text(categoryTitle(category)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to sections")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.set_back_sections))
                     }
                 },
             )
         }
     ) { padding ->
         var query by remember { mutableStateOf("") }
+        val searchContext = androidx.compose.ui.platform.LocalContext.current
         Column(Modifier.fillMaxSize().padding(padding)) {
-        OutlinedTextField(query, onValueChange = { query = it }, label = { Text("Search settings") },
+        OutlinedTextField(query, onValueChange = { query = it }, label = { Text(stringResource(R.string.set_search)) },
             singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         LazyColumn(Modifier.weight(1f)) {
             if (query.isNotBlank()) {
                 items(categories.flatMap { it.settings }.filter {
-                    it.title.contains(query, true) || it.name.contains(query, true) || it.desc.contains(query, true)
+                    it.title.contains(query, true) || it.name.contains(query, true) || it.desc.contains(query, true) ||
+                        settingSearchText(searchContext, it).contains(query, true)
                 }, key = { it.key }) { setting ->
                     val sv = values[setting.key]
                     SettingRow(vm, setting, sv?.modified == true, sv?.raw)

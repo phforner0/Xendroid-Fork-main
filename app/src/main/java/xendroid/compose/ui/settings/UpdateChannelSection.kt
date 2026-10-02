@@ -1,5 +1,7 @@
 package xendroid.compose.ui.settings
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,17 +27,17 @@ fun UpdateChannelSection() {
     val context = LocalContext.current
     var channel by remember { mutableStateOf(updateChannel(context)) }
     ListItem(
-        headlineContent = { Text("App updates") },
+        headlineContent = { Text(stringResource(R.string.upd_title)) },
         supportingContent = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(when (channel) {
-                    UpdateChannel.STABLE -> "Offers new releases; each is checked against its published SHA-256 and installed only after you confirm."
-                    UpdateChannel.PREVIEW -> "Also offers preview releases, which may be less tested."
-                    UpdateChannel.OFF -> "Never checks for updates."
+                    UpdateChannel.STABLE -> stringResource(R.string.upd_stable_note)
+                    UpdateChannel.PREVIEW -> stringResource(R.string.upd_preview_note)
+                    UpdateChannel.OFF -> stringResource(R.string.upd_off_note)
                 })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     UpdateChannel.entries.forEach { option ->
-                        FilterChip(selected = channel == option, label = { Text(option.label) }, onClick = {
+                        FilterChip(selected = channel == option, label = { Text(when (option) { UpdateChannel.STABLE -> stringResource(R.string.upd_stable); UpdateChannel.PREVIEW -> stringResource(R.string.upd_preview); UpdateChannel.OFF -> stringResource(R.string.upd_off) }) }, onClick = {
                             channel = option
                             setUpdateChannel(context, option)
                         })

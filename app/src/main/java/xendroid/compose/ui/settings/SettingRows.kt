@@ -1,5 +1,7 @@
 package xendroid.compose.ui.settings
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -36,11 +38,11 @@ fun SettingRow(host: SettingsHost, s: Setting, modified: Boolean, raw: String? =
         if (!contract.available) {
             // U03: an unavailable setting keeps its name and says why, instead of vanishing.
             Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                RowTitle(s.title, modified = false, sub = contract.reason)
+                RowTitle(settingTitle(s), modified = false, sub = contractText(contract))
             }
             return@Column
         }
-        Text(contract.label, style = MaterialTheme.typography.labelSmall,
+        Text(contractText(contract), style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 6.dp))
         when (s) {
     is Setting.Bool       -> BoolRow(host, s, modified)
@@ -104,7 +106,7 @@ private fun BoolRow(host: SettingsHost, s: Setting.Bool, modified: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f)) {
-            RowTitle(s.title, modified, desc = s.desc)
+            RowTitle(settingTitle(s), modified, desc = settingDesc(s))
         }
 
         Switch(
@@ -130,7 +132,7 @@ private fun IntRow(host: SettingsHost, s: Setting.IntRange, modified: Boolean) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.weight(1f)) {
-            RowTitle(s.title, modified, desc = s.desc)
+            RowTitle(settingTitle(s), modified, desc = settingDesc(s))
         }
 
         RowValue(current.toString())
@@ -145,7 +147,7 @@ private fun IntRow(host: SettingsHost, s: Setting.IntRange, modified: Boolean) {
 
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text(s.title) },
+            title = { Text(settingTitle(s)) },
             text = {
                 Column {
                     Text(
@@ -168,14 +170,14 @@ private fun IntRow(host: SettingsHost, s: Setting.IntRange, modified: Boolean) {
                         showDialog = false
                     }
                 ) {
-                    Text("OK")
+                    Text(stringResource(R.string.common_ok))
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = { showDialog = false }
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         )
@@ -188,8 +190,8 @@ private fun ListRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean
     val currentValue = host.currentListValue(s)
 
     val currentLabel =
-        s.options.firstOrNull { it.value == currentValue }?.label
-            ?: if (currentValue.isEmpty()) "(default)" else currentValue
+        s.options.firstOrNull { it.value == currentValue }?.let { optionLabel(s, it.value, it.label) }
+            ?: if (currentValue.isEmpty()) stringResource(R.string.set_default_paren) else currentValue
 
     Row(
         Modifier
@@ -199,7 +201,7 @@ private fun ListRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.weight(1f)) {
-            RowTitle(s.title, modified, desc = s.desc)
+            RowTitle(settingTitle(s), modified, desc = settingDesc(s))
         }
 
         RowValue(currentLabel)
@@ -217,7 +219,7 @@ private fun ListRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean
 
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text(s.title) },
+            title = { Text(settingTitle(s)) },
             text = {
                 LazyColumn(
                     state = listState,
@@ -248,7 +250,7 @@ private fun ListRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean
                             )
 
                             Spacer(Modifier.width(8.dp))
-                            Text(opt.label)
+                            Text(optionLabel(s, opt.value, opt.label))
                         }
                     }
                 }
@@ -256,7 +258,7 @@ private fun ListRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         )
@@ -285,8 +287,8 @@ private fun ExportLogsRow(s: Setting.Action) {
                     Toast.makeText(
                         context,
                         dest?.let {
-                            "Logs exported to ${it.name} in Downloads"
-                        } ?: "No logs to export",
+                            context.getString(R.string.set_logs_exported, it.name)
+                        } ?: context.getString(R.string.set_logs_none),
                         Toast.LENGTH_LONG
                     ).show()
 
@@ -298,10 +300,10 @@ private fun ExportLogsRow(s: Setting.Action) {
     ) {
         Box(Modifier.weight(1f)) {
             RowTitle(
-                s.title,
+                settingTitle(s),
                 false,
-                sub = if (busy) "Exporting..." else "Raw logs (not redacted) · shelved sessions + current run",
-                desc = s.desc
+                sub = if (busy) stringResource(R.string.set_logs_exporting) else stringResource(R.string.set_logs_note),
+                desc = settingDesc(s)
             )
         }
     }
@@ -370,10 +372,10 @@ private fun DriverActionRow(
                 try {
                     val installed = DriverPackageIO.import(context, uri)
                     selectDriver(installed.library.absolutePath)
-                    Toast.makeText(context, "Driver imported · local ZIP", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.drv_imported), Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
-                    Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, context.getString(R.string.drv_import_failed, e.message), Toast.LENGTH_LONG).show()
                 } finally { downloading = null }
             }
         }
@@ -392,7 +394,7 @@ private fun DriverActionRow(
             }.onFailure {
                 Toast.makeText(
                     context,
-                    "Failed to load drivers: ${it.message}",
+                    context.getString(R.string.drv_load_failed, it.message),
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -411,10 +413,10 @@ private fun DriverActionRow(
         ) {
             Box(Modifier.weight(1f)) {
                 RowTitle(
-                    s.title,
+                    settingTitle(s),
                     modified,
-                    sub = "${current.ifEmpty { "System driver" }} · next launch",
-                    desc = s.desc
+                    sub = stringResource(R.string.drv_next_launch, current.ifEmpty { stringResource(R.string.drv_system) }),
+                    desc = settingDesc(s)
                 )
             }
         }
@@ -435,7 +437,7 @@ private fun DriverActionRow(
                     loadDrivers()
                 }
             ) {
-                Text("Driver Manager")
+                Text(stringResource(R.string.drv_manager))
             }
 
             TextButton(
@@ -444,7 +446,7 @@ private fun DriverActionRow(
                     selectDriver("")
                 }
             ) {
-                Text("Use default driver")
+                Text(stringResource(R.string.drv_use_default))
             }
 
             TextButton(
@@ -453,7 +455,7 @@ private fun DriverActionRow(
                     pickZip.launch(arrayOf("application/zip"))
                 }
             ) {
-                Text("Import ZIP")
+                Text(stringResource(R.string.drv_import_zip))
             }
         }
         previousDriver?.let { previous ->
@@ -462,7 +464,7 @@ private fun DriverActionRow(
                 enabled = available && downloading == null,
                 onClick = { selectDriver(previous) },
             ) {
-                Text(if (available) "Use previous driver selection" else "Previous driver no longer installed")
+                Text(if (available) stringResource(R.string.drv_use_previous) else stringResource(R.string.drv_previous_gone))
             }
         }
     }
@@ -475,7 +477,7 @@ private fun DriverActionRow(
                 }
             },
             title = {
-                Text("Custom GPU Drivers")
+                Text(stringResource(R.string.drv_title))
             },
             text = {
                 when {
@@ -489,7 +491,7 @@ private fun DriverActionRow(
                     }
 
                     drivers.isEmpty() -> {
-                        Text("No drivers available.")
+                        Text(stringResource(R.string.drv_none))
                     }
 
                     else -> {
@@ -530,8 +532,8 @@ private fun DriverActionRow(
                                     )
 
                                     Text(
-                                        if (driver.sha256.isBlank()) "No checksum published"
-                                        else "SHA-256 published for this download",
+                                        if (driver.sha256.isBlank()) stringResource(R.string.drv_no_checksum)
+                                        else stringResource(R.string.drv_checksum),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -556,14 +558,14 @@ private fun DriverActionRow(
                                                 if (installedPath != null) {
                                                     val valid = runCatching { DriverPackageInstaller.validateArm64Library(java.io.File(installedPath)) }.isSuccess
                                                     if (!valid) {
-                                                        Toast.makeText(context, "Installed driver is damaged or has the wrong ABI", Toast.LENGTH_LONG).show()
+                                                        Toast.makeText(context, context.getString(R.string.drv_damaged), Toast.LENGTH_LONG).show()
                                                         return@TextButton
                                                     }
                                                     selectDriver(installedPath)
 
                                                     Toast.makeText(
                                                         context,
-                                                        "Driver selected",
+                                                        context.getString(R.string.drv_selected),
                                                         Toast.LENGTH_SHORT
                                                     ).show()
 
@@ -592,17 +594,17 @@ private fun DriverActionRow(
                                                             selectDriver(result.library.absolutePath)
                                                             Toast.makeText(
                                                                 context,
-                                                                if (result.verifiedDownload) "Driver installed · SHA-256 verified" else "Driver installed · no published checksum",
+                                                                if (result.verifiedDownload) context.getString(R.string.drv_installed_verified) else context.getString(R.string.drv_installed_unverified),
                                                                 Toast.LENGTH_SHORT
                                                             ).show()
                                                         }.onFailure { error ->
                                                             if (error is kotlinx.coroutines.CancellationException) throw error
-                                                            Toast.makeText(context, "Install failed: ${error.message}", Toast.LENGTH_LONG).show()
+                                                            Toast.makeText(context, context.getString(R.string.drv_install_failed, error.message), Toast.LENGTH_LONG).show()
                                                         }
                                                     }.onFailure {
                                                         Toast.makeText(
                                                             context,
-                                                            "Download failed: ${it.message}",
+                                                            context.getString(R.string.drv_download_failed, it.message),
                                                             Toast.LENGTH_LONG
                                                         ).show()
                                                     }
@@ -614,9 +616,9 @@ private fun DriverActionRow(
                                         ) {
                                             Text(
                                                 if (installedPath != null) {
-                                                    "Use"
+                                                    stringResource(R.string.drv_use)
                                                 } else {
-                                                    "Download & Install"
+                                                    stringResource(R.string.drv_download_install)
                                                 }
                                             )
                                         }
@@ -636,7 +638,7 @@ private fun DriverActionRow(
                         showManager = false
                     }
                 ) {
-                    Text("Close")
+                    Text(stringResource(R.string.common_close))
                 }
             }
         )
@@ -687,14 +689,14 @@ private fun InheritedPreview(host: SettingsHost, s: Setting) {
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    s.title,
+                    settingTitle(s),
                     color = grey,
                     style = MaterialTheme.typography.bodyLarge
                 )
 
-                if (s.desc.isNotEmpty()) {
+                if (settingDesc(s).isNotEmpty()) {
                     Text(
-                        s.desc,
+                        settingDesc(s),
                         color = grey,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -710,9 +712,9 @@ private fun InheritedPreview(host: SettingsHost, s: Setting) {
 
         is Setting.IntRange ->
             InheritedTextRow(
-                s.title,
+                settingTitle(s),
                 host.currentInt(s).toString(),
-                s.desc,
+                settingDesc(s),
                 grey
             )
 
@@ -720,22 +722,22 @@ private fun InheritedPreview(host: SettingsHost, s: Setting) {
             val v = host.currentListValue(s)
 
             val label =
-                s.options.firstOrNull { it.value == v }?.label
-                    ?: v.ifEmpty { "(default)" }
+                s.options.firstOrNull { it.value == v }?.let { optionLabel(s, it.value, it.label) }
+                    ?: v.ifEmpty { stringResource(R.string.set_default_paren) }
 
             InheritedTextRow(
-                s.title,
+                settingTitle(s),
                 label,
-                s.desc,
+                settingDesc(s),
                 grey
             )
         }
 
         is Setting.Action ->
             InheritedTextRow(
-                s.title,
-                host.currentDriverPath(s).ifEmpty { "Default" },
-                s.desc,
+                settingTitle(s),
+                host.currentDriverPath(s).ifEmpty { stringResource(R.string.drv_default) },
+                settingDesc(s),
                 grey
             )
     }

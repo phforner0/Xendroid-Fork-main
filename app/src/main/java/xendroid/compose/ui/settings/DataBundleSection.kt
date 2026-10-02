@@ -1,5 +1,7 @@
 package xendroid.compose.ui.settings
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,7 +57,7 @@ fun DataBundleSection(beforeImport: () -> Unit, afterImport: () -> Unit) {
                 work()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                failure = (e as? BundleException)?.message ?: "Could not use that file: ${e.message ?: e.javaClass.simpleName}"
+                failure = (e as? BundleException)?.message ?: context.getString(R.string.bundle_bad_file, e.message ?: e.javaClass.simpleName)
             } finally {
                 busy = false
             }
@@ -65,7 +67,7 @@ fun DataBundleSection(beforeImport: () -> Unit, afterImport: () -> Unit) {
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) run {
             val parts = DataBundleIo.export(context, uri)
-            Toast.makeText(context, "Exported $parts parts", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.getString(R.string.bundle_exported, parts), Toast.LENGTH_LONG).show()
         }
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -73,19 +75,18 @@ fun DataBundleSection(beforeImport: () -> Unit, afterImport: () -> Unit) {
     }
 
     ListItem(
-        headlineContent = { Text("Back up or move settings") },
+        headlineContent = { Text(stringResource(R.string.bundle_title)) },
         supportingContent = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Emulator settings (global and per game), touch controls, favorites, collections and your compatibility " +
-                    "notes, in one file. Saves, profiles, games and drivers are not included.")
+                Text(stringResource(R.string.bundle_note))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(enabled = !busy, onClick = {
                         val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
                         exportLauncher.launch("xendroid-settings-$stamp.zip")
-                    }) { Text("Export") }
+                    }) { Text(stringResource(R.string.bundle_export)) }
                     OutlinedButton(enabled = !busy, onClick = {
                         importLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
-                    }) { Text("Import") }
+                    }) { Text(stringResource(R.string.bundle_import)) }
                 }
                 if (busy) LinearProgressIndicator()
             }
@@ -95,11 +96,11 @@ fun DataBundleSection(beforeImport: () -> Unit, afterImport: () -> Unit) {
     pending?.let { (bundle, plan) ->
         AlertDialog(
             onDismissRequest = { pending = null },
-            title = { Text(if (plan.changes > 0) "Import these settings?" else "Nothing to import") },
+            title = { Text(if (plan.changes > 0) stringResource(R.string.bundle_confirm) else stringResource(R.string.bundle_nothing)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     plan.lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-                    if (plan.changes > 0) Text("Your current settings are saved first, so this can be undone by importing that backup.",
+                    if (plan.changes > 0) Text(stringResource(R.string.bundle_backup_note),
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                 }
             },
@@ -110,11 +111,11 @@ fun DataBundleSection(beforeImport: () -> Unit, afterImport: () -> Unit) {
                         val backup = DataBundleIo.import(context, bundle)
                         pending = null
                         afterImport()
-                        Toast.makeText(context, "Imported. Previous settings kept as $backup", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, context.getString(R.string.bundle_imported, backup), Toast.LENGTH_LONG).show()
                     }
-                }) { Text("Import") }
+                }) { Text(stringResource(R.string.bundle_import)) }
             },
-            dismissButton = { TextButton(onClick = { pending = null }) { Text(if (plan.changes > 0) "Cancel" else "Close") } },
+            dismissButton = { TextButton(onClick = { pending = null }) { Text(if (plan.changes > 0) stringResource(R.string.common_cancel) else stringResource(R.string.common_close)) } },
         )
     }
 

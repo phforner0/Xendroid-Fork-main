@@ -1,5 +1,7 @@
 package xendroid.compose.ui.settings
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -67,8 +69,8 @@ fun PerGameSettingsScreen(
         AlertDialog(
             onDismissRequest = vm::clearError,
             text = { Text(error.orEmpty()) },
-            confirmButton = { TextButton(onClick = { vm.clearError(); vm.flush() }) { Text("Retry save") } },
-            dismissButton = { TextButton(onClick = vm::clearError) { Text("Close") } },
+            confirmButton = { TextButton(onClick = { vm.clearError(); vm.flush() }) { Text(stringResource(R.string.set_retry_save)) } },
+            dismissButton = { TextButton(onClick = vm::clearError) { Text(stringResource(R.string.common_close)) } },
         )
     }
     preview?.let { ProfilePreviewDialog(it, onConfirm = vm::confirmPreview, onDismiss = vm::dismissPreview) }
@@ -76,7 +78,7 @@ fun PerGameSettingsScreen(
         AlertDialog(
             onDismissRequest = vm::clearProfileMessage,
             text = { Text(message) },
-            confirmButton = { TextButton(onClick = vm::clearProfileMessage) { Text("OK") } },
+            confirmButton = { TextButton(onClick = vm::clearProfileMessage) { Text(stringResource(R.string.common_ok)) } },
         )
     }
     val section = selected
@@ -115,10 +117,10 @@ private fun PerGameIndex(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (gameName.isNotEmpty()) "$gameName settings" else "Per-game settings") },
+                title = { Text(if (gameName.isNotEmpty()) stringResource(R.string.set_game_title, gameName) else stringResource(R.string.lib_per_game_settings)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
@@ -128,7 +130,7 @@ private fun PerGameIndex(
             // Header note: title id is keyed per game, so overrides apply to every copy.
             item {
                 Text(
-                    "Overrides apply to all copies of this game.",
+                    stringResource(R.string.set_game_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -139,15 +141,15 @@ private fun PerGameIndex(
             items(categories, key = { it.title }) { cat ->
                 val overridden = overriddenCountOf(cat)
                 ListItem(
-                    headlineContent = { Text(cat.title) },
+                    headlineContent = { Text(categoryTitle(cat)) },
                     supportingContent = {
                         Text(buildString {
-                            append("${cat.settings.size} settings")
-                            if (overridden > 0) append("  ·  $overridden overridden")
+                            append(stringResource(R.string.set_count, cat.settings.size))
+                            if (overridden > 0) append("  ·  " + stringResource(R.string.set_overridden, overridden))
                         })
                     },
                     trailingContent = {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open")
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.browse_open))
                     },
                     modifier = Modifier.clickable { onOpen(cat) },
                 )
@@ -168,10 +170,10 @@ private fun PerGameCategoryDetail(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(category.title) },
+                title = { Text(categoryTitle(category)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to sections")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.set_back_sections))
                     }
                 },
             )

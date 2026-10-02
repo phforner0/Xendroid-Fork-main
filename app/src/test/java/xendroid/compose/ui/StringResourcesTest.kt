@@ -55,6 +55,15 @@ class StringResourcesTest {
         }
     }
 
+    /** aapt drops spaces at either end of a text, so a separator there silently disappears. */
+    @Test fun noTextStartsOrEndsWithASpace() {
+        for (dir in listOf("values", "values-pt-rBR")) {
+            for ((name, value) in strings(dir)) {
+                assertTrue("$dir/$name starts or ends with a space", value.first == value.first.trim())
+            }
+        }
+    }
+
     @Test fun theAppDeclaresTheLanguagesItShips() {
         val config = File(res, "xml/locales_config.xml").readText()
         assertTrue(config.contains("android:name=\"en\"") && config.contains("android:name=\"pt-BR\""))
