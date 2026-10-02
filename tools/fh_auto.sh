@@ -18,6 +18,8 @@
 #     title screen on - check the VkFrameSync GPU times before trusting it.
 #   Env PASSES=true: with launch 1, also log per-render-pass and per-resolve
 #     GPU times (the timestamps serialize the passes, absolute times grow).
+#   Env STAT=<seconds>: count each arm's last seconds with the CPU's hardware
+#     counters per thread (/data/local/tmp/fh_arm_<i>_stat.txt).
 PKG=xendroid.compose.fork.opt
 DIR=/sdcard/Android/data/$PKG/files/compose
 LOG=$DIR/xe.log
@@ -179,7 +181,8 @@ fi
 
 i=0
 EMU=$(pidof $PKG:emu)
-rm -f /data/local/tmp/fh_arm_*_top.txt /data/local/tmp/fh_ab_*.png
+rm -f /data/local/tmp/fh_arm_*_top.txt /data/local/tmp/fh_arm_*_stat.txt \
+  /data/local/tmp/fh_ab_*.png
 for v in $VALUES; do
   i=$((i + 1))
   setprop $PROP $v
@@ -190,7 +193,17 @@ for v in $VALUES; do
   # dominate it (0 to 3100 mA between identical 36 s arms on USB).
   c0=$(dumpsys battery | sed -n 's/.*Charge counter: \([0-9]*\).*/\1/p')
   t0=$(date +%s)
-  sleep $((ARM - 4))
+  # Env STAT=<seconds>: the arm's last seconds counted by the CPU's hardware
+  # counters per thread (instructions and cycles; tools/forza_cpustat.py).
+  # Instructions per frame repeat within ~1% where CPU time moves with the
+  # core and the clock the scheduler picks.
+  if [ -n "$STAT" ] && [ $((ARM - 4)) -gt "$STAT" ]; then
+    sleep $((ARM - 4 - STAT))
+    simpleperf stat --app $PKG -e instructions,cpu-cycles --per-thread \
+      --duration $STAT -o /data/local/tmp/fh_arm_${i}_stat.txt > /dev/null 2>&1
+  else
+    sleep $((ARM - 4))
+  fi
   c1=$(dumpsys battery | sed -n 's/.*Charge counter: \([0-9]*\).*/\1/p')
   t1=$(date +%s)
   if [ -n "$c0" ] && [ -n "$c1" ] && [ $t1 -gt $t0 ]; then
