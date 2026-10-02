@@ -947,4 +947,7 @@
     <string name="ge_camera_speed">Touch camera speed: %1$d%%</string>
     <string name="ge_camera_area">Touch camera area: right %1$d%% of the screen</string>
     <string name="lib_last_profile">Last played as %1$s</string>
+    <string name="pt_version_unknown">Play the game once here to see which patch files are for your version.</string>
+    <string name="pt_version_yours">For the version you last played</string>
+    <string name="pt_version_other">For another version of the game: it will not apply to yours</string>
 </resources>

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: WTFPL
+#include <vector>
 #include "emulator_xendroid.h"
 #include "emulator.h"
 #include "xendroid_emu.h"
@@ -1324,6 +1325,18 @@ static jstring j_active_title_id(JNIEnv* env, jobject thiz) {
     return env->NewStringUTF(text);
 }
 
+// L10: the active title's module hashes as its patches were matched (main executable
+// first); empty before a title loads.
+static jlongArray j_module_hashes(JNIEnv* env, jobject thiz) {
+    const std::vector<uint64_t> hashes = ae::module_hashes();
+    auto array = env->NewLongArray(jsize(hashes.size()));
+    if (array && !hashes.empty()) {
+        const std::vector<jlong> values(hashes.begin(), hashes.end());
+        env->SetLongArrayRegion(array, 0, jsize(values.size()), values.data());
+    }
+    return array;
+}
+
 static jint j_build_lsfg_cache(JNIEnv* env, jobject thiz, jstring dll, jstring cache) {
     if (!dll || !cache) return int(lsfg::DllStatus::UnreadableFile);
     const char* dll_chars = env->GetStringUTFChars(dll, nullptr);
@@ -2000,6 +2013,7 @@ int register_xendroid_Emulator(JNIEnv* env){
             ,{"average_fps", "()D", (void *) j_average_fps}
             ,{"host_present_submission_count", "()J", (void *) j_host_present_submission_count}
             ,{"active_title_id", "()Ljava/lang/String;", (void *) j_active_title_id}
+            ,{"module_hashes", "()[J", (void *) j_module_hashes}
             ,{"set_presentation_mode", "(I)V", (void *) j_set_presentation_mode}
             ,{"set_scaling_effect", "(I)V", (void *) j_set_scaling_effect}
             ,{"set_color_filter", "(I)V", (void *) j_set_color_filter}

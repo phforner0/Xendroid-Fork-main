@@ -26,6 +26,7 @@
 #include "xenia/base/profiling.h"
 #include "xenia/config.h"
 #include "xenia/emulator.h"
+#include "xenia/patcher/patcher.h"
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/gpu/null/null_graphics_system.h"
 #include "xenia/gpu/vulkan/vulkan_graphics_system.h"
@@ -865,6 +866,13 @@ namespace ae{
         if (!g_windowed_app_ref || !g_windowed_app_ref->emu) return 0;
         const auto* emulator = g_windowed_app_ref->emu.get();
         return emulator->is_title_open() ? emulator->title_id() : 0;
+    }
+    std::vector<uint64_t> module_hashes() {
+        // Same lifetime rule as active_title_id.
+        if (!g_windowed_app_ref || !g_windowed_app_ref->emu) return {};
+        auto* emulator = g_windowed_app_ref->emu.get();
+        if (!emulator->is_title_open() || !emulator->patcher()) return {};
+        return emulator->patcher()->ModuleHashes(emulator->title_id());
     }
     void pause(){
         // DIRECT call on the calling (Android main) thread. Emulator::Pause() is

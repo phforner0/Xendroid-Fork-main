@@ -1089,7 +1089,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                 .onFailure { Log.w(TAG, "Writing diagnostic session context failed", it) }
                                             val profile = runCatching { firstPlayerXuid() }
                                                 .onFailure { Log.w(TAG, "Reading P1's profile failed", it) }.getOrNull()
-                                            if (activeRun != null) runCatching { xendroid.compose.sessions.SessionRuns.store().running(activeRun, activeTitle, driver, profile) }
+                                            val modules = runCatching { session.moduleHashes() }.getOrDefault(emptyList())
+                                            if (activeRun != null) runCatching { xendroid.compose.sessions.SessionRuns.store().running(activeRun, activeTitle, driver, profile, modules) }
                                                 .onFailure { Log.w(TAG, "Recording the running title failed", it) }
                                         }
                                         // C07: the vblank cap this run booted with, for comparisons; U01: the
@@ -1183,7 +1184,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             recordEvent("driver", driver.label)
                                         }
                                         lifecycleScope.launch(Dispatchers.IO) {
-                                            runCatching { xendroid.compose.sessions.SessionRuns.store().heartbeat(activeRun, summary, driver) }
+                                            val modules = runCatching { session.moduleHashes() }.getOrDefault(emptyList())
+                                            runCatching { xendroid.compose.sessions.SessionRuns.store().heartbeat(activeRun, summary, driver, modules) }
                                         }
                                         flushRunEvents()
                                     }

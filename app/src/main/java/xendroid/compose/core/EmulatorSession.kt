@@ -165,6 +165,10 @@ class EmulatorSession {
     /** Identity of the Vulkan driver actually loaded (see [DriverIdentity]); null before the presenter starts. */
     fun activeDriverIdentity(): DriverIdentity? =
         if (booted) DriverIdentity.parse(core.active_driver_identity().orEmpty()) else null
+    /** L10: the active title's module hashes as its patches were matched (main executable
+     *  first), 16 hex digits each; empty before a title loads. */
+    fun moduleHashes(): List<String> =
+        if (booted) core.module_hashes()?.map { "%016X".format(it) }.orEmpty() else emptyList()
     /** Cumulative guest frame-time counts per 1 ms bucket; null before boot. */
     fun guestFrameTimeHistogram(): LongArray? = if (booted) core.guest_frame_time_histogram() else null
     /** GPU time per timed frame-generation pass (0.25 ms buckets) + untimed passes last; null before boot. */

@@ -43,6 +43,9 @@ public class Emulator extends xendroid.emulator.Emulator{
     public native long host_present_submission_count();
     // Authoritative currently open title, or null while booting/no title is active.
     public native String active_title_id();
+    // L10: the active title's module hashes as its patches were matched (main executable
+    // first); empty before a title loads.
+    public native long[] module_hashes();
     public native void set_presentation_mode(int mode);
     public native void set_scaling_effect(int effect);
     public native void set_color_filter(int mode);

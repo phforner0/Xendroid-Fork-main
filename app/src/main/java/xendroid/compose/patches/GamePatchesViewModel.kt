@@ -24,8 +24,14 @@ class GamePatchesViewModel(
 
     sealed interface UiState {
         data object Loading : UiState
-        /** [conflicts]: patches on together that write the same memory (L11). */
-        data class Loaded(val files: List<PatchFile>, val conflicts: List<PatchConflict> = emptyList()) : UiState
+        /** [conflicts]: patches on together that write the same memory (L11); [versions]: each
+         *  file against the game's version (L10), [versionKnown] once a run recorded it. */
+        data class Loaded(
+            val files: List<PatchFile>,
+            val conflicts: List<PatchConflict> = emptyList(),
+            val versions: Map<String, PatchVersion.Match> = emptyMap(),
+            val versionKnown: Boolean = false,
+        ) : UiState
         data object Empty : UiState
         data class Error(val message: String) : UiState
     }
@@ -108,7 +114,10 @@ class GamePatchesViewModel(
         val conflicts = PatchFileCheck.conflicts(texts.mapNotNull { (file, text) ->
             runCatching { (if (file.mine) appContext.getString(R.string.pt_yours, file.variantLabel) else file.variantLabel) to PatchFileCheck.read(text) }.getOrNull()
         })
-        if (files.isEmpty()) UiState.Empty else UiState.Loaded(files, conflicts)
+        val gameHashes = runCatching { xendroid.compose.sessions.SessionRuns.store().lastRun(titleId)?.moduleHashes }
+            .getOrNull().orEmpty()
+        val versions = files.associate { it.fileName to PatchVersion.match(it.hashes, gameHashes) }
+        if (files.isEmpty()) UiState.Empty else UiState.Loaded(files, conflicts, versions, gameHashes.isNotEmpty())
     }.getOrElse { UiState.Error(it.message ?: appContext.getString(R.string.pt_load_failed)) }
 
     private companion object {

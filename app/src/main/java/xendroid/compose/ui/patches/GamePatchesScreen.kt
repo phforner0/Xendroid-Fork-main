@@ -92,7 +92,8 @@ fun GamePatchesScreen(
                 is GamePatchesViewModel.UiState.Error ->
                     Text(s.message, modifier = Modifier.padding(24.dp))
                 is GamePatchesViewModel.UiState.Loaded ->
-                    PatchList(files = s.files, conflicts = s.conflicts, onToggle = vm::toggle, onUpdate = vm::update,
+                    PatchList(files = s.files, conflicts = s.conflicts, versions = s.versions, versionKnown = s.versionKnown,
+                        onToggle = vm::toggle, onUpdate = vm::update,
                         onRemove = { removing = it })
             }
         }
@@ -103,6 +104,8 @@ fun GamePatchesScreen(
 private fun PatchList(
     files: List<PatchFile>,
     conflicts: List<xendroid.compose.patches.PatchConflict>,
+    versions: Map<String, xendroid.compose.patches.PatchVersion.Match>,
+    versionKnown: Boolean,
     onToggle: (PatchFile, PatchEntry, Boolean) -> Unit,
     onUpdate: (PatchFile, GamePatchesViewModel.UpdateAction) -> Unit,
     onRemove: (PatchFile) -> Unit,
@@ -115,6 +118,15 @@ private fun PatchList(
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
+        }
+        if (!versionKnown) {
+            item(key = "version-unknown") {
+                Text(
+                    stringResource(R.string.pt_version_unknown),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
         }
         if (conflicts.isNotEmpty()) {
             item(key = "conflicts") {
@@ -143,6 +155,16 @@ private fun PatchList(
                     }
                 }
             }
+            // L10: whether this file is for the version the player last played.
+            when (versions[file.fileName]) {
+                xendroid.compose.patches.PatchVersion.Match.YOURS -> item(key = "ver:${file.fileName}") {
+                    VersionLine(stringResource(R.string.pt_version_yours), MaterialTheme.colorScheme.primary)
+                }
+                xendroid.compose.patches.PatchVersion.Match.OTHER -> item(key = "ver:${file.fileName}") {
+                    VersionLine(stringResource(R.string.pt_version_other), MaterialTheme.colorScheme.error)
+                }
+                else -> {}
+            }
             file.update?.let { update ->
                 item(key = "upd:${file.fileName}") { CatalogUpdateCard(update) { onUpdate(file, it) } }
             }
@@ -155,6 +177,12 @@ private fun PatchList(
             item(key = "div:${file.fileName}") { HorizontalDivider() }
         }
     }
+}
+
+@Composable
+private fun VersionLine(text: String, color: androidx.compose.ui.graphics.Color) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = color,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
 }
 
 /** L10: news about this file's bundled catalog: applied by itself (undo) or waiting (preview). */

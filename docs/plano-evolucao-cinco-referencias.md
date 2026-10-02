@@ -422,8 +422,8 @@ mostrados na tela (a ordem do core não é definida). Falta: validação no apar
 e cópias que acompanham o catálogo de cada versão do app (`patches/PatchCatalog.kt`,
 `PatchStore.kt`): escolhas casadas por nome, atualização sozinha quando só os interruptores
 mudaram, prévia/confirmação quando o arquivo foi editado à mão, desfazer pela cópia anterior.
-Falta: dizer se um patch casa com a versão do executável do jogo (hash do módulo; precisa de
-JNI) e validação no aparelho (roteiro 25).
+Lote 12q: cada arquivo diz se é para a versão jogada por último (hashes dos módulos que o
+patcher comparou, via JNI, gravados no run). Falta: validação no aparelho (roteiro 25).
 
 **Estado L07 (2026-10-02, v1, Impl. + Local):** o provider que já existia foi endurecido e
 movido para `:app` (`DocumentsProvider.kt` + `userdata/UserDataFiles.kt`): só a raiz de dados

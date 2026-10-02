@@ -310,6 +310,11 @@ com comandos e resultados exatos.
    catálogo diferente e abrir a tela: aparece a prévia com "Update"/"Keep mine" e o arquivo não
    muda até a escolha. Jogar com o patch ligado e conferir no `xe.log` "PatchDB: Loaded patches"
    e o patch aplicado. Matar o app logo depois de um toque: o arquivo continua legível.
+   Lote 12q: antes de jogar, Game patches mostra "Play the game once here to see which patch files
+   are for your version."; depois de jogar uma vez e fechar, o arquivo do catálogo cujo hash bate
+   com o jogo diz "For the version you last played" (o `xe.log` mostra "Patcher: Applying patch
+   for:" só para patches desse arquivo) e um arquivo de outra versão (ex.: TU diferente) diz "For
+   another version of the game: it will not apply to yours".
 26. Lote 9 — patches do usuário (L11): Game patches → "+" → um `.patch.toml` válido do mesmo
    jogo: "Added …", aparece "… · added by you" com os patches desligados; ligar um, jogar e
    conferir no `xe.log` que ele foi aplicado. Importar o mesmo arquivo de novo: vira "(1)".

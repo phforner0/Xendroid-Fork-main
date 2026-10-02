@@ -947,4 +947,7 @@
     <string name="ge_camera_speed">Velocidade da câmera por toque: %1$d%%</string>
     <string name="ge_camera_area">Área da câmera por toque: %1$d%% da tela, à direita</string>
     <string name="lib_last_profile">Jogado por último como %1$s</string>
+    <string name="pt_version_unknown">Jogue uma vez aqui para ver quais arquivos de patch são para a sua versão.</string>
+    <string name="pt_version_yours">Para a versão que você jogou por último</string>
+    <string name="pt_version_other">Para outra versão do jogo: não vale na sua</string>
 </resources>

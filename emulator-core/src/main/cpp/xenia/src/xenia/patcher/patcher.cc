@@ -6,6 +6,7 @@
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
+#include <algorithm>
 #include <cstring>
 
 #include "xenia/base/logging.h"
@@ -21,6 +22,15 @@ Patcher::Patcher(std::filesystem::path patches_dir) {
 
 void Patcher::ApplyPatchesForTitle(Memory* memory, const uint32_t title_id,
                                    const std::optional<uint64_t> hash) {
+  if (hash) {
+    std::lock_guard<std::mutex> lock(module_hashes_mutex_);
+    const auto entry = std::make_pair(title_id, *hash);
+    if (module_hashes_.size() < kMaxModuleHashes &&
+        std::find(module_hashes_.cbegin(), module_hashes_.cend(), entry) ==
+            module_hashes_.cend()) {
+      module_hashes_.push_back(entry);
+    }
+  }
   patch_db_->LoadPatches();
   const auto title_patches = patch_db_->GetTitlePatches(title_id, hash);
 
@@ -34,6 +44,17 @@ void Patcher::ApplyPatchesForTitle(Memory* memory, const uint32_t title_id,
       ApplyPatch(memory, &patchEntry);
     }
   }
+}
+
+std::vector<uint64_t> Patcher::ModuleHashes(uint32_t title_id) const {
+  std::lock_guard<std::mutex> lock(module_hashes_mutex_);
+  std::vector<uint64_t> hashes;
+  for (const auto& [title, hash] : module_hashes_) {
+    if (title == title_id) {
+      hashes.push_back(hash);
+    }
+  }
+  return hashes;
 }
 
 void Patcher::ApplyPatch(Memory* memory, const PatchInfoEntry* patch) {

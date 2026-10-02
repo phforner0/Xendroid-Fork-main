@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 #include <cstdint>
+#include <vector>
 
 namespace ae{
     constexpr int BOOT_TYPE_WITH_PATH=1;
@@ -40,6 +41,8 @@ namespace ae{
     extern bool is_running();
     extern bool is_paused();
     extern uint32_t active_title_id();
+    // L10: the active title's module hashes as its patches were matched (main executable first).
+    extern std::vector<uint64_t> module_hashes();
     extern void pause();
     extern void resume();
     extern void quit();

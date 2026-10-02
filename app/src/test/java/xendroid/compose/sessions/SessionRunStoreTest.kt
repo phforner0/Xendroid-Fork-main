@@ -23,6 +23,10 @@ class SessionRunStoreTest {
         assertEquals("E03000002B7C4D1A", store.runs().single().profileXuid)          // L06: P1 when it started
         store.running(run.runId, "4D5309C9", profileXuid = "E030000000000099")
         assertEquals("E03000002B7C4D1A", store.runs().single().profileXuid)          // the first one stays
+        // L10: the module hashes as the patcher matched them, in loading order, each once.
+        store.heartbeat(run.runId, moduleHashes = listOf("0000a1b2c3d4e5f6", "bad", "0000A1B2C3D4E5F6"))
+        store.heartbeat(run.runId, moduleHashes = listOf("1122334455667788"))
+        assertEquals(listOf("0000A1B2C3D4E5F6", "1122334455667788"), store.runs().single().moduleHashes)
         now += 60_000
         store.heartbeat(run.runId)
         now += 1_000
