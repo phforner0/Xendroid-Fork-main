@@ -33,9 +33,15 @@ import xendroid.compose.settings.SettingsHost
 fun SettingRow(host: SettingsHost, s: Setting, modified: Boolean, raw: String? = null) {
     val contract = host.contract(s)
     Column(Modifier.fillMaxWidth()) {
+        if (!contract.available) {
+            // U03: an unavailable setting keeps its name and says why, instead of vanishing.
+            Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                RowTitle(s.title, modified = false, sub = contract.reason)
+            }
+            return@Column
+        }
         Text(contract.label, style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 6.dp))
-        if (!contract.available) return@Column
         when (s) {
     is Setting.Bool       -> BoolRow(host, s, modified)
     is Setting.IntRange   -> IntRow(host, s, modified)

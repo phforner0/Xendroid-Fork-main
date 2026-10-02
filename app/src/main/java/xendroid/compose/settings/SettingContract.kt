@@ -11,6 +11,10 @@ data class SettingContract(val scope: String, val apply: SettingApply,
     }
 }
 
+/** U03: why the custom driver setting is unavailable, and what runs instead. */
+const val UNSUPPORTED_DRIVER = "Unavailable: custom drivers load only on Adreno GPUs (Qualcomm KGSL), " +
+    "and this phone has none. Games run on the system driver."
+
 /** Disk editors never pretend that saving a cvar calls its live JNI setter. */
 fun settingContract(setting: Setting, scope: String, customDrivers: Boolean): SettingContract {
     val action = setting.name == "dump_session_logs"
@@ -20,5 +24,5 @@ fun settingContract(setting: Setting, scope: String, customDrivers: Boolean): Se
             "GPU|framerate_limit" -> LiveSetter.FPS_LIMIT
             "HID|show_touch_overlay" -> LiveSetter.TOUCH_OVERLAY
             else -> null
-        }, supported, if (supported) "" else "Custom driver loading is unavailable on this device")
+        }, supported, if (supported) "" else UNSUPPORTED_DRIVER)
 }

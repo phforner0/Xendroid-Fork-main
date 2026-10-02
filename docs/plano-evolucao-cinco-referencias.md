@@ -556,7 +556,9 @@ Player). Lote 12b: linha do driver na aba Graphics (carregado × ajuste no iníc
 Falta: validação no aparelho (roteiro 27).
 
 **Estado 2026-10-02:** U03 (parte) — driver pedido × carregado na linha do driver,
-pela identidade gravada no run, sem falso alarme para runs anteriores à troca. U06 v1 —
+pela identidade gravada no run, sem falso alarme para runs anteriores à troca; lote 12b/12f:
+a mesma comparação no menu em jogo e, sem KGSL, o ajuste do driver mostrado indisponível com a
+causa e o que roda no lugar. U06 v1 —
 layout de toque por Title ID e orientação ("This game only" no editor dentro do jogo),
 com retorno ao compartilhado. U06 v2 (lote 12d) — layouts nomeados (salvar/aplicar com prévia do
 que muda/apagar), arquivo `xendroid-touch-layout` versionado com importação validada, e campos e

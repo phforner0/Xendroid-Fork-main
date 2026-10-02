@@ -421,3 +421,7 @@ com comandos e resultados exatos.
    vazio em Recentes. Repetir com a biblioteca aberta antes (Home → frontend → jogo): ao sair pelo
    menu (Exit), volta ao frontend e, em Recentes, a biblioteca continua lá. Pela biblioteca, sair
    volta à biblioteca. Por um atalho fixado, sair volta à tela inicial.
+40. Lote 12 — driver indisponível (U03), só num aparelho sem GPU Adreno (Mali/Xclipse/PowerVR):
+   Configurações → Vulkan → "Custom Vulkan driver" aparece com o título e "Unavailable: custom
+   drivers load only on Adreno GPUs…; Games run on the system driver.", sem botão de escolher
+   arquivo; o mesmo nos ajustes de um jogo. Num Adreno, nada muda.
