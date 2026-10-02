@@ -383,6 +383,13 @@ de deltas guest; registrar unavailable/stale e aquecimento. Referências [X2–X
 | L11 | Mods Xbox opt-in | Somente formatos suportados por Xenia/patch/override de arquivos; namespace separado, ordem e conflitos explícitos, não substituir um save/DLC; não portar mods/Workshop Steam |
 | L12 | Lixeira de dados gerenciados | Mover somente dados internos elegíveis para namespace isolado sob lease/journal; restauração com preview de conflitos, cota e limpeza explícita; remover referência da biblioteca não exclui ROM externa |
 
+**Estado L06 (2026-10-02, parte 1, Impl. + Local):** jogos que saíram da biblioteca ficam
+indicados com o motivo (arquivo não encontrado, pasta indisponível, fora das pastas), a partir
+de um registro de títulos (`data/TitleRegistry.kt`) e do caminho da última sessão; "Remove"
+tira da lista sem apagar tempo de jogo, relatos, saves ou capa, e o jogo volta se o arquivo
+reaparecer. Falta: ficha com TU/DLC/patches e coleções (parte 2) e validação no aparelho
+(roteiro 20).
+
 **Estado L05 (2026-10-02, v1 local, Impl. + Local):** capa por Title ID em `files/covers`
 (`data/CoverStore.kt`), fora do cache e do URI: cópia do ícone do próprio jogo feita na
 varredura e capa escolhida pelo usuário na ficha (leitura limitada, tamanho conferido antes

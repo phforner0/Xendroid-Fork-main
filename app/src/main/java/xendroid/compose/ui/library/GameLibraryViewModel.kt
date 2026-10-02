@@ -28,6 +28,7 @@ import xendroid.compose.data.Game
 import xendroid.compose.data.GameFormat
 import xendroid.compose.data.GameLibraryRepository
 import xendroid.compose.data.IconCache
+import xendroid.compose.data.MissingTitle
 import xendroid.compose.data.PreferencesStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -175,18 +176,37 @@ class GameLibraryViewModel(
 
     init { refresh() }
 
-    private fun refreshActivity() {
+    /** L06: played or seen titles that the last scan did not list (file gone, folder away...). */
+    private val _missing = MutableStateFlow<List<MissingTitle>>(emptyList())
+    val missing: StateFlow<List<MissingTitle>> = _missing.asStateFlow()
+
+    /** Play history (recents, play time) and, with it, the missing titles of [loaded]: one
+     *  read of the run records per scan. */
+    private suspend fun refreshHistory(loaded: LibraryUiState.Loaded) {
+        val (activity, missing) = withContext(Dispatchers.IO) {
+            val runs = runCatching { xendroid.compose.sessions.SessionRuns.store().runs() }
+                .onFailure { Log.w("GameLibrary", "Reading play history failed", it) }
+                .getOrDefault(emptyList())
+            val missing = runCatching {
+                repo.missingTitles(loaded.games, loaded.unavailableRoots, xendroid.compose.sessions.lastGamePaths(runs))
+            }.onFailure { Log.w("GameLibrary", "Listing missing games failed", it) }.getOrDefault(emptyList())
+            xendroid.compose.sessions.titleActivityOf(runs).associateBy { it.titleId } to missing
+        }
+        _activity.value = activity
+        _missing.value = missing
+    }
+
+    fun hideMissing(title: MissingTitle) {
+        _missing.value = _missing.value.filterNot { it.titleId == title.titleId }
         viewModelScope.launch {
-            _activity.value = withContext(Dispatchers.IO) {
-                runCatching { xendroid.compose.sessions.SessionRuns.store().titleActivity().associateBy { it.titleId } }
-                    .onFailure { Log.w("GameLibrary", "Reading play history failed", it) }
-                    .getOrDefault(emptyMap())
-            }
+            runCatching { repo.hideMissingTitle(title) }.onFailure { Log.w("GameLibrary", "Saving the choice failed", it) }
         }
     }
 
+    /** The kept cover of a title that is not in the library (L05/L06). */
+    fun coverOfTitle(titleId: String): Any = covers.displayCover(titleId, null) ?: R.drawable.app_icon
+
     fun refresh() {
-        refreshActivity()
         if (!EmulatorRuntime.supportsVulkan) { _state.value = LibraryUiState.NoVulkan; return }
         // Keep an existing list visible during a pull-to-refresh (show only the pull
         // indicator); the full-screen spinner is for the first/empty load.
@@ -195,7 +215,7 @@ class GameLibraryViewModel(
         _isRefreshing.value = true
         viewModelScope.launch {
             val startMs = SystemClock.elapsedRealtime()
-            _state.value = runCatching {
+            val next = runCatching {
                 // ensureLoaded() can sleep + System.loadLibrary on delay-load devices
                 // (Adreno 5xx/6xx) -> never on the main thread.
                 withContext(Dispatchers.IO) {
@@ -208,6 +228,9 @@ class GameLibraryViewModel(
                     is GameLibraryRepository.ScanResult.Games -> LibraryUiState.Loaded(r.games, r.unavailableRoots)
                 }
             }.getOrElse { LibraryUiState.Error(it.message ?: "Failed to load library") }
+            // History before the list, so "Recently played" and the missing games match it.
+            if (next is LibraryUiState.Loaded) refreshHistory(next) else _missing.value = emptyList()
+            _state.value = next
             // A warm-cache rescan finishes faster than the PullToRefreshBox reveal animation,
             // which leaves the indicator visually stuck; hold it to a floor so it settles before
             // retracting (pull-to-refresh only -- the cold load shows the full-screen spinner).

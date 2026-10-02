@@ -138,6 +138,26 @@ class SessionRunStoreTest {
         assertEquals(2, activity[0].runs)
     }
 
+    @Test fun theLastPathOfEachTitleIsItsNewestFinishedRun() {
+        val store = store()
+        fun play(title: String, path: String) {
+            val run = store.begin("library", path, "v", pid = 1)
+            store.running(run.runId, title)
+            now += 1_000
+            store.finish(run.runId, RunState.ENDED, "exit")
+            now += 1_000
+        }
+        play("4D5309C9", "/old/Halo 3.iso")
+        play("4D5309C9", "/new/Halo 3.iso")
+        play("415607E6", "/games/Forza.zar")
+        val open = store.begin("library", "/later/Halo 3.iso", "v", pid = 2)
+        store.running(open.runId, "4D5309C9")   // still running: not where the game "was"
+        store.begin("library", "/never-started.iso", "v", pid = 3)
+        assertEquals(mapOf("4D5309C9" to "/new/Halo 3.iso", "415607E6" to "/games/Forza.zar"),
+            lastGamePaths(store.runs()))
+        assertEquals(store.titleActivity(), titleActivityOf(store.runs()))
+    }
+
     @Test fun invalidInputsAndDamagedRecordsAreRejectedOrIgnored() {
         val store = store()
         val run = store.begin("library", "/x.iso", "v", pid = 1)

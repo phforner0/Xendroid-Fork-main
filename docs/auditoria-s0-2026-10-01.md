@@ -252,3 +252,12 @@ com comandos e resultados exatos.
    outros jogos mostram o próprio ícone. "Create shortcut": o atalho usa a capa escolhida.
    "Use the game's own icon": volta o ícone do jogo. Escolher um arquivo que não é imagem (ou
    um PNG corrompido): "Could not use that image: …" e nada muda. Nenhum acesso à rede.
+20. Lote 9 — jogos que saíram da biblioteca (L06): jogar um pouco um jogo, sair, renomear a
+   ISO para fora do padrão (ex.: `.iso.bak`) e puxar para atualizar: aparece "1 game(s) you
+   played or added are no longer in the library. Review"; o diálogo mostra a capa, "File not
+   found…", o caminho antigo e o tempo de jogo. Tirar o cartão SD com jogos: esses não entram
+   no aviso (só no aviso de pasta) e aparecem em ⋮ → "Games no longer in the library" como
+   "Its game folder is not available now". "Remove" num jogo: some da lista e do aviso, e na
+   ficha de outro disco/título nada muda; voltar o nome `.iso` e atualizar: o jogo volta com o
+   mesmo tempo de jogo e relato. Remover uma pasta (L03) de jogos já jogados: eles aparecem
+   como "outside your game folders". Nenhum arquivo é apagado.

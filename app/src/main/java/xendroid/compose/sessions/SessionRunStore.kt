@@ -200,12 +200,7 @@ class SessionRunStore(
     }
 
     /** Recents and play time per title, from runs whose title actually started. */
-    fun titleActivity(): List<TitleActivity> = runs().filter { it.titleId != null && it.state.final }
-        .groupBy { it.titleId!! }
-        .map { (title, runs) ->
-            TitleActivity(title, runs.maxOf { it.endedAt ?: it.lastSeenAt }, runs.sumOf { it.playedMs ?: 0L }, runs.size)
-        }
-        .sortedByDescending { it.lastPlayedAt }
+    fun titleActivity(): List<TitleActivity> = titleActivityOf(runs())
 
     /** Keeps the newest [maxRecords] final runs; open runs are never pruned. A flight
      *  recorder log goes with its run, and one whose run is gone is removed too. */
@@ -229,6 +224,21 @@ class SessionRunStore(
         const val FATAL = ".fatal"
     }
 }
+
+/** Recents and play time per title, from the finished runs among [runs] whose title started. */
+fun titleActivityOf(runs: List<SessionRun>): List<TitleActivity> = runs.filter { it.titleId != null && it.state.final }
+    .groupBy { it.titleId!!.uppercase() }
+    .map { (title, runs) ->
+        TitleActivity(title, runs.maxOf { it.endedAt ?: it.lastSeenAt }, runs.sumOf { it.playedMs ?: 0L }, runs.size)
+    }
+    .sortedByDescending { it.lastPlayedAt }
+
+/** The game path of each title's newest finished run (L06: where a missing game was last). */
+fun lastGamePaths(runs: List<SessionRun>): Map<String, String> = runs
+    .filter { it.titleId != null && it.state.final && it.gamePath.isNotBlank() }
+    .sortedByDescending { it.startedAt }
+    .distinctBy { it.titleId!!.uppercase() }
+    .associate { it.titleId!!.uppercase() to it.gamePath }
 
 /** One line for the library: how the run ended and for how long the title ran. */
 fun describeRun(run: SessionRun): String {

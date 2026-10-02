@@ -22,6 +22,7 @@ class GameLibraryRepository(
     private val iconCache: IconCache,
     private val metadataCache: GameMetadataCache,
     private val covers: CoverStore,
+    private val titles: TitleRegistry,
 ) {
     private val tag = "GameLibraryRepo"
 
@@ -54,6 +55,19 @@ class GameLibraryRepository(
     suspend fun gameDirPaths(): List<String> = withContext(Dispatchers.IO) {
         prefs.gameDirPaths.firstOrNull().orEmpty()
     }
+
+    /** L06: titles seen by earlier scans, or played ([played]: title -> path of its last run),
+     *  that [games] does not list, each with the reason. */
+    suspend fun missingTitles(games: List<Game>, unavailable: List<String>, played: Map<String, String>): List<MissingTitle> =
+        withContext(Dispatchers.IO) {
+            val present = games.mapNotNullTo(HashSet()) { CoverStore.normalize(it.titleId) }
+            MissingTitles.find(titles.all(), played, present, prefs.gameDirPaths.firstOrNull().orEmpty(), unavailable) {
+                File(it).exists()
+            }
+        }
+
+    /** "Remove from list": play time, compatibility notes, saves and covers stay. */
+    suspend fun hideMissingTitle(title: MissingTitle) = withContext(Dispatchers.IO) { titles.hide(title) }
 
     suspend fun scan(): ScanResult = withContext(Dispatchers.IO) {
         scanMutex.withLock { scanLocked() }
@@ -152,6 +166,7 @@ class GameLibraryRepository(
         metadataCache.retainOnly(unique.mapTo(HashSet()) { it.launchUri }) { key -> away.any(key::startsWith) }
         metadataCache.save()
         keepCovers(unique)
+        runCatching { titles.record(unique) }.onFailure { Log.w(tag, "Recording the library's titles failed", it) }
         return ScanResult.Games(unique, missing)
     }
 

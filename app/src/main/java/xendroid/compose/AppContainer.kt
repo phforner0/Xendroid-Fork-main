@@ -9,6 +9,7 @@ import xendroid.compose.data.GameLibraryRepository
 import xendroid.compose.data.GameMetadataCache
 import xendroid.compose.data.IconCache
 import xendroid.compose.data.PreferencesStore
+import xendroid.compose.data.TitleRegistry
 import xendroid.compose.settings.ConfigStore
 import xendroid.compose.settings.GameSettingsRepository
 import xendroid.compose.settings.GameSettingsViewModel
@@ -41,8 +42,10 @@ class AppContainer(context: Context) {
     private val metadataCache = GameMetadataCache(appContext.cacheDir)
     // L05: covers by Title ID live in filesDir, so a cache clear or a moved file keeps them.
     private val covers = CoverStore(java.io.File(appContext.filesDir, "covers"))
+    // L06: titles the library has seen, so a game whose file is gone is reported, not forgotten.
+    private val titles = TitleRegistry(java.io.File(appContext.filesDir, "library"))
     val repository =
-        GameLibraryRepository(appContext, prefs, metadataSource, iconCache, metadataCache, covers)
+        GameLibraryRepository(appContext, prefs, metadataSource, iconCache, metadataCache, covers, titles)
 
     // ConfigStore is a stateless factory and is safe to share; the SettingsRepository
     // (which owns a single-use ConfigHandle) is built FRESH per ViewModel so one

@@ -177,6 +177,20 @@ fun GameLibraryScreen(
         )
     }
 
+    // L06: games played or seen before that this scan did not list.
+    val missing by viewModel.missing.collectAsStateWithLifecycle()
+    var missingOpen by remember { mutableStateOf(false) }
+    if (missingOpen) {
+        MissingGamesDialog(
+            missing = missing,
+            activity = activity,
+            coverOf = viewModel::coverOfTitle,
+            onRemove = viewModel::hideMissing,
+            onManageFolders = { missingOpen = false; viewModel.loadFolders(); foldersOpen = true },
+            onDismiss = { missingOpen = false },
+        )
+    }
+
     // L01: once, until finished or skipped; reopened from the menu. Not over the no-Vulkan
     // gate, which already explains why games cannot run.
     var assistantOpen by rememberSaveable { mutableStateOf(!FirstRunStore.done(context)) }
@@ -232,6 +246,12 @@ fun GameLibraryScreen(
                             DropdownMenuItem(
                                 text = { Text("Game folders") },
                                 onClick = { menuOpen = false; viewModel.loadFolders(); foldersOpen = true },
+                            )
+                        }
+                        if (missing.isNotEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text("Games no longer in the library (${missing.size})") },
+                                onClick = { menuOpen = false; missingOpen = true },
                             )
                         }
                         DropdownMenuItem(
@@ -340,6 +360,12 @@ fun GameLibraryScreen(
                                     modifier = Modifier.padding(horizontal = 8.dp)) {
                                     Text("${s.unavailableRoots.size} game folder(s) not available now " +
                                         "(SD card or permission?): their games are hidden. Manage folders")
+                                }
+                            }
+                            val gone = missing.count { it.reason != xendroid.compose.data.MissingTitles.Reason.FOLDER_AWAY }
+                            if (gone > 0) {
+                                TextButton(onClick = { missingOpen = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                    Text("$gone game(s) you played or added are no longer in the library. Review")
                                 }
                             }
                             OutlinedTextField(
