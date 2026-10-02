@@ -42,12 +42,37 @@ object LayoutPresets {
         }
     }
 
+    /** Why a layout is refused (a file to import, or a save): [english] for logs and tests, the
+     *  enum for the screen to say it in its language (U02); `%s` is the refusal's detail. */
+    enum class Refusal(val english: String) {
+        TOO_LARGE("The file is larger than 256 KB"),
+        NOT_JSON("Not a layout file"),
+        NOT_XENDROID("Not a XenDroid touch layout"),
+        NO_VERSION("The file has no format version"),
+        NEWER("Made by a newer XenDroid (layout version %s); update to import it"),
+        UNKNOWN_VERSION("Unknown layout version %s"),
+        DAMAGED("The layout is damaged"),
+        BAD_NAME("A layout needs a name of 1-%s characters"),
+        EMPTY("The file has no layout"),
+        TOO_MANY_CONTROLS("More than %s controls"),
+        DUPLICATE_CONTROL("A control appears twice"),
+        UNNAMED_CONTROL("A control has no valid name"),
+        OFF_SCREEN("%s is off the screen"),
+        BAD_SIZE("%s has a size out of range"),
+        NO_ORIENTATION("A layout needs at least one orientation"),
+        FULL("At most %s layouts; delete one first"),
+        CANNOT_OPEN("The file could not be opened"),
+        CANNOT_READ("The file could not be read (%s)"),
+    }
+
+    class RefusedException(val why: Refusal, val detail: String = "") : IllegalArgumentException(why.english.format(detail))
+
     /** Saves [preset] under its name: the layout with that name (any case) is replaced. */
     fun save(cfg: GamepadConfigDto, preset: LayoutPresetDto): GamepadConfigDto {
-        val name = requireNotNull(cleanName(preset.name)) { "A layout needs a name of 1-$MAX_NAME characters" }
-        require(preset.portrait != null || preset.landscape != null) { "A layout needs at least one orientation" }
+        val name = cleanName(preset.name) ?: throw RefusedException(Refusal.BAD_NAME, "$MAX_NAME")
+        if (preset.portrait == null && preset.landscape == null) throw RefusedException(Refusal.NO_ORIENTATION)
         val existing = find(cfg, name)
-        check(existing != null || cfg.presets.size < MAX_PRESETS) { "At most $MAX_PRESETS layouts; delete one first" }
+        if (existing == null && cfg.presets.size >= MAX_PRESETS) throw RefusedException(Refusal.FULL, "$MAX_PRESETS")
         val named = preset.copy(name = name)
         return cfg.copy(presets = if (existing == null) cfg.presets + named else cfg.presets.map { if (it === existing) named else it })
     }
@@ -103,32 +128,34 @@ object LayoutPresets {
 
     sealed interface Decoded {
         data class Ok(val preset: LayoutPresetDto) : Decoded
-        data class Refused(val reason: String) : Decoded
+        data class Refused(val why: Refusal, val detail: String = "") : Decoded {
+            val reason: String get() = why.english.format(detail)
+        }
     }
 
     /** Reads an exported layout; anything off the screen or out of range refuses the file. */
     fun decodeFile(text: String): Decoded {
-        if (text.length > MAX_FILE_BYTES) return Decoded.Refused("The file is larger than 256 KB")
-        val root = runCatching { json.parseToJsonElement(text).jsonObject }.getOrElse { return Decoded.Refused("Not a layout file") }
-        if ((root["format"] as? JsonPrimitive)?.content != FORMAT) return Decoded.Refused("Not a XenDroid touch layout")
-        val version = (root["version"] as? JsonPrimitive)?.intOrNull ?: return Decoded.Refused("The file has no format version")
-        if (version > VERSION) return Decoded.Refused("Made by a newer XenDroid (layout version $version); update to import it")
-        if (version < 1) return Decoded.Refused("Unknown layout version $version")
+        if (text.length > MAX_FILE_BYTES) return Decoded.Refused(Refusal.TOO_LARGE)
+        val root = runCatching { json.parseToJsonElement(text).jsonObject }.getOrElse { return Decoded.Refused(Refusal.NOT_JSON) }
+        if ((root["format"] as? JsonPrimitive)?.content != FORMAT) return Decoded.Refused(Refusal.NOT_XENDROID)
+        val version = (root["version"] as? JsonPrimitive)?.intOrNull ?: return Decoded.Refused(Refusal.NO_VERSION)
+        if (version > VERSION) return Decoded.Refused(Refusal.NEWER, "$version")
+        if (version < 1) return Decoded.Refused(Refusal.UNKNOWN_VERSION, "$version")
         val preset = runCatching { json.decodeFromJsonElement(LayoutPresetKeepUnknown, JsonObject(root - "format" - "version")) }
-            .getOrElse { return Decoded.Refused("The layout is damaged") }
-        val name = cleanName(preset.name) ?: return Decoded.Refused("A layout needs a name of 1-$MAX_NAME characters")
-        if (preset.portrait == null && preset.landscape == null) return Decoded.Refused("The file has no layout")
-        listOfNotNull(preset.portrait, preset.landscape).forEach { layout -> problem(layout)?.let { return Decoded.Refused(it) } }
+            .getOrElse { return Decoded.Refused(Refusal.DAMAGED) }
+        val name = cleanName(preset.name) ?: return Decoded.Refused(Refusal.BAD_NAME, "$MAX_NAME")
+        if (preset.portrait == null && preset.landscape == null) return Decoded.Refused(Refusal.EMPTY)
+        listOfNotNull(preset.portrait, preset.landscape).forEach { layout -> problem(layout)?.let { return it } }
         return Decoded.Ok(preset.copy(name = name))
     }
 
-    private fun problem(layout: OrientationLayoutDto): String? {
-        if (layout.controls.size > MAX_CONTROLS) return "More than $MAX_CONTROLS controls"
-        if (layout.controls.map { it.id }.toSet().size != layout.controls.size) return "A control appears twice"
+    private fun problem(layout: OrientationLayoutDto): Decoded.Refused? {
+        if (layout.controls.size > MAX_CONTROLS) return Decoded.Refused(Refusal.TOO_MANY_CONTROLS, "$MAX_CONTROLS")
+        if (layout.controls.map { it.id }.toSet().size != layout.controls.size) return Decoded.Refused(Refusal.DUPLICATE_CONTROL)
         layout.controls.forEach { c ->
-            if (c.id.isBlank() || c.id.length > 32) return "A control has no valid name"
-            if (!c.x.isFinite() || !c.y.isFinite() || c.x !in 0f..1f || c.y !in 0f..1f) return "${c.id} is off the screen"
-            if (!c.scale.isFinite() || c.scale !in 0.5f..3f) return "${c.id} has a size out of range"
+            if (c.id.isBlank() || c.id.length > 32) return Decoded.Refused(Refusal.UNNAMED_CONTROL)
+            if (!c.x.isFinite() || !c.y.isFinite() || c.x !in 0f..1f || c.y !in 0f..1f) return Decoded.Refused(Refusal.OFF_SCREEN, c.id)
+            if (!c.scale.isFinite() || c.scale !in 0.5f..3f) return Decoded.Refused(Refusal.BAD_SIZE, c.id)
         }
         return null
     }

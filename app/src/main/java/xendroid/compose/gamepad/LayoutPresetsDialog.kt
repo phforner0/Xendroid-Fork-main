@@ -1,5 +1,8 @@
 package xendroid.compose.gamepad
 
+import android.content.Context
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -59,7 +62,8 @@ fun LayoutPresetsDialog(
                 runCatching {
                     context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(LayoutPresets.encodeFile(preset).toByteArray()) }
                         ?: error("no file")
-                }.fold({ "Exported “${preset.name}”." }, { "Could not write the file: ${it.message}" })
+                }.fold({ context.getString(R.string.lp_exported, preset.name) },
+                    { context.getString(R.string.lp_write_failed, it.message ?: it.javaClass.simpleName) })
             }
         }
     }
@@ -70,66 +74,67 @@ fun LayoutPresetsDialog(
                 runCatching {
                     context.contentResolver.openInputStream(uri)?.use {
                         LayoutPresets.decodeFile(ArchiveFiles.readBounded(it, LayoutPresets.MAX_FILE_BYTES.toLong()).toString(Charsets.UTF_8))
-                    } ?: LayoutPresets.Decoded.Refused("The file could not be opened")
-                }.getOrElse { LayoutPresets.Decoded.Refused("The file could not be read (${it.message})") }
+                    } ?: LayoutPresets.Decoded.Refused(LayoutPresets.Refusal.CANNOT_OPEN)
+                }.getOrElse { LayoutPresets.Decoded.Refused(LayoutPresets.Refusal.CANNOT_READ, it.message ?: it.javaClass.simpleName) }
             }
             message = when (decoded) {
-                is LayoutPresets.Decoded.Refused -> "Not imported: ${decoded.reason}."
+                is LayoutPresets.Decoded.Refused -> context.getString(R.string.lp_not_imported, refusalText(context, decoded.why, decoded.detail))
                 is LayoutPresets.Decoded.Ok -> runCatching {
                     val named = decoded.preset.copy(name = LayoutPresets.uniqueName(config, decoded.preset.name))
                     onChange(LayoutPresets.save(config, named))
-                    "Imported “${named.name}”."
-                }.getOrElse { "Not imported: ${it.message}." }
+                    context.getString(R.string.lp_imported, named.name)
+                }.getOrElse { context.getString(R.string.lp_not_imported, failureText(context, it)) }
             }
         }
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Layouts") },
+        title = { Text(stringResource(R.string.lp_title)) },
         text = {
             Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (editScope != null) "Saving takes this game's layout; applying replaces it." else
-                    "Saving takes the shared layout; applying replaces it.", style = MaterialTheme.typography.bodySmall)
+                Text(if (editScope != null) stringResource(R.string.lp_scope_game) else
+                    stringResource(R.string.lp_scope_shared), style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(value = name, onValueChange = { name = it.take(LayoutPresets.MAX_NAME) }, singleLine = true,
-                        label = { Text("Name") }, modifier = Modifier.weight(1f))
+                        label = { Text(stringResource(R.string.lp_name)) }, modifier = Modifier.weight(1f))
                     TextButton(enabled = LayoutPresets.cleanName(name) != null, onClick = {
                         message = runCatching {
                             val replaced = LayoutPresets.find(config, name) != null
                             onChange(LayoutPresets.save(config, LayoutPresets.capture(config, editScope, name, System.currentTimeMillis())))
-                            if (replaced) "Replaced “${LayoutPresets.cleanName(name)}”." else "Saved “${LayoutPresets.cleanName(name)}”."
-                        }.getOrElse { it.message }
+                            context.getString(if (replaced) R.string.lp_replaced else R.string.lp_saved, LayoutPresets.cleanName(name))
+                        }.getOrElse { failureText(context, it) }
                         name = ""
-                    }) { Text("Save") }
+                    }) { Text(stringResource(R.string.common_save)) }
                 }
-                if (config.presets.isEmpty()) Text("No saved layouts yet.", style = MaterialTheme.typography.bodySmall)
+                if (config.presets.isEmpty()) Text(stringResource(R.string.lp_none), style = MaterialTheme.typography.bodySmall)
                 config.presets.forEach { preset ->
                     Column(Modifier.fillMaxWidth()) {
                         Text(preset.name, style = MaterialTheme.typography.bodyLarge)
-                        Text(listOfNotNull(preset.landscape?.let { "landscape" }, preset.portrait?.let { "portrait" }).joinToString(" + "),
+                        Text(listOfNotNull(preset.landscape?.let { stringResource(R.string.lp_landscape_lc) },
+                            preset.portrait?.let { stringResource(R.string.lp_portrait_lc) }).joinToString(" + "),
                             style = MaterialTheme.typography.bodySmall)
                         Row {
-                            TextButton(onClick = { applying = preset }) { Text("Apply…") }
+                            TextButton(onClick = { applying = preset }) { Text(stringResource(R.string.lp_apply_ellipsis)) }
                             TextButton(onClick = {
                                 exporting = preset
                                 exportLauncher.launch("${preset.name.replace(Regex("[\\\\/:*?\"<>|]"), "_")}.xdlayout.json")
-                            }) { Text("Export") }
+                            }) { Text(stringResource(R.string.lp_export)) }
                             TextButton(onClick = {
                                 onChange(LayoutPresets.delete(config, preset.name))
-                                message = "Deleted “${preset.name}”."
-                            }) { Text("Delete") }
+                                message = context.getString(R.string.lp_deleted, preset.name)
+                            }) { Text(stringResource(R.string.common_delete)) }
                         }
                     }
                 }
                 TextButton(onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) {
-                    Text("Import a layout file…")
+                    Text(stringResource(R.string.lp_import))
                 }
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                Text("Saved layouts are kept with Save & Quit.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.lp_kept_note), style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 
     applying?.let { preset ->
@@ -139,23 +144,62 @@ fun LayoutPresetsDialog(
         }
         AlertDialog(
             onDismissRequest = { applying = null },
-            title = { Text("Apply “${preset.name}”?") },
+            title = { Text(stringResource(R.string.lp_apply_title, preset.name)) },
             text = {
-                Text(buildString {
-                    append(if (diff != null) "${if (landscape) "Landscape" else "Portrait"}: ${diff.summary}."
-                        else "It has no ${if (landscape) "landscape" else "portrait"} layout; this orientation stays.")
-                    val other = if (landscape) preset.portrait else preset.landscape
-                    if (other != null) append(" The ${if (landscape) "portrait" else "landscape"} layout is replaced too.")
-                })
+                Text(listOfNotNull(
+                    if (diff != null) stringResource(if (landscape) R.string.lp_diff_landscape else R.string.lp_diff_portrait, diffText(diff))
+                    else stringResource(if (landscape) R.string.lp_no_landscape else R.string.lp_no_portrait),
+                    (if (landscape) preset.portrait else preset.landscape)?.let {
+                        stringResource(if (landscape) R.string.lp_other_portrait else R.string.lp_other_landscape)
+                    },
+                ).joinToString(" "))
             },
             confirmButton = {
                 TextButton(onClick = {
                     onChange(LayoutPresets.apply(config, preset, editScope))
-                    message = "Applied “${preset.name}”."
+                    message = context.getString(R.string.lp_applied, preset.name)
                     applying = null
-                }) { Text("Apply") }
+                }) { Text(stringResource(R.string.lp_apply)) }
             },
-            dismissButton = { TextButton(onClick = { applying = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { applying = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 }
+
+/** U02: what applying changes, in the shown language. */
+@Composable
+private fun diffText(diff: LayoutPresets.Diff): String {
+    val parts = listOfNotNull(
+        diff.moved.takeIf { it > 0 }?.let { stringResource(R.string.lp_diff_moved, it) },
+        diff.resized.takeIf { it > 0 }?.let { stringResource(R.string.lp_diff_resized, it) },
+        diff.shown.takeIf { it > 0 }?.let { stringResource(R.string.lp_diff_shown, it) },
+        diff.hidden.takeIf { it > 0 }?.let { stringResource(R.string.lp_diff_hidden, it) },
+    )
+    return if (parts.isEmpty()) stringResource(R.string.lp_diff_nothing) else stringResource(R.string.lp_diff_controls, parts.joinToString(", "))
+}
+
+/** U02: why a layout is refused, in the shown language. */
+private fun refusalText(context: Context, why: LayoutPresets.Refusal, detail: String): String = when (why) {
+    LayoutPresets.Refusal.TOO_LARGE -> context.getString(R.string.lp_refuse_too_large)
+    LayoutPresets.Refusal.NOT_JSON -> context.getString(R.string.lp_refuse_not_json)
+    LayoutPresets.Refusal.NOT_XENDROID -> context.getString(R.string.lp_refuse_not_xendroid)
+    LayoutPresets.Refusal.NO_VERSION -> context.getString(R.string.lp_refuse_no_version)
+    LayoutPresets.Refusal.NEWER -> context.getString(R.string.lp_refuse_newer, detail)
+    LayoutPresets.Refusal.UNKNOWN_VERSION -> context.getString(R.string.lp_refuse_unknown_version, detail)
+    LayoutPresets.Refusal.DAMAGED -> context.getString(R.string.lp_refuse_damaged)
+    LayoutPresets.Refusal.BAD_NAME -> context.getString(R.string.lp_refuse_bad_name, detail)
+    LayoutPresets.Refusal.EMPTY -> context.getString(R.string.lp_refuse_empty)
+    LayoutPresets.Refusal.TOO_MANY_CONTROLS -> context.getString(R.string.lp_refuse_too_many, detail)
+    LayoutPresets.Refusal.DUPLICATE_CONTROL -> context.getString(R.string.lp_refuse_duplicate)
+    LayoutPresets.Refusal.UNNAMED_CONTROL -> context.getString(R.string.lp_refuse_unnamed)
+    LayoutPresets.Refusal.OFF_SCREEN -> context.getString(R.string.lp_refuse_off_screen, detail)
+    LayoutPresets.Refusal.BAD_SIZE -> context.getString(R.string.lp_refuse_bad_size, detail)
+    LayoutPresets.Refusal.NO_ORIENTATION -> context.getString(R.string.lp_refuse_no_orientation)
+    LayoutPresets.Refusal.FULL -> context.getString(R.string.lp_refuse_full, detail)
+    LayoutPresets.Refusal.CANNOT_OPEN -> context.getString(R.string.lp_refuse_cannot_open)
+    LayoutPresets.Refusal.CANNOT_READ -> context.getString(R.string.lp_refuse_cannot_read, detail)
+}
+
+/** A save or import that threw: the refusal in the shown language, else the system's words. */
+private fun failureText(context: Context, e: Throwable): String =
+    (e as? LayoutPresets.RefusedException)?.let { refusalText(context, it.why, it.detail) } ?: e.message ?: e.javaClass.simpleName

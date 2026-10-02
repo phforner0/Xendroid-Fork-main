@@ -1,5 +1,7 @@
 package xendroid.compose.gamepad
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -236,7 +238,7 @@ fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit, inGam
                 try { controller.save(working); onDone() }
                 catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
-                    android.widget.Toast.makeText(context, "Could not save the layout; previous file kept", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(context, context.getString(R.string.ge_save_failed), android.widget.Toast.LENGTH_LONG).show()
                 }
             } },
         )
@@ -282,7 +284,7 @@ private fun EditorChrome(
             tonalElevation = 4.dp,
         ) {
             TextButton(onClick = onToggleCollapse,
-                modifier = Modifier.padding(horizontal = 4.dp)) { Text("✎  Edit tools") }
+                modifier = Modifier.padding(horizontal = 4.dp)) { Text(stringResource(R.string.ge_edit_tools)) }
         }
         return
     }
@@ -302,23 +304,23 @@ private fun EditorChrome(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 FilterChip(selected = landscape, onClick = { onSetLandscape(true) },
-                    label = { Text("Landscape") })
+                    label = { Text(stringResource(R.string.ge_landscape)) })
                 FilterChip(selected = !landscape, onClick = { onSetLandscape(false) },
-                    label = { Text("Portrait") })
-                FilterChip(selected = snap, onClick = onToggleSnap, label = { Text("Snap") })
+                    label = { Text(stringResource(R.string.ge_portrait)) })
+                FilterChip(selected = snap, onClick = onToggleSnap, label = { Text(stringResource(R.string.ge_snap)) })
                 if (perGame != null) {
-                    FilterChip(selected = perGame, onClick = onTogglePerGame, label = { Text("This game only") })
+                    FilterChip(selected = perGame, onClick = onTogglePerGame, label = { Text(stringResource(R.string.ge_this_game)) })
                 }
-                TextButton(onClick = onReset) { Text("Reset") }
-                TextButton(onClick = onLayouts) { Text("Layouts") }
-                TextButton(onClick = onHideShow, enabled = hasSelection) { Text("Hide / Show") }
-                TextButton(onClick = onToggleGlobals) { Text("Globals") }
-                TextButton(onClick = onToggleCollapse) { Text("Collapse ▾") }
+                TextButton(onClick = onReset) { Text(stringResource(R.string.ge_reset)) }
+                TextButton(onClick = onLayouts) { Text(stringResource(R.string.lp_title)) }
+                TextButton(onClick = onHideShow, enabled = hasSelection) { Text(stringResource(R.string.ge_hide_show)) }
+                TextButton(onClick = onToggleGlobals) { Text(stringResource(R.string.ge_globals)) }
+                TextButton(onClick = onToggleCollapse) { Text(stringResource(R.string.ge_collapse)) }
             }
             // Size of the selected control (only shown when one is selected). Absolute scale.
             if (selectedScale != null) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Size", modifier = Modifier.padding(end = 8.dp))
+                    Text(stringResource(R.string.ge_size), modifier = Modifier.padding(end = 8.dp))
                     Slider(value = selectedScale, valueRange = 0.5f..3f,
                         onValueChange = onScaleSelected, modifier = Modifier.weight(1f))
                     Text("${(selectedScale * 100).roundToInt()}%",
@@ -329,8 +331,8 @@ private fun EditorChrome(
             Row(verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End,
                 modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onCancel) { Text("Cancel") }
-                Button(onClick = onSave, modifier = Modifier.padding(start = 8.dp)) { Text("Save & Quit") }
+                TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
+                Button(onClick = onSave, modifier = Modifier.padding(start = 8.dp)) { Text(stringResource(R.string.ge_save_quit)) }
             }
         }
     }
@@ -342,20 +344,20 @@ private fun GlobalsEditor(
     mutate: ((GamepadGlobalsDto) -> GamepadGlobalsDto) -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-        Text("Whole-pad settings (apply to every control, not the selected one):",
+        Text(stringResource(R.string.ge_globals_title),
             style = MaterialTheme.typography.labelMedium)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Enabled", modifier = Modifier.padding(end = 8.dp))
+            Text(stringResource(R.string.ge_enabled), modifier = Modifier.padding(end = 8.dp))
             Switch(checked = globals.enabled, onCheckedChange = { v -> mutate { it.copy(enabled = v) } })
         }
-        Text("Opacity: ${(globals.opacity * 100).roundToInt()}%")
+        Text(stringResource(R.string.ge_opacity, (globals.opacity * 100).roundToInt()))
         Slider(value = globals.opacity, valueRange = 0.2f..1.0f,
             onValueChange = { v -> mutate { it.copy(opacity = v) } })
-        Text("Auto-hide: ${globals.autoHideSeconds.roundToInt()}s (0 = off)")
+        Text(stringResource(R.string.ge_auto_hide, globals.autoHideSeconds.roundToInt()))
         Slider(value = globals.autoHideSeconds, valueRange = 0f..20f,
             onValueChange = { v -> mutate { it.copy(autoHideSeconds = v) } })
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Haptics", modifier = Modifier.padding(end = 8.dp))
+            Text(stringResource(R.string.ge_haptics), modifier = Modifier.padding(end = 8.dp))
             Switch(checked = globals.hapticsEnabled,
                 onCheckedChange = { v -> mutate { it.copy(hapticsEnabled = v) } })
         }

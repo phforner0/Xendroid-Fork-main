@@ -550,9 +550,10 @@ línguas. Lote 12h: biblioteca inteira, diálogos, assistente inicial e navegado
 12i: Configurações (moldura, ajustes do modo Jogador, drivers, pacote de dados, atualizações, perfis
 recomendados); lote 12j: Perfis, Saves e Conteúdo (telas e mensagens); lote 12k: patches, teste de
 controles, comparação (moldura), companion (motivos estruturados), diagnóstico, sobre, teclas, pausa,
-disco, faixa de início, compressão, avisos do host e atualizador. Falta: editor de toque e layouts,
-veredito/avisos da comparação e eventos de conexão do teste de controles, textos de estado de outros
-componentes (ADPF, TV, telefones como controle), RTL e texto grande no aparelho (roteiro 28).
+disco, faixa de início, compressão, avisos do host e atualizador; lote 12l: editor de toque e
+layouts (recusas estruturadas). Falta: veredito/avisos da comparação e eventos de conexão do teste
+de controles, textos de estado de outros componentes (ADPF, TV, telefones como controle), RTL e
+texto grande no aparelho (roteiro 28).
 
 **Estado U01 (2026-10-02, Impl. + Local):** abas Graphics (apresentação/FG), System
 (FPS/energia/HUD), Controls (layout/jogadores/gyro) e Session (pausa/som/logs/sair), com o

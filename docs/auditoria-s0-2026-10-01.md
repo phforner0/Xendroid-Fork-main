@@ -347,6 +347,10 @@ com comandos e resultados exatos.
    pausa, troca de disco, a faixa "Iniciando o jogo… N s" antes do primeiro quadro, comprimir um .iso
    e Procurar atualizações aparecem em português; o aviso de pausa do atualizador quebra em duas
    linhas.
+   Lote 12l: Controles de toque → editor em português (Paisagem/Retrato, Alinhar à grade, Gerais,
+   Salvar e sair); Layouts: salvar um, aplicar outro (a prévia diz "Paisagem: Controles: N movido(s)…"),
+   exportar e importar o arquivo; importar um arquivo que não é layout diz "Não importado: Não é um
+   arquivo de layout."; nenhum botão da barra cortado em tela pequena.
 29. Lote 10 — navegação por controle (U04): na biblioteca, A abre o jogo e B volta; em
    Configurações → "Menus: A confirms…" → "Swap": agora B abre e A volta na hora. Abrir um jogo:
    no menu em jogo, B ativa e A fecha/cancela; dentro do jogo os botões continuam os de sempre.

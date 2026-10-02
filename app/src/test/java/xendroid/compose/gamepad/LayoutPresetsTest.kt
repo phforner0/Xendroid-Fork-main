@@ -105,5 +105,12 @@ class LayoutPresetsTest {
         assertEquals("A control appears twice", refusal(twice))
         assertEquals("The file has no layout", refusal(LayoutPresets.encodeFile(preset.copy(landscape = null))))
         assertTrue(refusal(" ".repeat(LayoutPresets.MAX_FILE_BYTES + 1)).startsWith("The file is larger"))
+        // The screen says them from the reason and its detail, in its language.
+        val off = LayoutPresets.decodeFile(text.replace("\"x\":0.7", "\"x\":1.5")) as LayoutPresets.Decoded.Refused
+        assertEquals(LayoutPresets.Refusal.OFF_SCREEN to "A", off.why to off.detail)
+        val full = (1..LayoutPresets.MAX_PRESETS).fold(GamepadConfigDto()) { cfg, n -> LayoutPresets.save(cfg, preset.copy(name = "L$n")) }
+        val refused = runCatching { LayoutPresets.save(full, preset.copy(name = "One more")) }.exceptionOrNull() as LayoutPresets.RefusedException
+        assertEquals(LayoutPresets.Refusal.FULL, refused.why)
+        assertEquals("At most ${LayoutPresets.MAX_PRESETS} layouts; delete one first", refused.message)
     }
 }
