@@ -19,6 +19,13 @@ class PresentationStateTest {
         assertTrue(state.label.contains("7 late frames skipped"))
     }
 
+    @Test fun syntheticSlotsAreDecodedAndOlderCoresLeaveThemAtZero() {
+        assertEquals(42L, PresentationState.decode(longArrayOf(0, 1, 2, 0, 10, 2_500_000, 1, 120_000, 0, 0, 0, 2, 7, 42)).syntheticSlots)
+        assertEquals(0L, PresentationState.decode(longArrayOf(0, 1, 2, 0, 10, 2_500_000, 1, 120_000, 0, 0, 0, 2, 7)).syntheticSlots)
+        // An untimed pass is reported as unavailable, not as a stale figure.
+        assertTrue(PresentationState.decode(longArrayOf(0, 1, 2, 0, 10, -1_000_000, 0, 60_000)).label.contains("GPU timing unavailable"))
+    }
+
     @Test fun stateLabelIgnoresPerFrameFigures() {
         val a = PresentationState.decode(longArrayOf(0, 1, 2, 0, 10, 2_500_000, 1, 120_000, 1, 0, 0, 3, 0))
         val b = PresentationState.decode(longArrayOf(0, 1, 2, 0, 99, 3_100_000, 4, 120_000, 1, 0, 0, 3, 5))

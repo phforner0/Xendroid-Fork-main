@@ -23,8 +23,20 @@ tasks.named('preBuild').configure { dependsOn(syncGamePatches) }
 def buildIdentity = new Properties()
 def buildIdentityFile = rootProject.file('build-identity.properties')
 if (buildIdentityFile.isFile()) buildIdentityFile.withInputStream { buildIdentity.load(it) }
-def buildBaseCommit = buildIdentity.getProperty('base') ?: (project.findProperty('gitHash') ?: 'unknown')
-def buildChangeset = buildIdentity.getProperty('changeset') ?: ''
+// Without the file (the script was not run) the commit still comes from git, but the local
+// changes are unknown: "<commit>+local.unknown", never presented as the clean commit.
+def gitHeadCommit = {
+    try {
+        providers.exec {
+            commandLine 'git', '-C', rootProject.projectDir.absolutePath, 'rev-parse', '--short=8', 'HEAD'
+            ignoreExitValue = true
+        }.standardOutput.asText.get().trim() ?: null
+    } catch (Exception ignored) {
+        null
+    }
+}
+def buildBaseCommit = buildIdentity.getProperty('base') ?: (project.findProperty('gitHash') ?: gitHeadCommit() ?: 'unknown')
+def buildChangeset = buildIdentity.getProperty('changeset') ?: (buildIdentityFile.isFile() ? '' : 'unknown')
 def buildVersionName = project.findProperty('gitHash') ?:
     (buildChangeset ? "${buildBaseCommit}+local.${buildChangeset}" : buildBaseCommit)
 

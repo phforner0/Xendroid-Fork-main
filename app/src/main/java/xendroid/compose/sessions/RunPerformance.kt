@@ -58,6 +58,9 @@ data class RunPerformance(
     val generationGpuUntimed: Long? = null,
     val lateSyntheticSkips: Long? = null,
     val replacedGuestFrames: Long? = null,
+    /** Synthetic output slots the schedule offered (F02): late skips + painted; of the painted
+     *  ones, [syntheticSubmissions] became synthetic frames on screen. */
+    val syntheticSlots: Long? = null,
 ) {
     val sampledSeconds: Int get() = fpsHistogram.sum()
     val frames: Long get() = frameTimeHistogramMs.sum()
@@ -128,18 +131,29 @@ data class RunPerformance(
 }
 
 /**
- * "120 synthetic frames over 30 s · GPU per generation pass: median under 3.25 ms, 95th
- * under 4.50 ms, 99th under 6.00 ms (118 timed, 2 not timed) · 3 late outputs skipped ·
- * 2 guest frames replaced before being shown", or null in a run without frame generation.
+ * "120 synthetic frames over 30 s (of 150 slots: 12 skipped late, 18 painted without a
+ * generated frame) · GPU per generation pass: median under 3.25 ms, 95th under 4.50 ms, 99th
+ * under 6.00 ms (118 timed, 2 not timed) · 2 guest frames replaced before being shown", or
+ * null in a run without frame generation.
  */
 fun describeFrameGeneration(perf: RunPerformance): String? {
     val untimed = perf.generationGpuUntimed ?: 0L
     val late = perf.lateSyntheticSkips ?: 0L
     val replaced = perf.replacedGuestFrames ?: 0L
+    val slots = perf.syntheticSlots ?: 0L
     val timed = perf.timedGenerations
     if (perf.frameGenerationSeconds == 0 && perf.syntheticSubmissions == 0L && timed == 0L && untimed == 0L &&
-        late == 0L && replaced == 0L) return null
-    val parts = mutableListOf("${perf.syntheticSubmissions} synthetic frames over ${perf.frameGenerationSeconds} s")
+        late == 0L && replaced == 0L && slots == 0L) return null
+    var head = "${perf.syntheticSubmissions} synthetic frames over ${perf.frameGenerationSeconds} s"
+    if (slots > 0) {
+        // Painted slots that did not reach the screen as a synthetic frame: warm-up, fallback
+        // to the real frame, a failed presentation or a surface that was not paintable.
+        val ungenerated = (slots - late - perf.syntheticSubmissions).coerceAtLeast(0)
+        val detail = listOfNotNull(late.takeIf { it > 0 }?.let { "$it skipped late" },
+            ungenerated.takeIf { it > 0 }?.let { "$it painted without a generated frame" })
+        head += " (of $slots slots" + (if (detail.isEmpty()) "" else ": " + detail.joinToString(", ")) + ")"
+    }
+    val parts = mutableListOf(head)
     fun bound(fraction: Double): String {
         val ms = perf.generationGpuUpperMs(fraction) ?: return "?"
         return if (ms >= RunPerformance.GENERATION_GPU_OPEN_MS) "%.0f ms or more".format(java.util.Locale.ROOT, ms)
@@ -150,7 +164,7 @@ fun describeFrameGeneration(perf: RunPerformance): String? {
             "($timed timed" + (if (untimed > 0) ", $untimed not timed" else "") + ")"
         untimed > 0 -> parts += "GPU time not measured ($untimed passes could not be timed)"
     }
-    if (late > 0) parts += "$late late outputs skipped"
+    if (late > 0 && slots == 0L) parts += "$late late outputs skipped"
     if (replaced > 0) parts += "$replaced guest frames replaced before being shown"
     return parts.joinToString(" · ")
 }
@@ -249,13 +263,13 @@ class RunPerformanceAccumulator(private val maxFps: Int = 240) {
      * as its last element (Emulator.frame_generation_gpu_histogram), late synthetic skips and
      * replaced guest frames (presentation state). The first call is the run's baseline.
      */
-    fun frameGeneration(gpuHistogram: LongArray?, lateSkips: Long, replacedGuestFrames: Long) {
+    fun frameGeneration(gpuHistogram: LongArray?, lateSkips: Long, replacedGuestFrames: Long, syntheticSlots: Long = 0) {
         if (gpuHistogram != null && gpuHistogram.size >= 2) {
             val baseline = generationBaseline
             if (baseline == null || baseline.size != gpuHistogram.size) generationBaseline = gpuHistogram.copyOf()
             generationLatest = gpuHistogram.copyOf()
         }
-        val counters = longArrayOf(lateSkips, replacedGuestFrames)
+        val counters = longArrayOf(lateSkips, replacedGuestFrames, syntheticSlots)
         if (fgCountersBaseline == null) fgCountersBaseline = counters
         fgCountersLatest = counters
     }
@@ -346,14 +360,16 @@ class RunPerformanceAccumulator(private val maxFps: Int = 240) {
         val generation = generationDeltas()
         val late = fgCounterDelta(0)
         val replaced = fgCounterDelta(1)
+        val slots = fgCounterDelta(2)
         // A run that never generated keeps these empty rather than a row of zeros.
         val generated = fgSeconds > 0 || synthetic > 0 || (generation?.any { it > 0 } ?: false) ||
-            (late ?: 0) > 0 || (replaced ?: 0) > 0
+            (late ?: 0) > 0 || (replaced ?: 0) > 0 || (slots ?: 0) > 0
         return base().copy(
             generationGpuHistogram = if (generated) generation?.dropLast(1)?.dropLastWhile { it == 0L }.orEmpty() else emptyList(),
             generationGpuUntimed = if (generated) generation?.lastOrNull() else null,
             lateSyntheticSkips = if (generated) late else null,
             replacedGuestFrames = if (generated) replaced else null,
+            syntheticSlots = if (generated) slots else null,
         )
     }
 

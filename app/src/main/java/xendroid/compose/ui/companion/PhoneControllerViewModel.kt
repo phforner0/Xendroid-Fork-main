@@ -8,6 +8,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Base64
 import androidx.compose.runtime.mutableStateOf
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import java.security.SecureRandom
@@ -36,7 +37,7 @@ class PhoneControllerViewModel(app: Application) : AndroidViewModel(app) {
         ?.takeIf { it.size == 16 }
         ?: ByteArray(16).also { id ->
             SecureRandom().nextBytes(id)
-            prefs.edit().putString("client_id", Base64.encodeToString(id, Base64.NO_WRAP)).apply()
+            prefs.edit { putString("client_id", Base64.encodeToString(id, Base64.NO_WRAP)) }
         }
 
     val address = mutableStateOf(prefs.getString("address", "").orEmpty())
@@ -64,7 +65,7 @@ class PhoneControllerViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<CompanionPadLink.State> = link.state
 
     fun connect() {
-        prefs.edit().putString("address", address.value.trim()).putString("name", name.value.trim()).apply()
+        prefs.edit { putString("address", address.value.trim()); putString("name", name.value.trim()) }
         val (where, pairing, who) = Triple(address.value, code.value, name.value)
         viewModelScope.launch(Dispatchers.IO) { link.connect(where, pairing, who) }
     }
@@ -81,7 +82,7 @@ class PhoneControllerViewModel(app: Application) : AndroidViewModel(app) {
     fun cycleIntensity() {
         intensity.value = intensity.value.next()
         intensityNow = intensity.value
-        prefs.edit().putString("rumble", intensity.value.name).apply()
+        prefs.edit { putString("rumble", intensity.value.name) }
         if (state.value is CompanionPadLink.State.Playing) vibrate(rumbleAmplitude(lastMotors, intensityNow))
     }
 

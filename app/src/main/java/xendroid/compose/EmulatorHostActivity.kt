@@ -1034,7 +1034,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         guestFrames = guestFrames,
                                     )
                                     runPerformance.frameTimes(frameTimes)
-                                    runPerformance.frameGeneration(session.frameGenerationGpuHistogram(), fgNow.lateSkips, fgNow.dropped)
+                                    runPerformance.frameGeneration(session.frameGenerationGpuHistogram(), fgNow.lateSkips, fgNow.dropped, fgNow.syntheticSlots)
                                     notePresentation(fgNow, runningNow, guestFrames ?: session.hostPresentSubmissionCount())
                                     val compileStats = session.shaderCompileStats()
                                     if (bootStatus.value != null) {
@@ -1661,7 +1661,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 runPerformance.battery(xendroid.compose.sessions.SessionRuns.batteryCelsius(applicationContext))
                 runPerformance.frameTimes(session.guestFrameTimeHistogram())
                 session.presentationState().let { fg ->
-                    runPerformance.frameGeneration(session.frameGenerationGpuHistogram(), fg.lateSkips, fg.dropped)
+                    runPerformance.frameGeneration(session.frameGenerationGpuHistogram(), fg.lateSkips, fg.dropped, fg.syntheticSlots)
                 }
                 runPerformance.compiles(session.shaderCompileStats())
                 runPerformance.audio(session.audioRunStats())

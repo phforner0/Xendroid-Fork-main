@@ -249,11 +249,8 @@ class VulkanPresenter final : public Presenter {
   void ResetColorFilter();
   std::shared_ptr<FrameGenContext> fg_context_;
   std::thread fg_thread_;
-  std::mutex fg_mutex_;
-  std::condition_variable fg_condition_;
-  bool fg_shutdown_ = false;
-  uint64_t fg_notification_ = 0;
-  int64_t fg_arrival_ns_ = 0;
+  // Guest outputs announced to the frame-generation thread (RunFrameGenerationLoop).
+  FrameGenerationQueue fg_queue_;
   bool fg_scheduled_paint_ = false;
   bool fg_generated_phase_ = false;
   bool fg_actual_synthetic_ = false;

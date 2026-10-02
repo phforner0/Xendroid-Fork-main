@@ -5,7 +5,9 @@ data class PresentationState(val displayMode: Int = -1, val requested: Boolean =
                              val gpuMs: Double = -1.0, val dropped: Long = 0, val hz: Float = 60f, val engine: Int = 0,
                              val colorFilter: Int = 0, val colorError: Int = 0, val multiplier: Int = 2,
                              /** Synthetic outputs skipped because their display slot had passed. */
-                             val lateSkips: Long = 0) {
+                             val lateSkips: Long = 0,
+                             /** Synthetic output slots offered while FG was requested (F02): late skips + painted. */
+                             val syntheticSlots: Long = 0) {
     val label: String get() = (when (state) {
         0 -> "Win-FG: Off"
         1 -> "Win-FG: warming up"
@@ -36,7 +38,7 @@ data class PresentationState(val displayMode: Int = -1, val requested: Boolean =
             return PresentationState(values[0].toInt(), values[1] != 0L, values[2].toInt(), values[3].toInt(),
                 values[4], values[5] / 1_000_000.0, values[6], values[7] / 1000f, values.getOrElse(8) { 0 }.toInt(),
                 values.getOrElse(9) { 0 }.toInt(), values.getOrElse(10) { 0 }.toInt(), values.getOrElse(11) { 2 }.toInt(),
-                values.getOrElse(12) { 0 })
+                values.getOrElse(12) { 0 }, values.getOrElse(13) { 0 })
         }
     }
 }

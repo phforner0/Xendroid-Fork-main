@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -45,6 +47,11 @@ struct PresentationRuntime {
   // Synthetic outputs not painted because the presenter was already past their
   // slot: they would have been presented back-to-back with the next output.
   std::atomic<uint64_t> late_synthetic_skips{0};
+  // F02: synthetic output slots the schedule offered while FG was requested (multiplier-1
+  // per processed guest frame). Slots = late skips + painted; of the painted ones only
+  // generated_submissions became synthetic frames on screen (the rest: warm-up, fallback
+  // to the real frame, a presentation that failed or a surface that was not paintable).
+  std::atomic<uint64_t> synthetic_slots{0};
   // Latest generation pass, -1 when the last one could not be timed (never a stale value).
   std::atomic<double> generation_gpu_ms{-1.0};
   // Cumulative per process; the app takes deltas per run. Relaxed: counters only.
@@ -186,5 +193,91 @@ class FrameGenerationSchedule {
   uint64_t epoch_ = 0;
   bool has_epoch_ = false;
 };
+
+inline int64_t SteadyNowNs() {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// Shared by the producer (a guest output arriving) and the frame-generation thread.
+struct FrameGenerationQueue {
+  std::mutex mutex;
+  std::condition_variable condition;
+  bool shutdown = false;
+  uint64_t notification = 0;  // guest outputs announced so far
+  int64_t arrival_ns = 0;     // steady clock of the newest one
+
+  // A new guest output; one the thread has not processed yet is replaced, not queued.
+  void Notify(int64_t now_ns) {
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      ++notification;
+      arrival_ns = now_ns;
+    }
+    condition.notify_one();
+  }
+
+  void Shutdown() {
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      shutdown = true;
+    }
+    condition.notify_all();
+  }
+};
+
+// The frame-generation thread (A02), free of Vulkan so the host tests run the real loop
+// with a fake painter: one cycle per processed guest output (only the newest; older ones
+// count as dropped), synthetic outputs 1..multiplier-1 at their deadlines (a late one is
+// skipped, never presented back-to-back), then the real output, phase 0. Lock order: the
+// queue's mutex is never held while painting (painting takes the presenter's paint mode
+// mutex), so the producer can never wait on a paint. After shutdown is seen nothing more
+// is painted; a paint already running finishes first.
+template <typename Paint>
+void RunFrameGenerationLoop(FrameGenerationQueue& queue, PresentationRuntime& runtime, Paint&& paint) {
+  FrameGenerationSchedule schedule;
+  std::unique_lock<std::mutex> lock(queue.mutex);
+  while (!queue.shutdown) {
+    queue.condition.wait(lock, [&] { return queue.shutdown || schedule.HasPending(queue.notification); });
+    if (queue.shutdown) break;
+    const int engine_multiplier = runtime.frame_generation_engine.load() == 1
+        ? runtime.frame_generation_multiplier.load() : 2;
+    const FrameGenerationSchedule::Cycle cycle = schedule.Begin(
+        queue.notification, queue.arrival_ns, runtime.configuration_epoch.load(), engine_multiplier,
+        runtime.display_hz.load(), SteadyNowNs());
+    if (cycle.dropped) runtime.dropped_guest_notifications.fetch_add(cycle.dropped);
+    if (cycle.stop) {
+      runtime.frame_generation_error = 5;
+      runtime.frame_generation_state = int(FrameGenerationState::kFailed);
+      runtime.frame_generation_requested = false;
+    }
+    lock.unlock();
+    bool shutdown = false;
+    for (int index = 1; index < cycle.multiplier && !shutdown; ++index) {
+      if (runtime.frame_generation_requested.load()) {
+        runtime.synthetic_slots.fetch_add(1, std::memory_order_relaxed);
+        if (FrameGenerationSchedule::LateSynthetic(cycle, index, SteadyNowNs())) {
+          runtime.late_synthetic_skips.fetch_add(1, std::memory_order_relaxed);
+        } else {
+          paint(index);
+        }
+      }
+      lock.lock();
+      // At most one cycle is in flight; a newer notification waits for the next cycle
+      // and replaces any older pending one.
+      queue.condition.wait_until(
+          lock,
+          std::chrono::steady_clock::time_point(
+              std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                  std::chrono::nanoseconds(FrameGenerationSchedule::Deadline(cycle, index + 1)))),
+          [&] { return queue.shutdown; });
+      shutdown = queue.shutdown;
+      lock.unlock();
+    }
+    if (shutdown) break;
+    paint(0);
+    lock.lock();
+  }
+}
 }  // namespace xe::ui
 #endif

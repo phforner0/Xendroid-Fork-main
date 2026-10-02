@@ -73,69 +73,28 @@ bool VulkanPresenter::ScheduleGuestOutput() {
   }
   const int64_t now = FrameGenerationNowNs();
   {
-    std::lock_guard<std::mutex> lock(fg_mutex_);
+    // The thread starts under the queue's lock, so two producers never start two.
+    std::lock_guard<std::mutex> lock(fg_queue_.mutex);
     if (!fg_thread_.joinable()) fg_thread_ = std::thread(&VulkanPresenter::FrameGenerationThread, this);
-    ++fg_notification_;
-    fg_arrival_ns_ = now;
+    ++fg_queue_.notification;
+    fg_queue_.arrival_ns = now;
   }
-  fg_condition_.notify_one();
+  fg_queue_.condition.notify_one();
   return true;
 }
 
-// The timing decisions live in FrameGenerationSchedule (presentation_runtime.h,
-// covered by the host tests); this loop only waits and paints. Lock order:
-// fg_mutex_ is never held while painting, and painting takes paint_mode_mutex_
-// (PaintGuestFromScheduledThread) - so the producer (ScheduleGuestOutput, which
-// takes only fg_mutex_) can never wait on a paint.
+// The loop and its timing live in presentation_runtime.h (RunFrameGenerationLoop and
+// FrameGenerationSchedule, covered by the host tests with a fake painter); here it only
+// paints. Lock order: the queue's mutex is never held while painting, and painting takes
+// paint_mode_mutex_ (PaintGuestFromScheduledThread) - so the producer
+// (ScheduleGuestOutput, which takes only the queue's mutex) can never wait on a paint.
 void VulkanPresenter::FrameGenerationThread() {
-  FrameGenerationSchedule schedule;
-  auto& runtime = RuntimePresentation();
-  std::unique_lock<std::mutex> lock(fg_mutex_);
-  while (!fg_shutdown_) {
-    fg_condition_.wait(lock, [&] { return fg_shutdown_ || schedule.HasPending(fg_notification_); });
-    if (fg_shutdown_) break;
-    const int engine_multiplier = runtime.frame_generation_engine.load() == 1
-        ? runtime.frame_generation_multiplier.load() : 2;
-    const FrameGenerationSchedule::Cycle cycle = schedule.Begin(
-        fg_notification_, fg_arrival_ns_, runtime.configuration_epoch.load(), engine_multiplier,
-        runtime.display_hz.load(), FrameGenerationNowNs());
-    if (cycle.dropped) runtime.dropped_guest_notifications.fetch_add(cycle.dropped);
-    if (cycle.stop) {
-      runtime.frame_generation_error = 5;
-      runtime.frame_generation_state = int(FrameGenerationState::kFailed);
-      runtime.frame_generation_requested = false;
-    }
-    lock.unlock();
-    bool shutdown = false;
-    for (int index = 1; index < cycle.multiplier && !shutdown; ++index) {
-      if (runtime.frame_generation_requested.load()) {
-        if (FrameGenerationSchedule::LateSynthetic(cycle, index, FrameGenerationNowNs())) {
-          runtime.late_synthetic_skips.fetch_add(1, std::memory_order_relaxed);
-        } else {
-          PaintGuestFromScheduledThread(index);
-        }
-      }
-      lock.lock();
-      // At most one cycle is in flight; a newer notification waits for the next
-      // cycle and replaces any older pending one.
-      fg_condition_.wait_until(
-          lock,
-          std::chrono::steady_clock::time_point(
-              std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                  std::chrono::nanoseconds(FrameGenerationSchedule::Deadline(cycle, index + 1)))),
-          [&] { return fg_shutdown_; });
-      shutdown = fg_shutdown_;
-      lock.unlock();
-    }
-    if (shutdown) break;
-    PaintGuestFromScheduledThread(0);
-    lock.lock();
-  }
+  RunFrameGenerationLoop(fg_queue_, RuntimePresentation(),
+                         [this](int phase) { PaintGuestFromScheduledThread(phase); });
 }
 
 void VulkanPresenter::StopFrameGenerationThread() {
-  { std::lock_guard<std::mutex> lock(fg_mutex_); fg_shutdown_ = true; }
-  fg_condition_.notify_all();
+  fg_queue_.Shutdown();
   if (fg_thread_.joinable()) fg_thread_.join();
 }
 

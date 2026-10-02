@@ -1293,7 +1293,8 @@ static jlongArray j_presentation_state(JNIEnv* env, jobject thiz) {
         static_cast<jlong>(runtime.dropped_guest_notifications.load()),
         static_cast<jlong>(runtime.display_hz.load() * 1000.0), runtime.frame_generation_engine.load(),
         runtime.color_filter.load(), runtime.color_filter_error.load(), runtime.frame_generation_multiplier.load(),
-        static_cast<jlong>(runtime.late_synthetic_skips.load())};
+        static_cast<jlong>(runtime.late_synthetic_skips.load()),
+        static_cast<jlong>(runtime.synthetic_slots.load())};
     constexpr jsize kCount = jsize(sizeof(values) / sizeof(values[0]));
     auto array = env->NewLongArray(kCount);
     if (array) env->SetLongArrayRegion(array, 0, kCount, values);

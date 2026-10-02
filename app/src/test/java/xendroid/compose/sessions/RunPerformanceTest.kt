@@ -194,6 +194,20 @@ class RunPerformanceTest {
             describeFrameGeneration(perf))
     }
 
+    @Test fun syntheticSlotsSeparateWhatWasOfferedSkippedAndShown() {
+        val acc = RunPerformanceAccumulator()
+        acc.frameGeneration(LongArray(66), lateSkips = 1, replacedGuestFrames = 0, syntheticSlots = 10)
+        acc.sample(true, 30.0, presentCount = 0, generatedCount = 0, frameGenerationActive = false, guestFrames = 0)
+        acc.sample(true, 30.0, presentCount = 60, generatedCount = 30, frameGenerationActive = true, guestFrames = 30)
+        acc.frameGeneration(LongArray(66).also { it[8] = 30 }, lateSkips = 5, replacedGuestFrames = 0, syntheticSlots = 160)
+        val perf = acc.snapshot()
+        assertEquals(150L, perf.syntheticSlots)
+        // 150 offered = 4 skipped late + 146 painted, of which 30 reached the screen as synthetic.
+        assertEquals("30 synthetic frames over 1 s (of 150 slots: 4 skipped late, 116 painted without a generated frame) · " +
+            "GPU per generation pass: median under 2.25 ms, 95th under 2.25 ms, 99th under 2.25 ms (30 timed)",
+            describeFrameGeneration(perf))
+    }
+
     @Test fun frameGenerationWithoutTimingsSaysSoAndARunWithoutItShowsNothing() {
         val untimed = RunPerformanceAccumulator()
         untimed.frameGeneration(LongArray(66), 0, 0)
