@@ -9,6 +9,7 @@
 
 #include "xenia/gpu/spirv_shader_translator.h"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 
@@ -101,6 +102,19 @@ DEFINE_int32(
     "stop matching exactly between passes (depth fighting).",
     "GPU");
 
+DEFINE_int32(
+    spirv_vs_relaxed_math, 0,
+    "Skip parts of the Xenos math emulation in vertex shaders, like "
+    "spirv_ps_relaxed_math in pixel shaders. Bit mask, read when shaders are "
+    "translated (startup): 1 - no Shader Model 3 '0 * anything = 0' in "
+    "multiplications (the same results for finite operands, only the sign of "
+    "a zero product may differ - positions computed by different shaders "
+    "still match); 2 - no rounding to the 21 mantissa bits of the Xenos after "
+    "exp, log, sqrt, rsq and rcp; 8 - allow fused multiply-add. 2 and 8 change "
+    "results, so the same position computed by different shaders may stop "
+    "matching between passes (depth fighting).",
+    "GPU");
+
 DEFINE_bool(
     spirv_fast_precision_rounding, false,
     "Round results of exp, log, sqrt, rsq and rcp to the 21 mantissa bits of "
@@ -141,6 +155,15 @@ DEFINE_bool(
     "GPU");
 
 DEFINE_bool(
+    spirv_texture_sign_specialization_used, true,
+    "With spirv_texture_sign_specialization: specialize the signs of the "
+    "first 8 distinct fetch constants each pixel shader fetches, whichever "
+    "they are - false: those of fetch constants 0-7 (Forza Horizon's big "
+    "shaders also read fetch constant 13; GPU time -0.4 ms on the POCO F7, "
+    "S44). Read when shaders are translated (startup).",
+    "GPU");
+
+DEFINE_bool(
     spirv_texture_implicit_lod, false,
     "Sample 2D textures with the LOD the host computes (implicit LOD plus "
     "the guest's LOD bias) instead of passing coarse derivatives scaled by "
@@ -150,6 +173,26 @@ DEFINE_bool(
     "pipe, instead of one sample. Fetches with register gradients or per-axis "
     "gradient exponent biases (texture_gradient_exp_bias) keep the "
     "gradients. Read when shaders are translated (startup).",
+    "GPU");
+
+DEFINE_bool(
+    spirv_texture_exp_adjust_specialization, true,
+    "Pixel shaders know per pipeline (a specialization constant) whether "
+    "every texture they fetch has a zero exponent adjustment in its fetch "
+    "constant - then the multiplication of each fetched component by 2^0 is "
+    "folded away by the host compiler; otherwise it's done as before (GPU "
+    "time -0.2 ms in Forza Horizon on an Adreno 825). Read when shaders are "
+    "translated (startup).",
+    "GPU");
+
+DEFINE_bool(
+    spirv_texture_fetch_constants_decoded, false,
+    "Texture fetches load the sizes, the dimensionality, the result exponent "
+    "factor and the LOD bias of their fetch constants decoded on the CPU "
+    "(appended to the fetch constant buffer) instead of extracting and "
+    "converting the bit fields in the shader - on Adreno that work lands in "
+    "the preamble each draw runs serially before its first pixel. The same "
+    "values. Read when shaders are translated (startup).",
     "GPU");
 
 DEFINE_bool(
@@ -397,7 +440,9 @@ void SpirvShaderTranslator::Reset() {
 
   sampler_bindings_.clear();
   texture_bindings_.clear();
+  texture_sign_class_slots_.fill(uint8_t(kTextureSignClassFetchConstantCount));
   texture_sign_class_spec_constants_.fill(spv::NoResult);
+  texture_exp_adjust_zero_spec_constant_ = spv::NoResult;
 
   main_interface_.clear();
   var_main_registers_ = spv::NoResult;
@@ -452,11 +497,21 @@ void SpirvShaderTranslator::StartTranslation() {
           ? (uint32_t(cvars::spirv_ps_relaxed_math) &
              ~uint32_t(kMathRelaxationTextureSigns)) |
                 uint32_t(cvars::spirv_ps_math_experiment)
-          : uint32_t(cvars::spirv_vs_math_experiment) &
+          : (uint32_t(cvars::spirv_vs_relaxed_math) |
+             uint32_t(cvars::spirv_vs_math_experiment)) &
                 ~uint32_t(kMathRelaxationTextureSigns);
+  texture_fetch_constants_decoded_ =
+      cvars::spirv_texture_fetch_constants_decoded;
   builder_->SetAllowContraction(
       features_.allow_float_contraction ||
       (math_relaxations_ & kMathRelaxationContraction));
+  // The texture sign class slot of each fetch constant
+  // (spirv_texture_sign_specialization).
+  if (is_pixel_shader() && cvars::spirv_texture_sign_specialization) {
+    GetTextureSignClassSlots(current_shader(),
+                             cvars::spirv_texture_sign_specialization_used,
+                             texture_sign_class_slots_);
+  }
 
   builder_->addCapability(IsSpirvTessEvalShader() ? spv::CapabilityTessellation
                                                   : spv::CapabilityShader);
@@ -736,10 +791,16 @@ void SpirvShaderTranslator::StartTranslation() {
     }
 
     // Common uniform buffer - fetch constants (32 x 6 uints packed in std140 as
-    // 4-component vectors).
+    // 4-component vectors), then, with spirv_texture_fetch_constants_decoded,
+    // the values decoded from them (DecodedTextureFetchConstant).
     id_vector_temp_.clear();
     id_vector_temp_.push_back(builder_->makeArrayType(
-        type_uint4_, builder_->makeUintConstant(32 * 6 / 4),
+        type_uint4_,
+        builder_->makeUintConstant(
+            kFetchConstantsRawVec4Count +
+            (texture_fetch_constants_decoded_
+                 ? 32 * kFetchConstantsDecodedVec4PerFetch
+                 : 0)),
         sizeof(uint32_t) * 4));
     builder_->addDecoration(id_vector_temp_.back(), spv::DecorationArrayStride,
                             sizeof(uint32_t) * 4);
@@ -4870,20 +4931,126 @@ void SpirvShaderTranslator::StoreUint32ToSharedMemory(
   binding_switch.makeEndSwitch();
 }
 
-spv::Id SpirvShaderTranslator::GetTextureSignClassSpecConstant(
-    uint32_t fetch_constant_index) {
-  assert_true(fetch_constant_index < kTextureSignClassFetchConstantCount);
-  spv::Id& spec_constant =
-      texture_sign_class_spec_constants_[fetch_constant_index];
+void SpirvShaderTranslator::GetTextureSignClassSlots(
+    const Shader& shader, bool by_use, std::array<uint8_t, 32>& slots_out) {
+  slots_out.fill(uint8_t(kTextureSignClassFetchConstantCount));
+  if (!by_use) {
+    for (uint32_t i = 0; i < kTextureSignClassFetchConstantCount; ++i) {
+      slots_out[i] = uint8_t(i);
+    }
+    return;
+  }
+  uint32_t fetch_constants_remaining = 0;
+  for (const Shader::TextureBinding& texture_binding :
+       shader.texture_bindings()) {
+    fetch_constants_remaining |= uint32_t(1) << texture_binding.fetch_constant;
+  }
+  uint32_t slot = 0;
+  uint32_t fetch_constant;
+  while (slot < kTextureSignClassFetchConstantCount &&
+         xe::bit_scan_forward(fetch_constants_remaining, &fetch_constant)) {
+    fetch_constants_remaining &= ~(uint32_t(1) << fetch_constant);
+    slots_out[fetch_constant] = uint8_t(slot++);
+  }
+}
+
+spv::Id SpirvShaderTranslator::LoadTextureFetchConstantWordFromTemp() {
+  if (math_relaxations_ & kMathRelaxationTextureFetchConstants) {
+    return const_uint_0_;
+  }
+  return builder_->createLoad(
+      builder_->createAccessChain(spv::StorageClassUniform,
+                                  uniform_fetch_constants_, id_vector_temp_),
+      spv::NoPrecision);
+}
+
+void SpirvShaderTranslator::DecodeTextureFetchConstant(
+    const uint32_t* words, DecodedTextureFetchConstant& decoded) {
+  // The same bit fields the shaders extracted (sizes minus 1 in word 2).
+  uint32_t size_word = words[2];
+  uint32_t size_2d_mask =
+      (UINT32_C(1) << xenos::kTexture2DCubeMaxWidthHeightLog2) - 1;
+  decoded.size_2d[0] = float((size_word & size_2d_mask) + 1);
+  decoded.size_2d[1] = float(
+      ((size_word >> xenos::kTexture2DCubeMaxWidthHeightLog2) & size_2d_mask) +
+      1);
+  // Word 3 bits 13:18 and word 4 bits 12:21, signed.
+  decoded.result_exponent_factor =
+      std::ldexp(1.0f, int32_t(words[3] << 13) >> 26);
+  decoded.lod_bias = float(int32_t(words[4] << 10) >> 22) * (1.0f / 32.0f);
+  bool data_is_3d = xenos::DataDimension((words[5] >> 9) & 3) ==
+                    xenos::DataDimension::k3D;
+  if (data_is_3d) {
+    uint32_t size_3d_mask =
+        (UINT32_C(1) << xenos::kTexture3DMaxWidthHeightLog2) - 1;
+    decoded.size_3d_or_stacked[0] = float((size_word & size_3d_mask) + 1);
+    decoded.size_3d_or_stacked[1] = float(
+        ((size_word >> xenos::kTexture3DMaxWidthHeightLog2) & size_3d_mask) +
+        1);
+    decoded.size_3d_or_stacked[2] = float(
+        ((size_word >> (xenos::kTexture3DMaxWidthHeightLog2 * 2)) &
+         ((UINT32_C(1) << xenos::kTexture3DMaxDepthLog2) - 1)) +
+        1);
+  } else {
+    decoded.size_3d_or_stacked[0] = decoded.size_2d[0];
+    decoded.size_3d_or_stacked[1] = decoded.size_2d[1];
+    decoded.size_3d_or_stacked[2] = float(
+        ((size_word >> (xenos::kTexture2DCubeMaxWidthHeightLog2 * 2)) &
+         ((UINT32_C(1) << xenos::kTexture2DMaxStackDepthLog2) - 1)) +
+        1);
+  }
+  decoded.data_is_3d = data_is_3d ? 1 : 0;
+}
+
+spv::Id SpirvShaderTranslator::LoadDecodedTextureFetchConstantFloat(
+    uint32_t fetch_constant_index, uint32_t word) {
+  return builder_->createUnaryOp(
+      spv::OpBitcast, type_float_,
+      LoadDecodedTextureFetchConstantWord(fetch_constant_index, word));
+}
+
+spv::Id SpirvShaderTranslator::LoadDecodedTextureFetchConstantWord(
+    uint32_t fetch_constant_index, uint32_t word) {
+  assert_true(texture_fetch_constants_decoded_);
+  assert_true(fetch_constant_index < 32);
+  assert_true(word < 4 * kFetchConstantsDecodedVec4PerFetch);
+  uint32_t vec4_index = kFetchConstantsRawVec4Count +
+                        fetch_constant_index *
+                            kFetchConstantsDecodedVec4PerFetch +
+                        (word >> 2);
+  id_vector_temp_.clear();
+  id_vector_temp_.push_back(const_int_0_);
+  id_vector_temp_.push_back(builder_->makeIntConstant(int(vec4_index)));
+  id_vector_temp_.push_back(builder_->makeIntConstant(int(word & 3)));
+  return builder_->createLoad(
+      builder_->createAccessChain(spv::StorageClassUniform,
+                                  uniform_fetch_constants_, id_vector_temp_),
+      spv::NoPrecision);
+}
+
+spv::Id SpirvShaderTranslator::GetTextureExpAdjustZeroSpecConstant() {
+  if (texture_exp_adjust_zero_spec_constant_ == spv::NoResult) {
+    texture_exp_adjust_zero_spec_constant_ =
+        builder_->makeBoolConstant(false, true);
+    builder_->addName(texture_exp_adjust_zero_spec_constant_,
+                      "xe_texture_exp_adjust_zero");
+    builder_->addDecoration(texture_exp_adjust_zero_spec_constant_,
+                            spv::DecorationSpecId,
+                            int(kSpecIdTextureExpAdjustZero));
+  }
+  return texture_exp_adjust_zero_spec_constant_;
+}
+
+spv::Id SpirvShaderTranslator::GetTextureSignClassSpecConstant(uint32_t slot) {
+  assert_true(slot < kTextureSignClassFetchConstantCount);
+  spv::Id& spec_constant = texture_sign_class_spec_constants_[slot];
   if (spec_constant == spv::NoResult) {
     spec_constant =
         builder_->makeUintConstant(uint32_t(kTextureSignClassRuntime), true);
-    builder_->addName(
-        spec_constant,
-        fmt::format("xe_texture_sign_class_{}", fetch_constant_index).c_str());
-    builder_->addDecoration(
-        spec_constant, spv::DecorationSpecId,
-        int(kSpecIdTextureSignClassFirst + fetch_constant_index));
+    builder_->addName(spec_constant,
+                      fmt::format("xe_texture_sign_class_{}", slot).c_str());
+    builder_->addDecoration(spec_constant, spv::DecorationSpecId,
+                            int(kSpecIdTextureSignClassFirst + slot));
   }
   return spec_constant;
 }

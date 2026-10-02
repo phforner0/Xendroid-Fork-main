@@ -198,6 +198,31 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   RenderPassKey last_update_render_pass_key() const {
     return last_update_render_pass_key_;
   }
+
+  // merge_tiling_bands (CommandProcessor::OnBinSelectWritten): the
+  // multisampled render targets the first band draws into, and the rows of the
+  // band being resolved below the first one - the resolves read them there.
+  void ResetTilingBandRenderTargets() {
+    tiling_band_color_key_ = 0;
+    tiling_band_depth_key_ = 0;
+  }
+  void SetTilingBandResolveRows(uint32_t rows) {
+    tiling_band_resolve_rows_ = rows;
+  }
+  // For the draw just updated: while drawing the first band, records its
+  // multisampled render targets not recorded yet (returned - 1 color, 2 depth -
+  // to be replicated before the draw, unless the draw replaces all of their
+  // screen); whether it draws into the recorded ones.
+  uint32_t NoteTilingBandDraw(bool first_band,
+                              reg::RB_DEPTHCONTROL normalized_depth_control,
+                              uint32_t normalized_color_mask,
+                              const Shader& vertex_shader,
+                              bool& into_band_targets_out);
+  // Copies the first band_rows rows of the render targets of the last update
+  // (1 color, 2 depth) into the rows below them - each band starts with what
+  // the first one starts with. Records the barriers and the copies, ending the
+  // render pass.
+  void ReplicateTilingBandRows(uint32_t render_targets, uint32_t band_rows);
   VkRenderPass last_update_render_pass() const {
     return last_update_render_pass_;
   }
@@ -490,6 +515,29 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   VkPipeline GetDirectHostResolveTexturePipeline(
       DirectHostResolveTextureKind kind, xenos::MsaaSamples msaa_samples,
       bool source_is_uint);
+  // vulkan_direct_host_resolve_7e3_variant: full color resolves of 7e3 in the
+  // EDRAM to 2_10_10_10 with both formats known to the shader - 1x (with
+  // vulkan_direct_host_resolve_format_variants), 2x and 4x sources, only to
+  // memory or also into the texture.
+  static const DirectHostResolveShaderCode
+      kDirectHostResolveColorFull7e3Shaders[3][2];
+  VkPipeline direct_host_color_full_7e3_resolve_pipelines_[3][2] = {};
+  VkPipeline GetDirectHostColorFull7e3ResolvePipeline(
+      xenos::MsaaSamples msaa_samples, bool to_texture);
+  // vulkan_direct_host_resolve_format_variants: one EDRAM format known to the
+  // shader - the 4-pixel 32bpp fast color of 8_8_8_8 and 2_10_10_10
+  // ([MSAA][format][into the texture]), and depth of D24S8 and D24FS8
+  // ([MSAA][format][8 pixels (1x only), 4 pixels, 4 pixels into the texture]).
+  static const DirectHostResolveShaderCode
+      kDirectHostResolveColorFormatShaders[3][2][2];
+  static const DirectHostResolveShaderCode
+      kDirectHostResolveDepthFormatShaders[3][2][3];
+  VkPipeline direct_host_color_format_resolve_pipelines_[3][2][2] = {};
+  VkPipeline direct_host_depth_format_resolve_pipelines_[3][2][3] = {};
+  VkPipeline GetDirectHostFormatResolvePipeline(bool is_depth,
+                                                size_t msaa_index,
+                                                size_t format_index,
+                                                size_t kind);
   // Texel offset of a resolve strip into the texture it was matched to by
   // containment, from the byte offset of its base into the tiled texture.
   // False if the offset has no texel form.
@@ -505,6 +553,14 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // for passing parameters to pipeline setup - there's always only one render
   // pass.
   RenderPassKey last_update_render_pass_key_;
+
+  // merge_tiling_bands.
+  uint32_t GetTilingBandSourceTileOffset(RenderTargetKey key) const;
+  void ReplicateTilingBandRenderTargetRows(RenderTarget* render_target,
+                                           uint32_t band_rows);
+  uint32_t tiling_band_color_key_ = 0;
+  uint32_t tiling_band_depth_key_ = 0;
+  uint32_t tiling_band_resolve_rows_ = 0;
   VkRenderPass last_update_render_pass_ = VK_NULL_HANDLE;
   // The pitch is not used on the fragment shader interlock path.
   uint32_t last_update_framebuffer_pitch_tiles_at_32bpp_ = 0;
@@ -1112,7 +1168,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // slot is the current pass's color attachment being resolved.
   VkPipeline GetResolveInPassPipeline(RenderPassKey render_pass_key,
                                       uint32_t color_slot, bool is_64bpp,
-                                      bool writes_texture);
+                                      bool writes_texture,
+                                      bool full_7e3 = false);
 
   // Selects the transfer mode for one ownership transfer from the source/dest
   // aspects. Shared by PerformTransfersAndResolveClears and the draw-pass
@@ -1256,6 +1313,9 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // Bit 0: 64bpp dest, bit 1: multisampled source.
   // [is_64bpp | msaa<<1 | writes_texture<<2]
   VkShaderModule resolve_inpass_shaders_[8] = {};
+  // vulkan_in_pass_resolve_7e3: 7e3 in the EDRAM to 2_10_10_10 from
+  // single-sampled sources, only to memory and also into the texture.
+  VkShaderModule resolve_inpass_7e3_shaders_[2] = {};
   VkShaderModule resolve_inpass_vertex_shader_ = VK_NULL_HANDLE;
   // Bits 0-31: RenderPassKey, 32-33: color slot, 34: 64bpp dest.
   std::unordered_map<uint64_t, VkPipeline> resolve_inpass_pipelines_;

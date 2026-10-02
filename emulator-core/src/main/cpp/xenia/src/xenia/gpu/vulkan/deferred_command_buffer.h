@@ -305,6 +305,32 @@ class DeferredCommandBuffer {
                 regions, sizeof(VkBufferImageCopy) * region_count);
   }
 
+  VkImageCopy* CmdCopyImageEmplace(VkImage src_image,
+                                   VkImageLayout src_image_layout,
+                                   VkImage dst_image,
+                                   VkImageLayout dst_image_layout,
+                                   uint32_t region_count) {
+    const size_t header_size =
+        xe::align(sizeof(ArgsVkCopyImage), alignof(VkImageCopy));
+    uint8_t* args_ptr = reinterpret_cast<uint8_t*>(
+        WriteCommand(Command::kVkCopyImage,
+                     header_size + sizeof(VkImageCopy) * region_count));
+    auto& args = *reinterpret_cast<ArgsVkCopyImage*>(args_ptr);
+    args.src_image = src_image;
+    args.src_image_layout = src_image_layout;
+    args.dst_image = dst_image;
+    args.dst_image_layout = dst_image_layout;
+    args.region_count = region_count;
+    return reinterpret_cast<VkImageCopy*>(args_ptr + header_size);
+  }
+  void CmdVkCopyImage(VkImage src_image, VkImageLayout src_image_layout,
+                      VkImage dst_image, VkImageLayout dst_image_layout,
+                      uint32_t region_count, const VkImageCopy* regions) {
+    std::memcpy(CmdCopyImageEmplace(src_image, src_image_layout, dst_image,
+                                    dst_image_layout, region_count),
+                regions, sizeof(VkImageCopy) * region_count);
+  }
+
   void CmdVkFillBuffer(VkBuffer dst_buffer, VkDeviceSize dst_offset,
                        VkDeviceSize size, uint32_t data) {
     auto& args = *reinterpret_cast<ArgsVkFillBuffer*>(
@@ -673,6 +699,7 @@ class DeferredCommandBuffer {
     kVkCopyBufferToImage,
     kVkFillBuffer,
     kVkBlitImage,
+    kVkCopyImage,
     kVkDispatch,
     kVkDraw,
     kVkDrawIndexed,
@@ -866,6 +893,16 @@ class DeferredCommandBuffer {
     static_assert(alignof(VkImageBlit) <= alignof(uintmax_t));
   };
 
+  struct ArgsVkCopyImage {
+    VkImage src_image;
+    VkImageLayout src_image_layout;
+    VkImage dst_image;
+    VkImageLayout dst_image_layout;
+    uint32_t region_count;
+    // Followed by aligned VkImageCopy[].
+    static_assert(alignof(VkImageCopy) <= alignof(uintmax_t));
+  };
+
   struct ArgsVkDispatch {
     uint32_t group_count_x;
     uint32_t group_count_y;
@@ -1020,7 +1057,7 @@ class DeferredCommandBuffer {
   // vulkan_replay_stats: what the replays sent to the driver, and how much of
   // it repeated the state already set in the same command buffer (the same
   // pipeline, descriptor sets, push constant bytes or dynamic state value).
-  static constexpr size_t kReplayStatCommandCount = 51;
+  static constexpr size_t kReplayStatCommandCount = 52;
   struct ReplayStats {
     uint64_t commands[kReplayStatCommandCount] = {};
     uint64_t redundant[kReplayStatCommandCount] = {};

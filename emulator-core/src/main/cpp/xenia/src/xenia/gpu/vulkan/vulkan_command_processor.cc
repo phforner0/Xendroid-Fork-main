@@ -64,6 +64,11 @@ DECLARE_bool(vulkan_texture_load_to_image);
 DECLARE_bool(vulkan_direct_host_resolve);
 DECLARE_bool(vulkan_direct_host_resolve_4px);
 DECLARE_bool(vulkan_direct_host_resolve_to_texture);
+DECLARE_bool(vulkan_direct_host_resolve_storage_format);
+DECLARE_bool(vulkan_direct_host_resolve_7e3_variant);
+DECLARE_bool(vulkan_in_pass_resolve_7e3);
+DECLARE_bool(vulkan_direct_host_resolve_depth_to_8888);
+DECLARE_bool(vulkan_direct_host_resolve_format_variants);
 DECLARE_bool(vulkan_resolve_dest_diag);
 DECLARE_bool(vulkan_replay_stats);
 DECLARE_bool(vulkan_resolve_draw_barriers_at_resolve);
@@ -74,6 +79,9 @@ DECLARE_bool(skip_overwritten_transfers_cutout);
 DECLARE_bool(transfer_cleared_sources_as_clears);
 DECLARE_bool(host_alpha_to_coverage);
 DECLARE_bool(spirv_texture_sign_specialization);
+DECLARE_bool(spirv_texture_sign_specialization_used);
+DECLARE_bool(spirv_texture_fetch_constants_decoded);
+DECLARE_bool(spirv_texture_exp_adjust_specialization);
 
 DEFINE_bool(
     vulkan_texture_sign_classes, true,
@@ -350,6 +358,21 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.resolve_to_texture",
                             "vulkan_direct_host_resolve_to_texture",
                             cvars::vulkan_direct_host_resolve_to_texture);
+  PollDebugPropertyOverride("debug.xendroid.resolve_storage_format",
+                            "vulkan_direct_host_resolve_storage_format",
+                            cvars::vulkan_direct_host_resolve_storage_format);
+  PollDebugPropertyOverride("debug.xendroid.resolve_7e3_variant",
+                            "vulkan_direct_host_resolve_7e3_variant",
+                            cvars::vulkan_direct_host_resolve_7e3_variant);
+  PollDebugPropertyOverride("debug.xendroid.in_pass_resolve_7e3",
+                            "vulkan_in_pass_resolve_7e3",
+                            cvars::vulkan_in_pass_resolve_7e3);
+  PollDebugPropertyOverride("debug.xendroid.resolve_depth_to_8888",
+                            "vulkan_direct_host_resolve_depth_to_8888",
+                            cvars::vulkan_direct_host_resolve_depth_to_8888);
+  PollDebugPropertyOverride("debug.xendroid.resolve_format_variants",
+                            "vulkan_direct_host_resolve_format_variants",
+                            cvars::vulkan_direct_host_resolve_format_variants);
   PollDebugPropertyOverride("debug.xendroid.resolve_dest_diag",
                             "vulkan_resolve_dest_diag",
                             cvars::vulkan_resolve_dest_diag);
@@ -2308,6 +2331,7 @@ void VulkanCommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
       uint32_t fetch_slot_bit_clear = ~(uint32_t(1) << fetch_slot);
       current_samplers_fetch_up_to_date_vertex_ &= fetch_slot_bit_clear;
       current_samplers_fetch_up_to_date_pixel_ &= fetch_slot_bit_clear;
+      fetch_constants_decode_needed_ |= ~fetch_slot_bit_clear;
       if (texture_cache_) {
         texture_cache_->TextureFetchConstantWritten(fetch_slot);
       }
@@ -2392,6 +2416,7 @@ void VulkanCommandProcessor::WriteFetchFromMem(uint32_t start_index,
       uint32_t slot_bit_clear = ~(UINT32_C(1) << slot);
       current_samplers_fetch_up_to_date_vertex_ &= slot_bit_clear;
       current_samplers_fetch_up_to_date_pixel_ &= slot_bit_clear;
+      fetch_constants_decode_needed_ |= ~slot_bit_clear;
     }
     if (texture_cache_) {
       texture_cache_->TextureFetchConstantsWritten(first_slot, last_slot);
@@ -2423,6 +2448,7 @@ void VulkanCommandProcessor::WriteFetchFromMem(uint32_t start_index,
       uint32_t slot_bit_clear = ~(UINT32_C(1) << slot);
       current_samplers_fetch_up_to_date_vertex_ &= slot_bit_clear;
       current_samplers_fetch_up_to_date_pixel_ &= slot_bit_clear;
+      fetch_constants_decode_needed_ |= ~slot_bit_clear;
       if (texture_cache_) {
         texture_cache_->TextureFetchConstantWritten(slot);
       }
@@ -4993,6 +5019,48 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     }
   }
 
+  // merge_tiling_bands: the multisampled render targets the first band draws
+  // into are drawn as tall as the screen - a scissor covering the band covers
+  // the screen, and the draws first executed in a later band are placed at
+  // its rows. They are recorded as the first band draws into them (each
+  // starting the later bands' rows with what the first band starts with).
+  tiling_band_draw_y_offset_ = 0;
+  tiling_band_draw_expand_scissor_ = false;
+  tiling_band_replicate_ = 0;
+  if (tiling_band_merge_active()) {
+    if (tiling_band_sequence_seen_ != tiling_band_sequence()) {
+      tiling_band_sequence_seen_ = tiling_band_sequence();
+      render_target_cache_->ResetTilingBandRenderTargets();
+      // The rows of a band - the first band's window scissor.
+      auto window_scissor_tl = regs.Get<reg::PA_SC_WINDOW_SCISSOR_TL>();
+      auto window_scissor_br = regs.Get<reg::PA_SC_WINDOW_SCISSOR_BR>();
+      tiling_band_rows_ =
+          window_scissor_br.br_y > window_scissor_tl.tl_y
+              ? window_scissor_br.br_y - window_scissor_tl.tl_y
+              : 0;
+      if (tiling_band() != 0 || window_scissor_tl.tl_y != 0 ||
+          !tiling_band_rows_ || (tiling_band_rows_ & 7) ||
+          tiling_band_rows_ * 2 > RenderTargetCache::kMergedTilingBandsHeight ||
+          render_target_cache_->GetDrawScaleX() != 1 ||
+          render_target_cache_->GetDrawScaleY() != 1) {
+        DisableTilingBandMerge();
+      }
+    }
+    bool into_band_targets = false;
+    if (tiling_band_merge_active()) {
+      tiling_band_replicate_ = render_target_cache_->NoteTilingBandDraw(
+          tiling_band() == 0, normalized_depth_control, normalized_color_mask,
+          *vertex_shader, into_band_targets);
+    }
+    if (into_band_targets) {
+      tiling_band_draw_expand_scissor_ = true;
+      if (tiling_band_draw_from_later_band()) {
+        tiling_band_draw_y_offset_ =
+            int32_t(uint32_t(tiling_band()) * tiling_band_rows_);
+      }
+    }
+  }
+
   // The signs of the textures of the first fetch constants the pixel shader
   // fetches, for the specialization constants of its pipeline
   // (spirv_texture_sign_specialization) - from the fetch constants, like the
@@ -5002,20 +5070,39 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   uint32_t texture_sign_classes = 0;
   if (pixel_shader && cvars::spirv_texture_sign_specialization &&
       cvars::vulkan_texture_sign_classes) {
+    // The slots the translator gave the fetch constants.
+    std::array<uint8_t, 32> texture_sign_class_slots;
+    SpirvShaderTranslator::GetTextureSignClassSlots(
+        *pixel_shader, cvars::spirv_texture_sign_specialization_used,
+        texture_sign_class_slots);
     for (const Shader::TextureBinding& texture_binding :
          pixel_shader->texture_bindings()) {
       const uint32_t fetch_constant = texture_binding.fetch_constant;
-      if (fetch_constant >=
-          SpirvShaderTranslator::kTextureSignClassFetchConstantCount) {
+      const uint32_t slot = texture_sign_class_slots[fetch_constant];
+      if (slot >= SpirvShaderTranslator::kTextureSignClassFetchConstantCount) {
         continue;
       }
       texture_sign_classes |=
           SpirvShaderTranslator::GetTextureSignClass(texture_util::SwizzleSigns(
               regs.GetTextureFetch(fetch_constant)))
-          << (2 * fetch_constant);
+          << (2 * slot);
     }
   }
   pipeline_cache_->SetTextureSignClasses(texture_sign_classes);
+  // Whether every texture of the pixel shader has a zero exponent adjustment
+  // (spirv_texture_exp_adjust_specialization; word 3 bits 13:18).
+  bool texture_exp_adjust_zero = false;
+  if (pixel_shader && cvars::spirv_texture_exp_adjust_specialization) {
+    texture_exp_adjust_zero = true;
+    for (const Shader::TextureBinding& texture_binding :
+         pixel_shader->texture_bindings()) {
+      if (regs.GetTextureFetch(texture_binding.fetch_constant).exp_adjust) {
+        texture_exp_adjust_zero = false;
+        break;
+      }
+    }
+  }
+  pipeline_cache_->SetTextureExpAdjustZero(texture_exp_adjust_zero);
 
   // Create the pipeline (for this, need the render pass from the render target
   // cache), translating the shaders - doing this now to obtain the used
@@ -5614,6 +5701,27 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // changed by them).
   render_target_cache_->EncodePendingDrawPassClears();
 
+  // merge_tiling_bands: the rows of the later bands start like the first
+  // band's - copied outside the render pass, then the draw's state again.
+  if (tiling_band_replicate_) {
+    render_target_cache_->ReplicateTilingBandRows(tiling_band_replicate_,
+                                                  tiling_band_rows_);
+    tiling_band_replicate_ = 0;
+    SubmitBarriersAndEnterRenderTargetCacheRenderPass(
+        render_target_cache_->last_update_render_pass(),
+        render_target_cache_->last_update_framebuffer());
+    bind_guest_graphics_pipeline();
+    UpdateDynamicState(viewport_info, primitive_polygonal,
+                       normalized_depth_control, draw_resolution_scale_x,
+                       draw_resolution_scale_y, apply_host_depth_polygon_offset,
+                       pipeline->dynamic_state);
+    if (!UpdateBindings(vertex_shader, pixel_shader, stage_bindings_ready[0],
+                        stage_bindings_ready[1], interpreter_placeholder,
+                        placeholder_pixel_shader)) {
+      return false;
+    }
+  }
+
   // Track for device-lost diagnostics.
   ++submission_in_progress_.draw_count;
   submission_in_progress_.last_vs_hash = vertex_shader->ucode_data_hash();
@@ -6009,9 +6117,16 @@ bool VulkanCommandProcessor::IssueCopy() {
   uint32_t written_address, written_length;
   reg::RB_COPY_DEST_INFO copy_dest_info;
   bool is_scaled;
+  // merge_tiling_bands: a later band is resolved from its rows.
+  render_target_cache_->SetTilingBandResolveRows(
+      tiling_band_merge_active() && tiling_band() > 0 &&
+              tiling_band_sequence_seen_ == tiling_band_sequence()
+          ? uint32_t(tiling_band()) * tiling_band_rows_
+          : 0);
   const bool resolve_succeeded = render_target_cache_->Resolve(
       *memory_, *shared_memory_, *texture_cache_, written_address,
       written_length, &copy_dest_info, &is_scaled);
+  render_target_cache_->SetTilingBandResolveRows(0);
   if (resolve_ts_pair != UINT32_MAX) {
     // Always write all three of an opened resolve - a WAIT_BIT results copy
     // over an unwritten query would hang the GPU. Without a copy end marked
@@ -8049,6 +8164,12 @@ void VulkanCommandProcessor::UpdateDynamicState(
   }
   viewport.minDepth = viewport_info.z_min;
   viewport.maxDepth = viewport_info.z_max;
+  // merge_tiling_bands: a draw first executed in a later band, placed at its
+  // rows of the render targets as tall as the screen.
+  if (tiling_band_draw_y_offset_ && viewport_info.xy_extent[0] &&
+      viewport_info.xy_extent[1]) {
+    viewport.y += float(tiling_band_draw_y_offset_);
+  }
   SetViewport(viewport);
 
   // Scissor.
@@ -8064,6 +8185,16 @@ void VulkanCommandProcessor::UpdateDynamicState(
   scissor_rect.offset.y = int32_t(scissor.offset[1]);
   scissor_rect.extent.width = scissor.extent[0];
   scissor_rect.extent.height = scissor.extent[1];
+  // merge_tiling_bands: a scissor covering the whole band covers the whole
+  // screen (the other bands' draws of the same geometry aren't executed).
+  if (tiling_band_draw_expand_scissor_) {
+    if (scissor_rect.offset.y == 0 &&
+        scissor_rect.extent.height >= tiling_band_rows_) {
+      scissor_rect.extent.height = RenderTargetCache::kMergedTilingBandsHeight;
+    } else {
+      scissor_rect.offset.y += tiling_band_draw_y_offset_;
+    }
+  }
   SetScissor(scissor_rect);
 
   if (render_target_cache_->GetPath() ==
@@ -9057,15 +9188,37 @@ bool VulkanCommandProcessor::UpdateBindings(const VulkanShader* vertex_shader,
       VkDescriptorBufferInfo& buffer_info = current_constant_buffer_infos_
           [SpirvShaderTranslator::kConstantBufferFetch];
       constexpr size_t kFetchConstantsSize = sizeof(uint32_t) * 6 * 32;
+      constexpr size_t kFetchConstantsDecodedSize =
+          sizeof(SpirvShaderTranslator::DecodedTextureFetchConstant) * 32;
+      const bool fetch_constants_decoded =
+          cvars::spirv_texture_fetch_constants_decoded;
+      size_t fetch_constants_buffer_size =
+          kFetchConstantsSize +
+          (fetch_constants_decoded ? kFetchConstantsDecodedSize : 0);
       uint8_t* mapping = uniform_buffer_pool_->Request(
-          frame_current_, kFetchConstantsSize, uniform_buffer_alignment,
-          buffer_info.buffer, buffer_info.offset);
+          frame_current_, fetch_constants_buffer_size,
+          uniform_buffer_alignment, buffer_info.buffer, buffer_info.offset);
       if (!mapping) {
         return false;
       }
-      buffer_info.range = VkDeviceSize(kFetchConstantsSize);
+      buffer_info.range = VkDeviceSize(fetch_constants_buffer_size);
       std::memcpy(mapping, &regs[XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0],
                   kFetchConstantsSize);
+      if (fetch_constants_decoded) {
+        // Decode only the fetch constants written since the last time.
+        uint32_t decode_remaining = fetch_constants_decode_needed_;
+        fetch_constants_decode_needed_ = 0;
+        uint32_t fetch_slot;
+        while (xe::bit_scan_forward(decode_remaining, &fetch_slot)) {
+          decode_remaining &= ~(UINT32_C(1) << fetch_slot);
+          SpirvShaderTranslator::DecodeTextureFetchConstant(
+              &regs[XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0 + 6 * fetch_slot],
+              fetch_constants_decoded_[fetch_slot]);
+        }
+        std::memcpy(mapping + kFetchConstantsSize,
+                    fetch_constants_decoded_.data(),
+                    kFetchConstantsDecodedSize);
+      }
       current_constant_buffers_up_to_date_ |=
           UINT32_C(1) << SpirvShaderTranslator::kConstantBufferFetch;
     }

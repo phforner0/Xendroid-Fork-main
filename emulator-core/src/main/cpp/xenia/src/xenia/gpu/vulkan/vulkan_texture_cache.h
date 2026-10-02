@@ -67,11 +67,12 @@ class VulkanTextureCache final : public TextureCache {
   // Memory reused across passes holds textures of several formats at once, so
   // only a texture whose pitch, format and endianness are the ones the resolve
   // writes qualifies (for depth, only k_24_8 and k_24_8_FLOAT, which the store
-  // decodes like the upload does).
+  // decodes like the upload does, and with depth_into_8888 also k_8_8_8_8,
+  // which gets the packed words).
   VkImageView GetResolveDestStorageViewForCompute(
       uint32_t base, uint32_t pitch_div_32, xenos::TextureFormat format,
       bool is_depth, uint32_t endian, uint32_t* base_delta_out,
-      ResolveDestTextureInfo* info_out) const;
+      ResolveDestTextureInfo* info_out, bool depth_into_8888 = false) const;
   // Makes the texture writable by the compute resolve about to be recorded
   // (the barrier is pushed, not submitted).
   void BeginResolveDestComputeStore(const ResolveDestTextureInfo& info);

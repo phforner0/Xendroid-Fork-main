@@ -44,6 +44,8 @@ namespace gpu {
 
 class RenderTargetCache {
  public:
+  // merge_tiling_bands: multisampled render targets are at least this tall.
+  static constexpr uint32_t kMergedTilingBandsHeight = 720;
   // High-level emulation logic implementation path.
   enum class Path {
     // Approximate method using conventional host render targets and copying
@@ -755,6 +757,15 @@ class RenderTargetCache {
   // bit-exact.
   bool IsTransferValueConverted7e3And8888(RenderTargetKey source,
                                           RenderTargetKey dest) const;
+
+  // merge_tiling_bands: whether the draw just updated replaces the depth and
+  // stencil (depth) or the color of render target 0 everywhere in
+  // [0, width) x [0, height) before the scissor - a clear by a quad.
+  bool DrawReplacesArea(bool depth,
+                        reg::RB_DEPTHCONTROL normalized_depth_control,
+                        uint32_t normalized_color_mask,
+                        const Shader& vertex_shader, uint32_t width,
+                        uint32_t height);
 
  private:
   const RegisterFile& register_file_;

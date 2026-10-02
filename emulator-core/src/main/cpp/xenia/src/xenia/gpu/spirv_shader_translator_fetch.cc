@@ -24,6 +24,7 @@ DECLARE_bool(texture_integer_num_format);
 DECLARE_bool(spirv_texture_sign_branch);
 DECLARE_bool(spirv_texture_sign_specialization);
 DECLARE_bool(spirv_texture_implicit_lod);
+DECLARE_bool(spirv_texture_exp_adjust_specialization);
 
 namespace xe {
 namespace gpu {
@@ -927,7 +928,12 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
       data_is_3d_needed = true;
     }
     spv::Id data_is_3d = spv::NoResult;
-    if (data_is_3d_needed) {
+    if (data_is_3d_needed && texture_fetch_constants_decoded_) {
+      data_is_3d = builder_->createBinOp(
+          spv::OpINotEqual, type_bool_,
+          LoadDecodedTextureFetchConstantWord(fetch_constant_index, 7),
+          const_uint_0_);
+    } else if (data_is_3d_needed) {
       // Get the data dimensionality from the bits 9:10 of the fetch constant
       // word 5.
       id_vector_temp_.clear();
@@ -937,10 +943,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
       id_vector_temp_.push_back(builder_->makeIntConstant(
           int((fetch_constant_word_0_index + 5) & 3)));
       spv::Id fetch_constant_word_5 =
-          builder_->createLoad(builder_->createAccessChain(
-                                   spv::StorageClassUniform,
-                                   uniform_fetch_constants_, id_vector_temp_),
-                               spv::NoPrecision);
+          LoadTextureFetchConstantWordFromTemp();
       spv::Id data_dimension = builder_->createTriOp(
           spv::OpBitFieldUExtract, type_uint_, fetch_constant_word_5,
           builder_->makeUintConstant(9), builder_->makeUintConstant(2));
@@ -953,7 +956,21 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
     // For 1D textures, we need to save the original uint size before it gets
     // converted to float, so we can check if the texture is "wide" (> 8192).
     spv::Id size_1d_width_minus_1_uint = spv::NoResult;
-    if (size_needed_components) {
+    if (size_needed_components && texture_fetch_constants_decoded_ &&
+        instr.dimension != xenos::FetchOpDimension::k1D) {
+      // Decoded on the CPU, as floats - 2D and cube, or 3D or 2D stacked as
+      // the data dimension says, the same values as below.
+      uint32_t size_first_word =
+          instr.dimension == xenos::FetchOpDimension::k3DOrStacked ? 4 : 0;
+      uint32_t size_remaining_components = size_needed_components;
+      uint32_t size_component_index;
+      while (xe::bit_scan_forward(size_remaining_components,
+                                  &size_component_index)) {
+        size_remaining_components &= ~(UINT32_C(1) << size_component_index);
+        size[size_component_index] = LoadDecodedTextureFetchConstantFloat(
+            fetch_constant_index, size_first_word + size_component_index);
+      }
+    } else if (size_needed_components) {
       // Get the size from the fetch constant word 2.
       id_vector_temp_.clear();
       id_vector_temp_.push_back(const_int_0_);
@@ -962,10 +979,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
       id_vector_temp_.push_back(builder_->makeIntConstant(
           int((fetch_constant_word_0_index + 2) & 3)));
       spv::Id fetch_constant_word_2 =
-          builder_->createLoad(builder_->createAccessChain(
-                                   spv::StorageClassUniform,
-                                   uniform_fetch_constants_, id_vector_temp_),
-                               spv::NoPrecision);
+          LoadTextureFetchConstantWordFromTemp();
       switch (instr.dimension) {
         case xenos::FetchOpDimension::k1D: {
           if (size_needed_components & 0b1) {
@@ -1251,10 +1265,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
         id_vector_temp_.push_back(builder_->makeIntConstant(
             int((fetch_constant_word_0_index + 5) & 3)));
         spv::Id fetch_constant_word_5_for_1d =
-            builder_->createLoad(builder_->createAccessChain(
-                                     spv::StorageClassUniform,
-                                     uniform_fetch_constants_, id_vector_temp_),
-                                 spv::NoPrecision);
+            LoadTextureFetchConstantWordFromTemp();
         spv::Id data_dimension_1d = builder_->createTriOp(
             spv::OpBitFieldUExtract, type_uint_, fetch_constant_word_5_for_1d,
             builder_->makeUintConstant(9), builder_->makeUintConstant(2));
@@ -1560,10 +1571,12 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
       // The signs the pipeline may make known as a specialization constant
       // (spirv_texture_sign_specialization): the host compiler then folds all
       // the sign handling below.
+      const uint32_t texture_sign_class_slot =
+          texture_sign_class_slots_[fetch_constant_index];
       if (is_pixel_shader() && cvars::spirv_texture_sign_specialization &&
-          fetch_constant_index < kTextureSignClassFetchConstantCount) {
+          texture_sign_class_slot < kTextureSignClassFetchConstantCount) {
         spv::Id sign_class =
-            GetTextureSignClassSpecConstant(fetch_constant_index);
+            GetTextureSignClassSpecConstant(texture_sign_class_slot);
         for (uint32_t sign_class_value = kTextureSignClassUnsigned;
              sign_class_value <= kTextureSignClassGamma; ++sign_class_value) {
           spv::Id is_sign_class = builder_->createBinOp(
@@ -1707,10 +1720,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
             int((fetch_constant_word_0_index + 3) & 3)));
         spv::Id fetch_constant_word_3_signed = builder_->createUnaryOp(
             spv::OpBitcast, type_int_,
-            builder_->createLoad(builder_->createAccessChain(
-                                     spv::StorageClassUniform,
-                                     uniform_fetch_constants_, id_vector_temp_),
-                                 spv::NoPrecision));
+            LoadTextureFetchConstantWordFromTemp());
 
         // Load the fetch constant word 4, needed unconditionally for LOD
         // biasing, and conditionally for stacked texture filtering.
@@ -1721,10 +1731,7 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
         id_vector_temp_.push_back(builder_->makeIntConstant(
             int((fetch_constant_word_0_index + 4) & 3)));
         spv::Id fetch_constant_word_4 =
-            builder_->createLoad(builder_->createAccessChain(
-                                     spv::StorageClassUniform,
-                                     uniform_fetch_constants_, id_vector_temp_),
-                                 spv::NoPrecision);
+            LoadTextureFetchConstantWordFromTemp();
         spv::Id fetch_constant_word_4_signed = builder_->createUnaryOp(
             spv::OpBitcast, type_int_, fetch_constant_word_4);
 
@@ -1732,15 +1739,19 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
         // specification order: specified LOD + sampler LOD bias + instruction
         // LOD bias).
         // Fetch constant LOD (bits 12:21 of the word 4).
-        spv::Id lod = builder_->createNoContractionBinOp(
-            spv::OpFMul, type_float_,
-            builder_->createUnaryOp(
-                spv::OpConvertSToF, type_float_,
-                builder_->createTriOp(spv::OpBitFieldSExtract, type_int_,
-                                      fetch_constant_word_4_signed,
-                                      builder_->makeUintConstant(12),
-                                      builder_->makeUintConstant(10))),
-            builder_->makeFloatConstant(1.0f / 32.0f));
+        spv::Id lod =
+            texture_fetch_constants_decoded_
+                ? LoadDecodedTextureFetchConstantFloat(fetch_constant_index, 3)
+                : builder_->createNoContractionBinOp(
+                      spv::OpFMul, type_float_,
+                      builder_->createUnaryOp(
+                          spv::OpConvertSToF, type_float_,
+                          builder_->createTriOp(
+                              spv::OpBitFieldSExtract, type_int_,
+                              fetch_constant_word_4_signed,
+                              builder_->makeUintConstant(12),
+                              builder_->makeUintConstant(10))),
+                      builder_->makeFloatConstant(1.0f / 32.0f));
         // Register LOD.
         if (instr.attributes.use_register_lod) {
           lod = builder_->createNoContractionBinOp(
@@ -2688,13 +2699,25 @@ void SpirvShaderTranslator::ProcessTextureFetchInstruction(
 
         // Apply the exponent bias from the bits 13:18 of the fetch constant
         // word 3.
-        spv::Id result_exponent_bias = builder_->createBinBuiltinCall(
-            type_float_, ext_inst_glsl_std_450_, GLSLstd450Ldexp,
-            const_float_1_,
-            builder_->createTriOp(spv::OpBitFieldSExtract, type_int_,
-                                  fetch_constant_word_3_signed,
-                                  builder_->makeUintConstant(13),
-                                  builder_->makeUintConstant(6)));
+        spv::Id result_exponent_bias =
+            texture_fetch_constants_decoded_
+                ? LoadDecodedTextureFetchConstantFloat(fetch_constant_index, 2)
+                : builder_->createBinBuiltinCall(
+                      type_float_, ext_inst_glsl_std_450_, GLSLstd450Ldexp,
+                      const_float_1_,
+                      builder_->createTriOp(spv::OpBitFieldSExtract, type_int_,
+                                            fetch_constant_word_3_signed,
+                                            builder_->makeUintConstant(13),
+                                            builder_->makeUintConstant(6)));
+        // spirv_texture_exp_adjust_specialization: 1 where the pipeline knows
+        // every exponent adjustment is zero, so x * 1 folds.
+        if (is_pixel_shader() &&
+            cvars::spirv_texture_exp_adjust_specialization) {
+          result_exponent_bias = builder_->createTriOp(
+              spv::OpSelect, type_float_,
+              GetTextureExpAdjustZeroSpecConstant(), const_float_1_,
+              result_exponent_bias);
+        }
         {
           uint32_t result_remaining_components = used_result_nonzero_components;
           uint32_t result_component_index;

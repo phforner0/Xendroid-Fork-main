@@ -301,6 +301,16 @@ void DeferredCommandBuffer::Execute(VkCommandBuffer command_buffer) {
             args.filter);
       } break;
 
+      case Command::kVkCopyImage: {
+        auto& args = *reinterpret_cast<const ArgsVkCopyImage*>(stream);
+        dfn.vkCmdCopyImage(
+            command_buffer, args.src_image, args.src_image_layout,
+            args.dst_image, args.dst_image_layout, args.region_count,
+            reinterpret_cast<const VkImageCopy*>(
+                reinterpret_cast<const uint8_t*>(stream) +
+                xe::align(sizeof(ArgsVkCopyImage), alignof(VkImageCopy))));
+      } break;
+
       case Command::kVkDispatch: {
         auto& args = *reinterpret_cast<const ArgsVkDispatch*>(stream);
         dfn.vkCmdDispatch(command_buffer, args.group_count_x,
@@ -899,7 +909,8 @@ const char* DeferredCommandBuffer::GetReplayStatCommandName(size_t index) {
       "BindPipeline", "BindPipelineDeferred", "BindVertexBuffers",
       "BeginQuery", "EndQuery", "CopyQueryPoolResults", "ResetQueryPool",
       "WriteTimestamp", "ClearAttachments", "ClearColorImage", "CopyBuffer",
-      "CopyBufferToImage", "FillBuffer", "BlitImage", "Dispatch", "Draw",
+      "CopyBufferToImage", "FillBuffer", "BlitImage", "CopyImage", "Dispatch",
+      "Draw",
       "DrawIndexed", "EndRenderPass", "BeginRendering", "EndRendering",
       "PipelineBarrier", "PushConstants", "SetBlendConstants",
       "SetRenderingInputAttachmentIndices", "SetDepthBias", "SetScissor",

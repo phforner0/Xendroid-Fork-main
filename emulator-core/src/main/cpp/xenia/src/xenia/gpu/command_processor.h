@@ -20,6 +20,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "xenia/base/guest_gpu_progress.h"
@@ -130,6 +131,39 @@ class CommandProcessor {
                 // also reduces the number of params we need to pass
   // Converts the reader's host pointer (+ offset) to a guest physical address.
   uint32_t GuestReadPtrOffset(int32_t offset = 0) const;
+
+  // merge_tiling_bands: the bands of predicated tiling (bin selects other than
+  // all ones between all-ones ones) drawn as one. Every draw (resolves aside)
+  // is executed in the first band it's predicated into - draws of later bands
+  // repeating one of an earlier band (the same command buffer replayed) are
+  // skipped, and the backend draws the first band's into render targets as
+  // tall as the screen and resolves each band from its rows.
+  void OnBinSelectWritten();
+  // Whether to issue the draw packet just read (false - drawn in an earlier
+  // band).
+  bool PrepareTilingBandDraw();
+  // The band being executed: 0 for the first, -1 outside the bands.
+  int32_t tiling_band_ = -1;
+  uint32_t tiling_band_select_ = 0;
+  // Incremented when the first band starts.
+  uint32_t tiling_band_sequence_ = 0;
+  // Cleared by the backend (DisableTilingBandMerge) when the bands of this
+  // frame can't be merged.
+  bool tiling_band_merge_ok_ = false;
+  // The current draw is first executed in tiling_band_ > 0.
+  bool tiling_band_draw_from_later_band_ = false;
+  std::unordered_set<uint32_t> tiling_band_draws_;
+
+ public:
+  bool tiling_band_merge_active() const {
+    return tiling_band_ >= 0 && tiling_band_merge_ok_;
+  }
+  int32_t tiling_band() const { return tiling_band_; }
+  uint32_t tiling_band_sequence() const { return tiling_band_sequence_; }
+  bool tiling_band_draw_from_later_band() const {
+    return tiling_band_draw_from_later_band_;
+  }
+  void DisableTilingBandMerge() { tiling_band_merge_ok_ = false; }
 
  public:
   enum class SwapPostEffect {

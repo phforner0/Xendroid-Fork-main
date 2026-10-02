@@ -115,6 +115,30 @@ static const Quirk kQuirks[] = {
     // the change compiles the pixel shader pipelines again.
     {0x4D5309C9, "spirv_texture_sign_specialization", true,
      "texture signs known to the host compiler per pipeline"},
+    // 2D fetches with the LOD the host computes (implicit LOD plus the bias)
+    // instead of 4 coarse derivatives and an explicit-gradient sample: with
+    // the signs specialized the texture pipe limits - GPU time -1.6 ms (-7%)
+    // at the 30 fps cap, both restart A/B pairs within 0.2 ms, the same image
+    // parked (S43, 2026-10-01). Neutral in AB10, when branches still wrapped
+    // the samples.
+    {0x4D5309C9, "spirv_texture_implicit_lod", true,
+     "2D texture fetches with the host's LOD"},
+    // Vertex shaders without the Shader Model 3 "0 * x = 0" emulation (a
+    // third of the main pass vertex shaders' instructions): the same positions
+    // for finite operands, so the passes still match - GPU time -0.7 ms at the
+    // 30 fps cap (S43, S45: both restart A/B pairs), no depth fighting on the
+    // road markings over a drive (S45, 2026-10-01).
+    {0x4D5309C9, "spirv_vs_relaxed_math", int64_t(1),
+     "no SM3 zero-multiply emulation in vertex shaders"},
+    // The scene is drawn in 3 bands of predicated tiling replaying the same
+    // command buffers: every draw executed only in the first band it's
+    // predicated into, into render targets as tall as the screen, each band
+    // resolved from its rows - 2916 -> ~1980 draws per frame, GPU time -1.0 to
+    // -1.1 ms at the 30 fps cap (S49, S51), the same image parked and over
+    // drives (2026-10-02). Unchecked: shaders using the pixel position in the
+    // ~300 draws only the lower bands have.
+    {0x4D5309C9, "merge_tiling_bands", true,
+     "the bands of predicated tiling drawn as one"},
 };
 
 // Same path/priority as a per-game config file.

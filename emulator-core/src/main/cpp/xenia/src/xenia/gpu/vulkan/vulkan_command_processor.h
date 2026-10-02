@@ -1348,6 +1348,20 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // Whether up-to-date data has been written to constant (uniform) buffers, and
   // the buffer infos in current_constant_buffer_infos_ point to them.
   uint32_t current_constant_buffers_up_to_date_;
+  // merge_tiling_bands: the band sequence the state below is for, the rows of
+  // a band, the render targets to replicate before the draw (1 - color, 2 -
+  // depth), and the row offset and the scissor expansion of the draw.
+  uint32_t tiling_band_sequence_seen_ = UINT32_MAX;
+  uint32_t tiling_band_rows_ = 0;
+  uint32_t tiling_band_replicate_ = 0;
+  int32_t tiling_band_draw_y_offset_ = 0;
+  bool tiling_band_draw_expand_scissor_ = false;
+  // spirv_texture_fetch_constants_decoded: the values decoded from each fetch
+  // constant (appended to the fetch constant buffer), and the fetch
+  // constants written since they were decoded.
+  std::array<SpirvShaderTranslator::DecodedTextureFetchConstant, 32>
+      fetch_constants_decoded_;
+  uint32_t fetch_constants_decode_needed_ = UINT32_MAX;
   // Dynamic constant buffers: when true (gated at SetupContext on the device reporting
   // maxDescriptorSetUniformBuffersDynamic >= kConstantBufferCount and the
   // vulkan_dynamic_constant_buffers cvar), the kDescriptorSetConstants set uses

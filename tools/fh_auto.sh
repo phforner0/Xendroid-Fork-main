@@ -40,7 +40,9 @@ last_draws() {
   grep 'GpuFrame' $LOG 2>/dev/null | tail -n $1 | sed -n 's/.*draws=\([0-9]*\).*/\1/p'
 }
 # Last $1 per-second reports all within $2 per mille of their mean and above
-# $3 draws. Parked: ~2920-2960 draws with +-0.3% jitter; driving: 3000-3650.
+# $3 draws. Parked: ~2920-2960 draws with +-0.3% jitter; driving: 3000-3650;
+# with merge_tiling_bands (the repeated draws of the tiling bands skipped)
+# parked ~2000. Menus and loading screens stay in the hundreds.
 stable() {
   c=0; min=999999; max=0; sum=0
   for v in $(last_draws $1); do
@@ -148,13 +150,13 @@ fi
 # launch 2: the game is already booting/loading - only wait for the scene.
 if [ "$LAUNCH" -ge 1 ]; then
   t=0
-  while ! stable 2 1000 2500; do
+  while ! stable 2 1000 1500; do
     sleep 1; t=$((t + 1)); [ $t -gt 240 ] && fail "world not loaded"
   done
   say "in game"
   # The intro drive ends with the car parked; require stability and a floor.
   t=0
-  while [ $t -lt 60 ] || ! stable 6 15 2600; do
+  while [ $t -lt 60 ] || ! stable 6 15 1500; do
     sleep 1; t=$((t + 1)); [ $t -gt 300 ] && fail "scene never settled"
   done
   say "scene stable after ${t}s: $(last_draws 1) draws/frame"

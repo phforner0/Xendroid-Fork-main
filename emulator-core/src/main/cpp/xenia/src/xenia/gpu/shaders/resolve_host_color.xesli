@@ -1003,6 +1003,15 @@ void XeResolveHostColorFullMain(
     param_next_after_texture_xe
     param_texture_xe(xe_resolve_host_color_source)) {
   XeResolveInfo resolve_info = XeResolveGetInfo(pass_push_consts_xe);
+  #ifdef XE_RESOLVE_HOST_COLOR_FULL_7E3_TO_2_10_10_10
+    // The variant for 7e3 in the EDRAM (either of its formats, handled alike)
+    // resolved to 2_10_10_10: the same packing of every sample to the EDRAM
+    // format and back, and of the result, without the format switches between
+    // the sample fetches.
+    resolve_info.edram_format = kXenosColorRenderTargetFormat_2_10_10_10_FLOAT;
+    resolve_info.edram_format_ints_log2 = 0u;
+    resolve_info.dest_format = kXenosFormat_2_10_10_10;
+  #endif
   uint2_xe pixel_index;
   if (!XeResolveHostColorGetPixelIndex(
           resolve_info, thread_index, pixel_index
@@ -1181,6 +1190,12 @@ void XeResolveHostColorMain(
     param_next_after_texture_xe
     param_texture_xe(xe_resolve_host_color_source)) {
   XeResolveInfo resolve_info = XeResolveGetInfo(pass_push_consts_xe);
+  #ifdef XE_RESOLVE_HOST_COLOR_EDRAM_FORMAT
+    // A variant for one 32bpp EDRAM format: the packing of every pixel to it
+    // without the format switches between the fetches.
+    resolve_info.edram_format = XE_RESOLVE_HOST_COLOR_EDRAM_FORMAT;
+    resolve_info.edram_format_ints_log2 = 0u;
+  #endif
   uint2_xe pixel_index;
   if (!XeResolveHostColorGetPixelIndex(
           resolve_info, thread_index, pixel_index
