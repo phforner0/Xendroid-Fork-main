@@ -25,6 +25,7 @@ import xendroid.compose.archive.ArchiveFiles
 import xendroid.compose.data.CoverPolicy
 import xendroid.compose.data.CoverStore
 import xendroid.compose.data.Game
+import xendroid.compose.data.GameCollection
 import xendroid.compose.data.GameFormat
 import xendroid.compose.data.GameLibraryRepository
 import xendroid.compose.data.IconCache
@@ -98,6 +99,22 @@ class GameLibraryViewModel(
         }
     }
 
+    /** L06: the user's collections (names and members by [Game.identityKey]). */
+    val collections = preferences.collections
+        .catch { Log.w("GameLibrary", "Reading collections failed", it); emit(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** One transaction; a refused change (duplicate name, full) comes back as the failure. */
+    suspend fun editCollections(change: (List<GameCollection>) -> List<GameCollection>): Result<Unit> =
+        try {
+            preferences.editCollections(change)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w("GameLibrary", "Changing collections failed", e)
+            Result.failure(e)
+        }
+
     fun setSort(sort: LibrarySort) {
         viewModelScope.launch {
             runCatching { preferences.setLibrarySort(sort.name) }
@@ -128,6 +145,12 @@ class GameLibraryViewModel(
         val lastRun: xendroid.compose.sessions.SessionRun?,
         /** Flight recorder of [lastRun] (C01), when it saved one. */
         val lastRunEvents: xendroid.compose.sessions.RunEventLog? = null,
+        /** L06: names of the installed title updates and number of DLC packages; null if unreadable. */
+        val updates: List<String>? = null,
+        val dlcCount: Int? = null,
+        /** L06: patch entries enabled and shipped for the title; null when none ship for it. */
+        val patchesEnabled: Int? = null,
+        val patchesTotal: Int? = null,
     )
     private val _details = MutableStateFlow<GameDetails?>(null)
     val details: StateFlow<GameDetails?> = _details.asStateFlow()
@@ -148,8 +171,13 @@ class GameLibraryViewModel(
                 runCatching {
                     val runs = xendroid.compose.sessions.SessionRuns.store()
                     val lastRun = runs.lastRun(title)
+                    val content = runCatching { installedContent(title) }
+                        .onFailure { Log.w("GameLibrary", "Listing installed content failed", it) }.getOrNull()
+                    val patches = runCatching { patchesOf(title) }
+                        .onFailure { Log.w("GameLibrary", "Reading patches failed", it) }.getOrNull()
                     GameDetails(game.identityKey, title, compatibilityStore.get(title), lastRun,
-                        lastRun?.let { runs.events(it.runId) })
+                        lastRun?.let { runs.events(it.runId) }, content?.first, content?.second,
+                        patches?.first, patches?.second)
                 }.onFailure { Log.w("GameLibrary", "Reading game details failed", it) }.getOrNull()
             }
             if (loaded != null && _details.value?.identityKey == game.identityKey) _details.value = loaded
@@ -157,6 +185,24 @@ class GameLibraryViewModel(
     }
 
     fun clearDetails() { _details.value = null }
+
+    /** Installed title updates (names) and DLC count, from the core's own content listing. The
+     *  library already loaded the core; without it this answers nothing rather than loading it. */
+    private fun installedContent(title: String): Pair<List<String>, Int>? {
+        val emu = EmulatorRuntime.emulator ?: return null
+        val root = ContentPaths.contentRoot().absolutePath
+        val updates = emu.list_content(root, title, ContentPaths.TU_CONTENT_TYPE) ?: return null
+        val dlc = emu.list_content(root, title, ContentPaths.DLC_CONTENT_TYPE) ?: return null
+        return updates.map { it.displayName?.ifBlank { null } ?: it.pkgDir } to dlc.size
+    }
+
+    /** Enabled and shipped patch entries of the title (bundled catalog + the user's toggles). */
+    private fun patchesOf(title: String): Pair<Int, Int>? {
+        val files = xendroid.compose.patches.PatchStore(xendroid.compose.patches.AssetPatchAssets(appContext),
+            xendroid.compose.patches.PatchPaths.patchesDir()).patchesForTitle(title)
+        if (files.isEmpty()) return null
+        return files.sumOf { file -> file.entries.count { it.isEnabled } } to files.sumOf { it.entries.size }
+    }
 
     /** Stores the user's own result with this build and the driver of the last run. */
     fun rateCompatibility(game: Game, status: xendroid.compose.compatibility.CompatStatus, note: String) {

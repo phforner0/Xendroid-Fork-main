@@ -14,11 +14,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import xendroid.compose.compatibility.CompatibilityReport
 import xendroid.compose.compatibility.TitleCompatibility
+import xendroid.compose.data.GameCollection
+import xendroid.compose.data.GameCollections
 
 /**
  * Settings and library metadata that move between installs or devices (L08, first
  * version): the global and per-game emulator configs, the touch-control layout,
- * favorites and library sort, and the user's compatibility results.
+ * favorites, collections (L06) and library sort, and the user's compatibility results.
  *
  * Deliberately NOT in a bundle: saves and profiles (their own manifest and lease),
  * game images and their paths, driver packages, LSFG data, logs and play history
@@ -33,6 +35,7 @@ data class DataBundle(
     val favorites: Set<String> = emptySet(),
     val librarySort: String? = null,
     val compatibility: Map<String, TitleCompatibility> = emptyMap(),
+    val collections: List<GameCollection> = emptyList(),
 )
 
 class BundleException(message: String) : Exception(message)
@@ -50,7 +53,12 @@ data class BundleManifest(
 )
 
 @Serializable
-private data class LibraryPreferences(val favorites: List<String> = emptyList(), val sort: String? = null)
+private data class LibraryPreferences(
+    val favorites: List<String> = emptyList(),
+    val sort: String? = null,
+    /** Added after the first bundles (same format version: older apps ignore it, older bundles lack it). */
+    val collections: List<GameCollection> = emptyList(),
+)
 
 /** What an import would change, for the user to confirm first. */
 data class ImportPlan(val lines: List<String>, val changes: Int)
@@ -80,9 +88,9 @@ object DataBundles {
             files["config/games/$id.config.toml"] = text.toByteArray(Charsets.UTF_8)
         }
         bundle.gamepadLayout?.let { files[LAYOUT] = it.toByteArray(Charsets.UTF_8) }
-        if (bundle.favorites.isNotEmpty() || bundle.librarySort != null) {
+        if (bundle.favorites.isNotEmpty() || bundle.librarySort != null || bundle.collections.isNotEmpty()) {
             files[LIBRARY] = json.encodeToString(LibraryPreferences.serializer(),
-                LibraryPreferences(bundle.favorites.sorted(), bundle.librarySort)).toByteArray(Charsets.UTF_8)
+                LibraryPreferences(bundle.favorites.sorted(), bundle.librarySort, bundle.collections)).toByteArray(Charsets.UTF_8)
         }
         bundle.compatibility.toSortedMap().forEach { (id, compat) ->
             require(title.matches(id)) { "Invalid Title ID $id" }
@@ -145,6 +153,7 @@ object DataBundles {
             gamepadLayout = files[LAYOUT]?.let { text(LAYOUT, it) },
             favorites = library?.favorites.orEmpty().filter { it.length <= 4096 }.toSet(),
             librarySort = library?.sort?.take(64),
+            collections = GameCollections.merged(emptyList(), library?.collections.orEmpty()),
             compatibility = files.mapNotNull { (path, bytes) ->
                 compatPath.matchEntire(path)?.let { match ->
                     val compat = runCatching { json.decodeFromString(TitleCompatibility.serializer(), text(path, bytes)) }
@@ -157,8 +166,8 @@ object DataBundles {
 
     /**
      * The state after importing [incoming] over [current]: configs and the layout in the
-     * bundle replace the current ones (others are kept), favorites are added, never
-     * removed, and compatibility results are merged per title, newest first.
+     * bundle replace the current ones (others are kept), favorites and collection members
+     * are added, never removed, and compatibility results are merged per title, newest first.
      */
     fun merged(current: DataBundle, incoming: DataBundle): DataBundle = DataBundle(
         globalConfig = incoming.globalConfig ?: current.globalConfig,
@@ -171,6 +180,7 @@ object DataBundles {
                 .distinct().sortedByDescending(CompatibilityReport::createdAt).take(MAX_COMPAT_REPORTS)
             TitleCompatibility(titleId = id, reports = reports)
         },
+        collections = GameCollections.merged(current.collections, incoming.collections),
     )
 
     fun plan(current: DataBundle, incoming: DataBundle): ImportPlan {
@@ -198,6 +208,12 @@ object DataBundles {
         val newFavorites = after.favorites.size - current.favorites.size
         note(newFavorites > 0, "Favorites: ${if (newFavorites > 0) "$newFavorites added" else "nothing new"}, none removed")
         if (after.librarySort != current.librarySort) note(true, "Library sort: ${after.librarySort}")
+        if (incoming.collections.isNotEmpty()) {
+            val before = GameCollections.merged(emptyList(), current.collections)
+            val created = after.collections.count { GameCollections.find(before, it.name) == null }
+            val added = after.collections.sumOf { it.members.size } - before.sumOf { it.members.size }
+            note(created > 0 || added > 0, "Collections: $created new, $added game(s) added, none removed")
+        }
         val newResults = after.compatibility.values.sumOf { it.reports.size } -
             current.compatibility.values.sumOf { it.reports.size }
         note(newResults > 0, "Compatibility results: ${maxOf(newResults, 0)} added")

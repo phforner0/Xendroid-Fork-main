@@ -122,6 +122,9 @@ fun GameLibraryScreen(
         }
     }
     var favoritesOnly by rememberSaveable { mutableStateOf(false) }
+    // L06: show one of the user's collections (by name); a deleted one shows everything.
+    val collections by viewModel.collections.collectAsStateWithLifecycle()
+    var collectionFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var lastFocusedId by rememberSaveable { mutableStateOf<String?>(null) }
     var focusRestoreTick by remember { mutableIntStateOf(0) }
     var preparingLaunch by remember { mutableStateOf(false) }
@@ -340,10 +343,13 @@ fun GameLibraryScreen(
                         EmptyMessage("No games in this folder", "Choose another",
                             onAction = startRealPathMode)
                     else {
-                        val visibleGames = remember(s.games, searchQuery, favoritesOnly, favorites, sort, activity) {
+                        val shownCollection = collectionFilter?.let { xendroid.compose.data.GameCollections.find(collections, it) }
+                        val visibleGames = remember(s.games, searchQuery, favoritesOnly, favorites, sort, activity, shownCollection) {
                             val query = searchQuery.trim()
+                            val members = shownCollection?.members?.toHashSet()
                             val filtered = s.games.filter { game ->
                                 (!favoritesOnly || isFavorite(game, favorites)) &&
+                                    (members == null || game.identityKey in members) &&
                                     (query.isEmpty() || game.name.contains(query, ignoreCase = true) ||
                                         game.titleId?.contains(query, ignoreCase = true) == true)
                             }
@@ -379,11 +385,31 @@ fun GameLibraryScreen(
                             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically) {
-                                FilterChip(
-                                    selected = favoritesOnly,
-                                    onClick = { favoritesOnly = !favoritesOnly },
-                                    label = { Text("Favorites") },
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    FilterChip(
+                                        selected = favoritesOnly,
+                                        onClick = { favoritesOnly = !favoritesOnly },
+                                        label = { Text("Favorites") },
+                                    )
+                                    if (collections.isNotEmpty()) {
+                                        var collectionMenu by remember { mutableStateOf(false) }
+                                        Box {
+                                            TextButton(onClick = { collectionMenu = true }) {
+                                                Text(shownCollection?.name ?: "All collections")
+                                            }
+                                            DropdownMenu(expanded = collectionMenu, onDismissRequest = { collectionMenu = false }) {
+                                                DropdownMenuItem(text = { Text("All games") }, onClick = {
+                                                    collectionFilter = null; collectionMenu = false
+                                                })
+                                                collections.forEach { collection ->
+                                                    DropdownMenuItem(text = { Text("${collection.name} (${collection.members.size})") }, onClick = {
+                                                        collectionFilter = collection.name; collectionMenu = false
+                                                    })
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 var sortMenu by remember { mutableStateOf(false) }
                                 Box {
                                     TextButton(onClick = { sortMenu = true }) { Text(sort.label) }
@@ -402,6 +428,7 @@ fun GameLibraryScreen(
                                     EmptyMessage("No games match your search", "Clear search") {
                                         searchQuery = ""
                                         favoritesOnly = false
+                                        collectionFilter = null
                                     }
                                 }
                             } else {
@@ -482,6 +509,33 @@ fun GameLibraryScreen(
         val sheetState = rememberModalBottomSheetState()
         val details by viewModel.details.collectAsStateWithLifecycle()
         var ratingOpen by remember(game.identityKey) { mutableStateOf(false) }
+        var collectionsOpen by remember(game.identityKey) { mutableStateOf(false) }
+        if (collectionsOpen) {
+            val failed: (Throwable) -> Unit = { Toast.makeText(context, it.message ?: "Could not change collections", Toast.LENGTH_LONG).show() }
+            CollectionsDialog(
+                gameName = game.name,
+                gameKey = game.identityKey,
+                collections = collections,
+                onSetMember = { name, member ->
+                    scope.launch {
+                        viewModel.editCollections { xendroid.compose.data.GameCollections.setMember(it, name, game.identityKey, member) }
+                            .onFailure(failed)
+                    }
+                },
+                onCreate = { name ->
+                    scope.launch {
+                        viewModel.editCollections { xendroid.compose.data.GameCollections.create(it, name, game.identityKey) }
+                            .onFailure(failed)
+                    }
+                },
+                onDelete = { name ->
+                    scope.launch {
+                        viewModel.editCollections { xendroid.compose.data.GameCollections.delete(it, name) }.onFailure(failed)
+                    }
+                },
+                onDismiss = { collectionsOpen = false },
+            )
+        }
         var timelineOpen by remember(game.identityKey) { mutableStateOf(false) }
         LaunchedEffect(game.identityKey) { viewModel.loadDetails(game) }
         if (ratingOpen) {
@@ -577,6 +631,12 @@ fun GameLibraryScreen(
                     headlineContent = { Text(if (isFavorite(game, favorites)) "Remove from favorites" else "Add to favorites") },
                     modifier = Modifier.clickable { viewModel.toggleFavorite(game) },
                 )
+                val inCollections = xendroid.compose.data.GameCollections.namesOf(collections, game.identityKey)
+                ListItem(
+                    headlineContent = { Text("Collections") },
+                    supportingContent = { Text(inCollections.joinToString(", ").ifEmpty { "Not in a collection" }) },
+                    modifier = Modifier.clickable { collectionsOpen = true },
+                )
                 if (xendroid.compose.data.CoverStore.normalize(game.titleId) != null) {
                     ListItem(
                         headlineContent = { Text("Change cover") },
@@ -670,8 +730,12 @@ fun GameLibraryScreen(
                     },
                 )
 
+                val shown = details?.takeIf { it.identityKey == game.identityKey }
                 ListItem(
                     headlineContent = { Text("Game patches") },
+                    supportingContent = shown?.patchesTotal?.let { total ->
+                        { Text("${shown.patchesEnabled ?: 0} of $total enabled") }
+                    },
                     colors = if (perGameEnabled) {
                         ListItemDefaults.colors()
                     } else {
@@ -687,6 +751,14 @@ fun GameLibraryScreen(
 
                 ListItem(
                     headlineContent = { Text("Manage content") },
+                    supportingContent = shown?.updates?.let { updates ->
+                        {
+                            Text(listOf(
+                                if (updates.isEmpty()) "No title update" else "Title update: ${updates.joinToString(", ")}",
+                                when (val dlc = shown.dlcCount ?: 0) { 0 -> "no DLC"; 1 -> "1 DLC"; else -> "$dlc DLC" },
+                            ).joinToString(" · "))
+                        }
+                    },
                     colors = if (perGameEnabled) {
                         ListItemDefaults.colors()
                     } else {

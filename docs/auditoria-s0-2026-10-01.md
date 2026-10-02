@@ -261,3 +261,11 @@ com comandos e resultados exatos.
    ficha de outro disco/título nada muda; voltar o nome `.iso` e atualizar: o jogo volta com o
    mesmo tempo de jogo e relato. Remover uma pasta (L03) de jogos já jogados: eles aparecem
    como "outside your game folders". Nenhum arquivo é apagado.
+21. Lote 9 — ficha e coleções (L06): na ficha de um jogo com TU e DLC instalados, "Manage
+   content" mostra "Title update: <nome> · 2 DLC" e "Game patches" mostra "N of M enabled"
+   (ligar um patch, voltar: o número muda). "Collections" → criar "RPGs": o jogo entra; criar
+   "rpgs" de novo: recusa com mensagem; marcar outro jogo em "RPGs"; na biblioteca, o seletor
+   "All collections" → "RPGs (2)" mostra só os dois; mover a ISO de um deles para outra pasta
+   da biblioteca e atualizar: continua na coleção. "Delete" na coleção: confirma, a coleção some
+   e os jogos continuam. Exportar o pacote de dados (Configurações), apagar a coleção, importar:
+   a prévia diz "Collections: 1 new, …" e ela volta.

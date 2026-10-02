@@ -35,7 +35,7 @@ import xendroid.compose.bundle.DataBundleIo
 import xendroid.compose.bundle.ImportPlan
 
 /**
- * L08: export the settings, touch controls, favorites and compatibility notes to a file
+ * L08: export the settings, touch controls, favorites, collections and compatibility notes to a file
  * the user picks, or import one after seeing exactly what it would change. [beforeImport]
  * writes pending edits of the open settings screen; [afterImport] re-reads them.
  */
@@ -76,7 +76,7 @@ fun DataBundleSection(beforeImport: () -> Unit, afterImport: () -> Unit) {
         headlineContent = { Text("Back up or move settings") },
         supportingContent = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Emulator settings (global and per game), touch controls, favorites and your compatibility " +
+                Text("Emulator settings (global and per game), touch controls, favorites, collections and your compatibility " +
                     "notes, in one file. Saves, profiles, games and drivers are not included.")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(enabled = !busy, onClick = {

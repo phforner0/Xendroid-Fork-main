@@ -111,6 +111,22 @@ class DataBundleTest {
         assertTrue(partial.lines.contains("Touch controls: not in the bundle, kept"))
     }
 
+    @Test fun collectionsTravelAndOnlyGainGames() {
+        val rpgs = xendroid.compose.data.GameCollection("RPGs", listOf("title:4D5309C9:-:0"))
+        val withCollections = sample.copy(collections = listOf(rpgs))
+        assertEquals(withCollections, DataBundles.read(ByteArrayInputStream(bytes(withCollections))))
+        val onlyCollections = DataBundle(collections = listOf(rpgs))
+        assertEquals(onlyCollections, DataBundles.read(ByteArrayInputStream(bytes(onlyCollections))))
+
+        val current = DataBundle(collections = listOf(xendroid.compose.data.GameCollection("rpgs", listOf("uri:/x.iso"))))
+        assertEquals(listOf(xendroid.compose.data.GameCollection("rpgs", listOf("uri:/x.iso", "title:4D5309C9:-:0"))),
+            DataBundles.merged(current, onlyCollections).collections)
+        val plan = DataBundles.plan(current, onlyCollections)
+        assertTrue(plan.lines.contains("Collections: 0 new, 1 game(s) added, none removed"))
+        assertEquals(1, plan.changes)
+        assertEquals(0, DataBundles.plan(onlyCollections, onlyCollections).changes)
+    }
+
     @Test fun compatibilityHistoryStaysBounded() {
         val many = TitleCompatibility(titleId = "4D5309C9", reports = (1..30).map { report(CompatStatus.IN_GAME, it.toLong()) })
         val after = DataBundles.merged(DataBundle(), DataBundle(compatibility = mapOf("4D5309C9" to many)))

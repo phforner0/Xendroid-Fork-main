@@ -74,6 +74,7 @@ object DataBundleIo {
             favorites = prefs.favoriteIds.first(),
             librarySort = prefs.librarySort.first(),
             compatibility = compatibility().all(),
+            collections = prefs.collections.first(),
         )
     }
 
@@ -121,6 +122,7 @@ object DataBundleIo {
         }
         val prefs = PreferencesStore(context)
         prefs.addFavorites(incoming.favorites)
+        prefs.mergeCollections(incoming.collections)
         incoming.librarySort?.let { prefs.setLibrarySort(it) }
         val store = compatibility()
         val merged = DataBundles.merged(current, incoming)
@@ -165,5 +167,6 @@ object DataBundleIo {
 
     private fun parts(bundle: DataBundle): Int =
         (if (bundle.globalConfig != null) 1 else 0) + bundle.gameConfigs.size + (if (bundle.gamepadLayout != null) 1 else 0) +
-            (if (bundle.favorites.isNotEmpty() || bundle.librarySort != null) 1 else 0) + bundle.compatibility.size
+            (if (bundle.favorites.isNotEmpty() || bundle.librarySort != null || bundle.collections.isNotEmpty()) 1 else 0) +
+            bundle.compatibility.size
 }
