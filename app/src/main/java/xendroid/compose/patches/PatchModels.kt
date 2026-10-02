@@ -19,6 +19,8 @@ data class PatchFile(
     val entries: List<PatchEntry>,
     /** L10: this file against the catalog bundled with this app version, when there is news. */
     val update: PatchUpdate? = null,
+    /** L11: a file the user added (not from the bundled catalog); it can be removed. */
+    val mine: Boolean = false,
 )
 
 /**

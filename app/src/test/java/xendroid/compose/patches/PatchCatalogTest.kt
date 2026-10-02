@@ -140,6 +140,31 @@ class PatchStoreTest {
         assertEquals(0, store.syncAll())
     }
 
+    @Test fun theUsersOwnFilesAreCheckedKeptApartAndStartOff() {
+        val mod = HEADER + patch("Faster", "0x1", enabled = true)
+        val stored = store.importUserPatch("4d5307e6", "My mod!.patch.toml", mod)
+        assertEquals("4D5307E6 - mine - My mod.patch.toml", stored)
+        assertEquals("4D5307E6 - mine - My mod (1).patch.toml", store.importUserPatch("4D5307E6", "My mod!.patch.toml", mod))
+        val files = store.patchesForTitle("4D5307E6")
+        assertEquals(listOf(false, true, true), files.map { it.mine })
+        fun mod() = store.patchesForTitle("4D5307E6").single { it.fileName == stored }
+        assertEquals(listOf(false), mod().entries.map { it.isEnabled })                // opt-in: imported off
+        store.setEnabled(stored, 0, true)
+        assertEquals(listOf(true), mod().entries.map { it.isEnabled })
+        // The catalog's update machinery never touches them, and they are what the core loads.
+        assets.files = mapOf(name to V2)
+        store.syncAll()
+        assertTrue(File(dir, stored).readText().contains("is_enabled = true"))
+        assertTrue(Regex("^[A-Fa-f0-9]{8}.*\\.patch\\.toml$").matches(stored))
+        // Refused: another title, a file that would crash the core, a catalog file to remove.
+        assertTrue(runCatching { store.importUserPatch("41560817", "x", mod) }.exceptionOrNull()!!.message!!.contains("4D5307E6"))
+        val crash = runCatching { store.importUserPatch("4D5307E6", "x", HEADER + "\n[[patch]]\nname = \"y\"\n[[patch.be32]]\nvalue = 1\n") }
+        assertTrue(crash.exceptionOrNull() is PatchFileException)
+        assertTrue(runCatching { store.removeUserPatch(name) }.isFailure)
+        store.removeUserPatch(stored)
+        assertFalse(File(dir, stored).exists())
+    }
+
     @Test fun anUpdateKilledBeforeItsBaseIsSettledOnTheNextRead() {
         store.setEnabled(name, 0, true)
         assets.files = mapOf(name to V2)

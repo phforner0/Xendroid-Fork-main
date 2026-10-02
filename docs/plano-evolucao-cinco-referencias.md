@@ -383,6 +383,12 @@ de deltas guest; registrar unavailable/stale e aquecimento. Referências [X2–X
 | L11 | Mods Xbox opt-in | Somente formatos suportados por Xenia/patch/override de arquivos; namespace separado, ordem e conflitos explícitos, não substituir um save/DLC; não portar mods/Workshop Steam |
 | L12 | Lixeira de dados gerenciados | Mover somente dados internos elegíveis para namespace isolado sob lease/journal; restauração com preview de conflitos, cota e limpeza explícita; remover referência da biblioteca não exclui ROM externa |
 
+**Estado L11 (2026-10-02, v1, Impl. + Local):** o core só suporta patches `.patch.toml` (não há
+override de arquivos), então "mods" = patches do próprio usuário: importados com
+`patches/PatchFileCheck.kt` (recusa tudo o que derrubaria o PatchDB, com a linha), em espaço de
+nomes próprio, desligados por padrão, removíveis, e conflitos de memória entre patches ligados
+mostrados na tela (a ordem do core não é definida). Falta: validação no aparelho (roteiro 26).
+
 **Estado L10 (2026-10-02, v1, Impl. + Local):** catálogo de patches com gravação atômica
 e cópias que acompanham o catálogo de cada versão do app (`patches/PatchCatalog.kt`,
 `PatchStore.kt`): escolhas casadas por nome, atualização sozinha quando só os interruptores

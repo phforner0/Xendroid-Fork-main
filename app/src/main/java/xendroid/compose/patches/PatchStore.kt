@@ -23,7 +23,8 @@ class PatchStore(
     private val assets: PatchAssets,
     private val patchesDir: File,
 ) {
-    /** Files whose 8-hex filename prefix matches [titleId] (case-insensitive). A title may have several. */
+    /** Files whose 8-hex filename prefix matches [titleId] (case-insensitive). A title may have
+     *  several: the bundled ones first, then the user's own (L11). */
     fun patchesForTitle(titleId: String): List<PatchFile> =
         assets.list()
             .filter { it.length >= 8 && it.substring(0, 8).equals(titleId, ignoreCase = true) }
@@ -31,7 +32,52 @@ class PatchStore(
             .mapNotNull { name ->
                 val text = sync(name)
                 PatchTomlParser.parse(name, text)?.copy(update = updateOf(name, text))
+            } +
+            userFiles(titleId).mapNotNull { file ->
+                runCatching { PatchTomlParser.parse(file.name, file.readText())?.copy(mine = true) }.getOrNull()
             }
+
+    /** The text of each file of [titleId] as the emulator will read it, for conflict checks. */
+    fun textsForTitle(titleId: String): List<Pair<PatchFile, String>> = patchesForTitle(titleId).map { file ->
+        val onDisk = file(file.fileName)
+        file to (if (onDisk.isFile) onDisk.readText() else assets.read(file.fileName))
+    }
+
+    /**
+     * L11: adds the user's own patch file for [titleId], under its own name space
+     * ("<TITLE> - mine - <name>.patch.toml"), never over another file. [text] must pass
+     * [PatchFileCheck] (anything that would make the emulator misbehave is refused, with the
+     * line) and be for this title. It is stored with every patch off: each one is the user's
+     * explicit choice. Returns the stored file's name.
+     */
+    fun importUserPatch(titleId: String, name: String, text: String): String {
+        val title = titleId.uppercase()
+        require(title.matches(Regex("[0-9A-F]{8}"))) { "Invalid Title ID" }
+        require(text.length <= MAX_USER_PATCH_CHARS) { "The file is too large for a patch file" }
+        val spec = PatchFileCheck.read(text)
+        require(spec.titleId == title) { "This file is for title ${spec.titleId}, not this game ($title)" }
+        val clean = name.removeSuffix(".toml").removeSuffix(".patch").replace(Regex("[^A-Za-z0-9 _-]"), " ")
+            .replace(Regex("\\s+"), " ").trim().take(40).ifEmpty { "patch" }
+        patchesDir.mkdirs()
+        var target = File(patchesDir, "$title$MINE$clean.patch.toml")
+        var n = 1
+        while (target.exists()) target = File(patchesDir, "$title$MINE$clean (${n++}).patch.toml")
+        ArchiveFiles.atomicText(target, PatchCatalog.allOff(text))
+        return target.name
+    }
+
+    /** Removes one of the user's own patch files (never a catalog copy). */
+    fun removeUserPatch(fileName: String) {
+        require(isUserFile(fileName)) { "Only files you added can be removed" }
+        File(patchesDir, fileName).delete()
+    }
+
+    private fun isUserFile(name: String): Boolean =
+        name.contains(MINE) && name.endsWith(".patch.toml") && !name.contains('/') && name !in assets.list()
+
+    private fun userFiles(titleId: String): List<File> = patchesDir.listFiles { f ->
+        f.isFile && f.name.startsWith(titleId.uppercase() + MINE) && isUserFile(f.name)
+    }.orEmpty().sortedBy { it.name.lowercase() }
 
     /** Brings every on-disk copy that only differs in switches to the bundled catalog (the
      *  emulator reads only the copies, so this must not wait for the patches screen). Returns
@@ -76,6 +122,12 @@ class PatchStore(
     /** The update was seen: the copy to undo it goes. */
     fun dismissUpdate(fileName: String) {
         prev(fileName).delete()
+    }
+
+    private companion object {
+        /** Marks the user's own files; the bundled catalog never uses it. */
+        const val MINE = " - mine - "
+        const val MAX_USER_PATCH_CHARS = 1024 * 1024
     }
 
     private fun file(name: String) = File(patchesDir, name)

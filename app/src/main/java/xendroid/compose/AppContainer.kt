@@ -92,6 +92,7 @@ class AppContainer(context: Context) {
                 return GamePatchesViewModel(
                     titleId,
                     PatchStore(AssetPatchAssets(appContext), PatchPaths.patchesDir()),
+                    appContext,
                 ) as T
             }
         }

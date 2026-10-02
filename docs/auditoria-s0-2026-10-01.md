@@ -307,3 +307,10 @@ com comandos e resultados exatos.
    catálogo diferente e abrir a tela: aparece a prévia com "Update"/"Keep mine" e o arquivo não
    muda até a escolha. Jogar com o patch ligado e conferir no `xe.log` "PatchDB: Loaded patches"
    e o patch aplicado. Matar o app logo depois de um toque: o arquivo continua legível.
+26. Lote 9 — patches do usuário (L11): Game patches → "+" → um `.patch.toml` válido do mesmo
+   jogo: "Added …", aparece "… · added by you" com os patches desligados; ligar um, jogar e
+   conferir no `xe.log` que ele foi aplicado. Importar o mesmo arquivo de novo: vira "(1)".
+   Importar um arquivo de outro jogo: recusa citando o Title ID; um arquivo com uma escrita sem
+   `address` (editar à mão): recusa "Line N: the write has no address" — e o jogo continua
+   abrindo. Ligar um patch do catálogo e um seu que escrevam no mesmo endereço: aparece o aviso
+   de conflito com o endereço; desligar um: some. "Remove": o arquivo sai da pasta `patches`.
