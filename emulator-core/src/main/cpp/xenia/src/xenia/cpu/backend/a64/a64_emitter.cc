@@ -110,6 +110,9 @@ bool A64Emitter::Emit(GuestFunction* function, hir::HIRBuilder* builder,
   // emitted again with the long-range form.
   EmitFunctionInfo func_info = {};
   bool emitted = false;
+  // Once: it turns every local into its stack offset (a constant of another
+  // type), so a second emission must reuse the layout, not redo it.
+  const size_t stack_size = LayOutLocals(builder);
   for (bool near_branches : {bool(cvars::a64_near_branches), false}) {
     // Reset state.
     near_branches_ = near_branches;
@@ -119,7 +122,7 @@ bool A64Emitter::Emit(GuestFunction* function, hir::HIRBuilder* builder,
     fpcr_mode_ = FPCRMode::Unknown;
     func_info = {};
     try {
-      emitted = Emit(builder, func_info);
+      emitted = Emit(builder, stack_size, func_info);
     } catch (const Xbyak_aarch64::Error& e) {
       if (IsNearBranchOutOfRange(e)) {
         XELOGI(
@@ -156,7 +159,7 @@ bool A64Emitter::IsNearBranchOutOfRange(const Xbyak_aarch64::Error& e) const {
   return near_branches_ && int(e) == Xbyak_aarch64::ERR_LABEL_IS_TOO_FAR;
 }
 
-bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
+size_t A64Emitter::LayOutLocals(hir::HIRBuilder* builder) {
   // Calculate local variable stack offsets.
   auto locals = builder->locals();
   size_t stack_offset = StackLayout::GUEST_STACK_SIZE;
@@ -172,8 +175,11 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
   // Align total stack offset to 16 bytes (ARM64 ABI requirement).
   stack_offset -= StackLayout::GUEST_STACK_SIZE;
   stack_offset = xe::align(stack_offset, static_cast<size_t>(16));
+  return StackLayout::GUEST_STACK_SIZE + stack_offset;
+}
 
-  const size_t stack_size = StackLayout::GUEST_STACK_SIZE + stack_offset;
+bool A64Emitter::Emit(hir::HIRBuilder* builder, size_t stack_size,
+                      EmitFunctionInfo& func_info) {
   // ARM64 ABI: SP must always be 16-byte aligned.
   assert_true(stack_size % 16 == 0);
   func_info.stack_size = stack_size;
