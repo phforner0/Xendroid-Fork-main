@@ -1,4 +1,4 @@
-# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9, a v5, a reanálise v6, o fechamento dela no AB11 e a reanálise v7)
+# Plano de desenvolvimento e otimização — Forza Horizon no POCO F7 (v4, com a situação depois do AB9, a v5, a reanálise v6, o fechamento dela no AB11, a reanálise v7 e o fechamento dela no AB12)
 
 **Data:** 2026-09-30. **Base:** reanálise de `ab2` a `ab8-results.md`, dos logs
 com timestamps do build 36 (`b36-depth1x-ts`), do perfil de CPU do build 42
@@ -311,6 +311,26 @@ Ordem sugerida:
 - depois o 5, que ataca o custo fixo por draw de todos os jogos;
 - o 9 é o maior ganho que resta, mas também o maior risco.
 
+## Situação depois do AB12 (`ab12-results.md`)
+
+Os 12 caminhos da v7 foram medidos (S43–S52, builds 66–77, tudo pela rede).
+GPU no teto de 30 fps: ~22,3 ms no fim da v6, **17,7 ms** no fim da v7:
+
+| # (v7) | Resultado | Situação |
+|---|---|---|
+| 1 | LOD implícito: GPU −1,6 ms | quirk do Forza |
+| 2 | VS sem "0 × x = 0": −0,7 ms, sem *z-fighting* dirigindo | quirk do Forza |
+| 3 | sinais pelas texturas usadas: −0,4 ms | padrão |
+| 4 | formatos 12/10 no resolve direto: −0,1 ms | padrão |
+| 5 | fetch constants decodificadas na CPU: +0,2 ms (o preâmbulo não limita); a parte por pixel do teto — o *exp adjust* zero por pipeline — −0,2 ms | desligado / padrão |
+| 6 | resolves com os formatos conhecidos pelo shader: 7e3 → 2_10_10_10 −0,8 ms, demais formatos −0,4 ms | padrão |
+| 7 | uploads da GPU não servidos: profundidade → 8888 sem ganho; cube map com mips e sombra da CPU não servíveis | investigado |
+| 8 | resolves minúsculos no passe com 7e3: −0,15 ms, +68 passes | desligado |
+| 9 | as 3 faixas do tiling num passe só: −1,1 ms (2916 → ~1960 draws/frame), mesma imagem parado e dirigindo | quirk do Forza |
+| 10 | validação final no mesmo build (S52): v6 22,4/22,1 ms, v7 17,6/17,7 ms — **−4,6 ms (−21%)**, mesma imagem | feito |
+| 11 | opções de qualidade no app: documentadas para a interface Kotlin | documentado |
+| 12 | CPU por draw: perfil com símbolos, nenhum ponto dominante | documentado |
+
 ## Becos sem saída (não repetir sem fato novo)
 
 LRZ (AB3); extents reais no tiling predicado; thread de replay; estacionar todo
@@ -324,11 +344,15 @@ formatos do Forza). Do AB9: resolve só na textura (teto zero); resolves
 minúsculos no passe (teto 0,8 ms); `nopreamble` e `nouboopt` do ir3; opções
 do JIT (`a64_vmx_nan_fixup`, sincronização de pilha, folhas inline de 32 —
 nada além do ruído de ±20% entre lançamentos); comparar CPU por função entre
-lançamentos isolados. Do AB10: LOD implícito em fetch 2D (sem ganho além do
-ruído); stencil "não usado" no atlas de sombra (algum draw usa); orientação
+lançamentos isolados. Do AB10: stencil "não usado" no atlas de sombra (algum draw usa); orientação
 de listas de retângulos para *culling* (o host nunca as descarta). Do
 AB11: quad 4x na superfície 2x e transferência de fonte limpa como clear
 (exatos, sem ganho além do ruído: todas as transferências restantes custam
 ~0,36 ms); taxa de shading 2x2 (blocos visíveis); a diferença de formato do
 resolve 2_10_10_10 (~0,09 ms por resolve); áreas reais do tiling continuam
-bloqueadas (teto agora −5,3 ms, ver a v7).
+bloqueadas (teto agora −5,3 ms, ver a v7). Do AB12: fetch constants
+decodificadas na CPU (o preâmbulo encolhe 24% sem ganho — ele não limita);
+resolve no passe com a conversão 7e3 (73% dos resolves no passe, −0,15 ms, +68
+passes); resolves de profundidade gravando na textura 8888 que lê a mesma
+memória (ela ainda perde uma escrita). O LOD implícito, neutro no AB10, rende
+−1,6 ms com os sinais especializados (AB12).
