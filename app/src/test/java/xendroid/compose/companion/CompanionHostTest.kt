@@ -187,6 +187,37 @@ class CompanionHostTest {
         assertTrue(synchronized(rumbleOne) { rumbleOne.isEmpty() })
     }
 
+    @Test fun heldInputIsReleasedAndTheCurrentStateComesBackAfterwards() {
+        val host = host(timeoutMs = 10_000)
+        val socket = Socket("127.0.0.1", host.port).also { closeables += it }
+        val input = socket.getInputStream().buffered()
+        val out = socket.getOutputStream()
+        val challenge = CompanionCodec.read(input) as CompanionMessage.Challenge
+        val id = ByteArray(16) { 4 }
+        CompanionCodec.write(out, CompanionMessage.Hello(1, id, "raw", CompanionProtocol.proof(host.code, challenge.nonce, id)))
+        assertEquals(CompanionMessage.Welcome(1), CompanionCodec.read(input))
+        // The host handles a phone's frames in order: once it measured this PONG, it has seen every frame before it.
+        fun sync(markMs: Long) {
+            CompanionCodec.write(out, CompanionMessage.Pong(System.currentTimeMillis() - markMs))
+            eventually("host caught up") { (host.connected.singleOrNull()?.latencyMs ?: 0) >= markMs }
+        }
+
+        CompanionCodec.write(out, CompanionMessage.State(1, PadState(buttons = 0x1000, lx = -20000)))
+        sync(10_000)
+        assertEquals(listOf(PadKeys.KeyChange(4, true, -1), PadKeys.KeyChange(16, true, -20000)), changes(1))
+
+        host.holdInput(true)                                     // the game's menu opened
+        assertEquals(listOf(PadKeys.KeyChange(4, false, -1), PadKeys.KeyChange(16, false, 0)), changes(1).drop(2))
+        CompanionCodec.write(out, CompanionMessage.State(2, PadState(buttons = 0x2000, lx = -20000)))
+        sync(20_000)
+        assertEquals("nothing reaches the guest while held", 4, changes(1).size)
+
+        host.holdInput(false)                                    // back to the game: B and the stick, as held now
+        assertEquals(listOf(PadKeys.KeyChange(5, true, -1), PadKeys.KeyChange(16, true, -20000)), changes(1).drop(4))
+        host.holdInput(false)
+        assertEquals(6, changes(1).size)
+    }
+
     @Test fun heartbeatsMeasureLatency() {
         val host = host()
         client(host).connect()

@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
 
 /**
@@ -53,14 +54,21 @@ class CompanionHost(
     private val handshakes = AtomicInteger(0)
     /** Rumble is sent off the caller's thread: Android forbids socket writes on the main thread. */
     private val rumbleSender = Executors.newSingleThreadExecutor { r -> Thread(r, "companion-rumble").apply { isDaemon = true } }
+    /** See [holdInput]. */
+    @Volatile private var inputHeld = false
+    private val holdLock = Any()
 
-    data class ClientInfo(val slot: Int, val name: String, val latencyMs: Long?)
+    /** [connection] is unique per accepted phone connection in this process (a reconnect gets a new one). */
+    data class ClientInfo(val slot: Int, val name: String, val latencyMs: Long?, val connection: Long)
 
     private inner class Client(val key: String, val name: String, val slot: Int, val socket: Socket) {
+        val connection = connections.incrementAndGet()
         @Volatile var lastHeard: Long = clock()
         @Volatile var latencyMs: Long? = null
         var lastSeq = -1L
-        private var pad = PadState.RELEASED
+        /** The phone's newest state, and what the guest has (released while input is held). */
+        private var latest = PadState.RELEASED
+        private var applied = PadState.RELEASED
         private val writeLock = Any()
         private val closed = AtomicBoolean(false)
 
@@ -68,22 +76,32 @@ class CompanionHost(
             synchronized(writeLock) { CompanionCodec.write(socket.getOutputStream(), message) }
         }
 
-        /** Applies a new state unless the client is already gone (no key pressed after its release). */
+        /** Must hold this client's lock. */
+        private fun apply(next: PadState) {
+            PadKeys.diff(applied, next).forEach { onInput(slot, it) }
+            applied = next
+        }
+
+        /** Applies a new state unless the client is already gone (no key pressed after its release) or input is held. */
         fun update(next: PadState) {
             synchronized(this) {
                 if (closed.get()) return
-                PadKeys.diff(pad, next).forEach { onInput(slot, it) }
-                pad = next
+                latest = next
+                if (!inputHeld) apply(next)
+            }
+        }
+
+        fun hold(held: Boolean) {
+            synchronized(this) {
+                if (closed.get()) return
+                apply(if (held) PadState.RELEASED else latest)
             }
         }
 
         /** Releases what this phone held, frees its slot once, closes the socket. */
         fun close(reason: String) {
             if (!closed.compareAndSet(false, true)) return
-            synchronized(this) {
-                PadKeys.diff(pad, PadState.RELEASED).forEach { onInput(slot, it) }
-                pad = PadState.RELEASED
-            }
+            synchronized(this) { apply(PadState.RELEASED) }
             clients.remove(key, this)
             releaseSlot(key, slot)
             runCatching { send(CompanionMessage.Bye) }
@@ -93,7 +111,21 @@ class CompanionHost(
     }
 
     val connected: List<ClientInfo>
-        get() = clients.values.map { ClientInfo(it.slot, it.name, it.latencyMs) }.sortedBy { it.slot }
+        get() = clients.values.map { ClientInfo(it.slot, it.name, it.latencyMs, it.connection) }.sortedBy { it.slot }
+
+    /**
+     * While held (the game's menu is open, it is paused or in the background) every phone's
+     * input is released in the guest and new states are only remembered, like the menu
+     * isolates local controllers; releasing the hold applies each phone's current state,
+     * so a stick still pushed keeps working without being moved again.
+     */
+    fun holdInput(held: Boolean) {
+        synchronized(holdLock) {
+            if (inputHeld == held) return
+            inputHeld = held
+            clients.values.forEach { it.hold(held) }
+        }
+    }
 
     /** True once too many wrong codes were tried: only a new code (off and on) pairs again. */
     val locked: Boolean get() = synchronized(pairLock) { wrongCodes >= MAX_WRONG_CODES }
@@ -164,7 +196,7 @@ class CompanionHost(
                 CompanionProtocol.REJECT_CLOSED -> return reject(verdict, "pairing locked after $MAX_WRONG_CODES wrong codes")
                 CompanionProtocol.REJECT_PROOF -> return reject(verdict, "wrong code")
             }
-            val key = "companion:" + UUID.nameUUIDFromBytes(hello.clientId)
+            val key = KEY_PREFIX + UUID.nameUUIDFromBytes(hello.clientId)
             val name = hello.name.filter { it >= ' ' }.trim().take(32).ifBlank { "Phone" }
             val joined = synchronized(joinLock) {
                 if (!running.get()) return reject(CompanionProtocol.REJECT_CLOSED, "companion mode off")
@@ -218,5 +250,8 @@ class CompanionHost(
     companion object {
         const val MAX_WRONG_CODES = 10
         const val MAX_HANDSHAKES = 4
+        /** Player keys of companion phones in ControllerSlots. */
+        const val KEY_PREFIX = "companion:"
+        private val connections = AtomicLong()
     }
 }

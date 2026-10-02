@@ -88,6 +88,8 @@ fun InGameMenu(
     stretch: Boolean,
     volume: Int,
     sessionInfo: String,
+    /** While phone controllers are on: address, code and players (Controls page). */
+    phoneControllers: String?,
     logSessions: List<SessionLogs.Session>,
     onLogChoice: (Int) -> Unit,
     onPage: (InGamePage) -> Unit,
@@ -214,7 +216,11 @@ fun InGameMenu(
                             Text("Vulkan submitted counts sends to the compositor, not measured display scanout.", style = MaterialTheme.typography.bodySmall)
                         }
                         if (state.page == InGamePage.CONTROLS) {
+                            phoneControllers?.let {
+                                Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
+                            }
                             Text("Adaptive sticks are opt-in per game: touch near a saved stick position to place it under your thumb. Fixed buttons keep priority.", style = MaterialTheme.typography.bodySmall)
+                            Text("Phone controllers: other phones on the same Wi-Fi or hotspot play as P2–P4 with the code shown here; experimental.", style = MaterialTheme.typography.bodySmall)
                         }
                         if (state.page == InGamePage.SESSION) {
                             Text(sessionInfo, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp))
@@ -295,6 +301,7 @@ private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: 
         InGameAction.GYRO_CALIBRATE -> "Calibrate gyro · keep phone still after closing menu"
         InGameAction.GYRO_SENSITIVITY -> "Gyro camera sensitivity"
         InGameAction.CONTROLLER_RUMBLE -> "Controller rumble"
+        InGameAction.PHONE_CONTROLLERS -> "Phone controllers"
     }
 
 private fun HudMetric.label(metrics: Set<HudMetric>): String = "$label · full HUD: ${if (this in metrics) "On" else "Off"}"

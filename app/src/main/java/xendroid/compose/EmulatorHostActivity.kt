@@ -177,6 +177,46 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
     private val rumbleAmplitudes = mutableMapOf<Int, Int>()
 
+    /**
+     * I06–I09: other phones on the LAN as P2–P4. Off at every boot; the in-game menu turns it
+     * on. Its callbacks run on socket threads: the slot table and the JNI input calls are
+     * thread-safe (the native driver locks its key table), the flight recorder is not.
+     */
+    private val phoneControllers = xendroid.compose.companion.CompanionHostControl(
+        newHost = { lan ->
+            xendroid.compose.companion.CompanionHost(lan.address,
+                claimSlot = { key, _ ->
+                    // A generic label: a phone's own name can carry its owner's.
+                    controllerSlots.connectRemote(key)?.also { session.setSlotConnected(it, true, "Phone P${it + 1}") }
+                },
+                releaseSlot = { key, slot ->
+                    if (controllerSlots.disconnect(key) != null) session.setSlotConnected(slot, false, "Phone P${slot + 1}")
+                },
+                onInput = { slot, change -> session.keyEventSlot(slot, change.key, change.pressed, change.value) },
+                onEvent = { message -> mainHandler.post { recordEvent("companion", message) } })
+        },
+        onChange = { mainHandler.post { refreshPhoneControllers() } },
+    )
+    private val phoneControllersLabel = mutableStateOf("Phone controllers · Off")
+    private val phoneControllersDetails = mutableStateOf<String?>(null)
+    private var phoneControllersRecorded = "off"
+
+    /** Menu texts; on, off and failures also go to the run's timeline (never the address or code). */
+    private fun refreshPhoneControllers() {
+        phoneControllersLabel.value = phoneControllers.label()
+        phoneControllersDetails.value = phoneControllers.details()
+        val status = when (val s = phoneControllers.status) {
+            is xendroid.compose.companion.CompanionHostControl.Status.On -> "on (${s.network})"
+            is xendroid.compose.companion.CompanionHostControl.Status.Failed -> "not started: ${s.reason}"
+            xendroid.compose.companion.CompanionHostControl.Status.Off -> "off"
+            else -> return
+        }
+        if (status != phoneControllersRecorded) {
+            phoneControllersRecorded = status
+            recordEvent("companion", "phone controllers $status")
+        }
+    }
+
     /** Plays each slot's guest rumble on the controller holding it; called every 50 ms while the game runs. */
     private fun driveRumble(state: LongArray) {
         controllerSlots.players.forEachIndexed { slot, key ->
@@ -933,12 +973,17 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 }
                                 // Guest rumble (I04): only while the game itself runs, never under the
                                 // menu or a pause, where the last requested strength would linger.
+                                // Phone controllers (I09) get their slot's rumble raw: each phone
+                                // applies its owner's intensity. Their input is held meanwhile.
                                 launch {
                                     while (isActive) {
                                         delay(50)
                                         val playing = foregroundState.value && !menuState.value.open && !session.isPaused()
-                                        val state = if (playing && rumbleIntensity.value != xendroid.compose.gamepad.RumbleIntensity.OFF)
-                                            session.rumbleState() else null
+                                        val phones = phoneControllers.host != null
+                                        val controllerRumble = rumbleIntensity.value != xendroid.compose.gamepad.RumbleIntensity.OFF
+                                        val guest = if (playing && (controllerRumble || phones)) session.rumbleState() else null
+                                        if (phones) runCatching { phoneControllers.tick(playing, guest) }
+                                        val state = if (controllerRumble) guest else null
                                         if (state == null) stopRumble() else runCatching { driveRumble(state) }
                                     }
                                 }
@@ -1054,6 +1099,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         menuPaused.value = session.isPaused()
                                         fpsLimitState.intValue = session.fpsLimit()
                                         if (activeTitle != fpsConfig.value.titleId) refreshFpsConfig()
+                                        // Players joining or leaving and their latency.
+                                        refreshPhoneControllers()
                                     }
 
                                     delay(1000)
@@ -1104,9 +1151,12 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             InGameAction.GYRO_CAMERA to if (!gyroCamera.available) "Gyro camera · sensor unavailable" else "Gyro camera · ${if (gyroEnabled.value) "On" else "Off"}",
                                             InGameAction.GYRO_SENSITIVITY to "Gyro sensitivity · ${listOf("Low", "Normal", "High")[gyroSensitivity.intValue]}",
                                             InGameAction.CONTROLLER_RUMBLE to "Controller rumble · ${rumbleIntensity.value.label} · " +
-                                                controllerSlots.players.withIndex().filter { it.value != null }
+                                                controllerSlots.players.withIndex()
+                                                    .filter { it.value != null && !it.value!!.startsWith(xendroid.compose.companion.CompanionHost.KEY_PREFIX) }
                                                     .joinToString(", ") { "P${it.index + 1}" }.ifEmpty { "no controller" },
+                                            InGameAction.PHONE_CONTROLLERS to phoneControllersLabel.value,
                                         ),
+                                        phoneControllers = phoneControllersDetails.value,
                                         performanceHud = performanceOverlayEnabled.value,
                                         compactHud = compactPerformanceOverlay.value,
                                         hudMetrics = hudMetrics.value,
@@ -1589,6 +1639,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         gyroCamera.stop()
         stopEventSources()
         externalDisplay?.close()
+        // The process dies below: tell the phones now (bounded wait, sockets off this thread).
+        phoneControllers.close(timeoutMs = 300)
         super.onDestroy()
 
         keyboardRequestState.value = null
@@ -2291,6 +2343,16 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             return
         }
         if (action == InGameAction.GYRO_CALIBRATE) { gyroCamera.calibrate(); return }
+        if (action == InGameAction.PHONE_CONTROLLERS) {
+            // The native driver takes player slots only once the emulator runs a title.
+            if (phoneControllers.host == null && activeTitleState.value == null) {
+                Toast.makeText(this, "Phone controllers can be turned on once the game is running", Toast.LENGTH_SHORT).show()
+                return
+            }
+            phoneControllers.toggle()
+            refreshPhoneControllers()
+            return
+        }
         if (action == InGameAction.CONTROLLER_RUMBLE) {
             rumbleIntensity.value = rumbleIntensity.value.next()
             getSharedPreferences("touch_options", MODE_PRIVATE).edit()

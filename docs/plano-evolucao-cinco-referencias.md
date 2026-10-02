@@ -523,10 +523,14 @@ socket na main thread) e `PadKeys.apply` converte os eventos do pad de toque em 
 completo. Testes JVM escritos: codec/prova/diff/apply (`CompanionProtocolTest`) e host
 com clientes reais por loopback (`CompanionHostTest`: dois telefones em P2/P3, código
 errado, trava, slots cheios, saída, timeout + sequência, reconexão, rumble, latência,
-desligar, limite de handshakes) — 9 + 11 casos passando. Falta: tela do cliente
-(endereço + código + pad de toque), ação no menu em jogo do host (liga/desliga, mostra
-IP:porta, código e jogadores), encaminhar `rumbleState` aos telefones, e o gate em
-hardware (dois telefones na mesma rede, jogo split-screen).
+desligar, limite de handshakes) — 9 + 11 casos passando. **Host integrado (fatia 7b, Impl.
++ Local):** "Phone controllers" na página Controls do menu em jogo (off a cada boot, só com
+o jogo rodando), endereço escolhido por `CompanionNetwork` (IPv4 privado de Wi-Fi/hotspot/
+Ethernet/tethering; nunca dados móveis, VPN, CGNAT ou 0.0.0.0), liga/desliga ordenado fora
+da main thread (`CompanionHostControl`), IP:porta, código, jogadores e latência no menu,
+input dos telefones segurado com menu/pausa/fundo, rumble cru do slot a cada telefone só
+quando muda (`CompanionRumbleForwarder`). Falta: tela do cliente (endereço + código + pad de
+toque) e o gate em hardware (dois telefones na mesma rede, jogo split-screen).
 
 ## 9. P0/P2 — FG, apresentação e energia
 

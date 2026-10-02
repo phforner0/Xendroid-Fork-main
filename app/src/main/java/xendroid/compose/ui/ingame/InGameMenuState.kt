@@ -18,6 +18,7 @@ enum class InGameAction {
     COLOR_FILTER,
     GYRO_CALIBRATE, GYRO_SENSITIVITY,
     CONTROLLER_RUMBLE,
+    PHONE_CONTROLLERS,
 }
 
 val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
@@ -40,7 +41,7 @@ val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
         InGameAction.HUD_RAM, InGameAction.HUD_BATTERY, InGameAction.HUD_SOC),
     InGamePage.CONTROLS to listOf(InGameAction.TOUCH_CONTROLS, InGameAction.ADAPTIVE_STICKS, InGameAction.EDIT_TOUCH_LAYOUT,
         InGameAction.GYRO_CAMERA, InGameAction.GYRO_CALIBRATE, InGameAction.GYRO_SENSITIVITY,
-        InGameAction.CONTROLLER_RUMBLE),
+        InGameAction.CONTROLLER_RUMBLE, InGameAction.PHONE_CONTROLLERS),
     InGamePage.SESSION to listOf(InGameAction.RESUME, InGameAction.SHARE_LOGS, InGameAction.QUIT,
         InGameAction.MUTE, InGameAction.VOLUME_DOWN, InGameAction.VOLUME_UP, InGameAction.BACKGROUND_POLICY),
 )
