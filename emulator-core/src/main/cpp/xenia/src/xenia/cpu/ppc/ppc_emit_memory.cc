@@ -12,6 +12,7 @@
 #include <stddef.h>
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
+#include "xenia/base/platform.h"
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/ppc/ppc_hir_builder.h"
 
@@ -21,6 +22,27 @@ DEFINE_bool(
     "prefetch/cacheflush instructions. This may improve performance as these "
     "instructions were written with the Xbox 360's cache in mind, and modern "
     "processors do their own automatic prefetching.",
+    "CPU");
+
+DEFINE_bool(
+    ppc_single_float_keep_nan, true,
+    "lfs/stfs (single-precision loads and stores) keep a signaling NaN "
+    "signaling, as the PowerPC does, so 32-bit data copied through float "
+    "registers stays bit exact. Off, they use the host's float<->double "
+    "conversion like the x64 backend, which quiets signaling NaNs: a 32-bit "
+    "value copied through a float register that looks like one (about 0.2% "
+    "of random bit patterns) comes out changed. On ARM64 with "
+    "ppc_single_float_keep_nan_fast, off saves 2 host instructions per load "
+    "or store. Takes effect for code translated afterwards (set it at "
+    "startup).",
+    "CPU");
+
+DEFINE_bool(
+    ppc_single_float_keep_nan_fast, true,
+    "With ppc_single_float_keep_nan, on ARM64: the host's float<->double "
+    "conversion with the signaling NaN's quiet bit put back out of line (2 "
+    "extra instructions per lfs/stfs instead of about ten, the same results). "
+    "Takes effect for code translated afterwards.",
     "CPU");
 
 DEFINE_bool(no_reserved_ops, false,
@@ -929,6 +951,14 @@ int InstrEmit_lfdx(PPCHIRBuilder& f, const InstrData& i) {
 
 // double -> single, returning the 32-bit single bit pattern.
 Value* PackSingleKeepNaN(HIRBuilder& f, Value* value) {
+  if (!cvars::ppc_single_float_keep_nan) {
+    return f.Cast(f.Convert(value, FLOAT32_TYPE), INT32_TYPE);
+  }
+#if XE_ARCH_ARM64
+  if (cvars::ppc_single_float_keep_nan_fast) {
+    return f.DoubleToSingleBits(value);
+  }
+#endif
   Value* dbits = f.Cast(value, INT64_TYPE);
   Value* sbits = f.Cast(f.Convert(value, FLOAT32_TYPE), INT32_TYPE);
   // NaN if abs(double) > +inf bits.
@@ -945,6 +975,14 @@ Value* PackSingleKeepNaN(HIRBuilder& f, Value* value) {
 
 // single (raw 32-bit pattern) -> double value.
 Value* UnpackSingleKeepNaN(HIRBuilder& f, Value* sbits) {
+  if (!cvars::ppc_single_float_keep_nan) {
+    return f.Convert(f.Cast(sbits, FLOAT32_TYPE), FLOAT64_TYPE);
+  }
+#if XE_ARCH_ARM64
+  if (cvars::ppc_single_float_keep_nan_fast) {
+    return f.SingleBitsToDouble(sbits);
+  }
+#endif
   Value* dbits =
       f.Cast(f.Convert(f.Cast(sbits, FLOAT32_TYPE), FLOAT64_TYPE), INT64_TYPE);
   // NaN if abs(single) > +inf bits.

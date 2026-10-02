@@ -29,6 +29,7 @@
 
 DECLARE_int64(a64_max_stackpoints);
 DECLARE_bool(a64_enable_host_guest_stack_synchronization);
+DECLARE_bool(a64_near_branches);
 
 DEFINE_bool(
     log_safepoint_pc, false,
@@ -103,23 +104,38 @@ bool A64Emitter::Emit(GuestFunction* function, hir::HIRBuilder* builder,
                     GuestAddressInList(cvars::log_guest_calls_at,
                                        current_guest_function_);
 
-  // Reset state.
-  stack_size_ = StackLayout::GUEST_STACK_SIZE;
-  source_map_arena_.Reset();
-  tail_code_.clear();
-  fpcr_mode_ = FPCRMode::Unknown;
-
   // The prolog, epilog and helpers emit outside the per-opcode guard below, so
-  // an unencodable operand needs catching here too.
+  // an unencodable operand needs catching here too. Conditional branches are
+  // emitted direct first; a function too large for them to reach across is
+  // emitted again with the long-range form.
   EmitFunctionInfo func_info = {};
   bool emitted = false;
-  try {
-    emitted = Emit(builder, func_info);
-  } catch (const Xbyak_aarch64::Error& e) {
-    XELOGE("A64: assembler error while emitting guest function {:08X}: {}",
-           current_guest_function_, e.what());
-    emitted = false;
+  for (bool near_branches : {bool(cvars::a64_near_branches), false}) {
+    // Reset state.
+    near_branches_ = near_branches;
+    stack_size_ = StackLayout::GUEST_STACK_SIZE;
+    source_map_arena_.Reset();
+    tail_code_.clear();
+    fpcr_mode_ = FPCRMode::Unknown;
+    func_info = {};
+    try {
+      emitted = Emit(builder, func_info);
+    } catch (const Xbyak_aarch64::Error& e) {
+      if (IsNearBranchOutOfRange(e)) {
+        XELOGI(
+            "A64: guest function {:08X} too large for direct branches, "
+            "emitted again with long-range ones",
+            current_guest_function_);
+        ResetPerFunctionState();
+        continue;
+      }
+      XELOGE("A64: assembler error while emitting guest function {:08X}: {}",
+             current_guest_function_, e.what());
+      emitted = false;
+    }
+    break;
   }
+  near_branches_ = false;
   if (!emitted) {
     // Emplace only runs on success, so a failed compile has to reset too.
     ResetPerFunctionState();
@@ -134,6 +150,10 @@ bool A64Emitter::Emit(GuestFunction* function, hir::HIRBuilder* builder,
   source_map_arena_.CloneContents(out_source_map);
 
   return *out_code_address != nullptr;
+}
+
+bool A64Emitter::IsNearBranchOutOfRange(const Xbyak_aarch64::Error& e) const {
+  return near_branches_ && int(e) == Xbyak_aarch64::ERR_LABEL_IS_TOO_FAR;
 }
 
 bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
@@ -245,6 +265,9 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
       try {
         selected = SelectSequence(this, instr, &new_tail);
       } catch (const Xbyak_aarch64::Error& e) {
+        if (IsNearBranchOutOfRange(e)) {
+          throw;  // Emitted again with long-range branches.
+        }
         // Uncaught this aborts the process with no context, so name the opcode
         // and the guest function and fail just this compile.
         XELOGE(
@@ -306,6 +329,9 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
     try {
       tail_item.func(*this, tail_item.label);
     } catch (const Xbyak_aarch64::Error& e) {
+      if (IsNearBranchOutOfRange(e)) {
+        throw;  // Emitted again with long-range branches.
+      }
       XELOGE("A64: assembler rejected tail code in guest function {:08X}: {}",
              current_guest_function_, e.what());
       return false;
@@ -384,6 +410,10 @@ void A64Emitter::Trap(uint16_t trap_type) { brk(trap_type); }
 
 void A64Emitter::b(const Xbyak_aarch64::Cond cond,
                    const Xbyak_aarch64::Label& label) {
+  if (near_branches_) {
+    CodeGenerator::b(cond, label);
+    return;
+  }
   Xbyak_aarch64::Label skip;
   CodeGenerator::b(static_cast<Xbyak_aarch64::Cond>(cond ^ 1), skip);
   CodeGenerator::b(label);
@@ -392,6 +422,10 @@ void A64Emitter::b(const Xbyak_aarch64::Cond cond,
 
 void A64Emitter::cbz(const Xbyak_aarch64::WReg& rt,
                      const Xbyak_aarch64::Label& label) {
+  if (near_branches_) {
+    CodeGenerator::cbz(rt, label);
+    return;
+  }
   Xbyak_aarch64::Label skip;
   CodeGenerator::cbnz(rt, skip);
   CodeGenerator::b(label);
@@ -400,6 +434,10 @@ void A64Emitter::cbz(const Xbyak_aarch64::WReg& rt,
 
 void A64Emitter::cbz(const Xbyak_aarch64::XReg& rt,
                      const Xbyak_aarch64::Label& label) {
+  if (near_branches_) {
+    CodeGenerator::cbz(rt, label);
+    return;
+  }
   Xbyak_aarch64::Label skip;
   CodeGenerator::cbnz(rt, skip);
   CodeGenerator::b(label);
@@ -408,6 +446,10 @@ void A64Emitter::cbz(const Xbyak_aarch64::XReg& rt,
 
 void A64Emitter::cbnz(const Xbyak_aarch64::WReg& rt,
                       const Xbyak_aarch64::Label& label) {
+  if (near_branches_) {
+    CodeGenerator::cbnz(rt, label);
+    return;
+  }
   Xbyak_aarch64::Label skip;
   CodeGenerator::cbz(rt, skip);
   CodeGenerator::b(label);
@@ -416,6 +458,10 @@ void A64Emitter::cbnz(const Xbyak_aarch64::WReg& rt,
 
 void A64Emitter::cbnz(const Xbyak_aarch64::XReg& rt,
                       const Xbyak_aarch64::Label& label) {
+  if (near_branches_) {
+    CodeGenerator::cbnz(rt, label);
+    return;
+  }
   Xbyak_aarch64::Label skip;
   CodeGenerator::cbz(rt, skip);
   CodeGenerator::b(label);
@@ -830,13 +876,9 @@ void A64Emitter::PushStackpoint() {
     e.CallNativeSafe(
         reinterpret_cast<void*>(A64Emitter::HandleStackpointOverflowError));
   });
-  // Far-safe branch to the tail: overflow_label is emitted at the function end,
-  // which can exceed B.cond's +/-1 MiB range in large functions. Invert the
-  // condition and skip over an unconditional B (which reaches +/-128 MiB).
-  auto& no_overflow = NewCachedLabel();
-  b(LT, no_overflow);
-  b(overflow_label);
-  L(no_overflow);
+  // overflow_label is emitted at the function end, which can exceed B.cond's
+  // +/-1 MiB range in large functions - the b(cond) shadow takes care of that.
+  b(GE, overflow_label);
 }
 
 void A64Emitter::PopStackpoint() {
@@ -862,6 +904,22 @@ void A64Emitter::EnsureSynchronizedGuestAndHostStack() {
 
   ldr(w16, ptr(x19, static_cast<uint32_t>(offsetof(
                         A64BackendContext, pending_stackpoint_sync_depth))));
+  if (near_branches_) {
+    // The tail is within the cbnz's reach, so within adr's (both +/-1 MiB):
+    // the common path just falls through.
+    auto& sync_label =
+        AddToTail([&return_from_sync](A64Emitter& e, Label& lbl) {
+          //   x8 = return address (where to resume after fixup)
+          e.adr(e.x8, return_from_sync);
+          e.mov(e.x10,
+                reinterpret_cast<uint64_t>(
+                    e.backend()->synchronize_guest_and_host_stack_helper()));
+          e.br(e.x10);
+        });
+    cbnz(w16, sync_label);
+    L(return_from_sync);
+    return;
+  }
   cbz(w16, return_from_sync);
 
   auto& sync_label = AddToTail([](A64Emitter& e, Label& lbl) {

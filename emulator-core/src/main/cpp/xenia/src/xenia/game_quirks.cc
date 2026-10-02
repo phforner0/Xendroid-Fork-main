@@ -139,6 +139,19 @@ static const Quirk kQuirks[] = {
     // ~300 draws only the lower bands have.
     {0x4D5309C9, "merge_tiling_bands", true,
      "the bands of predicated tiling drawn as one"},
+    // The JIT with the host's NaN rules for scalar FPU and VMX arithmetic
+    // (like the x64 backend: only which NaN an operation with a NaN input
+    // returns differs) and leaves up to 32 instructions inlined; loads and
+    // stores stay bit exact (lfs/stfs keep signaling NaNs, so data copied
+    // through float registers is untouched). With the exact paths cheap
+    // (2026-10-02) the gain is small: Guest CPU 5 56.0-56.4 M instructions
+    // per frame against 52.7-63.5 without, Guest CPU 1 -2%, at the 30 fps
+    // cap (S67, b85); the same image parked.
+    {0x4D5309C9, "a64_fpu_nan_fixup", false,
+     "scalar FPU NaNs by the host's rules"},
+    {0x4D5309C9, "a64_vmx_nan_fixup", false, "VMX NaNs by the host's rules"},
+    {0x4D5309C9, "inline_leaf_max_instructions", int64_t(32),
+     "leaves up to 32 instructions inlined"},
 };
 
 // Same path/priority as a per-game config file.

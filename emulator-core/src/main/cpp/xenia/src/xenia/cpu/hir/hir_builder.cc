@@ -1623,6 +1623,26 @@ Value* HIRBuilder::VectorDenormFlush(Value* value1) {
   i->src3.value = nullptr;
   return i->dest;
 }
+Value* HIRBuilder::SingleBitsToDouble(Value* single_bits) {
+  assert_true(single_bits->type == INT32_TYPE);
+  Instr* i = AppendInstr(OPCODE_SINGLE_BITS_TO_DOUBLE_info, 0,
+                         AllocValue(FLOAT64_TYPE));
+  i->set_src1(single_bits);
+  i->src2.value = nullptr;
+  i->src3.value = nullptr;
+  return i->dest;
+}
+
+Value* HIRBuilder::DoubleToSingleBits(Value* value) {
+  assert_true(value->type == FLOAT64_TYPE);
+  Instr* i = AppendInstr(OPCODE_DOUBLE_TO_SINGLE_BITS_info, 0,
+                         AllocValue(INT32_TYPE));
+  i->set_src1(value);
+  i->src2.value = nullptr;
+  i->src3.value = nullptr;
+  return i->dest;
+}
+
 Value* HIRBuilder::ToSingle(Value* value) {
   assert_true(value->type == FLOAT64_TYPE);
   Instr* i = AppendInstr(OPCODE_TO_SINGLE_info, 0, AllocValue(FLOAT64_TYPE));

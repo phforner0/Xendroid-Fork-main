@@ -11,7 +11,9 @@
 
 #include <cmath>
 #include <cstdio>
+#include <initializer_list>
 #include <type_traits>
+#include <vector>
 
 #include "xenia/base/byte_order.h"
 #include "xenia/base/clock.h"
@@ -486,10 +488,137 @@ struct ADD_I64 : Sequence<ADD_I64, I<OPCODE_ADD, I64Op, I64Op, I64Op>> {
 // inputs are handled entirely in software.
 enum class FpBinOp { Add, Sub, Mul, Div };
 
+
+// The result of add, sub, mul, div and fused multiply-add is a NaN exactly when
+// an input is one or the operation is invalid, so only the result needs
+// checking (2 instructions instead of 5, plus a copy of an input the
+// destination overwrites): the PowerPC NaN - the first NaN input by position,
+// quieted, else the default NaN - is picked out of line, at the end of the
+// function.
+static void EmitPpcNanTailCheck_F64(A64Emitter& e, DReg dest,
+                                    std::initializer_list<DReg> inputs) {
+  e.fcmp(dest, dest);
+  auto& done = e.NewCachedLabel();
+  const uint32_t dest_index = dest.getIdx();
+  std::vector<uint32_t> input_indices;
+  for (DReg input : inputs) {
+    input_indices.push_back(input.getIdx());
+  }
+  auto& nan_tail = e.AddToTail(
+      [&done, dest_index, input_indices](A64Emitter& e,
+                                           Xbyak_aarch64::Label& lbl) {
+        DReg tail_dest(dest_index);
+        for (uint32_t input_index : input_indices) {
+          DReg input(input_index);
+          auto& not_nan = e.NewCachedLabel();
+          e.fcmp(input, input);
+          e.b(VC, not_nan);
+          e.fmov(e.x0, input);
+          e.orr(e.x0, e.x0, static_cast<uint64_t>(1ull << 51));
+          e.fmov(tail_dest, e.x0);
+          e.b(done);
+          e.L(not_nan);
+        }
+        e.mov(e.x0, static_cast<uint64_t>(0xFFF8000000000000ull));
+        e.fmov(tail_dest, e.x0);
+        e.b(done);
+      });
+  e.b(VS, nan_tail);
+  e.L(done);
+}
+
+static void EmitPpcNanTailCheck_F32(A64Emitter& e, SReg dest,
+                                    std::initializer_list<SReg> inputs) {
+  e.fcmp(dest, dest);
+  auto& done = e.NewCachedLabel();
+  const uint32_t dest_index = dest.getIdx();
+  std::vector<uint32_t> input_indices;
+  for (SReg input : inputs) {
+    input_indices.push_back(input.getIdx());
+  }
+  auto& nan_tail = e.AddToTail(
+      [&done, dest_index, input_indices](A64Emitter& e,
+                                           Xbyak_aarch64::Label& lbl) {
+        SReg tail_dest(dest_index);
+        for (uint32_t input_index : input_indices) {
+          SReg input(input_index);
+          auto& not_nan = e.NewCachedLabel();
+          e.fcmp(input, input);
+          e.b(VC, not_nan);
+          e.fmov(e.w0, input);
+          e.orr(e.w0, e.w0, static_cast<uint32_t>(1u << 22));
+          e.fmov(tail_dest, e.w0);
+          e.b(done);
+          e.L(not_nan);
+        }
+        e.mov(e.w0, static_cast<uint64_t>(0xFFC00000u));
+        e.fmov(tail_dest, e.w0);
+        e.b(done);
+      });
+  e.b(VS, nan_tail);
+  e.L(done);
+}
+
+// When the destination is also an input, the operation overwrites the input
+// the out-of-line NaN pick needs: copy it first to tmp - v3, as the sequences
+// put constant operands in v0-v2 - and point those inputs at the copy.
+template <typename Reg>
+static void KeepAliasedInputs(A64Emitter& e, Reg dest, Reg tmp,
+                              std::initializer_list<Reg*> inputs) {
+  bool aliased = false;
+  for (Reg* input : inputs) {
+    if (input->getIdx() == dest.getIdx()) {
+      *input = tmp;
+      aliased = true;
+    }
+  }
+  if (aliased) {
+    e.fmov(tmp, dest);
+  }
+}
+
 static void EmitFpBinOpWithPpcNan_F32(A64Emitter& e, SReg dest, SReg s1,
                                       SReg s2, FpBinOp op) {
   // Ensure FPU FPCR (no flush-to-zero) for scalar operations.
   e.ChangeFpcrMode(FPCRMode::Fpu);
+  if (!cvars::a64_fpu_nan_fixup) {
+    switch (op) {
+      case FpBinOp::Add:
+        e.fadd(dest, s1, s2);
+        break;
+      case FpBinOp::Sub:
+        e.fsub(dest, s1, s2);
+        break;
+      case FpBinOp::Mul:
+        e.fmul(dest, s1, s2);
+        break;
+      case FpBinOp::Div:
+        e.fdiv(dest, s1, s2);
+        break;
+    }
+    return;
+  }
+  if (cvars::a64_fpu_nan_fixup_result_check) {
+    // An input the destination overwrites is kept for the out-of-line pick.
+    SReg in1 = s1, in2 = s2;
+    KeepAliasedInputs(e, dest, e.s3, {&in1, &in2});
+    switch (op) {
+      case FpBinOp::Add:
+        e.fadd(dest, s1, s2);
+        break;
+      case FpBinOp::Sub:
+        e.fsub(dest, s1, s2);
+        break;
+      case FpBinOp::Mul:
+        e.fmul(dest, s1, s2);
+        break;
+      case FpBinOp::Div:
+        e.fdiv(dest, s1, s2);
+        break;
+    }
+    EmitPpcNanTailCheck_F32(e, dest, {in1, in2});
+    return;
+  }
   auto& nan_path = e.NewCachedLabel();
   auto& done = e.NewCachedLabel();
 
@@ -540,6 +669,44 @@ static void EmitFpBinOpWithPpcNan_F32(A64Emitter& e, SReg dest, SReg s1,
 static void EmitFpBinOpWithPpcNan_F64(A64Emitter& e, DReg dest, DReg s1,
                                       DReg s2, FpBinOp op) {
   e.ChangeFpcrMode(FPCRMode::Fpu);
+  if (!cvars::a64_fpu_nan_fixup) {
+    switch (op) {
+      case FpBinOp::Add:
+        e.fadd(dest, s1, s2);
+        break;
+      case FpBinOp::Sub:
+        e.fsub(dest, s1, s2);
+        break;
+      case FpBinOp::Mul:
+        e.fmul(dest, s1, s2);
+        break;
+      case FpBinOp::Div:
+        e.fdiv(dest, s1, s2);
+        break;
+    }
+    return;
+  }
+  if (cvars::a64_fpu_nan_fixup_result_check) {
+    // An input the destination overwrites is kept for the out-of-line pick.
+    DReg in1 = s1, in2 = s2;
+    KeepAliasedInputs(e, dest, e.d3, {&in1, &in2});
+    switch (op) {
+      case FpBinOp::Add:
+        e.fadd(dest, s1, s2);
+        break;
+      case FpBinOp::Sub:
+        e.fsub(dest, s1, s2);
+        break;
+      case FpBinOp::Mul:
+        e.fmul(dest, s1, s2);
+        break;
+      case FpBinOp::Div:
+        e.fdiv(dest, s1, s2);
+        break;
+    }
+    EmitPpcNanTailCheck_F64(e, dest, {in1, in2});
+    return;
+  }
   auto& nan_path = e.NewCachedLabel();
   auto& done = e.NewCachedLabel();
 
@@ -596,6 +763,25 @@ static void EmitFpBinOpWithPpcNan_F64(A64Emitter& e, DReg dest, DReg s1,
 static void EmitFmaWithPpcNan_F64(A64Emitter& e, DReg dest, DReg s1, DReg s2,
                                   DReg s3, bool is_sub) {
   e.ChangeFpcrMode(FPCRMode::Fpu);
+  if (!cvars::a64_fpu_nan_fixup) {
+    if (is_sub) {
+      e.fnmsub(dest, s1, s2, s3);
+    } else {
+      e.fmadd(dest, s1, s2, s3);
+    }
+    return;
+  }
+  if (cvars::a64_fpu_nan_fixup_result_check) {
+    DReg in1 = s1, in2 = s2, in3 = s3;
+    KeepAliasedInputs(e, dest, e.d3, {&in1, &in2, &in3});
+    if (is_sub) {
+      e.fnmsub(dest, s1, s2, s3);
+    } else {
+      e.fmadd(dest, s1, s2, s3);
+    }
+    EmitPpcNanTailCheck_F64(e, dest, {in1, in2, in3});
+    return;
+  }
   auto& nan_path = e.NewCachedLabel();
   auto& done = e.NewCachedLabel();
 
@@ -649,6 +835,25 @@ static void EmitFmaWithPpcNan_F64(A64Emitter& e, DReg dest, DReg s1, DReg s2,
 static void EmitFmaWithPpcNan_F32(A64Emitter& e, SReg dest, SReg s1, SReg s2,
                                   SReg s3, bool is_sub) {
   e.ChangeFpcrMode(FPCRMode::Fpu);
+  if (!cvars::a64_fpu_nan_fixup) {
+    if (is_sub) {
+      e.fnmsub(dest, s1, s2, s3);
+    } else {
+      e.fmadd(dest, s1, s2, s3);
+    }
+    return;
+  }
+  if (cvars::a64_fpu_nan_fixup_result_check) {
+    SReg in1 = s1, in2 = s2, in3 = s3;
+    KeepAliasedInputs(e, dest, e.s3, {&in1, &in2, &in3});
+    if (is_sub) {
+      e.fnmsub(dest, s1, s2, s3);
+    } else {
+      e.fmadd(dest, s1, s2, s3);
+    }
+    EmitPpcNanTailCheck_F32(e, dest, {in1, in2, in3});
+    return;
+  }
   auto& nan_path = e.NewCachedLabel();
   auto& done = e.NewCachedLabel();
 
@@ -4735,6 +4940,82 @@ struct RECIP_V128 : Sequence<RECIP_V128, I<OPCODE_RECIP, V128Op, V128Op>> {
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_RECIP, RECIP_F32, RECIP_F64, RECIP_V128);
+
+// ============================================================================
+// OPCODE_SINGLE_BITS_TO_DOUBLE / OPCODE_DOUBLE_TO_SINGLE_BITS
+// ============================================================================
+// lfs/stfs: the host's float<->double convert quiets a signaling NaN, which
+// the PowerPC leaves signaling. Only NaNs need the quiet bit put back, so that
+// is done out of line: 2 instructions in the common path instead of a
+// branchless fixup of about ten.
+struct SINGLE_BITS_TO_DOUBLE
+    : Sequence<SINGLE_BITS_TO_DOUBLE,
+               I<OPCODE_SINGLE_BITS_TO_DOUBLE, F64Op, I32Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    e.ChangeFpcrMode(FPCRMode::Fpu);
+    WReg src = e.w0;
+    if (i.src1.is_constant) {
+      e.mov(e.w0, static_cast<uint64_t>(uint32_t(i.src1.constant())));
+    } else {
+      src = WReg(i.src1.reg().getIdx());
+    }
+    e.fmov(e.s0, src);
+    e.fcvt(i.dest, e.s0);
+    e.fcmp(e.s0, e.s0);
+    auto& done = e.NewCachedLabel();
+    const uint32_t dest_index = i.dest.reg().getIdx();
+    const uint32_t src_index = src.getIdx();
+    auto& nan_fix = e.AddToTail([&done, dest_index, src_index](
+                                    A64Emitter& e, Xbyak_aarch64::Label& lbl) {
+      // The double's quiet bit (51) <- the single's (22).
+      e.fmov(e.x16, DReg(dest_index));
+      e.ubfx(e.w17, WReg(src_index), 22, 1);
+      e.bfi(e.x16, e.x17, 51, 1);
+      e.fmov(DReg(dest_index), e.x16);
+      e.b(done);
+    });
+    e.b(VS, nan_fix);
+    e.L(done);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_SINGLE_BITS_TO_DOUBLE, SINGLE_BITS_TO_DOUBLE);
+
+struct DOUBLE_TO_SINGLE_BITS
+    : Sequence<DOUBLE_TO_SINGLE_BITS,
+               I<OPCODE_DOUBLE_TO_SINGLE_BITS, I32Op, F64Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    e.ChangeFpcrMode(FPCRMode::Fpu);
+    DReg src = e.d1;
+    if (i.src1.is_constant) {
+      union {
+        double d;
+        uint64_t u;
+      } c;
+      c.d = i.src1.constant();
+      e.mov(e.x0, c.u);
+      e.fmov(e.d1, e.x0);
+    } else {
+      src = DReg(i.src1.reg().getIdx());
+    }
+    e.fcvt(e.s0, src);
+    e.fmov(i.dest, e.s0);
+    e.fcmp(src, src);
+    auto& done = e.NewCachedLabel();
+    const uint32_t dest_index = i.dest.reg().getIdx();
+    const uint32_t src_index = src.getIdx();
+    auto& nan_fix = e.AddToTail([&done, dest_index, src_index](
+                                    A64Emitter& e, Xbyak_aarch64::Label& lbl) {
+      // The single's quiet bit (22) <- the double's (51).
+      e.fmov(e.x16, DReg(src_index));
+      e.ubfx(e.x16, e.x16, 51, 1);
+      e.bfi(WReg(dest_index), e.w16, 22, 1);
+      e.b(done);
+    });
+    e.b(VS, nan_fix);
+    e.L(done);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_DOUBLE_TO_SINGLE_BITS, DOUBLE_TO_SINGLE_BITS);
 
 // ============================================================================
 // OPCODE_TO_SINGLE

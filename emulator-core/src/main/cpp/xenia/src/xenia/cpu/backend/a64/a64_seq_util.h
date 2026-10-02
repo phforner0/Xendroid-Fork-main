@@ -21,6 +21,8 @@
 #include "xbyak_aarch64.h"
 
 DECLARE_bool(a64_vmx_nan_fixup);
+DECLARE_bool(a64_fpu_nan_fixup);
+DECLARE_bool(a64_fpu_nan_fixup_result_check);
 
 #if XE_COMPILER_MSVC
 #include <intrin.h>

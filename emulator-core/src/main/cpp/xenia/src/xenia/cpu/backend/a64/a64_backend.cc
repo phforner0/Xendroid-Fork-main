@@ -53,6 +53,35 @@ DEFINE_bool(a64_enable_host_guest_stack_synchronization, true,
             "impact, but fixes crashes in games that use setjmp/longjmp.",
             "a64");
 
+DEFINE_bool(a64_fpu_nan_fixup, true,
+            "Emulate PPC NaN propagation on scalar FPU arithmetic (add, sub, "
+            "mul, div, fused multiply-add): the first NaN operand by "
+            "position is returned, quieted; generated NaNs become the PPC "
+            "default NaN. Costs a NaN check before and after each operation. "
+            "When disabled, the host's NaN rules are used, like "
+            "a64_vmx_nan_fixup for vectors and like the x64 backend.",
+            "a64");
+
+DEFINE_bool(a64_fpu_nan_fixup_result_check, true,
+            "With a64_fpu_nan_fixup: check only the result of a scalar FPU "
+            "operation for NaN (a NaN input always gives a NaN result) and "
+            "pick the PPC NaN out of line, instead of checking the inputs "
+            "before and the result after - the same results with 2 instead "
+            "of 5 extra instructions per operation (3 when the destination "
+            "register is also an input, which is copied first).",
+            "a64");
+
+DEFINE_bool(a64_near_branches, true,
+            "Emit the conditional branches of guest functions (b.cond, cbz, "
+            "cbnz) direct. They reach +/-1 MiB, so a function they don't "
+            "reach across is emitted again with each one routed through an "
+            "unconditional branch. The long-range form costs an extra "
+            "instruction where the branch is taken and a taken branch where "
+            "a direct one falls through: direct, the code is 4-9% smaller and "
+            "Forza Horizon's busiest guest thread takes 3-7% fewer cycles on "
+            "the POCO F7 (S65, S67, 2026-10-02).",
+            "a64");
+
 DEFINE_bool(a64_vmx_nan_fixup, true,
             "Emulate PPC NaN propagation on VMX float ops: the first NaN "
             "operand (by position) is returned, quieted; generated NaNs "
