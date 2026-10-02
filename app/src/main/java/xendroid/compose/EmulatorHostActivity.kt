@@ -58,6 +58,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -1147,6 +1148,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 ) }
                             } else if (menuState.value.open) {
                                 xendroidTheme {
+                                    // U02: from string resources (en / pt-BR); status texts built by
+                                    // other components (ADPF, TV, phone controllers) are still English.
+                                    val on = stringResource(R.string.menu_on)
+                                    val off = stringResource(R.string.menu_off)
                                     InGameMenu(
                                         state = menuState.value,
                                         paused = menuPaused.value,
@@ -1156,21 +1161,28 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         fgPreset = fgPreset.intValue,
                                         lsfgAvailable = lsfgCache.value != null && !importingLsfg,
                                         extensionLabels = mapOf(
-                                            InGameAction.COLOR_FILTER to if (presentationState.value.colorError != 0) "SDR filter · backend unavailable" else
-                                                "SDR filter · ${listOf("Off", "Grayscale", "Contrast", "Warm")[presentationState.value.colorFilter.coerceIn(0, 3)]}",
-                                            InGameAction.LSFG_MULTIPLIER to "LSFG multiplier · ${lsfgMultiplier.intValue}× (experimental)",
+                                            InGameAction.COLOR_FILTER to if (presentationState.value.colorError != 0) stringResource(R.string.menu_color_filter_unavailable) else
+                                                stringResource(R.string.menu_color_filter_value, listOf(off, stringResource(R.string.menu_color_grayscale),
+                                                    stringResource(R.string.menu_color_contrast), stringResource(R.string.menu_color_warm))[presentationState.value.colorFilter.coerceIn(0, 3)]),
+                                            InGameAction.LSFG_MULTIPLIER to stringResource(R.string.menu_lsfg_multiplier_value, lsfgMultiplier.intValue),
                                             InGameAction.PERFORMANCE_HINTS to performanceHintsLabel.value,
                                             InGameAction.EXTERNAL_DISPLAY to externalDisplayLabel.value,
-                                            InGameAction.SCALING_EFFECT to "Scaling · ${listOf("Inherited", "Bilinear", "CAS", "FSR")[scalingEffect.intValue + 1]}",
-                                            InGameAction.REFRESH_RATE to "Display Hz · requested ${requestedRefresh.value ?: "Auto"} · effective ${if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else windowManager.defaultDisplay.refreshRate}",
-                                            InGameAction.SUSTAINED_PERFORMANCE to if (!sustainedAvailable.value) "Sustained performance · unavailable" else "Sustained performance · ${if (sustainedMode.value) "On" else "Off"}",
-                                            InGameAction.BACKGROUND_POLICY to "Pause on background · ${backgroundPolicy.value.name}",
-                                            InGameAction.GYRO_CAMERA to if (!gyroCamera.available) "Gyro camera · sensor unavailable" else "Gyro camera · ${if (gyroEnabled.value) "On" else "Off"}",
-                                            InGameAction.GYRO_SENSITIVITY to "Gyro sensitivity · ${listOf("Low", "Normal", "High")[gyroSensitivity.intValue]}",
-                                            InGameAction.CONTROLLER_RUMBLE to "Controller rumble · ${rumbleIntensity.value.label} · " +
+                                            InGameAction.SCALING_EFFECT to stringResource(R.string.menu_scaling_value,
+                                                listOf(stringResource(R.string.menu_scaling_inherited), "Bilinear", "CAS", "FSR")[scalingEffect.intValue + 1]),
+                                            InGameAction.REFRESH_RATE to stringResource(R.string.menu_refresh_rate_value,
+                                                requestedRefresh.value?.toString() ?: stringResource(R.string.menu_auto),
+                                                (if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else windowManager.defaultDisplay.refreshRate).toString()),
+                                            InGameAction.SUSTAINED_PERFORMANCE to stringResource(R.string.menu_sustained_value,
+                                                if (!sustainedAvailable.value) stringResource(R.string.menu_unavailable) else if (sustainedMode.value) on else off),
+                                            InGameAction.BACKGROUND_POLICY to stringResource(R.string.menu_background_value, backgroundPolicy.value.name),
+                                            InGameAction.GYRO_CAMERA to if (!gyroCamera.available) stringResource(R.string.menu_gyro_unavailable)
+                                                else stringResource(R.string.menu_gyro_camera_value, if (gyroEnabled.value) on else off),
+                                            InGameAction.GYRO_SENSITIVITY to stringResource(R.string.menu_gyro_sensitivity_value, listOf(
+                                                stringResource(R.string.menu_low), stringResource(R.string.menu_normal), stringResource(R.string.menu_high))[gyroSensitivity.intValue]),
+                                            InGameAction.CONTROLLER_RUMBLE to stringResource(R.string.menu_rumble_value, rumbleIntensity.value.label,
                                                 controllerSlots.players.withIndex()
                                                     .filter { it.value != null && !it.value!!.startsWith(xendroid.compose.companion.CompanionHost.KEY_PREFIX) }
-                                                    .joinToString(", ") { "P${it.index + 1}" }.ifEmpty { "no controller" },
+                                                    .joinToString(", ") { "P${it.index + 1}" }.ifEmpty { stringResource(R.string.menu_no_controller) }),
                                             InGameAction.PHONE_CONTROLLERS to phoneControllersLabel.value,
                                         ),
                                         phoneControllers = phoneControllersDetails.value,

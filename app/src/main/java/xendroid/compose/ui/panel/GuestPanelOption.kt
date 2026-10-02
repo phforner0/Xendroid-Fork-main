@@ -15,6 +15,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -29,6 +31,8 @@ fun GuestPanelOption(
     val sizing = modifier
         .fillMaxWidth()
         .heightIn(min = 48.dp)
+        // U02: the controller highlight is the screen reader's "selected" too.
+        .semantics { this.selected = selected }
 
     val content = @Composable {
         Text(

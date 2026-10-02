@@ -30,7 +30,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import xendroid.compose.R
 import xendroid.compose.ui.panel.GuestPanelOption
 import xendroid.compose.settings.FpsConfigSnapshot
 import xendroid.compose.core.HudMetric
@@ -58,12 +64,14 @@ fun InGameMenuHandle(onOpen: () -> Unit, modifier: Modifier = Modifier) {
             )
         },
     ) {
+        val description = stringResource(R.string.menu_open)
         Text(
             text = "☰",
             color = Color.White,
             modifier = Modifier.align(Alignment.TopStart)
                 .background(Color.Black.copy(alpha = 0.48f))
                 .clickable(onClick = onOpen)
+                .semantics { contentDescription = description; role = Role.Button }
                 .padding(horizontal = 5.dp, vertical = 8.dp),
         )
     }
@@ -126,7 +134,7 @@ fun InGameMenu(
                     style = MaterialTheme.typography.titleLarge,
                 )
                 Text(
-                    if (paused) "Paused · Back to close" else "Game running · Back to close",
+                    stringResource(if (paused) R.string.menu_paused else R.string.menu_running),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (!state.confirmingQuit && !state.logPicker) {
@@ -134,7 +142,7 @@ fun InGameMenu(
                         InGamePage.entries.forEach { page ->
                             TextButton(onClick = { onPage(page) }) {
                                 Text(
-                                    page.label,
+                                    page.label(),
                                     color = if (page == state.page) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -146,23 +154,25 @@ fun InGameMenu(
                 // scroll; hardware selection is kept visible by the requester above.
                 Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState)) {
                     if (state.confirmingQuit) {
-                        Text("Exit the game?", modifier = Modifier.padding(top = 22.dp))
-                        Text("Unsaved progress may be lost.", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.menu_exit_question), modifier = Modifier.padding(top = 22.dp))
+                        Text(stringResource(R.string.menu_exit_warning), style = MaterialTheme.typography.bodySmall)
                         GuestPanelOption(
-                            label = "Cancel", selected = state.selected == 0,
+                            label = stringResource(R.string.menu_cancel), selected = state.selected == 0,
                             onClick = { onQuitChoice(false) },
                             modifier = Modifier.padding(top = 12.dp)
                                 .then(if (state.selected == 0) Modifier.bringIntoViewRequester(selectedRow) else Modifier),
                         )
                         GuestPanelOption(
-                            label = "Exit game", selected = state.selected == 1,
+                            label = stringResource(R.string.menu_exit_game), selected = state.selected == 1,
                             onClick = { onQuitChoice(true) },
                             modifier = Modifier.padding(top = 8.dp)
                                 .then(if (state.selected == 1) Modifier.bringIntoViewRequester(selectedRow) else Modifier),
                         )
                     } else if (state.logPicker) {
-                        Text("Share diagnostics · choose a session", style = MaterialTheme.typography.titleSmall)
-                        val labels = listOf("All retained sessions") + logSessions.map { "${it.label} · ${it.bytes / 1024} KB" } + "Back"
+                        Text(stringResource(R.string.menu_logs_title), style = MaterialTheme.typography.titleSmall)
+                        val labels = listOf(stringResource(R.string.menu_logs_all)) +
+                            logSessions.map { stringResource(R.string.menu_logs_session, it.label, (it.bytes / 1024).toInt()) } +
+                            stringResource(R.string.menu_back)
                         labels.forEachIndexed { index, label ->
                             GuestPanelOption(label, selected = state.selected == index,
                                 modifier = Modifier.padding(top = 8.dp).then(
@@ -173,19 +183,20 @@ fun InGameMenu(
                         if (state.page == InGamePage.GRAPHICS && state.developer) {
                             Text(presentation.label, style = MaterialTheme.typography.bodySmall)
                             frameGenerationBudget?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                            Text("Experimental host interpolation; hardware cadence/latency remain unvalidated.", style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.menu_fg_experimental), style = MaterialTheme.typography.bodySmall)
                         }
                         if (state.page == InGamePage.SYSTEM) {
-                            Text("Frame limit · this session", style = MaterialTheme.typography.titleSmall)
-                            Text("Live limit: ${fpsText(fpsLimit)}", style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.menu_frame_limit_title), style = MaterialTheme.typography.titleSmall)
+                            Text(stringResource(R.string.menu_live_limit, fpsText(fpsLimit)), style = MaterialTheme.typography.bodySmall)
                             Text(
                                 when {
-                                    fpsConfig.saving -> "Saving configuration…"
-                                    fpsConfig.loading -> "Reading saved configuration…"
+                                    fpsConfig.saving -> stringResource(R.string.menu_saving_config)
+                                    fpsConfig.loading -> stringResource(R.string.menu_reading_config)
                                     fpsConfig.error != null -> fpsConfig.error
-                                    else -> "Next launch: global ${fpsText(fpsConfig.globalLimit)} · " +
-                                        if (fpsConfig.titleId == null) "game Title ID unavailable"
-                                        else "game ${fpsConfig.gameLimit?.let(::fpsText) ?: "inherits global"}"
+                                    else -> stringResource(R.string.menu_next_launch, fpsText(fpsConfig.globalLimit),
+                                        if (fpsConfig.titleId == null) stringResource(R.string.menu_game_id_unavailable)
+                                        else stringResource(R.string.menu_game_limit,
+                                            fpsConfig.gameLimit?.let { fpsText(it) } ?: stringResource(R.string.menu_inherits_global)))
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -193,7 +204,8 @@ fun InGameMenu(
                         state.actions().forEachIndexed { index, action ->
                             GuestPanelOption(
                                 label = if (action == InGameAction.MORE_OPTIONS) {
-                                    if (state.page in state.advanced) "Fewer options" else "More options (${state.advancedCount()})"
+                                    if (state.page in state.advanced) stringResource(R.string.menu_fewer_options)
+                                    else stringResource(R.string.menu_more_options, state.advancedCount())
                                 } else {
                                     extensionLabels[action] ?: action.label(fpsLimit, performanceHud, compactHud, touchControls, adaptiveSticks, stretch, hudMetrics, presentation, fgPreset, volume)
                                 },
@@ -215,21 +227,21 @@ fun InGameMenu(
                         }
                         if (state.page == InGamePage.GRAPHICS) {
                             Text(
-                                "Stretch next launch is persistent; display modes below apply live to this session. Submitted frames are not measured scanout.",
+                                stringResource(R.string.menu_graphics_note),
                                 modifier = Modifier.padding(top = 14.dp),
                                 style = MaterialTheme.typography.bodySmall,
                             )
-                            if (!BuildConfig.DEBUG && state.developer) Text("Frame generation remains gated to developer/debug builds pending hardware validation.", style = MaterialTheme.typography.bodySmall)
+                            if (!BuildConfig.DEBUG && state.developer) Text(stringResource(R.string.menu_fg_gated), style = MaterialTheme.typography.bodySmall)
                         }
                         if (state.page == InGamePage.SYSTEM) {
-                            Text("Vulkan submitted counts sends to the compositor, not measured display scanout.", style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.menu_system_note), style = MaterialTheme.typography.bodySmall)
                         }
                         if (state.page == InGamePage.CONTROLS) {
                             phoneControllers?.let {
                                 Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
                             }
-                            Text("Adaptive sticks are opt-in per game: touch near a saved stick position to place it under your thumb. Fixed buttons keep priority.", style = MaterialTheme.typography.bodySmall)
-                            Text("Phone controllers: other phones on the same Wi-Fi or hotspot play as P2–P4 with the code shown here; experimental.", style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.menu_adaptive_note), style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.menu_phones_note), style = MaterialTheme.typography.bodySmall)
                         }
                         if (state.page == InGamePage.SESSION) {
                             Text(sessionInfo, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp))
@@ -239,10 +251,10 @@ fun InGameMenu(
                 if (!state.confirmingQuit && !state.logPicker) {
                     Row(Modifier.fillMaxWidth()) {
                         TextButton(onClick = { onAction(InGameAction.RESUME) }, modifier = Modifier.weight(1f)) {
-                            Text("Continue")
+                            Text(stringResource(R.string.menu_continue))
                         }
                         TextButton(onClick = { onAction(InGameAction.QUIT) }, modifier = Modifier.weight(1f)) {
-                            Text("Exit game")
+                            Text(stringResource(R.string.menu_exit_game))
                         }
                     }
                 }
@@ -251,75 +263,95 @@ fun InGameMenu(
     }
 }
 
-private val InGamePage.label: String
-    get() = when (this) {
-        InGamePage.GRAPHICS -> "Graphics"
-        InGamePage.SYSTEM -> "System"
-        InGamePage.CONTROLS -> "Controls"
-        InGamePage.SESSION -> "Session"
-    }
-
-private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: Boolean, adaptive: Boolean, stretch: Boolean,
-                             metrics: Set<HudMetric>, presentation: PresentationState, preset: Int, volume: Int): String =
+@Composable
+private fun InGamePage.label(): String = stringResource(
     when (this) {
-        InGameAction.FPS_UNLIMITED -> "Unlimited${if (fps == 0) " ✓" else ""}"
-        InGameAction.FPS_30 -> "30 FPS${if (fps == 30) " ✓" else ""}"
-        InGameAction.FPS_45 -> "45 FPS${if (fps == 45) " ✓" else ""}"
-        InGameAction.FPS_60 -> "60 FPS${if (fps == 60) " ✓" else ""}"
-        InGameAction.FPS_90 -> "90 FPS${if (fps == 90) " ✓" else ""}"
-        InGameAction.FPS_120 -> "120 FPS${if (fps == 120) " ✓" else ""}"
-        InGameAction.SAVE_GAME_FPS -> "Save current limit for this game"
-        InGameAction.INHERIT_GAME_FPS -> "Use global limit for this game"
-        InGameAction.SAVE_GLOBAL_FPS -> "Save current limit globally"
-        InGameAction.STRETCH -> "Stretch next launch: ${if (stretch) "On" else "Off"}"
-        InGameAction.DISPLAY_FIT -> "Display · Fit${if (presentation.displayMode == 0) " ✓" else ""}"
-        InGameAction.DISPLAY_FILL -> "Display · Fill/crop${if (presentation.displayMode == 1) " ✓" else ""}"
-        InGameAction.DISPLAY_STRETCH -> "Display · Stretch${if (presentation.displayMode == 2) " ✓" else ""}"
-        InGameAction.DISPLAY_INTEGER -> "Display · Integer${if (presentation.displayMode == 3) " ✓" else ""}"
-        InGameAction.WINFG -> "Win-FG 2× · ${if (presentation.requested) "On" else "Off"}"
-        InGameAction.WINFG_PRESET -> "Win-FG preset · ${listOf("Quality", "Balanced", "Performance")[preset.coerceIn(0, 2)]}"
-        InGameAction.LSFG -> "LSFG Native · ${if (presentation.requested && presentation.engine == 1) "On" else "Off"}"
-        InGameAction.LSFG_MULTIPLIER -> "LSFG multiplier · experimental"
-        InGameAction.IMPORT_LSFG_DLL -> "Import my Lossless.dll"
-        InGameAction.CLEAR_LSFG_CACHE -> "Remove imported LSFG shader cache"
-        InGameAction.PERFORMANCE_HUD -> "Performance HUD: ${if (hud) "On" else "Off"}"
-        InGameAction.HUD_STYLE -> "HUD detail: ${if (compact) "Compact" else "Full"}"
+        InGamePage.GRAPHICS -> R.string.menu_tab_graphics
+        InGamePage.SYSTEM -> R.string.menu_tab_system
+        InGamePage.CONTROLS -> R.string.menu_tab_controls
+        InGamePage.SESSION -> R.string.menu_tab_session
+    },
+)
+
+@Composable
+private fun onOff(on: Boolean): String = stringResource(if (on) R.string.menu_on else R.string.menu_off)
+
+@Composable
+private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: Boolean, adaptive: Boolean, stretch: Boolean,
+                             metrics: Set<HudMetric>, presentation: PresentationState, preset: Int, volume: Int): String {
+    fun check(on: Boolean) = if (on) " ✓" else ""
+    return when (this) {
+        InGameAction.FPS_UNLIMITED -> stringResource(R.string.menu_unlimited) + check(fps == 0)
+        InGameAction.FPS_30 -> stringResource(R.string.menu_fps, 30) + check(fps == 30)
+        InGameAction.FPS_45 -> stringResource(R.string.menu_fps, 45) + check(fps == 45)
+        InGameAction.FPS_60 -> stringResource(R.string.menu_fps, 60) + check(fps == 60)
+        InGameAction.FPS_90 -> stringResource(R.string.menu_fps, 90) + check(fps == 90)
+        InGameAction.FPS_120 -> stringResource(R.string.menu_fps, 120) + check(fps == 120)
+        InGameAction.SAVE_GAME_FPS -> stringResource(R.string.menu_save_game_fps)
+        InGameAction.INHERIT_GAME_FPS -> stringResource(R.string.menu_inherit_game_fps)
+        InGameAction.SAVE_GLOBAL_FPS -> stringResource(R.string.menu_save_global_fps)
+        InGameAction.STRETCH -> stringResource(R.string.menu_stretch_next, onOff(stretch))
+        InGameAction.DISPLAY_FIT -> stringResource(R.string.menu_display_fit) + check(presentation.displayMode == 0)
+        InGameAction.DISPLAY_FILL -> stringResource(R.string.menu_display_fill) + check(presentation.displayMode == 1)
+        InGameAction.DISPLAY_STRETCH -> stringResource(R.string.menu_display_stretch) + check(presentation.displayMode == 2)
+        InGameAction.DISPLAY_INTEGER -> stringResource(R.string.menu_display_integer) + check(presentation.displayMode == 3)
+        InGameAction.WINFG -> stringResource(R.string.menu_winfg, onOff(presentation.requested))
+        InGameAction.WINFG_PRESET -> stringResource(R.string.menu_winfg_preset, stringResource(
+            listOf(R.string.menu_preset_quality, R.string.menu_preset_balanced, R.string.menu_preset_performance)[preset.coerceIn(0, 2)]))
+        InGameAction.LSFG -> stringResource(R.string.menu_lsfg, onOff(presentation.requested && presentation.engine == 1))
+        InGameAction.LSFG_MULTIPLIER -> stringResource(R.string.menu_lsfg_multiplier)
+        InGameAction.IMPORT_LSFG_DLL -> stringResource(R.string.menu_import_lsfg)
+        InGameAction.CLEAR_LSFG_CACHE -> stringResource(R.string.menu_clear_lsfg)
+        InGameAction.PERFORMANCE_HUD -> stringResource(R.string.menu_performance_hud, onOff(hud))
+        InGameAction.HUD_STYLE -> stringResource(R.string.menu_hud_detail,
+            stringResource(if (compact) R.string.menu_hud_compact else R.string.menu_hud_full))
         InGameAction.HUD_HOST_SUBMISSIONS -> HudMetric.HOST_SUBMISSIONS.label(metrics)
         InGameAction.HUD_CPU -> HudMetric.CPU.label(metrics)
         InGameAction.HUD_GPU -> HudMetric.GPU.label(metrics)
         InGameAction.HUD_RAM -> HudMetric.RAM.label(metrics)
         InGameAction.HUD_BATTERY -> HudMetric.BATTERY_TEMPERATURE.label(metrics)
         InGameAction.HUD_SOC -> HudMetric.SOC_TEMPERATURE.label(metrics)
-        InGameAction.TOUCH_CONTROLS -> "Touch controls · this session: ${if (touch) "On" else "Off"}"
-        InGameAction.ADAPTIVE_STICKS -> "Adaptive sticks · this game: ${if (adaptive) "On" else "Off"}"
-        InGameAction.EDIT_TOUCH_LAYOUT -> "Edit layout · opacity · auto-hide · haptics"
-        InGameAction.RESUME -> "Continue"
-        InGameAction.SHARE_LOGS -> "Share diagnostic logs"
-        InGameAction.QUIT -> "Exit game"
-        InGameAction.MUTE -> "Audio · ${if (volume == 0) "Muted (activate to restore)" else "$volume% (activate to mute)"}"
-        InGameAction.VOLUME_DOWN -> "Audio volume −10%"
-        InGameAction.VOLUME_UP -> "Audio volume +10%"
-        InGameAction.REFRESH_RATE -> "Display refresh rate"
-        InGameAction.SUSTAINED_PERFORMANCE -> "Sustained performance mode"
-        InGameAction.BACKGROUND_POLICY -> "Background pause policy"
-        InGameAction.GYRO_CAMERA -> "Gyro camera input"
-        InGameAction.EXTERNAL_DISPLAY -> "TV / external display"
-        InGameAction.SCALING_EFFECT -> "Scaling and sharpening"
-        InGameAction.PERFORMANCE_HINTS -> "Presenter ADPF hints"
-        InGameAction.COLOR_FILTER -> "Optional SDR color filter"
-        InGameAction.GYRO_CALIBRATE -> "Calibrate gyro · keep phone still after closing menu"
-        InGameAction.GYRO_SENSITIVITY -> "Gyro camera sensitivity"
-        InGameAction.CONTROLLER_RUMBLE -> "Controller rumble"
-        InGameAction.PHONE_CONTROLLERS -> "Phone controllers"
-        InGameAction.MORE_OPTIONS -> "More options"
+        InGameAction.TOUCH_CONTROLS -> stringResource(R.string.menu_touch_controls, onOff(touch))
+        InGameAction.ADAPTIVE_STICKS -> stringResource(R.string.menu_adaptive_sticks, onOff(adaptive))
+        InGameAction.EDIT_TOUCH_LAYOUT -> stringResource(R.string.menu_edit_layout)
+        InGameAction.RESUME -> stringResource(R.string.menu_continue)
+        InGameAction.SHARE_LOGS -> stringResource(R.string.menu_share_logs)
+        InGameAction.QUIT -> stringResource(R.string.menu_exit_game)
+        InGameAction.MUTE -> if (volume == 0) stringResource(R.string.menu_muted) else stringResource(R.string.menu_volume, volume)
+        InGameAction.VOLUME_DOWN -> stringResource(R.string.menu_volume_down)
+        InGameAction.VOLUME_UP -> stringResource(R.string.menu_volume_up)
+        InGameAction.REFRESH_RATE -> stringResource(R.string.menu_refresh_rate)
+        InGameAction.SUSTAINED_PERFORMANCE -> stringResource(R.string.menu_sustained)
+        InGameAction.BACKGROUND_POLICY -> stringResource(R.string.menu_background)
+        InGameAction.GYRO_CAMERA -> stringResource(R.string.menu_gyro_camera)
+        InGameAction.EXTERNAL_DISPLAY -> stringResource(R.string.menu_external_display)
+        InGameAction.SCALING_EFFECT -> stringResource(R.string.menu_scaling)
+        InGameAction.PERFORMANCE_HINTS -> stringResource(R.string.menu_hints)
+        InGameAction.COLOR_FILTER -> stringResource(R.string.menu_color_filter)
+        InGameAction.GYRO_CALIBRATE -> stringResource(R.string.menu_gyro_calibrate)
+        InGameAction.GYRO_SENSITIVITY -> stringResource(R.string.menu_gyro_sensitivity)
+        InGameAction.CONTROLLER_RUMBLE -> stringResource(R.string.menu_rumble)
+        InGameAction.PHONE_CONTROLLERS -> stringResource(R.string.menu_phone_controllers)
+        InGameAction.MORE_OPTIONS -> stringResource(R.string.menu_fewer_options)
     }
+}
 
-private fun HudMetric.label(metrics: Set<HudMetric>): String = "$label · full HUD: ${if (this in metrics) "On" else "Off"}"
+@Composable
+private fun HudMetric.label(metrics: Set<HudMetric>): String {
+    val name = when (this) {
+        HudMetric.HOST_SUBMISSIONS -> stringResource(R.string.menu_metric_submissions)
+        HudMetric.BATTERY_TEMPERATURE -> stringResource(R.string.menu_metric_battery)
+        HudMetric.SOC_TEMPERATURE -> stringResource(R.string.menu_metric_soc)
+        else -> label
+    }
+    return stringResource(R.string.menu_hud_metric, name, onOff(this in metrics))
+}
 
+@Composable
 private fun fpsText(fps: Int?): String = when (fps) {
-    null -> "unknown"
-    0 -> "Unlimited"
-    else -> "$fps FPS"
+    null -> stringResource(R.string.menu_unknown)
+    0 -> stringResource(R.string.menu_unlimited)
+    else -> stringResource(R.string.menu_fps, fps)
 }
 
 private val InGameAction.isPersistence: Boolean

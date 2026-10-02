@@ -322,3 +322,9 @@ com comandos e resultados exatos.
    Player, "More options" de Graphics mostra só "Stretch next launch" e o filtro de cor, e a aba
    Session não tem o item. Em tela pequena (4:3 ou dividida), a lista rola e o rodapé
    Continue/Exit continua visível.
+28. Lote 10 — menu em pt-BR (U02): com o telefone em português (ou Configurações → Apps →
+   XenDroid → Idioma → Português (Brasil), Android 13+), abrir o menu num jogo: abas Gráficos ·
+   Sistema · Controles · Sessão, "Mais opções (N)", "Sair do jogo?" e os rótulos em português, sem
+   texto cortado nas opções de duas linhas; trocar para English: tudo em inglês. Com o TalkBack:
+   tocar no "☰" anuncia "Abrir menu, botão"; navegar com o controle anuncia a opção destacada
+   como selecionada. Fonte do sistema no máximo: o rodapé Continuar/Sair do jogo continua visível.
