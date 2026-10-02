@@ -325,6 +325,13 @@ class GameLibraryViewModel(
         }
         // History before the list, so "Recently played" and the missing games match it.
         if (next is LibraryUiState.Loaded) refreshHistory(next) else _missing.value = emptyList()
+        // L10: patch copies the user toggled follow this app version's catalog before a launch.
+        if (next is LibraryUiState.Loaded) withContext(Dispatchers.IO) {
+            runCatching {
+                xendroid.compose.patches.PatchStore(xendroid.compose.patches.AssetPatchAssets(appContext),
+                    xendroid.compose.patches.PatchPaths.patchesDir()).syncAll()
+            }.onFailure { Log.w("GameLibrary", "Updating patch copies failed", it) }
+        }
         _state.value = next
         // A warm-cache rescan finishes faster than the PullToRefreshBox reveal animation,
         // which leaves the indicator visually stuck; hold it to a floor so it settles before

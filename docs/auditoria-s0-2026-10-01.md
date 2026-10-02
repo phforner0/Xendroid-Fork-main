@@ -300,3 +300,10 @@ com comandos e resultados exatos.
    o jogo aberto: lê. Num app de terceiros que pede uma pasta (ex.: um editor de texto com
    "abrir pasta"), conceder a raiz do XenDroid e conferir que ele só vê o mesmo conteúdo.
    Depois de atualizar o APK, um atalho/permissão antiga para a pasta continua abrindo.
+25. Lote 9 — catálogo de patches (L10): com o APK anterior, ligar um patch de um jogo; instalar
+   este APK por cima e abrir Game patches: o patch continua ligado e, se o catálogo do jogo
+   mudou, aparece "Updated to the patches of this app version… Undo/OK" (Undo volta ao arquivo
+   anterior). Editar à mão o `.patch.toml` desse jogo pelo gerenciador (L07), instalar um APK com
+   catálogo diferente e abrir a tela: aparece a prévia com "Update"/"Keep mine" e o arquivo não
+   muda até a escolha. Jogar com o patch ligado e conferir no `xe.log` "PatchDB: Loaded patches"
+   e o patch aplicado. Matar o app logo depois de um toque: o arquivo continua legível.

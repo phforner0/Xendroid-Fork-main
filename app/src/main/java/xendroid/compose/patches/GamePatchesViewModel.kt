@@ -41,6 +41,23 @@ class GamePatchesViewModel(
         }
     }
 
+    /** L10: catalog updates of one file (see [PatchStore]). */
+    enum class UpdateAction { APPLY, KEEP_MINE, UNDO, DISMISS }
+
+    fun update(file: PatchFile, action: UpdateAction) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                when (action) {
+                    UpdateAction.APPLY -> store.applyUpdate(file.fileName)
+                    UpdateAction.KEEP_MINE -> store.keepMine(file.fileName)
+                    UpdateAction.UNDO -> store.undoUpdate(file.fileName)
+                    UpdateAction.DISMISS -> store.dismissUpdate(file.fileName)
+                }
+            }
+            _state.value = compute()
+        }
+    }
+
     private fun compute(): UiState = runCatching {
         val files = store.patchesForTitle(titleId)
         if (files.isEmpty()) UiState.Empty else UiState.Loaded(files)

@@ -383,6 +383,13 @@ de deltas guest; registrar unavailable/stale e aquecimento. Referências [X2–X
 | L11 | Mods Xbox opt-in | Somente formatos suportados por Xenia/patch/override de arquivos; namespace separado, ordem e conflitos explícitos, não substituir um save/DLC; não portar mods/Workshop Steam |
 | L12 | Lixeira de dados gerenciados | Mover somente dados internos elegíveis para namespace isolado sob lease/journal; restauração com preview de conflitos, cota e limpeza explícita; remover referência da biblioteca não exclui ROM externa |
 
+**Estado L10 (2026-10-02, v1, Impl. + Local):** catálogo de patches com gravação atômica
+e cópias que acompanham o catálogo de cada versão do app (`patches/PatchCatalog.kt`,
+`PatchStore.kt`): escolhas casadas por nome, atualização sozinha quando só os interruptores
+mudaram, prévia/confirmação quando o arquivo foi editado à mão, desfazer pela cópia anterior.
+Falta: dizer se um patch casa com a versão do executável do jogo (hash do módulo; precisa de
+JNI) e validação no aparelho (roteiro 25).
+
 **Estado L07 (2026-10-02, v1, Impl. + Local):** o provider que já existia foi endurecido e
 movido para `:app` (`DocumentsProvider.kt` + `userdata/UserDataFiles.kt`): só a raiz de dados
 do usuário e o que está dentro dela (links e `..` resolvidos), caches do emulador e controles

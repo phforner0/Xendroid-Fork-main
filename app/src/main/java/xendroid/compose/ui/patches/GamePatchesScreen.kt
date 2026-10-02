@@ -60,7 +60,7 @@ fun GamePatchesScreen(
                 is GamePatchesViewModel.UiState.Error ->
                     Text(s.message, modifier = Modifier.padding(24.dp))
                 is GamePatchesViewModel.UiState.Loaded ->
-                    PatchList(files = s.files, onToggle = vm::toggle)
+                    PatchList(files = s.files, onToggle = vm::toggle, onUpdate = vm::update)
             }
         }
     }
@@ -70,6 +70,7 @@ fun GamePatchesScreen(
 private fun PatchList(
     files: List<PatchFile>,
     onToggle: (PatchFile, PatchEntry, Boolean) -> Unit,
+    onUpdate: (PatchFile, GamePatchesViewModel.UpdateAction) -> Unit,
 ) {
     val showHeaders = files.size > 1
     LazyColumn(Modifier.fillMaxSize()) {
@@ -90,6 +91,9 @@ private fun PatchList(
                     )
                 }
             }
+            file.update?.let { update ->
+                item(key = "upd:${file.fileName}") { CatalogUpdateCard(update) { onUpdate(file, it) } }
+            }
             items(file.entries, key = { "${file.fileName}#${it.index}" }) { entry ->
                 PatchRow(
                     entry = entry,
@@ -97,6 +101,36 @@ private fun PatchList(
                 )
             }
             item(key = "div:${file.fileName}") { HorizontalDivider() }
+        }
+    }
+}
+
+/** L10: news about this file's bundled catalog: applied by itself (undo) or waiting (preview). */
+@Composable
+private fun CatalogUpdateCard(update: xendroid.compose.patches.PatchUpdate, onAction: (GamePatchesViewModel.UpdateAction) -> Unit) {
+    val gone = update.dropped.takeIf { it.isNotEmpty() }?.let { " No longer in it, so now off: ${it.joinToString(", ")}." } ?: ""
+    OutlinedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                if (update.pending) {
+                    "This app has a newer version of these patches, but this file was changed by hand. Updating " +
+                        "keeps on what you had on (${update.keptOn.size}) and saves your file to undo.$gone"
+                } else {
+                    "Updated to the patches of this app version; what you had on stays on (${update.keptOn.size}).$gone"
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                if (update.pending) {
+                    TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.KEEP_MINE) }) { Text("Keep mine") }
+                    TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.APPLY) }) { Text("Update") }
+                } else {
+                    if (update.canUndo) {
+                        TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.UNDO) }) { Text("Undo") }
+                    }
+                    TextButton(onClick = { onAction(GamePatchesViewModel.UpdateAction.DISMISS) }) { Text("OK") }
+                }
+            }
         }
     }
 }
