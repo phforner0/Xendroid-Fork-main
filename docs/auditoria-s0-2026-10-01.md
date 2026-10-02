@@ -357,3 +357,9 @@ com comandos e resultados exatos.
    do sistema e concluir: o jogo não trava nem mostra lixo. B com o texto vazio cancela e o jogo
    segue sem botão preso. Por toque: tocar no campo abre o teclado do sistema e tocar nas teclas
    da grade também digita.
+33. Lote 10 — perfil antes do boot (U11): com dois perfis (Perfis → criar outro), tocar num
+   jogo: aparece "Play as" com o ativo marcado; escolher o outro → o jogo abre com ele (conferir
+   o gamertag no jogo/dashboard e que os saves são os dele). A ficha passa a dizer "Signs in as
+   <outro>". Marcar "Don't ask again": o próximo jogo abre direto; em Perfis, "Ask who plays…"
+   desligado; ligar de novo: volta a perguntar. Mandar o perfil ativo para a lixeira e abrir um
+   jogo com um só perfil restante: abre com ele, sem erro de perfil.

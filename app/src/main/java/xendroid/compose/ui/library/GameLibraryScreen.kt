@@ -213,15 +213,11 @@ fun GameLibraryScreen(
         )
     }
 
-    val startGame: (Game) -> Unit = start@{ game ->
-        if (preparingLaunch) return@start
-        // The list may be last time's (L09) or older than a file manager's change.
-        if (!java.io.File(game.launchUri).exists()) {
-            Toast.makeText(context, "${game.name} is not where it was; checking the folders again", Toast.LENGTH_LONG).show()
-            viewModel.refresh()
-            return@start
-        }
-        lastFocusedId = game.stableId
+    // U11: "Play as" when several profiles exist; the launch waits on the answer.
+    var playAs by remember { mutableStateOf<Pair<Game, xendroid.compose.data.ProfilePick.Decision.Ask>?>(null) }
+    val activeProfile by viewModel.activeProfile.collectAsStateWithLifecycle()
+    val prepareAndLaunch: (Game) -> Unit = prepare@{ game ->
+        if (preparingLaunch) return@prepare
         preparingLaunch = true
         scope.launch {
             try {
@@ -233,6 +229,46 @@ fun GameLibraryScreen(
                 Log.w("GameLibrary", "Preparing launch failed", e)
                 Toast.makeText(context, "Could not prepare this game for launch", Toast.LENGTH_LONG).show()
             } finally { preparingLaunch = false }
+        }
+    }
+    playAs?.let { (game, ask) ->
+        PlayAsDialog(
+            profiles = ask.profiles,
+            preselected = ask.preselected,
+            onPlay = { xuid, dontAsk ->
+                playAs = null
+                scope.launch {
+                    runCatching { viewModel.playAs(xuid, dontAsk) }
+                        .onSuccess { prepareAndLaunch(game) }
+                        .onFailure { Toast.makeText(context, "Could not sign that profile in: ${it.message}", Toast.LENGTH_LONG).show() }
+                }
+            },
+            onDismiss = { playAs = null },
+        )
+    }
+
+    val startGame: (Game) -> Unit = start@{ game ->
+        if (preparingLaunch || playAs != null) return@start
+        // The list may be last time's (L09) or older than a file manager's change.
+        if (!java.io.File(game.launchUri).exists()) {
+            Toast.makeText(context, "${game.name} is not where it was; checking the folders again", Toast.LENGTH_LONG).show()
+            viewModel.refresh()
+            return@start
+        }
+        lastFocusedId = game.stableId
+        scope.launch {
+            val decision = runCatching { viewModel.profileDecision() }
+                .onFailure { Log.w("GameLibrary", "Reading profiles failed", it) }
+                .getOrNull()
+            when (decision) {
+                is xendroid.compose.data.ProfilePick.Decision.Ask -> playAs = game to decision
+                is xendroid.compose.data.ProfilePick.Decision.Launch ->
+                    if (decision.changes && decision.xuid != null) {
+                        runCatching { viewModel.playAs(decision.xuid, dontAskAgain = false) }
+                        prepareAndLaunch(game)
+                    } else prepareAndLaunch(game)
+                null -> prepareAndLaunch(game)   // profiles unreadable: boot as configured
+            }
         }
     }
 
@@ -650,6 +686,7 @@ fun GameLibraryScreen(
 
                 ListItem(
                     headlineContent = { Text("Play") },
+                    supportingContent = activeProfile?.let { name -> { Text("Signs in as $name") } },
                     modifier = Modifier.clickable(enabled = !preparingLaunch) { dismiss(); startGame(game) },
                 )
                 ListItem(

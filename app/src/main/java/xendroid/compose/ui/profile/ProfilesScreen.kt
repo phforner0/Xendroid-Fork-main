@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.core.content.edit
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -202,6 +203,7 @@ private fun ProfileList(
     onPurge: (TrashedProfile) -> Unit,
 ) {
     LazyColumn(Modifier.fillMaxSize()) {
+        if (profiles.size > 1) item(key = "ask") { AskBeforePlayingRow() }
         items(profiles, key = { it.xuid }) { p ->
             ListItem(
                 leadingContent = { ProfileAvatar(p) },
@@ -416,4 +418,22 @@ private fun ChoiceField(
             dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
         )
     }
+}
+
+/** U11: ask which profile plays before each game (the library's "Play as"), or always the active one. */
+@Composable
+private fun AskBeforePlayingRow() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences(xendroid.compose.data.ProfilePick.PREFS, android.content.Context.MODE_PRIVATE) }
+    var ask by remember { mutableStateOf(prefs.getBoolean(xendroid.compose.data.ProfilePick.ASK, true)) }
+    ListItem(
+        headlineContent = { Text("Ask who plays before each game") },
+        supportingContent = { Text(if (ask) "The library asks which profile signs in." else "Games sign in as the active profile.") },
+        trailingContent = {
+            androidx.compose.material3.Switch(checked = ask, onCheckedChange = {
+                ask = it
+                prefs.edit { putBoolean(xendroid.compose.data.ProfilePick.ASK, it) }
+            })
+        },
+    )
 }

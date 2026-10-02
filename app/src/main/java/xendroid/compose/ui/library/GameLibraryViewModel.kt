@@ -13,6 +13,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import androidx.core.content.edit
 import androidx.core.content.getSystemService
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -221,6 +222,46 @@ class GameLibraryViewModel(
         }
     }
 
+    /** U11: the gamertag games sign in with now (P1), for the game sheet. */
+    private val _activeProfile = MutableStateFlow<String?>(null)
+    val activeProfile: StateFlow<String?> = _activeProfile.asStateFlow()
+
+    private val profilePrefs get() = appContext.getSharedPreferences(xendroid.compose.data.ProfilePick.PREFS, Context.MODE_PRIVATE)
+
+    /** U11: ask which profile plays before each game (when there is more than one). */
+    var askProfileBeforePlaying: Boolean
+        get() = profilePrefs.getBoolean(xendroid.compose.data.ProfilePick.ASK, true)
+        set(value) = profilePrefs.edit { putBoolean(xendroid.compose.data.ProfilePick.ASK, value) }
+
+    private fun localProfiles(): List<xendroid.compose.data.PlayableProfile> = EmulatorRuntime.emulator
+        ?.list_profiles(ContentPaths.contentRoot().absolutePath)
+        ?.map { xendroid.compose.data.PlayableProfile(it.xuid, it.gamertag.orEmpty()) }.orEmpty()
+
+    private fun configuredXuid(): String? {
+        val handle = xendroid.compose.settings.ConfigStore(appContext).openLiveSnapshot()
+        return try { handle.getString("Profiles", "logged_profile_slot_0_xuid")?.ifBlank { null } } finally { handle.closeDiscard() }
+    }
+
+    private fun refreshActiveProfile() {
+        val xuid = configuredXuid()
+        _activeProfile.value = localProfiles().firstOrNull { it.xuid.equals(xuid, ignoreCase = true) }?.gamertag
+    }
+
+    /** U11: launch as the configured profile, or ask (see [xendroid.compose.data.ProfilePick]). */
+    suspend fun profileDecision(): xendroid.compose.data.ProfilePick.Decision = withContext(Dispatchers.IO) {
+        EmulatorRuntime.ensureLoaded()
+        xendroid.compose.data.ProfilePick.decide(localProfiles(), configuredXuid(), askProfileBeforePlaying)
+    }
+
+    /** Signs [xuid] in for the next boot (the config's slot 0, under the config lock). */
+    suspend fun playAs(xuid: String, dontAskAgain: Boolean) = withContext(Dispatchers.IO) {
+        if (dontAskAgain) askProfileBeforePlaying = false
+        xendroid.compose.settings.ConfigStore(appContext).editLiveConfig {
+            it.putString("Profiles", "logged_profile_slot_0_xuid", xuid.uppercase())
+        }
+        runCatching { refreshActiveProfile() }
+    }
+
     /** L06: played or seen titles that the last scan did not list (file gone, folder away...). */
     private val _missing = MutableStateFlow<List<MissingTitle>>(emptyList())
     val missing: StateFlow<List<MissingTitle>> = _missing.asStateFlow()
@@ -325,6 +366,10 @@ class GameLibraryViewModel(
         }
         // History before the list, so "Recently played" and the missing games match it.
         if (next is LibraryUiState.Loaded) refreshHistory(next) else _missing.value = emptyList()
+        // U11: who plays, for the game sheet.
+        if (next is LibraryUiState.Loaded) withContext(Dispatchers.IO) {
+            runCatching { refreshActiveProfile() }.onFailure { Log.w("GameLibrary", "Reading the active profile failed", it) }
+        }
         // L10: patch copies the user toggled follow this app version's catalog before a launch.
         if (next is LibraryUiState.Loaded) withContext(Dispatchers.IO) {
             runCatching {
