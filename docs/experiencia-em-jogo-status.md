@@ -4,6 +4,19 @@ Referências: [plano mestre das cinco referências](plano-evolucao-cinco-referen
 [plano inicial](plano-experiencia-em-jogo.md) e
 [objetivo operacional](cloud-goal-experiencia-em-jogo.md).
 
+## Sessão na nuvem — 2026-10-02 (lote 7 em diante)
+
+Ambiente: container Linux da sessão na nuvem (4 vCPU, 15 GB de RAM, sem telefone e sem o
+pod de build do usuário), preparado com `bash tools/cloud-setup.sh`: OpenJDK 21.0.12.1 do
+Ubuntu 24.04, SDK 35, NDK 29.0.14206865, CMake 3.30.3, glslang/SPIRV-Tools do Ubuntu.
+O Gradle precisa de `LC_ALL=C.UTF-8`: com o locale POSIX a JVM não abre
+`patches/xenia-canary/patches/4D5307F2 - Viva Piñata.patch.toml` e `:app:syncGamePatches`
+falha ("Failed to create MD5 hash … as it does not exist"). O script agora avisa.
+
+| Fatia | Estado | Verificação |
+|---|---|---|
+| 7a — testes do companion | Impl. + Local | Linha de base `:app:testDebugUnitTest` com o lote 7 já na árvore: **226 testes, 46 suítes, 0 falhas, 0 erros, 0 ignorados** (2m21s a frio). `CompanionProtocolTest` (9) e `CompanionHostTest` (11, clientes reais por loopback) passaram na primeira compilação, sem avisos do compilador nesses arquivos. Ajuste de contrato: um quadro cortado no meio também vira `CompanionProtocolException` (antes `EOFException` crua), com um caso novo no teste; suíte de novo 226/46, 0 falhas |
+
 ## Estado atual — 2026-10-01 (auditoria S0)
 
 Auditoria completa do checkout e primeiro lote de correções/implementação. Detalhes,
@@ -27,7 +40,8 @@ Lote 6 = driver pedido × carregado (U03), layouts de toque por jogo (U06), atua
 com canal/verificação/instalador (R02–R04), jogadores P1–P4 e rumble por controle
 (I01–I04).
 Lote 7 (em andamento) = companion LAN v1 (I06–I09): protocolo, host, cliente e testes
-escritos, **ainda não compilados**; falta a integração Android (ver Retomada).
+compilados e passando na nuvem (fatia 7a, seção acima); falta a integração Android (ver
+Retomada).
 
 | Frente | Feito neste lote | Estado |
 |---|---|---|
@@ -45,7 +59,7 @@ escritos, **ainda não compilados**; falta a integração Android (ver Retomada)
 | Lote 6 — Layouts de toque por jogo (U06) | No editor dentro do jogo, "This game only" grava um layout daquele Title ID por orientação; sem layout próprio vale o compartilhado; o overlay usa o do jogo em execução; formato antigo continua lendo e o pacote L08 leva os layouts por jogo | Impl. + JVM |
 | Lote 6 — Atualizador (R02–R04) | Canal Stable/Preview/Off; release escolhida por `versionCode` com APK único; download limitado com SHA-256 do asset; pacote/versão/certificado conferidos; instalação pelo `PackageInstaller` com confirmação do sistema; "Skip this version"/"Later" | Impl. + JVM (lógica); instalação só testável no aparelho com o pacote `.fork` |
 | Lote 6 — Jogadores P1–P4 e rumble (I01–I04) | Driver nativo com 4 slots (P1 inalterado), P2–P4 por controle físico com conexão/desconexão visível ao jogo, roteamento por controle com as regras do P1, release só do controle perdido; rumble do jogo no controle do slot com intensidade Off/Low/Medium/High no menu | Impl. + JVM; nativo compilado; multiplayer real só no aparelho com dois controles |
-| Lote 7 — Companion LAN v1 (I06–I09) | `companion/CompanionProtocol.kt` (frames, prova HMAC do código de 6 dígitos, estado completo com sequência, `PadKeys.diff/apply`), `CompanionHost.kt` (bind só na LAN dada, P2–P4, heartbeat 250 ms, timeout 1 s solta input, reconexão começa solta, trava após 10 códigos errados, rumble por slot fora da main thread), `CompanionClient.kt` (envio por thread própria); `ControllerSlots` thread-safe com `connectRemote` (nunca P1). Testes `CompanionProtocolTest` e `CompanionHostTest` (clientes reais por loopback) | **Escrito, não compilado nem executado**; falta tela do cliente, ação no menu do host e encaminhamento do rumble |
+| Lote 7 — Companion LAN v1 (I06–I09) | `companion/CompanionProtocol.kt` (frames, prova HMAC do código de 6 dígitos, estado completo com sequência, `PadKeys.diff/apply`), `CompanionHost.kt` (bind só na LAN dada, P2–P4, heartbeat 250 ms, timeout 1 s solta input, reconexão começa solta, trava após 10 códigos errados, rumble por slot fora da main thread), `CompanionClient.kt` (envio por thread própria); `ControllerSlots` thread-safe com `connectRemote` (nunca P1). Testes `CompanionProtocolTest` e `CompanionHostTest` (clientes reais por loopback) | Impl. + JVM (2026-10-02, nuvem: 9 + 11 testes passando); falta tela do cliente, ação no menu do host e encaminhamento do rumble |
 | Lote 5 — JNI e empacotamento (A08) | `tools/check-jni.py` compara os `native` Java (com herança) com as tabelas `RegisterNatives`, os `Java_*` exportados e os tipos C++ de cada função (autoteste com 7 erros plantados); `tools/check-apk.py` confere ZIP, `JNI_OnLoad` no `libe.so` AArch64, só arm64, bloco de assinatura v2+, as 6 licenças e ausência de DLL/cache/imagem/perfil. Ambos nos workflows (Checks e job de APK). O APK declarava 4 ABIs sem ter o core para 3 delas (PKG-01): agora só arm64-v8a | Impl. + Local (scripts rodados aqui; workflows não executados no GitHub) |
 | Lote 5 — Pacote de configurações (L08 v1) | Exportar/importar config global e por jogo, controles de toque, favoritos/ordenação e relatos de compatibilidade; importação validada (formato, checksums, TOML pelo parser do emulador), com prévia e backup do estado atual; caminhos do aparelho nunca saem e são mantidos na importação | Impl. + JVM (núcleo); fluxo SAF não testado no aparelho |
 | Lote 4 — Áudio no relatório (C02/C01) | Contadores nativos por processo (AAudio e OpenSL ES): blocos tocados após o primeiro bloco do guest, blocos ocultados porque o emulador atrasou (o que se ouve como falha/estalo) e xruns do stream (só AAudio, acumulados entre reconstruções do stream). Pausa para o stream, então não conta. Resumo "AAudio: N de M blocos ocultados (x%)"; na linha do tempo, rajadas de underrun que só terminam após 5 s sem falhas (picos esparsos não lotam o anel) | Impl. + JVM; nativo compilado, não executado no aparelho |
@@ -90,7 +104,7 @@ Ambientes (sem `-PgitHash` em nenhum: o `versionName` vem de `tools/build-identi
 | **Ciclo 8 (pod, lotes 1–5, estado atual do código):** mesmas tarefas | BUILD SUCCESSFUL (38 s, incremental); **189 testes, 39 suítes, 0 falhas, 0 ignorados**; lint **0 erros** (50 avisos, 8 dicas) |
 | Ciclos 9–11 (pod, lote 6 em fatias: driver U03, layouts U06, atualizador) | BUILD SUCCESSFUL; 194, 198 e 204 testes, 0 falhas |
 | **Ciclo 12 (pod, lotes 1–6):** mesmas tarefas | BUILD SUCCESSFUL; **206 testes, 44 suítes, 0 falhas**; lint **0 erros** (54 avisos). APK debug 45.432.027 bytes, SHA-256 `62d0c40c444a62a57cacace9b8806393e15fdb683f583246579d41adaea5ecd7`, só na saída do build no WSL (não entregue nem instalado) |
-| Lote 7 (companion) | **Não compilado** ainda: escrito depois do ciclo 12 |
+| Lote 7 (companion) | Escrito depois do ciclo 12; compilado e testado na nuvem em 2026-10-02 (seção "Sessão na nuvem") |
 | `python3 tools/check-jni-selftest.py && python3 tools/check-jni.py` | 8 de 8 casos do autoteste; árvore consistente (ciclo 12): 84 nativos Java = 83 registros + 1 exportado; nota: 11 funções TOML passam ponteiro como `long` (só arm64) |
 | `python3 tools/check-apk.py <APK> --aapt2 …` | APK do ciclo 8 aprovado; cópias adulteradas (sem assinatura, com `Lossless.dll`, sem licença, targetSdk errado) reprovadas |
 | `XENDROID_NDK=… bash tools/test-native-logic.sh` | `presentation policy: passed`, `pipeline cache file: passed` (executáveis estáticos x86_64 do NDK; no WSL nos ciclos 1–2 e no pod nos ciclos 5–8) |
@@ -119,8 +133,8 @@ Trabalho na branch `wip/experiencia-em-jogo`. Ordem pedida pelo usuário: armaze
 registro/UX/drivers/updater → slots P1–P4 → companion → estabilização de FG. Lotes 1–6
 estão implementados e verificados por build (ciclo 12); o companion está no meio.
 
-1. **Primeiro: fechar o lote 7 (companion).** Compilar e rodar `CompanionProtocolTest` e
-   `CompanionHostTest`; corrigir o que falhar. Depois, a integração Android:
+1. **Primeiro: fechar o lote 7 (companion).** ~~Compilar e rodar `CompanionProtocolTest` e
+   `CompanionHostTest`~~ (feito em 2026-10-02: passam). Depois, a integração Android:
    - Host (`EmulatorHostActivity`, processo `:emu`): ação `PHONE_CONTROLLERS` na página
      CONTROLS do menu em jogo (`InGameMenuState.kt`/`InGameMenu.kt`), desligada a cada
      boot; ao ligar, escolher um IPv4 privado de interface Wi-Fi/Ethernet/hotspot ativa

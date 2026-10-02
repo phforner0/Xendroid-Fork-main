@@ -62,6 +62,7 @@ class CompanionProtocolTest {
         assertRejected(byteArrayOf(0, 1, 77), "unknown type")
         assertRejected(byteArrayOf(0, 3, CompanionProtocol.STATE.toByte(), 0, 0), "short STATE")
         assertRejected(byteArrayOf(0, 1, CompanionProtocol.PING.toByte()), "PING without its time")
+        assertRejected(byteArrayOf(0, 9, CompanionProtocol.PING.toByte(), 0, 0), "stream closed mid-frame")
         // HELLO claiming a 33-byte name.
         val hello = ByteArray(1 + 2 + 16 + 1).also { it[0] = CompanionProtocol.HELLO.toByte(); it[19] = 33 }
         assertRejected(byteArrayOf(0, hello.size.toByte()) + hello, "name too long")

@@ -84,6 +84,10 @@ o pacote release de testes usa o sufixo `.fork.opt`. Há apenas um guest ativo p
 processo. Não configure CMake nativo diretamente fora do Gradle.
 
 ```bash
+# Locale UTF-8 obrigatório para o Gradle: há patch com nome não ASCII
+# ("Viva Piñata") e, com o locale POSIX, :app:syncGamePatches falha.
+export LC_ALL=C.UTF-8
+
 # Para alterações Kotlin/testáveis:
 ./gradlew --no-daemon --console=plain :app:testDebugUnitTest
 

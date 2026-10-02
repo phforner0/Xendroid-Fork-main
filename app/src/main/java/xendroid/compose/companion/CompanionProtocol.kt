@@ -131,13 +131,13 @@ object CompanionCodec {
         frame.flush()
     }
 
-    /** Reads one frame; throws on a closed stream, an oversized or a malformed frame. */
+    /** Reads one frame; throws [CompanionProtocolException] on a closed stream, a frame cut short, an oversized or a malformed frame. */
     fun read(input: InputStream): CompanionMessage {
         val frame = DataInputStream(input)
         val length = try { frame.readUnsignedShort() } catch (e: EOFException) { throw CompanionProtocolException("Connection closed") }
         if (length < 1 || length > CompanionProtocol.MAX_FRAME) throw CompanionProtocolException("Bad frame length $length")
         val bytes = ByteArray(length)
-        frame.readFully(bytes)
+        try { frame.readFully(bytes) } catch (e: EOFException) { throw CompanionProtocolException("Connection closed mid-frame") }
         val data = DataInputStream(bytes.inputStream(1, length - 1))
         fun need(n: Int) { if (length - 1 < n) throw CompanionProtocolException("Short frame") }
         return when (bytes[0].toInt() and 0xFF) {
