@@ -138,6 +138,41 @@ com comandos e resultados exatos.
 
 ## 4. Roteiro de validação no aparelho (pendente)
 
+### 4.0 Testes automatizados do roteiro (2026-10-03)
+
+Parte do roteiro virou teste instrumentado em `app/src/androidTest/java/xendroid/compose/roadmap/`,
+uma classe por item. Eles rodam num pacote próprio, `xendroid.compose.uitest` (build type `uitest`):
+instalar e rodar **não toca** nos jogos, saves nem ajustes do `xendroid.compose.debug`, e o Gradle
+desinstala o pacote de teste no fim. Com o telefone conectado por adb (WSL ou pod):
+
+```bash
+./gradlew --no-daemon --console=plain :app:connectedUitestAndroidTest
+# só um item:
+./gradlew :app:connectedUitestAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=xendroid.compose.roadmap.Item24UserDataProviderTest
+```
+
+Relatório: `app/build/reports/androidTests/connected/uitest/index.html`. **Estado: escritos e
+compilados na nuvem; ainda não rodados** (sem telefone). Um item automatizado só passa a "Validado no
+aparelho" depois de rodar verde no telefone; uma falha lá é defeito do app ou do teste, a investigar.
+O que cada teste não alcança continua na lista abaixo, como antes.
+
+| Item | Teste | Cobre | Continua manual |
+|---|---|---|---|
+| 3 | `Item03SaveRecoveryTest` | journal danificado nomeado e mantido; ao abrir um jogo (processo `:emu` de verdade, com um arquivo que não é jogo: o armazenamento é preparado antes de abrir o jogo) o diálogo nomeia a transação; o save original fica | — |
+| 4 | `Item04ProfilesTest` | prévia da exclusão na tela Perfis com o jogo dos saves; lixeira, restaurar com os saves, excluir de vez (código nativo de perfis); imagem enorme e arquivo que não é imagem dão a mensagem e não criam nada; foto 4000×3000 vira o avatar | — |
+| 13 | `Item13DataBundleTest` | exportar, mudar, importar pela seção real (o seletor do sistema respondido pelo Espresso-Intents): a prévia lista exatamente as mudanças e o backup, os valores voltam, o caminho do driver deste aparelho fica, um arquivo que não é pacote é recusado com a mensagem | — |
+| 16 | `Item16PlayerModeTest` | "Jogador" = 19 ajustes em uma seção, o limite de FPS mudado ali aparece em Developer → GPU, ajuste avançado mantido; ajustes do jogo seguem o modo; menu em jogo sem Win-FG, LSFG, ADPF, submissões, pausa em segundo plano e modo sustentado (e com eles em Developer) | o menu dentro de um jogo rodando (grupo C) |
+| 17 | `Item17FirstRunAssistantTest` | assistente na `MainActivity` a partir do estado de instalação nova: checagens (GPU, arm64, Android), "!" e o botão da pasta (o voltar do telefone volta ao assistente), idioma/região pt/BR gravados no console, Perfis e volta, "Pronto" sem modo = Jogador, só uma vez, ⋮ reabre | — |
+| 24 | `Item24UserDataProviderTest` | o DocumentsProvider como o app Arquivos o chama: caches e controles internos ocultos, cópia vira "(1)", renomear e apagar, tudo somente leitura com o lease ocupado (ler continua), "Jogos por título" com pastas de reunião sem renomear/mover/apagar | as telas do Arquivos, um app de terceiros com a raiz, a permissão sobreviver à atualização do APK |
+| 26 | `Item26UserPatchesTest` | arquivo próprio entra com os patches desligados e "adicionado por você", repetido vira "(1)", de outro jogo é recusado com o Title ID, escrita sem `address` recusada com a linha, aviso de conflito com o endereço, remover | jogar com o patch e o `xe.log` (grupo C) |
+| 28 | `Item28PortugueseTest` | app em pt-BR pelo idioma do app (Android 13+): menu em jogo em todas as abas sem texto cortado, "☰" como botão "Abrir menu", opção destacada anunciada como selecionada, rodapé visível com a maior fonte em tela pequena, inglês ao voltar; ⋮ da biblioteca e cada tela que ele abre com o título em português e nada cortado; Configurações, "1 ajuste"/"N ajustes" e a busca "tela" achando "Tela larga" | a fala do TalkBack; o menu dentro de um jogo (grupo C) |
+| 35 | `Item35RecommendedSettingsTest` | `teste.json` oferecido ("Do arquivo teste.json…"), prévia 60 → 30 com o widescreen do jogador mantido, aplicar, restaurar, valor mudado depois mantido; versão 2 e campo desconhecido recusados; "Mali" num Adreno: "Não oferecido neste telefone" | o jogo abrir a 30 FPS (grupo C) |
+| 38 | `Item38TouchLayoutsTest` | salvar "Corrida", prévia "2 movidos", aplicar, exportar, importar, recusas de versão 2 e de controle fora da tela, "Só este jogo" | arrastar no editor e o jogo usar o layout (grupo C) |
+
+O `ConfigTransactionsInstrumentedTest` (configuração por JNI/TOML) também roda ali, agora no pacote
+`.uitest`.
+
 1. Config: editar uma opção global na biblioteca enquanto um jogo **sem** config por
    jogo inicia; conferir no `xe.log` "SaveConfig skipped" e que a edição persiste.
 2. Lease: iniciar um jogo logo após voltar à biblioteca com backup automático ativo;
