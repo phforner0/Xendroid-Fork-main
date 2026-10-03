@@ -548,7 +548,7 @@ resta, em ordem de valor:
 | Forza Horizon 2 | quirks do FH1 (b90): ~29,9 fps, GPU 20–22 ms (era 24–27 fps, 36–41 ms) | — |
 | Need for Speed: Most Wanted | crash de ~40% das aberturas **corrigido** (b98, ABA no pool de jobs); **em jogo** desde a b101 (quirks de `fmadz` e memexport; a devolução do memexport grava só os bytes que o desenho mudou) | desempenho em jogo (~19 fps; esperas síncronas do memexport) |
 | Sonic Unleashed | um crash não reproduzido (SIGTRAP no thunk de resolução) | repetir aberturas no b98: pode ter sido o mesmo ABA |
-| Halo 4 | vídeos Bink pretos (memexport `k_8_8_8_8_A`?) | captura do frame do vídeo |
+| Halo 4 | vídeos Bink **corrigidos** (b105): swizzle constante 1 de um fetch sem textura era zerado | jogar além do prólogo (cryo pod) |
 | GTA IV / RDR | 22 / 25 fps, thread de comandos no limite | medir em jogo e perfilar a thread de comandos |
 
 ## Becos sem saída (não repetir sem fato novo)

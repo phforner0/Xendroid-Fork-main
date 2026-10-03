@@ -14,7 +14,7 @@ em que o app foi pausado).
 |---|---|---|---|
 | Forza Horizon 2 (4D530AA4) | 24–27 fps, GPU 36–41 ms/frame na corrida | não tinha os quirks de GPU do Forza Horizon | quirks do FH1 no FH2 (b90): ~29,9 fps, GPU 20–22 ms |
 | Need for Speed: Most Wanted (45410961) | crash em ~40% das aberturas: `bctrl` para 0 em 0x898D834C (às vezes 0x898C9C80/0x898C9E44) | **ABA na pilha lock-free do pool de jobs**: o `stwcx.` emulado comparava só o valor | **corrigido** (b97/b98): 0 crashes em 14 aberturas; **em jogo** (b101) com os quirks de `fmadz` e memexport, sem crash em 4 corridas de 90 s |
-| Halo 4 (4D530919) | vídeos Bink do prólogo pretos (legendas empilhadas); o resto renderiza | aberto: 155× memexport para `k_8_8_8_8_A` e "Couldn't extract memexport stream constant index"; não é formato de textura sem host (o aviso novo não dispara) | aberto (precisa de captura do frame do vídeo) |
+| Halo 4 (4D530919) | vídeos Bink do prólogo pretos (legendas empilhadas); o resto renderiza | o shader do vídeo tira a opacidade de um fetch **sem textura** (base 0) cujo swizzle é a constante 1 (`B6D`); o emulador zerava o swizzle de fetches inválidos (`924`, constante 0), o quadro saía transparente e as legendas se acumulavam | **corrigido** (b105): os componentes constantes do swizzle valem também sem textura; o prólogo aparece, a 30 fps |
 | Sonic Unleashed (53450812) | um crash (SIGTRAP no thunk de resolução = chamada para endereço que não resolve) | não reproduzido depois; pode ser da mesma classe (ponteiro de função vindo de estrutura lock-free) | reavaliar no b98 |
 | GTA IV / Red Dead Redemption | 22 / 25 fps, presos na thread de comandos (GTA: ~8500 draws/frame) | — | próximo item |
 
