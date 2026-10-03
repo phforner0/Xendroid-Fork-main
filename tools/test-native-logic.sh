@@ -2,6 +2,7 @@
 # Pure-logic native tests (no Vulkan): presentation policy, frame-generation
 # schedule, the pipeline cache file store, the guest vblank pacer and the native
 # crash record (written from a real fault handler). They need only a C++20 compiler.
+# With XENDROID_NDK, also host threads: APCs alerted at once to several threads.
 #
 # Compiler: $CXX (default c++). On a host without one (no libstdc++/glibc headers,
 # as in a bare WSL), set XENDROID_NDK to an NDK root: the tests are then built as
@@ -30,3 +31,13 @@ done
 "$build/pipeline_cache_file_test" "$build/pipeline-cache-scratch"
 "$build/vblank_pacer_test"
 "$build/crash_record_test" "$build/crash-record-scratch"
+# Host threads and APC delivery (Thread::QueueUserCallback) on the fork's Android
+# path (XE_PLATFORM_xendroid), so only with the NDK; Xenia's headers need clang.
+if [[ -n "${XENDROID_NDK:-}" ]]; then
+    xbase="$cpp/xenia/src/xenia/base"
+    "${cxx[@]}" "${flags[@]}" -DFMT_HEADER_ONLY "$test/threading_apc_test.cc" "$xbase/threading_posix.cc" \
+        "$xbase/threading.cc" "$xbase/threading_timer_queue.cc" "$xbase/clock_posix.cc" -o "$build/threading_apc_test"
+    "$build/threading_apc_test"
+else
+    echo "threading_apc_test: skipped (set XENDROID_NDK: it tests the Android build's code path)"
+fi

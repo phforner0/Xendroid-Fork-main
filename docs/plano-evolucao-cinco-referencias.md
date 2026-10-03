@@ -292,6 +292,7 @@ Nenhum item chegou a "Aparelho" nesta sessão. Evidências e IDs de achado em
 | A12 (novo) | Impl. | Entrada: bounds check JNI de tecla; prioridade do stick de toque sobre o gyro | Teste de entrada no aparelho (IN-03) |
 | A13 (novo) | Pendente (ensaio feito) | Integrar `origin/main` (`6c772efb6`, 51 commits de desempenho) antes de commitar este trabalho. Ensaio com `git merge-tree` repetido após a PR #12: sem conflitos; novos arquivos sem colisão | Decisão do usuário: branch + commit + `git merge origin/main` |
 | A14 (novo) | Candidato | Loop de UI nativo acorda a cada 1 ms (energia) | Trocar por condvar só com validação no aparelho |
+| A15 (novo) | Impl. + Local | APC do host (`QueueUserCallback`) entregue à thread que recebe o sinal, sem o slot global que corria com dois alertas simultâneos (achado do aX360e, varredura 2026-10-03) | `threading_apc_test` no aparelho real não se aplica (teste nativo NDK); jogos com esperas alertáveis no roteiro geral |
 
 ## 7. P1 — produto, compatibilidade, portabilidade e distribuição
 
