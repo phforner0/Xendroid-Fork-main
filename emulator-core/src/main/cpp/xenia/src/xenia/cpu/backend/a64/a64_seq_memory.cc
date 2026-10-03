@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <type_traits>
 
 #include "xenia/cpu/backend/a64/a64_sequences.h"
 
@@ -37,12 +38,12 @@ DECLARE_bool(emit_mmio_aware_stores_for_recorded_exception_addresses);
 DECLARE_bool(emit_inline_mmio_checks);
 
 DEFINE_bool(a64_native_reserved_ops, true,
-            "Compile guest lwarx/stwcx. to inline native atomics (LSE CASAL) "
-            "instead of the software-reservation thunk: lwarx captures the word "
-            "and arms a per-thread flag; stwcx. validates with one CAS. The "
-            "single atomic has no LDXR->STXR window, avoiding the monitor-loss "
-            "livelock of a spanning ldaxr/stlxr (which hung Forza Horizon). "
-            "Requires FEAT_LSE.",
+            "Compile guest lwarx/stwcx. inline instead of calling the "
+            "software-reservation thunks: lwarx captures the word and its "
+            "granule's generation and arms a per-thread flag; stwcx. checks "
+            "both inside one short ldaxr/stlxr window and stores. No exclusive "
+            "monitor spans the guest's own lwarx..stwcx. (that livelocked Forza "
+            "Horizon). Requires FEAT_LSE.",
             "CPU");
 
 DECLARE_bool(guest_scheduler);
@@ -1591,30 +1592,168 @@ static const Xbyak_aarch64::XReg& LoadBackendCtxPtr(A64Emitter& e) {
   return e.GetBackendCtxReg();
 }
 
-// Two paths, selected by a64_native_reserved_ops:
-//  - Software (cvar off): RESERVED_LOAD/STORE call host helpers that share a
-//    per-granule generation counter, so a stwcx. on one thread invalidates
-//    concurrent lwarx reservations on others.
-//  - Native (cvar on, default): inline, no thunk. lwarx plain-loads the word,
-//    stashes it in cached_reserve_value_, and arms a per-thread reserve flag;
-//    stwcx. validates with one LSE CASAL. An EARLIER native design armed the
-//    hardware exclusive monitor at lwarx and consumed it with a bare stlxr at
-//    stwcx., but that monitor only survives a window with no intervening memory
-//    access - a register spill or context/guest load-store between the (far
-//    apart) guest lwarx and stwcx. clears it every iteration, so stlxr never
-//    succeeds and the guest retry loop livelocks (hung Forza Horizon). The CAS
-//    is a single atomic with no such window. The guest byte-swap is a separate
-//    HIR op on both paths, so the captured/compared value is the raw word.
-//    Upstream's caveat applies to the native path: comparing the cached
-//    value cannot see an ABA where another thread writes and restores the
-//    word between the guest's lwarx and stwcx.; the software path's
-//    generation counter does catch that.
+// Two paths, selected by a64_native_reserved_ops, keeping the same
+// reservation (address, granule generation, word, flag) against the same
+// generation counters - one per 128-byte granule, hashed - so they mix:
+//  - Software (cvar off): RESERVED_LOAD/STORE call host helpers.
+//  - Native (cvar on, default): inline, no thunk. lwarx reads the granule's
+//    generation (acquire), then the word, and arms a per-thread reserve flag.
+//    stwcx. checks the word and the generation inside one exclusive window
+//    (between the ldaxr and the stlxr of the word), stores, then moves the
+//    generation on. The word alone can't show another thread
+//    changing it and changing it back between the guest's lwarx and stwcx.
+//    (ABA), and comparing the generation first and storing after leaves a
+//    window a thread descheduled in can't see through: Need for Speed Most
+//    Wanted's job pool (a Treiber stack, no tag, safe on the console because
+//    any store kills the reservation) handed one job to two threads when a
+//    pop's thread was preempted for a few hundred thousand cycles between
+//    them, and crashed. Every successful stwcx. moves the generation, and a
+//    context switch or a store to the word ends the exclusive window, so the
+//    check and the store are one step. Plain stores don't move it, on both
+//    paths, so a plain store putting the same word back still goes unseen.
+//    An EARLIER native design armed the hardware exclusive monitor at lwarx
+//    and consumed it with a bare stlxr at stwcx., but that monitor only
+//    survives a window with no intervening memory access - a register spill
+//    or context/guest load-store between the (far apart) guest lwarx and
+//    stwcx. clears it every iteration, so stlxr never succeeds and the guest
+//    retry loop livelocks (hung Forza Horizon). The window here holds no
+//    other access. The guest byte-swap is a separate HIR op on both paths, so
+//    the captured/compared value is the raw word.
+
+// The width of a generation counter's index, the granule number's low bits.
+constexpr uint32_t kReserveEntryBits = 20;
+static_assert((1u << kReserveEntryBits) == A64_RESERVE_NUM_ENTRIES);
+static_assert(offsetof(ReserveHelper, generations) == 0);
+
+// w1 = the guest address of a reserved access as the software helpers key
+// reservations, before ComputeMemoryAddress offsets it.
+static void LoadReserveAddress(A64Emitter& e, const I64Op& guest) {
+  if (guest.is_constant) {
+    e.mov(e.w1,
+          static_cast<uint64_t>(static_cast<uint32_t>(guest.constant())));
+  } else {
+    e.mov(e.w1, WReg(guest.reg().getIdx()));
+  }
+}
+
+// x2 = the generation counter of the granule of the guest address in w1 (the
+// software helpers' ReserveGranule). Clobbers |scratch|.
+static void LoadReserveGranule(A64Emitter& e, const XReg& scratch) {
+  e.ldr(e.x2, ptr(LoadBackendCtxPtr(e),
+                  static_cast<uint32_t>(
+                      offsetof(A64BackendContext, reserve_helper_))));
+  e.ubfx(WReg(scratch.getIdx()), e.w1, A64_RESERVE_GRANULE_SHIFT,
+         kReserveEntryBits);
+  e.add(e.x2, e.x2, scratch, Xbyak_aarch64::LSL, 2);
+}
+
+// Native lwarx before the word: records the guest address and the generation
+// of its granule. The acquire keeps the word, read next, from being older
+// than the generation - a store landing in between moved it on, so stwcx.
+// fails. Clobbers x1-x3.
+static void EmitNativeReserve(A64Emitter& e, const I64Op& guest) {
+  auto bctx = LoadBackendCtxPtr(e);
+  LoadReserveAddress(e, guest);
+  LoadReserveGranule(e, e.x3);
+  e.ldar(e.w3, ptr(e.x2));
+  e.str(e.w3, ptr(bctx, static_cast<uint32_t>(offsetof(
+                            A64BackendContext, reserve_generation))));
+  e.str(e.w1, ptr(bctx, static_cast<uint32_t>(
+                            offsetof(A64BackendContext, reserve_address))));
+}
+
+// Exclusive stores a stwcx. retries before falling back (see below).
+constexpr uint32_t kStoreConditionalExclusiveTries = 16;
+
+// Native stwcx.: the value to store in x3 (w3 for a word). Consumes the
+// reservation (stwcx. always does, stored or not); fails without one (no
+// matching lwarx, exactly like PPC), with one on another address (like the
+// software helpers), or when the granule's generation or the word moved since
+// the lwarx. Otherwise stores and moves the generation on, failing every
+// other reservation on the granule. i.dest (CR0.eq) = stored. Clobbers x0-x2,
+// x4, x5 and x16.
+//
+// Both checks sit between the ldaxr and the stlxr, so a context switch or a
+// store to the word anywhere before the store fails it and the loop checks
+// again - checking the generation before the ldaxr would leave a window for
+// a thread descheduled there. The generation load inside the exclusive pair
+// is outside the architecture's forward-progress guarantee, so after a few
+// failed exclusive stores (on a core whose monitor that load clears) it falls
+// back to checking the generation, then one CAS on the word: never a
+// livelock, at worst the old window.
+template <typename Reg>
+static void EmitNativeStoreConditional(A64Emitter& e, const I64Op& guest,
+                                       const Reg& value,
+                                       const Xbyak_aarch64::WReg& dest) {
+  static_assert(std::is_same_v<Reg, XReg> || std::is_same_v<Reg, WReg>);
+  auto bctx = LoadBackendCtxPtr(e);
+  LoadReserveAddress(e, guest);
+  auto addr = ComputeMemoryAddress(e, guest);
+  e.add(e.x16, e.GetMembaseReg(), addr);
+  auto& sc_retry = e.NewCachedLabel();
+  auto& sc_stored = e.NewCachedLabel();
+  auto& sc_fail_exclusive = e.NewCachedLabel();
+  auto& sc_fail = e.NewCachedLabel();
+  auto& sc_done = e.NewCachedLabel();
+  const uint32_t kFlagsOff =
+      static_cast<uint32_t>(offsetof(A64BackendContext, flags));
+  e.ldr(e.w0, ptr(bctx, kFlagsOff));
+  e.and_(e.w2, e.w0, uint64_t(1) << kA64BackendHasReserveBit);
+  e.eor(e.w0, e.w0, e.w2);  // clear reserve flag (w2 = mask if set, else 0)
+  e.str(e.w0, ptr(bctx, kFlagsOff));
+  e.cbz(e.w2, sc_fail);
+  e.ldr(e.w2, ptr(bctx, static_cast<uint32_t>(
+                            offsetof(A64BackendContext, reserve_address))));
+  e.cmp(e.w2, e.w1);
+  e.bne(sc_fail);
+  LoadReserveGranule(e, e.x0);
+  // w4 = the generation at the lwarx, x1/w1 = the word then.
+  e.ldr(e.w4, ptr(bctx, static_cast<uint32_t>(offsetof(
+                            A64BackendContext, reserve_generation))));
+  const Reg expected(1);
+  const Reg current(0);
+  e.ldr(expected, ptr(bctx, static_cast<uint32_t>(offsetof(
+                                A64BackendContext, cached_reserve_value_))));
+  e.mov(e.w5, kStoreConditionalExclusiveTries);
+  e.L(sc_retry);
+  e.ldaxr(current, ptr(e.x16));
+  e.cmp(current, expected);
+  e.bne(sc_fail_exclusive);
+  // The acquire of the ldaxr keeps this from being older than the word.
+  e.ldr(e.w0, ptr(e.x2));
+  e.cmp(e.w0, e.w4);
+  e.bne(sc_fail_exclusive);
+  e.stlxr(e.w0, value, ptr(e.x16));
+  e.cbz(e.w0, sc_stored);
+  e.subs(e.w5, e.w5, 1);
+  e.bne(sc_retry);
+  // Fallback: the generation, then one CAS on the word.
+  e.ldar(e.w0, ptr(e.x2));
+  e.cmp(e.w0, e.w4);
+  e.bne(sc_fail);
+  e.mov(current, expected);
+  e.casal(current, value, ptr(e.x16));
+  e.cmp(current, expected);
+  e.bne(sc_fail);
+  e.L(sc_stored);
+  e.mov(e.w0, 1);
+  e.staddl(e.w0, ptr(e.x2));
+  e.mov(dest, 1);
+  e.b(sc_done);
+  e.L(sc_fail_exclusive);
+  e.clrex(15);
+  e.L(sc_fail);
+  e.mov(dest, 0);
+  e.L(sc_done);
+}
+
 struct RESERVED_LOAD_I32
     : Sequence<RESERVED_LOAD_I32, I<OPCODE_RESERVED_LOAD, I32Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     if (cvars::a64_native_reserved_ops && !IsPossibleMMIOInstruction(e, i.instr)) {
-      // Plain load + capture (value, reserve flag). The matching stwcx.
-      // validates with one CASAL; no hardware monitor spans the window.
+      // The generation, then plain load + capture (value, reserve flag); the
+      // matching stwcx. validates both in one exclusive window.
+      EmitNativeReserve(e, i.src1);
       auto addr = ComputeMemoryAddress(e, i.src1);
       e.add(e.x16, e.GetMembaseReg(), addr);
       e.ldr(i.dest, ptr(e.x16));
@@ -1646,8 +1785,9 @@ struct RESERVED_LOAD_I64
     : Sequence<RESERVED_LOAD_I64, I<OPCODE_RESERVED_LOAD, I64Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     if (cvars::a64_native_reserved_ops && !IsPossibleMMIOInstruction(e, i.instr)) {
-      // Plain load + capture (value, reserve flag). The matching stwcx.
-      // validates with one CASAL; no hardware monitor spans the window.
+      // The generation, then plain load + capture (value, reserve flag); the
+      // matching stwcx. validates both in one exclusive window.
+      EmitNativeReserve(e, i.src1);
       auto addr = ComputeMemoryAddress(e, i.src1);
       e.add(e.x16, e.GetMembaseReg(), addr);
       e.ldr(i.dest, ptr(e.x16));
@@ -1677,15 +1817,9 @@ struct RESERVED_LOAD_I64
 EMITTER_OPCODE_TABLE(OPCODE_RESERVED_LOAD, RESERVED_LOAD_I32,
                      RESERVED_LOAD_I64);
 
-// Native SC: fail if no matching lwarx armed the per-thread flag (and always
-// clear it - PPC stwcx. unconditionally releases). Otherwise one LSE CASAL
-// against the value captured at lwarx: if memory still holds it, swap in the
-// new (already HIR-byte-swapped) value and report success; otherwise a store
-// landed since lwarx, so fail. CR0.eq (i.dest) = compare matched. The CAS is a
-// single atomic instruction, so unlike a spanning ldaxr/stlxr there is no
-// window for a spill/context access to clear and no possibility of livelock.
-// Value-CAS carries the same (rare, benign) ABA characteristic as the software
-// path; it does not need that path's contended global bitmap.
+// Native SC: EmitNativeStoreConditional. The value is HIR-byte-swapped
+// already. No spanning monitor, so no window for a spill or context access to
+// clear and no livelock.
 struct RESERVED_STORE_I32
     : Sequence<RESERVED_STORE_I32,
                I<OPCODE_RESERVED_STORE, I8Op, I64Op, I32Op>> {
@@ -1697,34 +1831,7 @@ struct RESERVED_STORE_I32
       } else {
         e.mov(e.w3, WReg(i.src2.reg().getIdx()));
       }
-      auto addr = ComputeMemoryAddress(e, i.src1);
-      e.add(e.x16, e.GetMembaseReg(), addr);
-      auto bctx = LoadBackendCtxPtr(e);
-      // Consume the per-thread reservation (stwcx. always clears it); no
-      // matching lwarx -> fail, exactly like PPC.
-      const uint32_t kFlagsOff =
-          static_cast<uint32_t>(offsetof(A64BackendContext, flags));
-      e.ldr(e.w0, ptr(bctx, kFlagsOff));
-      e.and_(e.w1, e.w0, uint64_t(1) << kA64BackendHasReserveBit);
-      e.eor(e.w0, e.w0, e.w1);  // clear reserve flag (w1 = mask if set, else 0)
-      e.str(e.w0, ptr(bctx, kFlagsOff));
-      auto& sc_fail = e.NewCachedLabel();
-      auto& sc_done = e.NewCachedLabel();
-      e.cbz(e.w1, sc_fail);
-      // Single-instruction CAS vs the value captured at lwarx: succeeds iff
-      // memory is unchanged. Atomic, so there is no LDXR->STXR window to lose
-      // and it cannot livelock. CR0.eq = compare matched.
-      e.ldr(e.w1, ptr(bctx, static_cast<uint32_t>(offsetof(
-                                A64BackendContext, cached_reserve_value_))));
-      e.mov(e.w2, e.w1);
-      e.casal(e.w1, e.w3, ptr(e.x16));
-      e.cmp(e.w1, e.w2);
-      e.bne(sc_fail);
-      e.mov(i.dest, 1);
-      e.b(sc_done);
-      e.L(sc_fail);
-      e.mov(i.dest, 0);
-      e.L(sc_done);
+      EmitNativeStoreConditional(e, i.src1, e.w3, i.dest);
       return;
     }
     // Compute host address into x2 first; ComputeMemoryAddress writes w0
@@ -1756,33 +1863,7 @@ struct RESERVED_STORE_I64
       } else {
         e.mov(e.x3, XReg(i.src2.reg().getIdx()));
       }
-      auto addr = ComputeMemoryAddress(e, i.src1);
-      e.add(e.x16, e.GetMembaseReg(), addr);
-      auto bctx = LoadBackendCtxPtr(e);
-      // Consume the per-thread reservation (stwcx. always clears it); no
-      // matching lwarx -> fail, exactly like PPC.
-      const uint32_t kFlagsOff =
-          static_cast<uint32_t>(offsetof(A64BackendContext, flags));
-      e.ldr(e.w0, ptr(bctx, kFlagsOff));
-      e.and_(e.w1, e.w0, uint64_t(1) << kA64BackendHasReserveBit);
-      e.eor(e.w0, e.w0, e.w1);  // clear reserve flag (w1 = mask if set, else 0)
-      e.str(e.w0, ptr(bctx, kFlagsOff));
-      auto& sc_fail = e.NewCachedLabel();
-      auto& sc_done = e.NewCachedLabel();
-      e.cbz(e.w1, sc_fail);
-      // Single-instruction CAS vs the value captured at lwarx (see I32): one
-      // atomic, no LDXR->STXR window, cannot livelock. CR0.eq = compare matched.
-      e.ldr(e.x1, ptr(bctx, static_cast<uint32_t>(offsetof(
-                                A64BackendContext, cached_reserve_value_))));
-      e.mov(e.x2, e.x1);
-      e.casal(e.x1, e.x3, ptr(e.x16));
-      e.cmp(e.x1, e.x2);
-      e.bne(sc_fail);
-      e.mov(i.dest, 1);
-      e.b(sc_done);
-      e.L(sc_fail);
-      e.mov(i.dest, 0);
-      e.L(sc_done);
+      EmitNativeStoreConditional(e, i.src1, e.x3, i.dest);
       return;
     }
     auto addr = ComputeMemoryAddress(e, i.src1);

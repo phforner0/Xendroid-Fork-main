@@ -531,7 +531,10 @@ void* A64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
 // ==========================================================================
 // Reservation helpers. A global per-granule generation counter so
 // cross-thread stores invalidate other threads' reservations. A CAS on the
-// value alone would be ABA-vulnerable.
+// value alone would be ABA-vulnerable, and so is checking the generation and
+// then storing: a thread descheduled in between misses every store made
+// meanwhile. The check and the store share one exclusive window instead (see
+// the native stwcx. in a64_seq_memory.cc).
 // ==========================================================================
 namespace {
 
@@ -569,6 +572,83 @@ T ReservedLoadImpl(ppc::PPCContext* context, uint32_t address) {
   return xe::byte_swap(raw);
 }
 
+// Stores |value| if the generation is still |generation| and the word still
+// |expected|, both checked between the ldaxr and the stlxr of the word, so a
+// context switch or a store to it before the store fails and checks again.
+// After a few failed exclusive stores (a core whose monitor the generation
+// load clears) it falls back to checking the generation, then one CAS.
+template <typename T>
+bool StoreIfUnchanged(std::atomic<uint32_t>* granule, uint32_t generation,
+                      volatile T* host, T expected, T value) {
+  uint32_t scratch;
+  uint32_t status;
+  uint32_t tries = 16;
+  T current;
+  if constexpr (sizeof(T) == sizeof(uint64_t)) {
+    __asm__ __volatile__(
+        "1: ldaxr %x[cur], [%[host]]\n"
+        "   cmp %x[cur], %x[expected]\n"
+        "   b.ne 3f\n"
+        "   ldr %w[scratch], [%[granule]]\n"
+        "   cmp %w[scratch], %w[generation]\n"
+        "   b.ne 3f\n"
+        "   stlxr %w[status], %x[value], [%[host]]\n"
+        "   cbz %w[status], 4f\n"
+        "   subs %w[tries], %w[tries], #1\n"
+        "   b.ne 1b\n"
+        "   mov %w[status], #2\n"
+        "   b 5f\n"
+        "3: clrex\n"
+        "   mov %w[status], #1\n"
+        "   b 5f\n"
+        "4: mov %w[status], #0\n"
+        "5:\n"
+        : [cur] "=&r"(current), [scratch] "=&r"(scratch),
+          [status] "=&r"(status), [tries] "+r"(tries)
+        : [granule] "r"(granule), [generation] "r"(generation),
+          [host] "r"(host), [expected] "r"(expected), [value] "r"(value)
+        : "cc", "memory");
+  } else {
+    __asm__ __volatile__(
+        "1: ldaxr %w[cur], [%[host]]\n"
+        "   cmp %w[cur], %w[expected]\n"
+        "   b.ne 3f\n"
+        "   ldr %w[scratch], [%[granule]]\n"
+        "   cmp %w[scratch], %w[generation]\n"
+        "   b.ne 3f\n"
+        "   stlxr %w[status], %w[value], [%[host]]\n"
+        "   cbz %w[status], 4f\n"
+        "   subs %w[tries], %w[tries], #1\n"
+        "   b.ne 1b\n"
+        "   mov %w[status], #2\n"
+        "   b 5f\n"
+        "3: clrex\n"
+        "   mov %w[status], #1\n"
+        "   b 5f\n"
+        "4: mov %w[status], #0\n"
+        "5:\n"
+        : [cur] "=&r"(current), [scratch] "=&r"(scratch),
+          [status] "=&r"(status), [tries] "+r"(tries)
+        : [granule] "r"(granule), [generation] "r"(generation),
+          [host] "r"(host), [expected] "r"(expected), [value] "r"(value)
+        : "cc", "memory");
+  }
+  if (status == 0) {
+    return true;
+  }
+  if (status == 1 ||
+      granule->load(std::memory_order_acquire) != generation) {
+    return false;
+  }
+  if constexpr (sizeof(T) == sizeof(uint64_t)) {
+    return xe::atomic_cas(uint64_t(expected), uint64_t(value),
+                          reinterpret_cast<volatile uint64_t*>(host));
+  } else {
+    return xe::atomic_cas(uint32_t(expected), uint32_t(value),
+                          reinterpret_cast<volatile uint32_t*>(host));
+  }
+}
+
 template <typename T>
 uint64_t ReservedStoreImpl(void* raw_context, uint64_t guest_address,
                            uint64_t host_address, uint64_t value) {
@@ -585,26 +665,15 @@ uint64_t ReservedStoreImpl(void* raw_context, uint64_t guest_address,
   auto& granule =
       ReserveGranule(bctx->reserve_helper_, uint32_t(guest_address));
   // a store to this granule since our lwarx kills the reservation
-  if (granule.load(std::memory_order_acquire) != bctx->reserve_generation) {
-    return 0;
-  }
-
-  bool exchange_ok;
-  if constexpr (sizeof(T) == sizeof(uint64_t)) {
-    exchange_ok = xe::atomic_cas(
-        bctx->cached_reserve_value_, uint64_t(value),
-        reinterpret_cast<volatile uint64_t*>(uintptr_t(host_address)));
-  } else {
-    exchange_ok = xe::atomic_cas(
-        uint32_t(bctx->cached_reserve_value_), uint32_t(value),
-        reinterpret_cast<volatile uint32_t*>(uintptr_t(host_address)));
-  }
-
-  if (exchange_ok) {
+  const bool stored = StoreIfUnchanged<T>(
+      &granule, bctx->reserve_generation,
+      reinterpret_cast<volatile T*>(uintptr_t(host_address)),
+      T(bctx->cached_reserve_value_), T(value));
+  if (stored) {
     // the store landed, so kill other reservations on this granule
     granule.fetch_add(1, std::memory_order_release);
   }
-  return exchange_ok ? 1 : 0;
+  return stored ? 1 : 0;
 }
 
 extern "C" uint64_t ReservedStore32Helper(void* raw_context,
