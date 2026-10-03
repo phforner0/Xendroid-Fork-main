@@ -112,6 +112,8 @@ class SettingsProfilesTest {
         val plan = SettingsProfiles.plan(p, overrides, inherited)
         assertEquals(listOf(Kind.CHANGE, Kind.PIN, Kind.SAME, Kind.YOURS, Kind.SAME), plan.lines.map { it.kind })
         assertEquals("60 FPS" to "30 FPS", plan.lines[0].now to plan.lines[0].target)
+        // U02: the raw values travel too, for the screen to label them in its language.
+        assertEquals("60" to "30", plan.lines[0].nowRaw to plan.lines[0].targetRaw)
         assertEquals("500" to "2000", plan.lines[3].now to plan.lines[3].target)
         assertEquals(mapOf("GPU|framerate_limit" to "30", "Console|widescreen" to "true"), plan.writes)
         // Every key looked at must still read the same when applying, the player's own included.
@@ -131,7 +133,9 @@ class SettingsProfilesTest {
         assertEquals(listOf(Kind.CHANGE, Kind.YOURS, Kind.YOURS), plan.lines.map { it.kind })
         assertEquals(mapOf("GPU|framerate_limit" to null), plan.writes)          // null: follow the global again
         assertEquals("30 FPS" to "60 FPS (global)", plan.lines[0].now to plan.lines[0].target)
+        assertEquals(Triple("30", "60", true), Triple(plan.lines[0].nowRaw, plan.lines[0].targetRaw, plan.lines[0].targetGlobal))
         assertEquals("Off", plan.lines[1].now)
+        assertEquals("false", plan.lines[1].nowRaw)
         assertEquals(mapOf("GPU|framerate_limit" to "30", "Console|widescreen" to "false", "GPU|occlusion_query" to null), plan.expected)
     }
 

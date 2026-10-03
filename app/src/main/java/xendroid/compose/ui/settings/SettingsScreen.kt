@@ -58,13 +58,13 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
     var mode by remember { mutableStateOf(UiModeStore.read(context)) }
     val categories = remember(mode) { SettingsSchema.categoriesFor(mode) }
     if (!ready) {
-        ConfigLoadNotice(error, vm::onResume, onBack)
+        ConfigLoadNotice(error?.let { stringResource(R.string.set_config_failed) }, vm::onResume, onBack)
         return
     }
     if (error != null) {
         AlertDialog(
             onDismissRequest = vm::clearError,
-            text = { Text(error.orEmpty()) },
+            text = { Text(stringResource(R.string.set_config_failed)) },
             confirmButton = { TextButton(onClick = { vm.clearError(); vm.flush() }) { Text(stringResource(R.string.set_retry_save)) } },
             dismissButton = { TextButton(onClick = vm::clearError) { Text(stringResource(R.string.common_close)) } },
         )

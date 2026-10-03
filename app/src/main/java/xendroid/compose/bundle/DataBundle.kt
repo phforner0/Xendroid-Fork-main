@@ -38,7 +38,31 @@ data class DataBundle(
     val collections: List<GameCollection> = emptyList(),
 )
 
-class BundleException(message: String) : Exception(message)
+/** Why a bundle is refused: [why] for the screen to say in its language (U02), the message in
+ *  English for logs and tests; [detail] is the entry, format version or Title ID it names. */
+class BundleException(val why: Why, val detail: String = "") : Exception(why.english.format(detail)) {
+    enum class Why(val english: String) {
+        TOO_MANY_ENTRIES("Too many entries"),
+        UNEXPECTED_ENTRY("Unexpected entry \"%s\": not a XenDroid data bundle"),
+        DUPLICATE_ENTRY("Duplicate entry %s"),
+        ENTRY_TOO_LARGE("%s is too large"),
+        TOO_LARGE("Bundle is too large"),
+        NO_MANIFEST("Not a XenDroid data bundle (no manifest)"),
+        DAMAGED_MANIFEST("Damaged manifest"),
+        NOT_A_BUNDLE("Not a XenDroid data bundle"),
+        NEWER("Made by a newer XenDroid (format %s); update the app first"),
+        ENTRIES_MISMATCH("Entries do not match the manifest"),
+        CHECKSUM("%s is damaged (checksum)"),
+        DAMAGED_LIBRARY("Damaged library preferences"),
+        DAMAGED_ENTRY("%s is damaged"),
+        NOT_UTF8("%s is not UTF-8 text"),
+        CANNOT_WRITE("Cannot write to the chosen file"),
+        CANNOT_READ("Cannot read the chosen file"),
+        BAD_GLOBAL_TOML("The emulator settings in the bundle are not valid TOML"),
+        BAD_GAME_TOML("The settings of %s in the bundle are not valid TOML"),
+        BAD_LAYOUT("The touch control layout in the bundle is damaged"),
+    }
+}
 
 @Serializable
 data class BundleEntry(val path: String, val sha256: String, val size: Long)
@@ -60,8 +84,48 @@ private data class LibraryPreferences(
     val collections: List<GameCollection> = emptyList(),
 )
 
-/** What an import would change, for the user to confirm first. */
-data class ImportPlan(val lines: List<String>, val changes: Int)
+/** What an import would change, for the user to confirm first: [items] for the screen to say
+ *  in its language (U02), [lines] the same in English, for logs and tests. */
+data class ImportPlan(val items: List<Item>, val changes: Int) {
+    val lines: List<String> get() = items.map { it.english }
+
+    sealed interface Item {
+        val english: String
+
+        enum class Part(val english: String) { SETTINGS("Emulator settings"), TOUCH("Touch controls") }
+        /** The part is not in the bundle: this device's stays. */
+        data class Absent(val part: Part) : Item {
+            override val english: String get() = "${part.english}: not in the bundle, kept"
+        }
+        data class Unchanged(val part: Part) : Item {
+            override val english: String get() = "${part.english}: unchanged"
+        }
+        /** [differ]: lines that differ, for the emulator settings. */
+        data class Replaced(val part: Part, val differ: Int? = null) : Item {
+            override val english: String get() = "${part.english}: replaced" +
+                (differ?.let { " ($it ${if (it == 1) "line differs" else "lines differ"})" } ?: "")
+        }
+        data class GameSettings(val added: Int, val replaced: Int, val unchanged: Int, val kept: Int) : Item {
+            override val english: String get() = "Per-game settings: $added new, $replaced replaced, $unchanged unchanged, $kept kept"
+        }
+        data class Favorites(val added: Int) : Item {
+            override val english: String get() = "Favorites: ${if (added > 0) "$added added" else "nothing new"}, none removed"
+        }
+        /** [sort]: the library order as stored (a LibrarySort name). */
+        data class Sort(val sort: String?) : Item {
+            override val english: String get() = "Library sort: $sort"
+        }
+        data class Collections(val created: Int, val games: Int) : Item {
+            override val english: String get() = "Collections: $created new, $games ${if (games == 1) "game" else "games"} added, none removed"
+        }
+        data class Results(val added: Int) : Item {
+            override val english: String get() = "Compatibility results: $added added"
+        }
+        data object Kept : Item {
+            override val english: String get() = "Kept from this device: storage folders, custom driver, saves, profiles, games and play history"
+        }
+    }
+}
 
 object DataBundles {
     const val FORMAT = "xendroid-data-bundle"
@@ -118,32 +182,32 @@ object DataBundles {
             while (true) {
                 val entry = zip.nextEntry ?: break
                 if (entry.isDirectory) continue
-                if (files.size >= MAX_ENTRIES) throw BundleException("Too many entries")
+                if (files.size >= MAX_ENTRIES) throw BundleException(BundleException.Why.TOO_MANY_ENTRIES)
                 val name = entry.name
                 if (name != MANIFEST && name != GLOBAL && name != LAYOUT && name != LIBRARY &&
                     !gameConfigPath.matches(name) && !compatPath.matches(name)) {
-                    throw BundleException("Unexpected entry \"${name.take(80)}\": not a XenDroid data bundle")
+                    throw BundleException(BundleException.Why.UNEXPECTED_ENTRY, name.take(80))
                 }
-                if (name in files) throw BundleException("Duplicate entry $name")
-                val bytes = readBounded(zip, MAX_ENTRY_BYTES) ?: throw BundleException("$name is too large")
+                if (name in files) throw BundleException(BundleException.Why.DUPLICATE_ENTRY, name)
+                val bytes = readBounded(zip, MAX_ENTRY_BYTES) ?: throw BundleException(BundleException.Why.ENTRY_TOO_LARGE, name)
                 total += bytes.size
-                if (total > MAX_TOTAL_BYTES) throw BundleException("Bundle is too large")
+                if (total > MAX_TOTAL_BYTES) throw BundleException(BundleException.Why.TOO_LARGE)
                 files[name] = bytes
             }
         }
-        val manifestBytes = files.remove(MANIFEST) ?: throw BundleException("Not a XenDroid data bundle (no manifest)")
+        val manifestBytes = files.remove(MANIFEST) ?: throw BundleException(BundleException.Why.NO_MANIFEST)
         val manifest = runCatching { json.decodeFromString(BundleManifest.serializer(), text(MANIFEST, manifestBytes)) }
-            .getOrElse { throw BundleException("Damaged manifest") }
-        if (manifest.format != FORMAT) throw BundleException("Not a XenDroid data bundle")
-        if (manifest.version > VERSION) throw BundleException("Made by a newer XenDroid (format ${manifest.version}); update the app first")
+            .getOrElse { throw BundleException(BundleException.Why.DAMAGED_MANIFEST) }
+        if (manifest.format != FORMAT) throw BundleException(BundleException.Why.NOT_A_BUNDLE)
+        if (manifest.version > VERSION) throw BundleException(BundleException.Why.NEWER, "${manifest.version}")
         val listed = manifest.entries.associateBy { it.path }
-        if (listed.keys != files.keys) throw BundleException("Entries do not match the manifest")
+        if (listed.keys != files.keys) throw BundleException(BundleException.Why.ENTRIES_MISMATCH)
         files.forEach { (path, bytes) ->
-            if (listed.getValue(path).sha256 != sha256(bytes)) throw BundleException("$path is damaged (checksum)")
+            if (listed.getValue(path).sha256 != sha256(bytes)) throw BundleException(BundleException.Why.CHECKSUM, path)
         }
         val library = files[LIBRARY]?.let {
             runCatching { json.decodeFromString(LibraryPreferences.serializer(), text(LIBRARY, it)) }
-                .getOrElse { throw BundleException("Damaged library preferences") }
+                .getOrElse { throw BundleException(BundleException.Why.DAMAGED_LIBRARY) }
         }
         return DataBundle(
             globalConfig = files[GLOBAL]?.let { text(GLOBAL, it) },
@@ -157,7 +221,7 @@ object DataBundles {
             compatibility = files.mapNotNull { (path, bytes) ->
                 compatPath.matchEntire(path)?.let { match ->
                     val compat = runCatching { json.decodeFromString(TitleCompatibility.serializer(), text(path, bytes)) }
-                        .getOrElse { throw BundleException("$path is damaged") }
+                        .getOrElse { throw BundleException(BundleException.Why.DAMAGED_ENTRY, path) }
                     match.groupValues[1] to compat.copy(titleId = match.groupValues[1])
                 }
             }.toMap(),
@@ -185,40 +249,40 @@ object DataBundles {
 
     fun plan(current: DataBundle, incoming: DataBundle): ImportPlan {
         val after = merged(current, incoming)
-        val lines = mutableListOf<String>()
+        val items = mutableListOf<ImportPlan.Item>()
         var changes = 0
-        fun note(changed: Boolean, text: String) { if (changed) changes++; lines += text }
+        fun note(changed: Boolean, item: ImportPlan.Item) { if (changed) changes++; items += item }
 
+        val settings = ImportPlan.Item.Part.SETTINGS
         when {
-            incoming.globalConfig == null -> lines += "Emulator settings: not in the bundle, kept"
-            incoming.globalConfig == current.globalConfig -> lines += "Emulator settings: unchanged"
-            else -> note(true, "Emulator settings: replaced (${lineDifference(current.globalConfig, incoming.globalConfig)} lines differ)")
+            incoming.globalConfig == null -> items += ImportPlan.Item.Absent(settings)
+            incoming.globalConfig == current.globalConfig -> items += ImportPlan.Item.Unchanged(settings)
+            else -> note(true, ImportPlan.Item.Replaced(settings, lineDifference(current.globalConfig, incoming.globalConfig)))
         }
         val added = incoming.gameConfigs.keys - current.gameConfigs.keys
         val replaced = incoming.gameConfigs.filter { (id, text) -> id in current.gameConfigs && current.gameConfigs[id] != text }.keys
-        note(added.isNotEmpty() || replaced.isNotEmpty(),
-            "Per-game settings: ${added.size} new, ${replaced.size} replaced, " +
-                "${incoming.gameConfigs.size - added.size - replaced.size} unchanged, " +
-                "${(current.gameConfigs.keys - incoming.gameConfigs.keys).size} kept")
+        note(added.isNotEmpty() || replaced.isNotEmpty(), ImportPlan.Item.GameSettings(added.size, replaced.size,
+            incoming.gameConfigs.size - added.size - replaced.size, (current.gameConfigs.keys - incoming.gameConfigs.keys).size))
+        val touch = ImportPlan.Item.Part.TOUCH
         when {
-            incoming.gamepadLayout == null -> lines += "Touch controls: not in the bundle, kept"
-            incoming.gamepadLayout == current.gamepadLayout -> lines += "Touch controls: unchanged"
-            else -> note(true, "Touch controls: replaced")
+            incoming.gamepadLayout == null -> items += ImportPlan.Item.Absent(touch)
+            incoming.gamepadLayout == current.gamepadLayout -> items += ImportPlan.Item.Unchanged(touch)
+            else -> note(true, ImportPlan.Item.Replaced(touch))
         }
         val newFavorites = after.favorites.size - current.favorites.size
-        note(newFavorites > 0, "Favorites: ${if (newFavorites > 0) "$newFavorites added" else "nothing new"}, none removed")
-        if (after.librarySort != current.librarySort) note(true, "Library sort: ${after.librarySort}")
+        note(newFavorites > 0, ImportPlan.Item.Favorites(maxOf(newFavorites, 0)))
+        if (after.librarySort != current.librarySort) note(true, ImportPlan.Item.Sort(after.librarySort))
         if (incoming.collections.isNotEmpty()) {
             val before = GameCollections.merged(emptyList(), current.collections)
             val created = after.collections.count { GameCollections.find(before, it.name) == null }
-            val added = after.collections.sumOf { it.members.size } - before.sumOf { it.members.size }
-            note(created > 0 || added > 0, "Collections: $created new, $added game(s) added, none removed")
+            val games = after.collections.sumOf { it.members.size } - before.sumOf { it.members.size }
+            note(created > 0 || games > 0, ImportPlan.Item.Collections(created, games))
         }
         val newResults = after.compatibility.values.sumOf { it.reports.size } -
             current.compatibility.values.sumOf { it.reports.size }
-        note(newResults > 0, "Compatibility results: ${maxOf(newResults, 0)} added")
-        lines += "Kept from this device: storage folders, custom driver, saves, profiles, games and play history"
-        return ImportPlan(lines, changes)
+        note(newResults > 0, ImportPlan.Item.Results(maxOf(newResults, 0)))
+        items += ImportPlan.Item.Kept
+        return ImportPlan(items, changes)
     }
 
     /** Lines present in one text and not the other (multiset), for the preview only. */
@@ -247,7 +311,7 @@ object DataBundles {
         Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
     } catch (e: CharacterCodingException) {
-        throw BundleException("$path is not UTF-8 text")
+        throw BundleException(BundleException.Why.NOT_UTF8, path)
     }
 
     private fun sha256(bytes: ByteArray): String =

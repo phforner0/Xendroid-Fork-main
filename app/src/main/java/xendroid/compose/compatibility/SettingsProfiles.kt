@@ -146,7 +146,10 @@ object SettingsProfiles {
         YOURS,
     }
 
-    data class Line(val key: String, val title: String, val kind: Kind, val now: String, val target: String)
+    /** [now]/[target]: English labels (reports, tests); [nowRaw]/[targetRaw]: the values, for the
+     *  screen to label in its language (U02); [targetGlobal]: the target is the global value. */
+    data class Line(val key: String, val title: String, val kind: Kind, val now: String, val target: String,
+                    val nowRaw: String = "", val targetRaw: String = "", val targetGlobal: Boolean = false)
 
     /**
      * [expected]: this game's own value of every key the plan looked at (null = follows the
@@ -291,7 +294,7 @@ object SettingsProfiles {
                 else -> Kind.YOURS
             }
             if (kind == Kind.CHANGE || kind == Kind.PIN) writes[key] = canonical(s, target)
-            lines += Line(key, s.title, kind, label(s, mine ?: global), label(s, target))
+            lines += Line(key, s.title, kind, label(s, mine ?: global), label(s, target), mine ?: global, target)
         }
         return Plan(lines, expected, writes)
     }
@@ -311,9 +314,9 @@ object SettingsProfiles {
             expected[key] = mine
             if (mine != null && same(s, mine, wrote)) {
                 writes[key] = before
-                lines += Line(key, s.title, Kind.CHANGE, label(s, mine), beforeLabel)
+                lines += Line(key, s.title, Kind.CHANGE, label(s, mine), beforeLabel, mine, before ?: global, before == null)
             } else {
-                lines += Line(key, s.title, Kind.YOURS, label(s, mine ?: global), beforeLabel)
+                lines += Line(key, s.title, Kind.YOURS, label(s, mine ?: global), beforeLabel, mine ?: global, before ?: global, before == null)
             }
         }
         return Plan(lines, expected, writes)

@@ -25,6 +25,9 @@ import xendroid.compose.compatibility.SettingsProfiles
 import xendroid.compose.compatibility.SettingsProfiles.Kind
 import xendroid.compose.settings.GameSettingsViewModel.ProfilePreview
 import xendroid.compose.settings.GameSettingsViewModel.ProfilesState
+import xendroid.compose.settings.ConfigValueShape
+import xendroid.compose.settings.Setting
+import xendroid.compose.settings.SettingsSchema
 
 /** C05: the game's recommended settings, where they come from and why, and the way back. */
 @Composable
@@ -97,12 +100,17 @@ fun ProfilePreviewDialog(preview: ProfilePreview, onConfirm: () -> Unit, onDismi
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 preview.plan.lines.forEach { line ->
+                    val setting = SettingsSchema.byKey[line.key]
+                    val title = setting?.let { settingTitle(it) } ?: line.title
+                    val now = setting?.let { valueText(it, line.nowRaw) } ?: line.now
+                    val target = if (setting == null) line.target else valueText(setting, line.targetRaw)
+                        .let { if (line.targetGlobal) stringResource(R.string.prof_global_value, it) else it }
                     Text(when (line.kind) {
-                        Kind.CHANGE -> stringResource(R.string.prof_line_change, line.title, line.now, line.target)
-                        Kind.PIN -> stringResource(R.string.prof_line_pin, line.title, line.target)
-                        Kind.SAME -> stringResource(R.string.prof_line_same, line.title, line.target)
-                        Kind.YOURS -> if (restore) stringResource(R.string.prof_line_yours_restore, line.title, line.now)
-                            else stringResource(R.string.prof_line_yours, line.title, line.now, line.target)
+                        Kind.CHANGE -> stringResource(R.string.prof_line_change, title, now, target)
+                        Kind.PIN -> stringResource(R.string.prof_line_pin, title, target)
+                        Kind.SAME -> stringResource(R.string.prof_line_same, title, target)
+                        Kind.YOURS -> if (restore) stringResource(R.string.prof_line_yours_restore, title, now)
+                            else stringResource(R.string.prof_line_yours, title, now, target)
                     }, style = MaterialTheme.typography.bodySmall)
                 }
                 Text(if (restore) stringResource(R.string.prof_restore_note)
@@ -121,4 +129,13 @@ fun ProfilePreviewDialog(preview: ProfilePreview, onConfirm: () -> Unit, onDismi
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
+}
+
+/** U02: a setting's value as the preview shows it, in the shown language. */
+@Composable
+private fun valueText(s: Setting, raw: String): String = when (s) {
+    is Setting.Bool -> stringResource(if (ConfigValueShape.parseBool(raw, s.default)) R.string.prof_on else R.string.prof_off)
+    is Setting.ListChoice -> s.options.firstOrNull { it.value == raw }?.let { optionLabel(s, it.value, it.label) }
+        ?: raw.ifEmpty { stringResource(R.string.prof_default) }
+    else -> SettingsProfiles.label(s, raw)
 }

@@ -88,14 +88,14 @@ object DataBundleIo {
         )
         context.contentResolver.openOutputStream(uri, "w")?.use {
             DataBundles.write(it, bundle, BuildConfig.VERSION_NAME, System.currentTimeMillis())
-        } ?: throw BundleException("Cannot write to the chosen file")
+        } ?: throw BundleException(BundleException.Why.CANNOT_WRITE)
         parts(bundle)
     }
 
     /** Reads and validates [uri] and compares it with the current state; nothing is written. */
     suspend fun preview(context: Context, uri: Uri): Pair<DataBundle, ImportPlan> = withContext(Dispatchers.IO) {
         val incoming = context.contentResolver.openInputStream(uri)?.use(DataBundles::read)
-            ?: throw BundleException("Cannot read the chosen file")
+            ?: throw BundleException(BundleException.Why.CANNOT_READ)
         validate(incoming)
         incoming to DataBundles.plan(snapshot(context), incoming)
     }
@@ -133,19 +133,21 @@ object DataBundleIo {
     /** TOML through the emulator's own parser and the layout through its schema, before any write. */
     private fun validate(bundle: DataBundle) {
         EmulatorRuntime.ensureLoaded()
-        val tomls = listOfNotNull(bundle.globalConfig?.let { "emulator settings" to it }) +
-            bundle.gameConfigs.map { (id, text) -> "settings of $id" to text }
-        tomls.forEach { (what, text) ->
+        // null: the emulator settings; else the Title ID whose settings they are.
+        val tomls = listOfNotNull(bundle.globalConfig?.let { null to it }) +
+            bundle.gameConfigs.map { (id, text) -> id to text }
+        tomls.forEach { (id, text) ->
             val handle = try {
                 ConfigHandle.openString(text)
             } catch (e: Exception) {
-                throw BundleException("The $what in the bundle are not valid TOML")
+                throw if (id == null) BundleException(BundleException.Why.BAD_GLOBAL_TOML)
+                    else BundleException(BundleException.Why.BAD_GAME_TOML, id)
             }
             handle.closeDiscard()
         }
         bundle.gamepadLayout?.let {
             runCatching { json.decodeFromString(GamepadConfigDto.serializer(), it) }
-                .getOrElse { throw BundleException("The touch control layout in the bundle is damaged") }
+                .getOrElse { throw BundleException(BundleException.Why.BAD_LAYOUT) }
         }
     }
 

@@ -63,13 +63,13 @@ fun PerGameSettingsScreen(
 
     var selected by remember { mutableStateOf<SettingsCategory?>(null) }
     if (!ready) {
-        ConfigLoadNotice(error, vm::onResume, onBack)
+        ConfigLoadNotice(error?.let { stringResource(R.string.set_game_config_failed) }, vm::onResume, onBack)
         return
     }
     if (error != null) {
         AlertDialog(
             onDismissRequest = vm::clearError,
-            text = { Text(error.orEmpty()) },
+            text = { Text(stringResource(R.string.set_game_config_failed)) },
             confirmButton = { TextButton(onClick = { vm.clearError(); vm.flush() }) { Text(stringResource(R.string.set_retry_save)) } },
             dismissButton = { TextButton(onClick = vm::clearError) { Text(stringResource(R.string.common_close)) } },
         )
@@ -78,7 +78,7 @@ fun PerGameSettingsScreen(
     profileMessage?.let { message ->
         AlertDialog(
             onDismissRequest = vm::clearProfileMessage,
-            text = { Text(message) },
+            text = { Text(profileMessageText(message)) },
             confirmButton = { TextButton(onClick = vm::clearProfileMessage) { Text(stringResource(R.string.common_ok)) } },
         )
     }
@@ -192,4 +192,15 @@ private fun PerGameCategoryDetail(
             }
         }
     }
+}
+
+/** U02: what a recommended-settings action did, in the shown language. */
+@Composable
+private fun profileMessageText(message: GameSettingsViewModel.ProfileMessage): String = when (message) {
+    GameSettingsViewModel.ProfileMessage.RestoreFirst -> stringResource(R.string.prof_msg_restore_first)
+    is GameSettingsViewModel.ProfileMessage.Applied ->
+        pluralStringResource(R.plurals.prof_msg_applied, message.count, message.name, message.count)
+    is GameSettingsViewModel.ProfileMessage.Restored -> stringResource(
+        if (message.changedSince) R.string.prof_msg_restored_kept else R.string.prof_msg_restored, message.name)
+    GameSettingsViewModel.ProfileMessage.Stale -> stringResource(R.string.prof_msg_stale)
 }

@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.os.storage.StorageManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -98,6 +99,21 @@ fun FolderBrowserScreen(
     val atVolumeRoot = current != null &&
         roots.any { it.dir.absolutePath == current!!.absolutePath }
 
+    // One folder up, or out of the browser from its top.
+    val goUp: () -> Unit = {
+        val dir = current
+        when {
+            dir == null -> onCancel()
+            atVolumeRoot ->
+                if (roots.size > 1) current = null else onCancel()
+            dir.parentFile != null -> current = dir.parentFile
+            else -> onCancel()
+        }
+    }
+    // The system back (and a controller's B) does the same as the arrow. Without this it went
+    // to the screen behind the browser: from the library, it closed the app.
+    BackHandler(onBack = goUp)
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -110,18 +126,7 @@ fun FolderBrowserScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            val dir = current
-                            when {
-                                dir == null -> onCancel()
-                                atVolumeRoot ->
-                                    if (roots.size > 1) current = null else onCancel()
-                                dir.parentFile != null -> current = dir.parentFile
-                                else -> onCancel()
-                            }
-                        },
-                    ) {
+                    IconButton(onClick = goUp) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription =

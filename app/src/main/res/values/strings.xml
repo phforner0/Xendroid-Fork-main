@@ -1047,4 +1047,59 @@
         <item quantity="one">TV · %1$d external display available</item>
         <item quantity="other">TV · %1$d external displays available</item>
     </plurals>
+    <string name="bundle_plan_settings_absent">Emulator settings: not in the bundle, kept</string>
+    <string name="bundle_plan_settings_same">Emulator settings: unchanged</string>
+    <string name="bundle_plan_touch_absent">Touch controls: not in the bundle, kept</string>
+    <string name="bundle_plan_touch_same">Touch controls: unchanged</string>
+    <string name="bundle_plan_touch_replaced">Touch controls: replaced</string>
+    <string name="bundle_plan_games">Per-game settings: %1$d new, %2$d replaced, %3$d unchanged, %4$d kept</string>
+    <string name="bundle_plan_favorites_none">Favorites: nothing new, none removed</string>
+    <string name="bundle_plan_sort">Library sort: %1$s</string>
+    <string name="bundle_plan_results">Compatibility results: %1$d added</string>
+    <string name="bundle_plan_kept">Kept from this device: storage folders, custom driver, saves, profiles, games and play history</string>
+    <string name="bundle_why_too_many">Too many entries</string>
+    <string name="bundle_why_unexpected">Unexpected entry \"%1$s\": not a XenDroid data bundle</string>
+    <string name="bundle_why_duplicate">Duplicate entry %1$s</string>
+    <string name="bundle_why_entry_too_large">%1$s is too large</string>
+    <string name="bundle_why_too_large">Bundle is too large</string>
+    <string name="bundle_why_no_manifest">Not a XenDroid data bundle (no manifest)</string>
+    <string name="bundle_why_damaged_manifest">Damaged manifest</string>
+    <string name="bundle_why_not_bundle">Not a XenDroid data bundle</string>
+    <string name="bundle_why_newer">Made by a newer XenDroid (format %1$s); update the app first</string>
+    <string name="bundle_why_mismatch">Entries do not match the manifest</string>
+    <string name="bundle_why_checksum">%1$s is damaged (checksum)</string>
+    <string name="bundle_why_damaged_library">Damaged library preferences</string>
+    <string name="bundle_why_damaged_entry">%1$s is damaged</string>
+    <string name="bundle_why_not_utf8">%1$s is not UTF-8 text</string>
+    <string name="bundle_why_cannot_write">Cannot write to the chosen file</string>
+    <string name="bundle_why_cannot_read">Cannot read the chosen file</string>
+    <string name="bundle_why_bad_global_toml">The emulator settings in the bundle are not valid TOML</string>
+    <string name="bundle_why_bad_game_toml">The settings of %1$s in the bundle are not valid TOML</string>
+    <string name="bundle_why_bad_layout">The touch control layout in the bundle is damaged</string>
+    <string name="prof_msg_restore_first">Restore the settings from before the applied profile first.</string>
+    <string name="prof_msg_restored">Put back the settings from before “%1$s”.</string>
+    <string name="prof_msg_restored_kept">Put back the settings from before “%1$s”; the ones you changed since stay.</string>
+    <string name="prof_msg_stale">This game\'s settings changed since the preview, so nothing was written. Review it again.</string>
+    <plurals name="bundle_plan_settings_replaced">
+        <item quantity="one">Emulator settings: replaced (%1$d line differs)</item>
+        <item quantity="other">Emulator settings: replaced (%1$d lines differ)</item>
+    </plurals>
+    <plurals name="bundle_plan_favorites">
+        <item quantity="one">Favorites: %1$d added, none removed</item>
+        <item quantity="other">Favorites: %1$d added, none removed</item>
+    </plurals>
+    <plurals name="bundle_plan_collections">
+        <item quantity="one">Collections: %2$d new, %1$d game added, none removed</item>
+        <item quantity="other">Collections: %2$d new, %1$d games added, none removed</item>
+    </plurals>
+    <plurals name="prof_msg_applied">
+        <item quantity="one">Applied “%1$s”: %2$d setting for this game. It takes effect the next time the game starts.</item>
+        <item quantity="other">Applied “%1$s”: %2$d settings for this game. They take effect the next time it starts.</item>
+    </plurals>
+    <string name="prof_on">On</string>
+    <string name="prof_off">Off</string>
+    <string name="prof_default">default</string>
+    <string name="prof_global_value">%1$s (global)</string>
+    <string name="set_config_failed">Could not read or save the configuration. The existing file was kept. Fix invalid TOML or storage access, then retry.</string>
+    <string name="set_game_config_failed">Could not read or save this game\'s configuration. The existing file was kept. Fix invalid TOML or storage access, then retry.</string>
 </resources>

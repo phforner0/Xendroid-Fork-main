@@ -127,8 +127,30 @@ class GameSettingsViewModel(
     val profilesState: StateFlow<ProfilesState> = _profiles.asStateFlow()
     private val _preview = MutableStateFlow<ProfilePreview?>(null)
     val profilePreview: StateFlow<ProfilePreview?> = _preview.asStateFlow()
-    private val _profileMessage = MutableStateFlow<String?>(null)
-    val profileMessage: StateFlow<String?> = _profileMessage.asStateFlow()
+    /** What a profile action did, for a dialog: the screen says it in its language (U02);
+     *  [english] for logs and tests. */
+    sealed interface ProfileMessage {
+        val english: String
+        data object RestoreFirst : ProfileMessage {
+            override val english: String get() = "Restore the settings from before the applied profile first."
+        }
+        data class Applied(val name: String, val count: Int) : ProfileMessage {
+            override val english: String get() = "Applied “$name”: $count ${if (count == 1) "setting" else "settings"} for this game. " +
+                "They take effect the next time it starts."
+        }
+        /** [changedSince]: some of what the profile wrote was changed by the player since, and stays. */
+        data class Restored(val name: String, val changedSince: Boolean) : ProfileMessage {
+            override val english: String get() = "Put back the settings from before “$name”" +
+                (if (changedSince) "; the ones you changed since stay." else ".")
+        }
+        data object Stale : ProfileMessage {
+            override val english: String get() =
+                "This game's settings changed since the preview, so nothing was written. Review it again."
+        }
+    }
+
+    private val _profileMessage = MutableStateFlow<ProfileMessage?>(null)
+    val profileMessage: StateFlow<ProfileMessage?> = _profileMessage.asStateFlow()
 
     private fun loadProfiles() {
         val store = profiles ?: return
@@ -145,7 +167,7 @@ class GameSettingsViewModel(
     /** Shows what applying [profile] would change; the player's own settings stay. */
     fun previewProfile(profile: LoadedProfile) {
         if (_profiles.value.applied != null) {
-            _profileMessage.value = "Restore the settings from before the applied profile first."
+            _profileMessage.value = ProfileMessage.RestoreFirst
             return
         }
         saveScope.launch {
@@ -188,21 +210,20 @@ class GameSettingsViewModel(
                             runCatching { store.clearApplied(repo.titleId) }
                             throw t
                         }
-                        _profileMessage.value = "Applied “${preview.profile.profile.name}”: ${preview.plan.writes.size} " +
-                            "setting(s) for this game. They take effect the next time it starts."
+                        _profileMessage.value = ProfileMessage.Applied(preview.profile.profile.name, preview.plan.writes.size)
                     }
                     is ProfilePreview.Restore -> {
                         if (preview.plan.writes.isNotEmpty()) repo.applyPlan(preview.plan.expected, preview.plan.writes)
                         store.clearApplied(repo.titleId)
-                        _profileMessage.value = "Put back the settings from before “${preview.record.profileName}”" +
-                            (if (preview.plan.writes.size < preview.record.written.size) "; the ones you changed since stay." else ".")
+                        _profileMessage.value = ProfileMessage.Restored(preview.record.profileName,
+                            changedSince = preview.plan.writes.size < preview.record.written.size)
                     }
                 }
                 reloadAll()
                 loadProfiles()
             }.onFailure {
                 if (it is GameSettingsRepository.StalePlanException) {
-                    _profileMessage.value = "This game's settings changed since the preview, so nothing was written. Review it again."
+                    _profileMessage.value = ProfileMessage.Stale
                 } else fail(it)
             }
         }

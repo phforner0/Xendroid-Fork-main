@@ -1078,4 +1078,63 @@
         <item quantity="other">TV · %1$d telas externas disponíveis</item>
         <item quantity="many">TV · %1$d telas externas disponíveis</item>
     </plurals>
+    <string name="bundle_plan_settings_absent">Ajustes do emulador: não estão no pacote, ficam os atuais</string>
+    <string name="bundle_plan_settings_same">Ajustes do emulador: iguais aos atuais</string>
+    <string name="bundle_plan_touch_absent">Controles de toque: não estão no pacote, ficam os atuais</string>
+    <string name="bundle_plan_touch_same">Controles de toque: iguais aos atuais</string>
+    <string name="bundle_plan_touch_replaced">Controles de toque: substituídos</string>
+    <string name="bundle_plan_games">Ajustes por jogo — novos: %1$d, substituídos: %2$d, iguais: %3$d, mantidos: %4$d</string>
+    <string name="bundle_plan_favorites_none">Favoritos: nada novo, nenhum removido</string>
+    <string name="bundle_plan_sort">Ordem da biblioteca: %1$s</string>
+    <string name="bundle_plan_results">Resultados de compatibilidade adicionados: %1$d</string>
+    <string name="bundle_plan_kept">Ficam deste aparelho: pastas de armazenamento, driver personalizado, saves, perfis, jogos e histórico de jogo</string>
+    <string name="bundle_why_too_many">O pacote tem entradas demais</string>
+    <string name="bundle_why_unexpected">Entrada inesperada \"%1$s\": não é um pacote de dados do XenDroid</string>
+    <string name="bundle_why_duplicate">Entrada repetida: %1$s</string>
+    <string name="bundle_why_entry_too_large">%1$s é grande demais</string>
+    <string name="bundle_why_too_large">O pacote é grande demais</string>
+    <string name="bundle_why_no_manifest">Não é um pacote de dados do XenDroid (sem manifesto)</string>
+    <string name="bundle_why_damaged_manifest">Manifesto danificado</string>
+    <string name="bundle_why_not_bundle">Não é um pacote de dados do XenDroid</string>
+    <string name="bundle_why_newer">Feito por um XenDroid mais novo (formato %1$s); atualize o app antes</string>
+    <string name="bundle_why_mismatch">As entradas não batem com o manifesto</string>
+    <string name="bundle_why_checksum">%1$s está danificado (soma de verificação)</string>
+    <string name="bundle_why_damaged_library">Preferências da biblioteca danificadas</string>
+    <string name="bundle_why_damaged_entry">%1$s está danificado</string>
+    <string name="bundle_why_not_utf8">%1$s não é texto UTF-8</string>
+    <string name="bundle_why_cannot_write">Não deu para gravar no arquivo escolhido</string>
+    <string name="bundle_why_cannot_read">Não deu para ler o arquivo escolhido</string>
+    <string name="bundle_why_bad_global_toml">Os ajustes do emulador no pacote não são TOML válido</string>
+    <string name="bundle_why_bad_game_toml">Os ajustes de %1$s no pacote não são TOML válido</string>
+    <string name="bundle_why_bad_layout">O layout dos controles de toque no pacote está danificado</string>
+    <string name="prof_msg_restore_first">Primeiro restaure os ajustes de antes do perfil aplicado.</string>
+    <string name="prof_msg_restored">Os ajustes de antes de “%1$s” voltaram.</string>
+    <string name="prof_msg_restored_kept">Os ajustes de antes de “%1$s” voltaram; os que você mudou depois ficam.</string>
+    <string name="prof_msg_stale">Os ajustes deste jogo mudaram desde a prévia, então nada foi gravado. Confira de novo.</string>
+    <plurals name="bundle_plan_settings_replaced">
+        <item quantity="one">Ajustes do emulador: substituídos (%1$d linha diferente)</item>
+        <item quantity="other">Ajustes do emulador: substituídos (%1$d linhas diferentes)</item>
+        <item quantity="many">Ajustes do emulador: substituídos (%1$d linhas diferentes)</item>
+    </plurals>
+    <plurals name="bundle_plan_favorites">
+        <item quantity="one">Favoritos: %1$d adicionado, nenhum removido</item>
+        <item quantity="other">Favoritos: %1$d adicionados, nenhum removido</item>
+        <item quantity="many">Favoritos: %1$d adicionados, nenhum removido</item>
+    </plurals>
+    <plurals name="bundle_plan_collections">
+        <item quantity="one">Coleções — novas: %2$d, jogo adicionado: %1$d, nada removido</item>
+        <item quantity="other">Coleções — novas: %2$d, jogos adicionados: %1$d, nada removido</item>
+        <item quantity="many">Coleções — novas: %2$d, jogos adicionados: %1$d, nada removido</item>
+    </plurals>
+    <plurals name="prof_msg_applied">
+        <item quantity="one">“%1$s” aplicado: %2$d ajuste para este jogo. Vale a partir da próxima abertura do jogo.</item>
+        <item quantity="other">“%1$s” aplicado: %2$d ajustes para este jogo. Valem a partir da próxima abertura do jogo.</item>
+        <item quantity="many">“%1$s” aplicado: %2$d ajustes para este jogo. Valem a partir da próxima abertura do jogo.</item>
+    </plurals>
+    <string name="prof_on">Ligado</string>
+    <string name="prof_off">Desligado</string>
+    <string name="prof_default">padrão</string>
+    <string name="prof_global_value">%1$s (global)</string>
+    <string name="set_config_failed">Não deu para ler ou salvar a configuração. O arquivo atual foi mantido. Corrija o TOML inválido ou o acesso ao armazenamento e tente de novo.</string>
+    <string name="set_game_config_failed">Não deu para ler ou salvar a configuração deste jogo. O arquivo atual foi mantido. Corrija o TOML inválido ou o acesso ao armazenamento e tente de novo.</string>
 </resources>

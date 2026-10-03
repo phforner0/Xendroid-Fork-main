@@ -72,6 +72,39 @@ class DataBundleTest {
         assertEquals("config/global.toml is too large", readFails(tampered(good) { it["config/global.toml"] = ByteArray(1024 * 1024 + 1) }))
     }
 
+    /** U02: the screen says the refusal in its language from [BundleException.why] and its detail. */
+    @Test fun refusalsAreStructuredForTheScreen() {
+        val good = bytes(sample)
+        fun refusal(data: ByteArray) = assertThrows(BundleException::class.java) { DataBundles.read(ByteArrayInputStream(data)) }
+        refusal("just text, not a zip".toByteArray()).let {
+            assertEquals(BundleException.Why.NO_MANIFEST, it.why)
+            assertEquals("Not a XenDroid data bundle (no manifest)", it.message)
+        }
+        refusal(tampered(good) { it["saves/4D5309C9/slot.bin"] = byteArrayOf(1) }).let {
+            assertEquals(BundleException.Why.UNEXPECTED_ENTRY, it.why)
+            assertEquals("saves/4D5309C9/slot.bin", it.detail)
+            assertEquals("Unexpected entry \"saves/4D5309C9/slot.bin\": not a XenDroid data bundle", it.message)
+        }
+        refusal(tampered(good) {
+            it["manifest.json"] = String(it.getValue("manifest.json")).replace("\"version\":1", "\"version\":3").toByteArray()
+        }).let {
+            assertEquals(BundleException.Why.NEWER, it.why)
+            assertEquals("3", it.detail)
+            assertEquals("Made by a newer XenDroid (format 3); update the app first", it.message)
+        }
+    }
+
+    @Test fun thePlanSaysEachPartWithoutPluralGuessing() {
+        val one = DataBundles.plan(DataBundle(globalConfig = "a\nb\n"), DataBundle(globalConfig = "a\nc\n"))
+        assertEquals(ImportPlan.Item.Replaced(ImportPlan.Item.Part.SETTINGS, 2), one.items.first())
+        assertEquals("Emulator settings: replaced (1 line differs)",
+            ImportPlan.Item.Replaced(ImportPlan.Item.Part.SETTINGS, 1).english)
+        assertEquals("Touch controls: replaced", ImportPlan.Item.Replaced(ImportPlan.Item.Part.TOUCH).english)
+        assertEquals("Collections: 2 new, 3 games added, none removed", ImportPlan.Item.Collections(2, 3).english)
+        assertEquals(ImportPlan.Item.Kept, one.items.last())
+        assertEquals(one.items.map { it.english }, one.lines)
+    }
+
     @Test fun importReplacesConfigsAddsFavoritesAndMergesResults() {
         val current = DataBundle(
             globalConfig = "[GPU]\nframerate_limit = 60\n",
@@ -122,7 +155,8 @@ class DataBundleTest {
         assertEquals(listOf(xendroid.compose.data.GameCollection("rpgs", listOf("uri:/x.iso", "title:4D5309C9:-:0"))),
             DataBundles.merged(current, onlyCollections).collections)
         val plan = DataBundles.plan(current, onlyCollections)
-        assertTrue(plan.lines.contains("Collections: 0 new, 1 game(s) added, none removed"))
+        assertTrue(plan.lines.contains("Collections: 0 new, 1 game added, none removed"))
+        assertTrue(ImportPlan.Item.Collections(created = 1, games = 1) in DataBundles.plan(DataBundle(), onlyCollections).items)
         assertEquals(1, plan.changes)
         assertEquals(0, DataBundles.plan(onlyCollections, onlyCollections).changes)
     }
