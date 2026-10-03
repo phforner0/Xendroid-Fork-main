@@ -49,6 +49,8 @@ class ExternalGameDisplay(
         output = surface
         next.setContentView(surface)
         next.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        // The TV's low-latency game mode (ALLM over HDMI), where the display supports it.
+        if (android.os.Build.VERSION.SDK_INT >= 30) next.window?.setPreferMinimalPostProcessing(true)
         surface.holder.addCallback(callback)
         presentation = next
         old?.dismiss()

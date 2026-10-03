@@ -809,6 +809,13 @@ aparelho. 3×/4× mostram capacidade de multiplicar, não ganho da simulação.
 - **P01 ADPF:** medir thread correta/target/workduration. Atualmente presenter; avaliar
   command processor separadamente. `auto|off|on`, foreground, API guards, failure
   latch/backoff e thermal low-frequency. Sem sessões apontadas a TIDs de outro processo.
+  Lote 14g (Impl. + Local; aparelho pendente, roteiro 48): o app se declara jogo
+  (`appCategory="game"` + `game_mode_config`: modos Desempenho/Bateria do aparelho permitidos,
+  redução de resolução e limite de FPS do sistema recusados) e diz ao `GameManager` (Android
+  13+) carregando → jogando → pausado sob o menu → nada no fundo, para o "game booster" do
+  fabricante agir só no jogo; o modo escolhido nas configurações de jogos do sistema vai para a
+  linha do tempo do run; janela e tela externa pedem o modo de baixa latência da TV (ALLM). O
+  modo sustentado continua opcional e desligado (lição do DroidDeck: ele limita clocks).
 - **P02 display externo:** lifecycle state machine e single-surface owner, unplug,
   invalidação de modo/driver/cadência, foco e áudio Android; controle no telefone.
 - **P03 áudio:** volume/mute existentes; métricas e buffering adaptativo com histerese,

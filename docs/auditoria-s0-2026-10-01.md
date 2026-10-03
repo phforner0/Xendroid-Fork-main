@@ -624,3 +624,12 @@ itens 8, 15 e 37.
    pula com um load. Na tomada: "PWR plugged in · BAT nn% full in …" (quando o Android estima).
    FPS a 0: pausar pelo menu ou numa tela de load longa sem quadros, o HUD vai a "FPS 0 · 0.0 ms"
    em ~1 s (antes ficava no último valor) e volta sozinho quando o jogo apresenta de novo.
+48. Lote 14g — app declarado como jogo: num Pixel (Android 13+), XenDroid aparece em Configurações →
+   Apps → Jogos / "Painel de jogos" com os modos Padrão/Desempenho/Bateria; num Samsung/Xiaomi/
+   OnePlus, o Game Booster/Game Turbo/Game Space lista o XenDroid sem cadastro manual. Escolher
+   "Desempenho", abrir um jogo: a linha do tempo do run diz "game mode · system: performance".
+   `adb shell dumpsys game` (13+) mostra o estado do XenDroid como jogando durante o jogo,
+   interrompível com o menu aberto. Comparar FPS/temperatura em Padrão × Desempenho no mesmo
+   trecho (sem prometer ganho: varia por fabricante). Conferir que nenhum serviço de jogo baixou a
+   resolução ou travou o FPS (o HUD mostra o FPS do jogo; a imagem não fica borrada). Numa TV com
+   ALLM via HDMI (tela externa), a TV entra no modo jogo sozinha.

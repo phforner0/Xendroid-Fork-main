@@ -164,6 +164,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         xendroid.compose.ui.ingame.BootStatus(xendroid.compose.ui.ingame.BootStatus.Stage.EMULATOR))
     /** U09: Cancel was pressed on the label; the start sequence stops at its next step. */
     private var bootCancelled = false
+    /** What Android's GameManager hears: loading, playing, paused under the menu, or nothing. */
+    private val gameModeSignal by lazy { xendroid.compose.core.GameModeSignal(applicationContext) }
     private val createdAtMs = android.os.SystemClock.elapsedRealtime()
     /** Connected controllers by device id, described by vendor/product only. */
     private val controllers = mutableMapOf<Int, String>()
@@ -415,6 +417,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             developer = xendroid.compose.settings.UiModeStore.read(this) == xendroid.compose.settings.UiMode.DEVELOPER)
         touchCamera.value = getSharedPreferences("touch_options", MODE_PRIVATE).getBoolean("touch_camera", false)
         enterImmersiveMode()
+        gameModeSignal.update(xendroid.compose.core.GamePhase.LOADING)
 
         EmuProcessLink.bindToMainProcess(this)
 
@@ -560,6 +563,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 }.onFailure { Log.w(TAG, "Session run record unavailable", it) }.getOrNull()
             }
             recordEvent("boot", "run started", flush = true)
+            recordEvent("game mode", "system: ${gameModeSignal.systemMode()}")
             if (bootCancelled) {
                 // Cancelled while the run record was being written: cancelBoot had no run to end.
                 runId?.let { id -> runCatching { xendroid.compose.sessions.SessionRuns.store().ending(id, "cancelled while starting") } }
@@ -797,6 +801,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         )
+        // A TV or monitor that supports it switches to its low-latency game mode (ALLM).
+        if (Build.VERSION.SDK_INT >= 30) window.setPreferMinimalPostProcessing(true)
 
         WindowCompat.setDecorFitsSystemWindows(
             window,
@@ -1115,6 +1121,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     showTouchOverlay.value =
                                         session
                                             .showTouchOverlayEnabled()
+                                    gameModeSignal.update(xendroid.compose.core.gamePhase(foregroundState.value,
+                                        firstFrame = bootStatus.value == null,
+                                        menuOrPaused = menuState.value.open || session.isPaused()))
                                     // The controller that put the touch controls aside now plays P2–P4.
                                     if (overlayHiddenByController.value && touchHiddenBy >= 0 && playerSlot(touchHiddenBy) != 0) {
                                         touchControlsBack("the controller now plays another player")
@@ -1804,6 +1813,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     override fun onDestroy() {
+        gameModeSignal.update(xendroid.compose.core.GamePhase.NONE)
         performanceHints.close()
         gyroCamera.stop()
         stopEventSources()
