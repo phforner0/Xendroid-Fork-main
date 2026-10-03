@@ -235,7 +235,11 @@ jogo, use `gameDir`.
 entre drivers Turnip), 8 (FG forçado a parar), 14 (dois telefones), 30 (controle Bluetooth), 31
 (câmera por toque com o dedo), 32 (teclado do jogo com controle), 36 (catálogo remoto, só com
 publicador), 40 (aparelho sem Adreno), 41 (dois controles com vibração) e as partes visuais dos
-itens 8, 15 e 37.
+itens 8, 15 e 37. Os itens 43 a 51 (lote 14, varredura das referências: ajustes de imagem e
+controle, ajustes alterados no relatório, controles de toque com controle físico, tombstone, HUD de
+potência, Game Mode, entrada sem buffer/giroscópio/cache de shaders, avisos da FG, SGSR e faixas de
+cor) também são manuais por enquanto; o build com eles é o `e70b7c1c` (APKs e SHA-256 na tabela de
+status, "Build da nuvem (fim do lote 14)").
 
 1. Config: editar uma opção global na biblioteca enquanto um jogo **sem** config por
    jogo inicia; conferir no `xe.log` "SaveConfig skipped" e que a edição persiste.
