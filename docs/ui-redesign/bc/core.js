@@ -126,7 +126,19 @@ function render() {
 function refreshList() { const box = document.getElementById('setp-list'); if (!box) return; box.innerHTML = setListHTML(box.dataset.global ? null : curGame(), box.dataset.v, box.dataset.group || null); schedulePins(); }
 let toastTimer = 0;
 function toast(msg, undo) { S.toast = { msg, undo: !!undo }; clearTimeout(toastTimer); toastTimer = setTimeout(() => { S.toast = null; const t = app.querySelector('.toast'); if (t) t.remove(); }, undo ? 5200 : 2800); render(); }
-function focusKey(k) { const el = app.querySelector(`[data-k="${CSS.escape(k)}"]`); if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } }
+function focusKey(k) { const el = app.querySelector(`[data-k="${CSS.escape(k)}"]`); if (el) { el.focus({ preventScroll: true }); reveal(el); } }
+/* rola só as listas dentro do aparelho até o elemento aparecer (scrollIntoView rolaria a página do protótipo também) */
+function reveal(el, smooth) {
+  for (let p = el.parentElement; p && p !== app.parentElement; p = p.parentElement) {
+    const cs = getComputedStyle(p);
+    if (!/(auto|scroll)/.test(cs.overflowY + cs.overflowX) || (p.scrollHeight <= p.clientHeight && p.scrollWidth <= p.clientWidth)) continue;
+    const r = el.getBoundingClientRect(), pr = p.getBoundingClientRect(), sc = pr.width / (p.offsetWidth || 1) || 1;
+    let dy = 0, dx = 0;
+    if (r.top < pr.top) dy = (r.top - pr.top) / sc - 8; else if (r.bottom > pr.bottom) dy = Math.min((r.bottom - pr.bottom) / sc + 8, (r.top - pr.top) / sc - 8);
+    if (r.left < pr.left) dx = (r.left - pr.left) / sc - 8; else if (r.right > pr.right) dx = Math.min((r.right - pr.right) / sc + 8, (r.left - pr.left) / sc - 8);
+    if (dx || dy) p.scrollBy({ left: dx, top: dy, behavior: smooth && !reduced ? 'smooth' : 'auto' });
+  }
+}
 
 /* ============ ações comuns ============ */
 action('toast', el => toast(el.dataset.msg || ''));
@@ -233,7 +245,7 @@ function setNav(on) { if (S.nav !== on) { S.nav = on; app.classList.toggle('nav'
 function moveFocus(dir) {
   const scope = app.querySelector('.sheet') || app.querySelector('.guide') || app; const list = focusables(scope); if (!list.length) return;
   const cur = document.activeElement;
-  if (!cur || !scope.contains(cur)) { const f = scope.querySelector('[data-autofocus]') || scope.querySelector('.c-item.on') || list[0]; f.focus({ preventScroll: true }); f.scrollIntoView({ block: 'nearest', inline: 'nearest' }); return; }
+  if (!cur || !scope.contains(cur)) { const f = scope.querySelector('[data-autofocus]') || scope.querySelector('.c-item.on') || list[0]; f.focus({ preventScroll: true }); reveal(f); return; }
   const h = cur.closest('[data-navx]'); if (h && (dir === 'left' || dir === 'right') && NAVX[h.dataset.navx] && NAVX[h.dataset.navx](cur, dir)) return;
   const a = cur.getBoundingClientRect(), ax = a.left + a.width / 2, ay = a.top + a.height / 2;
   let best = null, bs = Infinity;
@@ -246,7 +258,7 @@ function moveFocus(dir) {
     else { if (by >= ay - 1 || b.bottom > a.bottom - 2) continue; p = Math.max(0, a.top - b.bottom); o = Math.max(0, b.left - a.right, a.left - b.right); off = Math.abs(bx - ax); }
     const s = p + o * 3 + off * .15; if (s < bs) { bs = s; best = el; }
   }
-  if (best) { best.focus({ preventScroll: true }); best.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: reduced ? 'auto' : 'smooth' }); }
+  if (best) { const k = best.dataset.k; best.focus({ preventScroll: true }); const el = best.isConnected ? best : k && app.querySelector(`[data-k="${CSS.escape(k)}"]`); if (el) reveal(el, true); }
 }
 function cycleSelect(sel, d) { const i = clamp(sel.selectedIndex + d, 0, sel.options.length - 1); if (i !== sel.selectedIndex) { sel.selectedIndex = i; sel.dispatchEvent(new Event('change', { bubbles: true })); } }
 function stepRange(r, d) { const v = clamp(Number(r.value) + d * Number(r.step || 1), Number(r.min), Number(r.max)); r.value = v; r.dispatchEvent(new Event('input', { bubbles: true })); r.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -370,6 +382,8 @@ function updateChrome() {
   document.querySelectorAll('.full-exit [data-cact="mode"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.mode));
   const sel = document.getElementById('ch-screen');
   sel.innerHTML = LOTES.filter(([t, l]) => l.some(n => SCREENS[n])).map(([t, l]) => `<optgroup label="${esc(t)}">${l.filter(n => SCREENS[n]).map(n => `<option value="${n}"${S.route.name === n ? ' selected' : ''}>${esc(screenTitle(n))}</option>`).join('')}</optgroup>`).join('');
+  const cur = SCREENS[S.route.name] || {};
+  document.getElementById('ch-vars').innerHTML = (cur.variants || []).map((v, i) => `<label>${esc(v.label)}<select class="ch-sel" data-var="${i}" aria-label="${esc(v.label)} (exemplo)">${v.list.map(([id, t]) => `<option value="${esc(id)}"${String(v.get()) === String(id) ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`).join('');
   const pad = document.getElementById('ch-pad'); pad.className = 'ch-pad' + (S.pad ? ' on' : ''); pad.innerHTML = `${ic('gamepad', 16)} ${S.pad ? 'Controle conectado' : 'Sem controle'} · modo ${S.mode === 'c' ? 'controle' : 'toque'}`;
   document.body.classList.toggle('full', S.full);
   const scr = SCREENS[S.route.name] || {}, inf = scr.info || {};
@@ -389,6 +403,7 @@ document.addEventListener('click', e => {
   else if (a === 'notes') { S.notes = !S.notes; persist(); updateChrome(); schedulePins(); }
 });
 document.getElementById('ch-screen').addEventListener('change', e => goTop(e.target.value, {}));
+document.getElementById('ch-vars').addEventListener('change', e => { const sel = e.target.closest('select[data-var]'); const scr = SCREENS[S.route.name]; const v = sel && scr.variants && scr.variants[Number(sel.dataset.var)]; if (v) { v.set(sel.value); render(); } });
 
 function readHash() {
   const m = /^#?([a-z]+)(-controle)?(-retrato)?$/.exec(location.hash || '');

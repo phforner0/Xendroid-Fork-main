@@ -270,7 +270,7 @@ function rail() {
   return `<nav class="b-rail" aria-label="Navegação" data-note="rail"><span class="logo" aria-hidden="true"></span>${RAIL.map(([v, t, i, o]) => `<button class="${o || ''}" data-act="rail" data-v="${v}" data-k="rail-${v}"${a === v ? ' aria-current="page"' : ''}>${ic(i, 21)}${t}</button>`).join('')}<span class="sp"></span><button data-act="rail" data-v="settings" data-k="rail-settings"${a === 'settings' ? ' aria-current="page"' : ''}>${ic('gear', 21)}Ajustes</button></nav>`;
 }
 function glyph(b) { return b.split('/').map(x => `<span class="gb ${x === '≡' ? 'M' : x === '⧉' ? 'V' : x}">${x}</span>`).join(''); }
-function hints(list) { return `<footer class="c-hints" data-note="hints">${list.map(([b, t, a]) => `<button class="hint" data-act="hint" data-v="${a}" tabindex="-1">${glyph(b)}<span>${t}</span></button>`).join('')}<span class="hint kb">${S.pad ? 'Controle conectado' : 'Teclado: setas · Enter · Esc · Q/E · F · I'}</span></footer>`; }
+function hints(list, note = 'hints') { return `<footer class="c-hints" data-note="${note}">${list.map(([b, t, a]) => `<button class="hint" data-act="hint" data-v="${a}" tabindex="-1">${glyph(b)}<span>${t}</span></button>`).join('')}<span class="hint kb">${S.pad ? 'Controle conectado' : 'Teclado: setas · Enter · Esc · Q/E · F · I'}</span></footer>`; }
 const DEFAULT_HINTS = [['A', 'Selecionar', 'a'], ['B', 'Voltar', 'back'], ['LB/RB', 'Seções', 'tabs'], ['≡', 'Menu', 'guide']];
 /* def: { key, title, sub, head, actions, art, dyn, icon, sections:[{group,id,t,icon,n,body(v)}], hints, note } */
 function sectioned(def) {
