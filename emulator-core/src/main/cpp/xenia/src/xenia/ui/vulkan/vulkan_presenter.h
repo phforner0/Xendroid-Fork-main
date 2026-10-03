@@ -308,6 +308,10 @@ class VulkanPresenter final : public Presenter {
         return kGuestOutputPaintPipelineLayoutIndexFsrRcas;
       case GuestOutputPaintEffect::kSgsr:
       case GuestOutputPaintEffect::kSgsrDither:
+      // Lanczos-2 reads the same constants (the input size; the sharpness is
+      // unused), so it shares SGSR's layout.
+      case GuestOutputPaintEffect::kLanczos:
+      case GuestOutputPaintEffect::kLanczosDither:
         return kGuestOutputPaintPipelineLayoutIndexSgsr;
       default:
         assert_unhandled_case(effect);

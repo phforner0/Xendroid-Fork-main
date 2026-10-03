@@ -204,6 +204,9 @@ class Presenter {
       // XenDroid: Snapdragon Game Super Resolution 1 - one edge-adaptive
       // upsampling pass (shaders/guest_output_sgsr.xesli), bilinear otherwise.
       kSgsr,
+      // XenDroid (15k): Lanczos-2 - one upsampling pass clamped to the nearest
+      // texels (shaders/guest_output_lanczos.xesli), bilinear otherwise.
+      kLanczos,
     };
 
     // This value is used as a lerp factor.
@@ -409,6 +412,8 @@ class Presenter {
     kFsrRcasDither,
     kSgsr,
     kSgsrDither,
+    kLanczos,
+    kLanczosDither,
 
     kCount,
   };
@@ -424,6 +429,7 @@ class Presenter {
       case GuestOutputPaintEffect::kCasResampleDither:
       case GuestOutputPaintEffect::kFsrRcasDither:
       case GuestOutputPaintEffect::kSgsrDither:
+      case GuestOutputPaintEffect::kLanczosDither:
         return false;
       default:
         // The result of any other effect can be stretched with bilinear

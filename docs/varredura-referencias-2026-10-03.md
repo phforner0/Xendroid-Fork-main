@@ -106,7 +106,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Margem de TV (overscan) | Bannerlator (barras de área segura) | **Impl. + Local no lote 15h** (0–10% de cada lado, só na saída para TV; aparelho pendente, roteiro 59) | Média / P. Atenção: o `present_safe_area_x/y` do Xenia (exposto pelo aX360e) é outra coisa, quanto da imagem pode ser cortado para evitar faixas; esse entrou no lote 14b |
 | Debanding | Bannerlator `e836265d` | **Tem** (revisto no lote 14j): o "debanding" do Bannerlator é um dither terminal antes dos 8 bits, o mesmo que o `postprocess_dither` do Xenia (ruído azul), que não fazia nada até o lote 14b e agora também está no modo Jogador ("Reduzir faixas de cor") | — |
 | SGSR / SGSR HQ | Bannerlator `7e71cb8f` | **Impl. + Local no lote 14j** (SGSR 1, BSD-3-Clause com aviso no APK; testado em Vulkan por software; custo no aparelho a medir); SGSR HQ (direção de borda) não | Média / M |
-| NIS, Lanczos, Spline, cúbico, MMPX, área | Bannerlator `6ff165f7`; Eden `f33a771d`, `b66adfe0`, `dbeae7ad`, `2946cdbd` | **Não tem** | Média / M (escolher um ou dois) |
+| NIS, Lanczos, Spline, cúbico, MMPX, área | Bannerlator `6ff165f7`; Eden `f33a771d`, `b66adfe0`, `dbeae7ad`, `2946cdbd` | **Impl. + Local no lote 15k**: Lanczos-2 (sem halos; testado em Vulkan por software; custo no aparelho pendente, roteiro 62); os demais não | Média / M (escolher um ou dois) |
 | Efeitos (CRT, cor, fake-HDR), presets de um toque, shaders de pós-processamento | Bannerlator `a05106c5`; Eden `ed566919` | **Parcial**: filtro de cor (Desligado/Cinza/Contraste/Quente) | Média / M |
 | ReShade (.fx) com catálogo | Bannerlator `edf46af9` | **Não tem** | Baixa / G |
 
@@ -117,7 +117,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Hz da tela acompanhando o FPS automaticamente, ou escolha entre modos suportados | Bannerlator `fa77da60`; Eden `e28b0d25`; DroidDeck `e217cbe` | **Parcial**: escolha manual e limite do refresh do guest (C07/K11); sem automático | Alta / P–M |
 | Jogo na TV com o aparelho ao lado | Bannerlator `a1206106` | **Tem** (tela externa, 12m); pausar ao desconectar a conferir | — |
 | Cast (Chromecast) | Bannerlator `1357d1c5` | **Não tem** | Baixa / G (só vídeo e latência alta no próprio Bannerlator) |
-| Formato por aparelho (painel 4:3/3:2 exato, 16:9 fixo, esticar) | DroidDeck `9c47095`, `5179b54` | **Parcial**: modos de tela e letterbox | Média / P |
+| Formato por aparelho (painel 4:3/3:2 exato, 16:9 fixo, esticar) | DroidDeck `9c47095`, `5179b54` | **Tem por desenho** (conferido no lote 15k): Ajustar/Preencher/Esticar/Inteiro sobre a forma do próprio painel; o piso de 16:9 do DroidDeck era do gamescope | Média / P |
 | Jogo numa metade da tela e controles na outra (dobráveis, telas altas) | Bannerlator `440d3dc4` | **Impl. + Local no lote 15c** (dobra em postura de mesa via Jetpack WindowManager, ou "Sempre" em retrato/tela quase quadrada; desligada por padrão; aparelho pendente, roteiro 54) | Média / M |
 | Escala da interface (UI e fonte) | Bannerlator `d4b33955` | **Não tem** (segue a fonte do sistema) | Média / P |
 | As duas orientações paisagem | X360 Mobile v0.6.1 | **Tem** | — |

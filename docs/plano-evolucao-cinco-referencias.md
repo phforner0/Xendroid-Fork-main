@@ -548,6 +548,11 @@ histerese (cresce no underrun, encolhe após 30 s calmos; política pura testada
 padrão) e vigia térmico consultivo ancorado nos limites do próprio aparelho (headroom térmico do
 Android), que avisa e registra, sem agir — mantendo o F04/governador como consultivos.
 
+**Lote 15k (Impl. + Local; custo no aparelho pendente, roteiro 62):** Lanczos-2 como efeito de escala do
+presenter (kernel escrito a partir da definição, 4×4 texels, limitado aos 4 mais próximos para não criar
+halos), testado com os shaders reais em Vulkan por software. "Formato por aparelho" conferido: já coberto
+pelos modos de tela sobre a forma do painel.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

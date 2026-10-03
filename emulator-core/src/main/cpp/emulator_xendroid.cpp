@@ -1178,7 +1178,7 @@ static void j_set_presentation_mode(JNIEnv* env, jobject thiz, jint mode) {
     if (mode >= -1 && mode <= 3) xe::ui::RuntimePresentation().display_mode = mode;
 }
 static void j_set_scaling_effect(JNIEnv* env, jobject thiz, jint effect) {
-    if (effect >= -1 && effect <= 3) xe::ui::RuntimePresentation().scaling_effect = effect;
+    if (effect >= -1 && effect <= 4) xe::ui::RuntimePresentation().scaling_effect = effect;
 }
 static void j_set_color_filter(JNIEnv* env, jobject thiz, jint mode) {
     auto& runtime = xe::ui::RuntimePresentation();

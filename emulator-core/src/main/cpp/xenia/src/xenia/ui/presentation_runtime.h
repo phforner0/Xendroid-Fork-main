@@ -29,7 +29,7 @@ struct PresentationRuntime {
   std::atomic<int> frame_generation_engine{0}; // 0 Win-FG, 1 LSFG
   std::atomic<int> frame_generation_multiplier{2};
   std::atomic<uint64_t> configuration_epoch{0};
-  std::atomic<int> scaling_effect{-1}; // inherited / bilinear / CAS / FSR / SGSR
+  std::atomic<int> scaling_effect{-1}; // inherited / bilinear / CAS / FSR / SGSR / Lanczos
   std::atomic<int> color_filter{0};
   std::atomic<int> color_filter_error{0};
   std::atomic<int> presenter_tid{0};

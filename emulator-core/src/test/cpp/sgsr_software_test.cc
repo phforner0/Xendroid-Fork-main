@@ -1,9 +1,9 @@
-// SGSR (Snapdragon Game Super Resolution 1) as the presenter runs it: the real guest
-// output shaders (rectangle vertex shader, SGSR and bilinear pixel shaders, compiled
-// from their XESL sources by tools/test-presentation-host.sh) drawn on software Vulkan
-// with the presenter's push constant layout, a 32x32 image upscaled to 64x64 and 48x48.
-// SGSR must keep flat areas as they are, never overshoot the texels around an edge,
-// and make an edge steeper than bilinear filtering does.
+// SGSR (Snapdragon Game Super Resolution 1) and Lanczos-2 (15k) as the presenter runs
+// them: the real guest output shaders (rectangle vertex shader, SGSR, Lanczos and bilinear
+// pixel shaders, compiled from their XESL sources by tools/test-presentation-host.sh) drawn
+// on software Vulkan with the presenter's push constant layout, a 32x32 image upscaled to
+// 64x64 and 48x48. Each must keep flat areas as they are, never overshoot the texels around
+// an edge, and make an edge steeper than bilinear filtering does.
 
 #include <vulkan/vulkan.h>
 
@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "guest_output_bilinear_ps.h"
+#include "guest_output_lanczos_ps.h"
 #include "guest_output_sgsr_ps.h"
 #include "guest_output_triangle_strip_rect_vs.h"
 
@@ -52,6 +53,12 @@ struct SgsrConstants {
   float viewport_info[4];
   float edge_sharpness;
 };
+
+// Lanczos-2 shares SGSR's layout and constants (presenter.h); the sharpness is unused.
+enum class Filter { kBilinear, kSgsr, kLanczos };
+const char* Name(Filter filter) {
+  return filter == Filter::kSgsr ? "SGSR" : filter == Filter::kLanczos ? "Lanczos" : "bilinear";
+}
 
 constexpr uint32_t kInput = 32;
 constexpr uint8_t kDark = 51, kBright = 204;
@@ -155,7 +162,7 @@ VkShaderModule Module(const Vulkan& vk, const uint32_t* code, size_t size) {
 
 // Draws [pixel] over the whole [width]x[height] target from [source] (sampled, read-only
 // layout) like the presenter's final effect pass, and returns the target's green channel.
-std::vector<uint8_t> Paint(const Vulkan& vk, const Image& source, uint32_t width, uint32_t height, bool sgsr) {
+std::vector<uint8_t> Paint(const Vulkan& vk, const Image& source, uint32_t width, uint32_t height, Filter filter) {
   // The presenter's descriptor set: the guest output image and an immutable linear sampler.
   VkSamplerCreateInfo sampler_info{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
   sampler_info.magFilter = sampler_info.minFilter = VK_FILTER_LINEAR;
@@ -180,7 +187,8 @@ std::vector<uint8_t> Paint(const Vulkan& vk, const Image& source, uint32_t width
   set_layout_info.pBindings = bindings;
   VkDescriptorSetLayout set_layout;
   VK_CHECK(vkCreateDescriptorSetLayout(vk.device, &set_layout_info, nullptr, &set_layout));
-  const uint32_t effect_size = sgsr ? sizeof(SgsrConstants) : sizeof(BilinearConstants);
+  const bool sgsr_layout = filter != Filter::kBilinear;
+  const uint32_t effect_size = sgsr_layout ? sizeof(SgsrConstants) : sizeof(BilinearConstants);
   VkPushConstantRange ranges[2] = {{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(RectangleConstants)},
                                    {VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(RectangleConstants), effect_size}};
   VkPipelineLayoutCreateInfo layout_info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
@@ -214,8 +222,9 @@ std::vector<uint8_t> Paint(const Vulkan& vk, const Image& source, uint32_t width
   VK_CHECK(vkCreateRenderPass(vk.device, &pass_info, nullptr, &pass));
 
   VkShaderModule vs = Module(vk, guest_output_triangle_strip_rect_vs, sizeof(guest_output_triangle_strip_rect_vs));
-  VkShaderModule ps = sgsr ? Module(vk, guest_output_sgsr_ps, sizeof(guest_output_sgsr_ps))
-                           : Module(vk, guest_output_bilinear_ps, sizeof(guest_output_bilinear_ps));
+  VkShaderModule ps = filter == Filter::kSgsr    ? Module(vk, guest_output_sgsr_ps, sizeof(guest_output_sgsr_ps))
+                     : filter == Filter::kLanczos ? Module(vk, guest_output_lanczos_ps, sizeof(guest_output_lanczos_ps))
+                                                  : Module(vk, guest_output_bilinear_ps, sizeof(guest_output_bilinear_ps));
   VkPipelineShaderStageCreateInfo stages[2]{};
   stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -315,7 +324,7 @@ std::vector<uint8_t> Paint(const Vulkan& vk, const Image& source, uint32_t width
   vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0, nullptr);
   const RectangleConstants rectangle{-1.0f, -1.0f, 2.0f, 2.0f};
   vkCmdPushConstants(command, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(rectangle), &rectangle);
-  if (sgsr) {
+  if (sgsr_layout) {
     const SgsrConstants constants{{0, 0}, {1.0f / float(width), 1.0f / float(height)},
                                   {1.0f / kInput, 1.0f / kInput, float(kInput), float(kInput)}, 2.0f};
     vkCmdPushConstants(command, layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(rectangle), sizeof(constants), &constants);
@@ -422,11 +431,12 @@ int main() {
   VK_CHECK(vkQueueSubmit(vk.queue, 1, &submit, VK_NULL_HANDLE));
   VK_CHECK(vkQueueWaitIdle(vk.queue));
 
+  for (Filter filter : {Filter::kSgsr, Filter::kLanczos})
   for (uint32_t size : {64u, 48u}) {
-    const std::vector<uint8_t> bilinear = Paint(vk, source, size, size, false);
-    const std::vector<uint8_t> sgsr = Paint(vk, source, size, size, true);
+    const std::vector<uint8_t> bilinear = Paint(vk, source, size, size, Filter::kBilinear);
+    const std::vector<uint8_t> sgsr = Paint(vk, source, size, size, filter);
     const uint32_t row = size / 2;
-    std::printf("  %ux%u row %u around the edge (x: bilinear / sgsr):", size, size, row);
+    std::printf("  %s %ux%u row %u around the edge (x: bilinear / filter):", Name(filter), size, size, row);
     for (uint32_t x = size / 2 - 4; x < size / 2 + 4; ++x) {
       std::printf(" %u:%u/%u", x, bilinear[row * size + x], sgsr[row * size + x]);
     }
@@ -442,9 +452,9 @@ int main() {
         if (std::abs(s - b) >= 2) ++changed;
       }
     }
-    expect(in_range, "SGSR never overshoots the texels around the edge");
+    expect(in_range, "the filter never overshoots the texels around the edge");
     expect(flat_kept, "flat areas come out as bilinear filtering leaves them");
-    expect(changed > 0, "SGSR changes the pixels at the edge");
+    expect(changed > 0, "the filter changes the pixels at the edge");
     // Steeper: the two pixels that straddle the edge are further apart than with bilinear.
     const uint32_t left = row * size + size / 2 - 1, right = left + 1;
     expect(int(sgsr[right]) - int(sgsr[left]) >= int(bilinear[right]) - int(bilinear[left]),
@@ -454,8 +464,8 @@ int main() {
       const uint32_t l = y * size + size / 2 - 1;
       if (int(sgsr[l + 1]) - int(sgsr[l]) > int(bilinear[l + 1]) - int(bilinear[l])) ++steeper_rows;
     }
-    std::printf("  %ux%u: %d pixels changed, %d of %u rows steeper at the edge\n", size, size, changed,
-                steeper_rows, size);
+    std::printf("  %s %ux%u: %d pixels changed, %d of %u rows steeper at the edge\n", Name(filter), size, size,
+                changed, steeper_rows, size);
     expect(steeper_rows > int(size / 2), "most rows come out steeper than with bilinear filtering");
   }
 
@@ -463,6 +473,6 @@ int main() {
     std::fprintf(stderr, "sgsr_software_test: %d failure(s)\n", failures);
     return 1;
   }
-  std::printf("SGSR: passed\n");
+  std::printf("SGSR and Lanczos: passed\n");
   return 0;
 }

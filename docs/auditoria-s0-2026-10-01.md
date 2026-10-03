@@ -731,3 +731,7 @@ status, "Build da nuvem (fim do lote 14)").
    percebida. Vigia térmico: jogar algo pesado até esquentar (ou forçar clocks máximos): antes da queda de
    desempenho aparece o aviso "perto do limite de calor", e a linha do tempo do run tem "thermal watch near
    limit (headroom …)"; o aviso não se repete em menos de 5 min; nenhum ajuste muda sozinho.
+62. Lote 15k — Lanczos: num jogo em 720p numa tela 1080p+, Ajustes → Escala → "lanczos" (ou no menu em
+   jogo, Gráficos → efeito de escala até "Lanczos"): bordas e textos mais nítidos que o bilinear, sem halos
+   claros/escuros em volta; comparar com FSR e SGSR. Medir com "Compare runs" (C07) o custo: mesmo trecho,
+   A = bilinear, B = Lanczos — FPS mediano, tempo de quadro e temperatura.
