@@ -13,21 +13,21 @@ class SettingsSchemaTest {
 
     private val all = SettingsSchema.allSettings
 
-    // 101 Bool + 12 IntRange + 21 ListChoice + 2 Action = 136. Display|host_present_from_non_ui_thread
+    // 102 Bool + 14 IntRange + 26 ListChoice + 2 Action = 144. Display|host_present_from_non_ui_thread
     // is intentionally absent (forced true natively; not a valid user choice).
-    @Test fun total_entry_count_is_136() {
-        assertEquals(136, all.size)
+    @Test fun total_entry_count_is_144() {
+        assertEquals(144, all.size)
         assertEquals(
-            136,
+            144,
             all.count { it is Setting.Bool } + all.count { it is Setting.IntRange } +
                 all.count { it is Setting.ListChoice } + all.count { it is Setting.Action },
         )
     }
 
     @Test fun counts_by_type_match_verified_inventory() {
-        assertEquals(101, all.count { it is Setting.Bool })
-        assertEquals(12, all.count { it is Setting.IntRange })
-        assertEquals(21, all.count { it is Setting.ListChoice })
+        assertEquals(102, all.count { it is Setting.Bool })
+        assertEquals(14, all.count { it is Setting.IntRange })
+        assertEquals(26, all.count { it is Setting.ListChoice })
         assertEquals(2, all.count { it is Setting.Action })
     }
 
@@ -115,6 +115,23 @@ class SettingsSchemaTest {
         ir("APU|apu_max_queued_frames").let {
             assertEquals(4, it.min); assertEquals(64, it.max)
         }
+    }
+
+    /** Lists of TOML doubles: the native side stores a value with exactly one '.' as a
+     *  double, so every option must have one, or the cvar would be written as an int. */
+    @Test fun double_lists_keep_one_dot_in_every_option() {
+        listOf("HID|left_stick_deadzone_percentage", "HID|right_stick_deadzone_percentage",
+            "Display|postprocess_ffx_cas_additional_sharpness", "Display|postprocess_ffx_fsr_sharpness_reduction")
+            .map { SettingsSchema.byKey[it] as Setting.ListChoice }
+            .forEach { s -> s.options.forEach { assertEquals("${s.key} ${it.value}", 1, it.value.count { c -> c == '.' }) } }
+    }
+
+    /** vulkan_texture_cache reads -1 (no override) and 0..5 (off, 1x..16x). */
+    @Test fun anisotropic_override_offers_the_core_values() {
+        val s = SettingsSchema.byKey["GPU|anisotropic_override"] as Setting.ListChoice
+        assertEquals(listOf("-1", "0", "1", "2", "3", "4", "5"), s.options.map { it.value })
+        assertEquals("-1", s.default)
+        assertTrue(s.key in SettingsSchema.playerKeys)
     }
 
     /** L02: Player mode shows exactly the curated keys, all real settings, none twice. */

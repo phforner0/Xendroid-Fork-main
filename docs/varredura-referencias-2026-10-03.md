@@ -103,7 +103,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Escala de resolução interna (supersampling) | Bannerlator `c3cbe491` | **Tem** (`draw_resolution_scale_x/y`) | — |
 | Modos Ajustar/Preencher/Esticar/Inteiro | Bannerlator `886b7708` | **Tem** | — |
 | **Filtragem anisotrópica por jogo** | Bannerlator `035d7165`; aX360e expõe `anisotropic_override` | **Não tem** (o cvar existe no Xenia, mas não está no esquema) | **Alta / P** |
-| Área segura (overscan) para TV | Bannerlator (barras de área segura); aX360e expõe `present_safe_area_x/y` | **Não tem** na interface | **Alta / P** |
+| Margem de TV (overscan) | Bannerlator (barras de área segura) | **Não tem** | Média / P. Atenção: o `present_safe_area_x/y` do Xenia (exposto pelo aX360e) é outra coisa, quanto da imagem pode ser cortado para evitar faixas; esse entrou no lote 14b |
 | Debanding | Bannerlator `e836265d` | **Não tem** | Alta / P |
 | SGSR / SGSR HQ | Bannerlator `7e71cb8f` | **Não tem** | Média / M (licença e custo a medir) |
 | NIS, Lanczos, Spline, cúbico, MMPX, área | Bannerlator `6ff165f7`; Eden `f33a771d`, `b66adfe0`, `dbeae7ad`, `2946cdbd` | **Não tem** | Média / M (escolher um ou dois) |
@@ -258,7 +258,8 @@ aparelho fica pendente.
 
 1. **Core:** APC sem slot global (aX360e `a95d465`), com caso no `threading_test.cc`.
 2. **Cvars por jogo:** `anisotropic_override`, `present_safe_area_x/y`, zonas mortas dos sticks
-   e `async_shader_compilation` (com aviso), com textos en/pt-BR.
+   e `async_shader_compilation` (com aviso), com textos en/pt-BR. (Feito no lote 14b; os
+   limites do modo de oclusão falso ficaram de fora porque este fork não os usa.)
 3. **Diagnóstico:** ajustes alterados no topo do log e no relatório do run.
 4. **Controles de toque:** escondidos e mostrados ao vivo quando um controle físico é usado
    ou conectado.

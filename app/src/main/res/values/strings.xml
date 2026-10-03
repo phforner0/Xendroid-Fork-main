@@ -1111,4 +1111,12 @@
     <string name="col_why_too_many">At most %1$d collections</string>
     <string name="col_why_full">\"%1$s\" is full (%2$d games)</string>
     <string name="col_why_invalid">Invalid game</string>
+    <string name="set_anisotropic">Anisotropic filtering</string>
+    <string name="set_anisotropic_desc">Keeps textures sharp when seen at a slant (floors, roads, walls). \"Game decides\" leaves each texture as the game set it; 16x costs a little GPU bandwidth.</string>
+    <string name="set_aniso_game">Game decides</string>
+    <string name="set_left_deadzone">Left stick dead zone</string>
+    <string name="set_left_deadzone_desc">Ignores small movements of the left stick, for a controller whose stick drifts. It adds to the small dead zone the app already applies.</string>
+    <string name="set_right_deadzone">Right stick dead zone</string>
+    <string name="set_right_deadzone_desc">Ignores small movements of the right stick, for a controller whose stick drifts. It adds to the small dead zone the app already applies.</string>
+    <string name="set_option_off">Off</string>
 </resources>

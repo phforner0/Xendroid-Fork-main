@@ -195,7 +195,7 @@ class Item28PortugueseTest {
 
             compose.onNodeWithText(pt.getString(R.string.set_to_player)).performClick()
             val essentials = pt.getString(R.string.set_cat_essentials)
-            compose.onNodeWithText(pt.getQuantityString(R.plurals.set_count, 19, 19), substring = true).assertExists()
+            compose.onNodeWithText(pt.getQuantityString(R.plurals.set_count, 22, 22), substring = true).assertExists()
             compose.onNodeWithText(essentials).performClick()
             compose.onNode(hasSetTextAction()).performTextInput("tela")
             compose.onNodeWithText(pt.getString(R.string.set_widescreen)).assertExists()

@@ -80,7 +80,8 @@ class GameSettingsRepository(private val store: ConfigStore, val titleId: String
     fun intOf(s: Setting.IntRange): Int =
         ConfigValueShape.parseInt(overrides[s.key] ?: inheritedRaw(s), s.default)
     @Synchronized
-    fun listValueOf(s: Setting.ListChoice): String = overrides[s.key] ?: inheritedRaw(s)
+    fun listValueOf(s: Setting.ListChoice): String =
+        ConfigValueShape.listOption(s.options.map { it.value }, overrides[s.key] ?: inheritedRaw(s)) ?: s.default
     @Synchronized
     fun driverPathOf(s: Setting.Action): String = overrides[s.key] ?: inheritedRaw(s)
     @Synchronized

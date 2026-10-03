@@ -494,15 +494,21 @@ EmulatorWindow::GetGuestOutputPaintEffectForCvarValue(
 
 ui::Presenter::GuestOutputPaintConfig
 EmulatorWindow::GetGuestOutputPaintConfigForCvars() {
+  // The Settings values (global, then per game). A scaling effect picked in the
+  // in-game menu still wins over this one: the presenter applies
+  // RuntimePresentation().scaling_effect when it is set (see
+  // Presenter::ConsumeGuestOutput).
   ui::Presenter::GuestOutputPaintConfig paint_config;
-  
-  paint_config.SetEffect(ui::Presenter::GuestOutputPaintConfig::Effect::kBilinear);
-  
-  paint_config.SetDither(false);
-  
-  paint_config.SetFsrMaxUpsamplingPasses(1);
-  
   paint_config.SetAllowOverscanCutoff(true);
+  paint_config.SetEffect(GetGuestOutputPaintEffectForCvarValue(
+      cvars::postprocess_scaling_and_sharpening));
+  paint_config.SetCasAdditionalSharpness(
+      float(cvars::postprocess_ffx_cas_additional_sharpness));
+  paint_config.SetFsrMaxUpsamplingPasses(
+      cvars::postprocess_ffx_fsr_max_upsampling_passes);
+  paint_config.SetFsrSharpnessReduction(
+      float(cvars::postprocess_ffx_fsr_sharpness_reduction));
+  paint_config.SetDither(cvars::postprocess_dither);
   return paint_config;
 }
 
@@ -515,8 +521,15 @@ void EmulatorWindow::ApplyDisplayConfigForCvars() {
   gpu::CommandProcessor* command_processor =
       graphics_system->command_processor();
   if (command_processor) {
-    command_processor->SetDesiredSwapPostEffect(
-        gpu::CommandProcessor::SwapPostEffect::kNone);
+    // Settings' Antialiasing: FXAA runs on the swap (Vulkan implements both).
+    gpu::CommandProcessor::SwapPostEffect swap_post_effect =
+        gpu::CommandProcessor::SwapPostEffect::kNone;
+    if (cvars::postprocess_antialiasing == "fxaa") {
+      swap_post_effect = gpu::CommandProcessor::SwapPostEffect::kFxaa;
+    } else if (cvars::postprocess_antialiasing == "fxaa_extreme") {
+      swap_post_effect = gpu::CommandProcessor::SwapPostEffect::kFxaaExtreme;
+    }
+    command_processor->SetDesiredSwapPostEffect(swap_post_effect);
   }
 
   ui::Presenter* presenter = graphics_system->presenter();

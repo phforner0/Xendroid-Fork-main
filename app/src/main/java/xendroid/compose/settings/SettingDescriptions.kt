@@ -4,6 +4,14 @@ package xendroid.compose.settings
  *  [Setting.desc] by the schema helpers. */
 object SettingDescriptions {
     val byName: Map<String, String> = mapOf(
+        "anisotropic_override" to "Keeps textures sharp when seen at a slant (floors, roads, walls). Game decides leaves each texture as the game set it; 16x costs a little GPU bandwidth",
+        "async_shader_compilation" to "Creates shaders and pipelines on background threads: no stutter while a scene is new, but its first frames may miss an object. Off creates them on the spot: stutter, nothing missing",
+        "left_stick_deadzone_percentage" to "Ignores small movements of the left stick, for a controller whose stick drifts. The app already ignores the first 8% of each axis",
+        "right_stick_deadzone_percentage" to "Ignores small movements of the right stick, for a controller whose stick drifts. The app already ignores the first 8% of each axis",
+        "present_safe_area_x" to "When the picture would get bars at the sides or top, how much of its width must stay on screen; below 100 the edges may be cut instead of drawing bars",
+        "present_safe_area_y" to "When the picture would get bars at the top or sides, how much of its height must stay on screen; below 100 the edges may be cut instead of drawing bars",
+        "postprocess_ffx_cas_additional_sharpness" to "Extra sharpening on top of CAS (Scaling & sharpening: cas); higher is sharper and may show halos",
+        "postprocess_ffx_fsr_sharpness_reduction" to "How much FSR softens its sharpening (Scaling & sharpening: fsr); 0 is the sharpest, 2 the softest",
         "accurate_resolve_number_formats" to "Handle signed/integer resolve destinations and gamma-decode 8_8_8_8_GAMMA sources; a few titles need it, but it enlarges every full resolve shader and costs significant frame rate on mobile GPUs",
         "adrenotools_force_max_clocks" to "Force the GPU to its maximum clocks via the custom driver; more speed, more heat and battery drain",
         "allow_incompatible_title_update" to "Applies title updates even when their signature doesn't match the game",

@@ -73,7 +73,8 @@ class SettingsViewModel(private val repo: SettingsRepository) : ViewModel(), Set
 
     override fun currentBool(s: Setting.Bool) = ConfigValueShape.parseBool(raw(s), s.default)
     override fun currentInt(s: Setting.IntRange) = ConfigValueShape.parseInt(raw(s), s.default)
-    override fun currentListValue(s: Setting.ListChoice) = raw(s) ?: s.default
+    override fun currentListValue(s: Setting.ListChoice) =
+        ConfigValueShape.listOption(s.options.map { it.value }, raw(s)) ?: s.default
     override fun currentDriverPath(s: Setting.Action) = raw(s) ?: ""
 
     /** Synchronous durable write; I/O-free when nothing was edited. */

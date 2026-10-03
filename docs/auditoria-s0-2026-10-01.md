@@ -167,7 +167,7 @@ O que cada teste não alcança continua na lista abaixo, como antes.
 | 3 | `Item03SaveRecoveryTest` | journal danificado nomeado e mantido; ao abrir um jogo (processo `:emu` de verdade, com um arquivo que não é jogo: o armazenamento é preparado antes de abrir o jogo) o diálogo nomeia a transação; o save original fica | — |
 | 4 | `Item04ProfilesTest` | prévia da exclusão na tela Perfis com o jogo dos saves; lixeira, restaurar com os saves, excluir de vez (código nativo de perfis); imagem enorme e arquivo que não é imagem dão a mensagem e não criam nada; foto 4000×3000 vira o avatar | — |
 | 13 | `Item13DataBundleTest` | exportar, mudar, importar pela seção real (o seletor do sistema respondido pelo Espresso-Intents): a prévia lista exatamente as mudanças e o backup, os valores voltam, o caminho do driver deste aparelho fica, um arquivo que não é pacote é recusado com a mensagem | — |
-| 16 | `Item16PlayerModeTest` | "Jogador" = 19 ajustes em uma seção, o limite de FPS mudado ali aparece em Developer → GPU, ajuste avançado mantido; ajustes do jogo seguem o modo; menu em jogo sem Win-FG, LSFG, ADPF, submissões, pausa em segundo plano e modo sustentado (e com eles em Developer) | o menu dentro de um jogo rodando (grupo C) |
+| 16 | `Item16PlayerModeTest` | "Jogador" = 22 ajustes em uma seção, o limite de FPS mudado ali aparece em Developer → GPU, ajuste avançado mantido; ajustes do jogo seguem o modo; menu em jogo sem Win-FG, LSFG, ADPF, submissões, pausa em segundo plano e modo sustentado (e com eles em Developer) | o menu dentro de um jogo rodando (grupo C) |
 | 17 | `Item17FirstRunAssistantTest` | assistente na `MainActivity` a partir do estado de instalação nova: checagens (GPU, arm64, Android), "!" e o botão da pasta (o voltar do telefone volta ao assistente), idioma/região pt/BR gravados no console, Perfis e volta, "Pronto" sem modo = Jogador, só uma vez, ⋮ reabre | — |
 | 24 | `Item24UserDataProviderTest` | o DocumentsProvider como o app Arquivos o chama: caches e controles internos ocultos, cópia vira "(1)", renomear e apagar, tudo somente leitura com o lease ocupado (ler continua), "Jogos por título" com pastas de reunião sem renomear/mover/apagar | as telas do Arquivos, um app de terceiros com a raiz, a permissão sobreviver à atualização do APK |
 | 26 | `Item26UserPatchesTest` | arquivo próprio entra com os patches desligados e "adicionado por você", repetido vira "(1)", de outro jogo é recusado com o Title ID, escrita sem `address` recusada com a linha, aviso de conflito com o endereço, remover | jogar com o patch e o `xe.log` (grupo C) |
@@ -448,7 +448,7 @@ itens 8, 15 e 37.
    Lote 12h: com o telefone em português, a biblioteca inteira (menu ⋮, ficha do jogo, diálogos,
    assistente inicial, navegador de pastas) aparece em português, sem texto cortado; o bloco técnico
    do último run continua em inglês.
-   Lote 12i: Configurações e ajustes do jogo em português (seções, os 19 ajustes do modo Jogador
+   Lote 12i: Configurações e ajustes do jogo em português (seções, os ajustes do modo Jogador (19 então, 22 desde o lote 14b)
    com descrição no toque longo, "Salvo para todos os jogos · vale na próxima abertura…", gerenciador
    de drivers, pacote de dados, atualizações, ajustes recomendados); buscar "tela" acha "Tela larga".
    Lote 12j: Perfis (criar, editar, lixeira, outros jogadores), Saves (exportar, importar, restaurar)
@@ -586,3 +586,11 @@ itens 8, 15 e 37.
    costuma estar fora do libe.so). Num crash real dentro do core, o "pc libe.so+0x…" da linha bate com o
    "#00 pc …  …/libe.so" do tombstone. Um erro fatal do core (ex.: GPU device lost) continua com as
    palavras do core ("fatal error: …"), não com a linha do crash.
+43. Lote 14b — ajustes de imagem e controle: em Configurações (global e por jogo), "Escala e nitidez"
+   em FSR ou CAS e "Antialiasing" em FXAA mudam a imagem no próximo jogo aberto (antes não mudavam),
+   e a escolha de escala do menu em jogo continua mandando quando é feita; "Dither" (Desenvolvedor)
+   suaviza degradês. "Filtragem anisotrópica" em 16x deixa nítido o chão/a estrada visto de lado (em
+   "O jogo decide" fica como antes); a mesma em "Desligada" borra. "Zona morta" de um stick em 20%: o
+   personagem/câmera não se mexe com o stick quase no centro (útil com drift). Desenvolvedor: área
+   mantida a 90% num jogo com faixas corta um pouco as bordas em vez de desenhar faixas; compilação
+   assíncrona desligada troca os objetos que somem por engasgos. Anotar FPS antes/depois (16x e FSR).

@@ -99,6 +99,10 @@ object SettingsSchema {
 
         SettingsCategory("Controller", listOf(
             b("HID", "show_touch_overlay", "Show on-screen controller", true),
+            // Applied by InputSystem::GetState to every player and input driver, on top of
+            // the app's own 8% cut per axis: raises the dead zone (a drifting stick).
+            l("HID", "left_stick_deadzone_percentage", "Left stick dead zone", "0.0", *DEAD_ZONES),
+            l("HID", "right_stick_deadzone_percentage", "Right stick dead zone", "0.0", *DEAD_ZONES),
         )),
 
         SettingsCategory("HID", listOf(
@@ -125,9 +129,18 @@ object SettingsSchema {
 
         SettingsCategory("Display", listOf(
             b("Display", "present_letterbox", "Present letterbox", true),
-            b("Display", "postprocess_dither", "Postprocess dither", true),
+            // The core's default (false): with no value saved, this is what applies.
+            b("Display", "postprocess_dither", "Postprocess dither", false),
             l("Display", "postprocess_scaling_and_sharpening", "Scaling & sharpening", "",
                 "bilinear" to "bilinear", "cas" to "cas", "fsr" to "fsr"),  // "" => bilinear (no selection)
+            l("Display", "postprocess_ffx_cas_additional_sharpness", "CAS: extra sharpness", "0.0",
+                "0.0" to "0.0", "0.25" to "0.25", "0.5" to "0.5", "0.75" to "0.75", "1.0" to "1.0"),
+            l("Display", "postprocess_ffx_fsr_sharpness_reduction", "FSR: sharpness reduction", "0.2",
+                "0.0" to "0.0", "0.1" to "0.1", "0.2" to "0.2", "0.5" to "0.5", "1.0" to "1.0", "2.0" to "2.0"),
+            // Letterboxed picture: how much of the width / height must stay; below 100 the
+            // edges may be cut instead of drawing bars (the presenter allows the cut-off).
+            i("Display", "present_safe_area_x", "Keep at least this much of the width (%)", 100, 50, 100),
+            i("Display", "present_safe_area_y", "Keep at least this much of the height (%)", 100, 50, 100),
             b("Display", "present_render_pass_clear", "Present render-pass clear", true),
             l("Display", "postprocess_antialiasing", "Antialiasing", "",
                 "none" to "none", "fxaa" to "fxaa", "fxaa_extreme" to "fxaa_extreme"), // "" => none
@@ -143,6 +156,11 @@ object SettingsSchema {
                 "60" to "60 FPS", "30" to "30 FPS", "45" to "45 FPS",
                 "90" to "90 FPS", "120" to "120 FPS", "0" to "Unlimited"),
             b("GPU", "guest_display_refresh_cap", "Cap guest display refresh (VSync)", true),
+            // vulkan_texture_cache: -1 leaves each sampler as the game set it.
+            l("GPU", "anisotropic_override", "Anisotropic filtering", "-1",
+                "-1" to "Game decides", "0" to "Off", "1" to "1x", "2" to "2x", "3" to "4x", "4" to "8x", "5" to "16x"),
+            // vulkan_pipeline_cache: off creates pipelines on the spot (stutter, no artifacts).
+            b("GPU", "async_shader_compilation", "Asynchronous shader compilation", true),
             b("GPU", "store_shaders", "Store shaders", true),
             b("GPU", "resolve_resolution_scale_fill_half_pixel_offset", "Resolve scale: fill half-pixel offset", true),
             // uma = no copy, the CPU reads host-mapped shared memory directly; the only mode
@@ -268,9 +286,11 @@ object SettingsSchema {
         "GPU|framerate_limit", "GPU|guest_display_refresh_cap",
         "GPU|draw_resolution_scale_x", "GPU|draw_resolution_scale_y",
         "Display|postprocess_scaling_and_sharpening", "Display|postprocess_antialiasing", "Display|present_letterbox",
+        "GPU|anisotropic_override",
         "Console|widescreen", "Console|internal_display_resolution",
         "Vulkan|vulkan_lib_path",
-        "HID|show_touch_overlay", "UI|android_soft_keyboard", "UI|android_message_box",
+        "HID|show_touch_overlay", "HID|left_stick_deadzone_percentage", "HID|right_stick_deadzone_percentage",
+        "UI|android_soft_keyboard", "UI|android_message_box",
         "UI|show_achievement_notification",
         "Console|user_language", "Console|user_country",
         "APU|mute", "General|apply_patches",
@@ -282,6 +302,11 @@ object SettingsSchema {
         UiMode.PLAYER -> listOf(SettingsCategory("Essentials", playerKeys.mapNotNull(byKey::get)))
     }
 }
+
+// Stick dead zones, a share of full deflection; stored as TOML doubles (one '.').
+private val DEAD_ZONES: Array<Pair<String, String>> = arrayOf(
+    "0.0" to "Off", "0.05" to "5%", "0.1" to "10%", "0.15" to "15%", "0.2" to "20%", "0.25" to "25%", "0.3" to "30%",
+)
 
 // user_country: values 1..109 with 17 and 94 skipped (107 entries). Order matches
 // arrays.xml (es_arr_xconfig_user_country). Default 103 = US.

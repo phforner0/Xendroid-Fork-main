@@ -91,7 +91,7 @@ class SettingsRepository(private val store: ConfigStore) {
     fun intOf(s: Setting.IntRange): Int = live?.getInt(s.section, s.name, s.default) ?: s.default
     @Synchronized
     fun listValueOf(s: Setting.ListChoice): String =
-        live?.getString(s.section, s.name) ?: s.default
+        ConfigValueShape.listOption(s.options.map { it.value }, live?.getString(s.section, s.name)) ?: s.default
     @Synchronized
     fun stringOf(s: Setting): String = live?.getString(s.section, s.name) ?: ""
 

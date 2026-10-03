@@ -22,10 +22,13 @@ private val TITLES: Map<String, Int> = mapOf(
     "Display|postprocess_scaling_and_sharpening" to R.string.set_scaling,
     "Display|postprocess_antialiasing" to R.string.set_antialiasing,
     "Display|present_letterbox" to R.string.set_letterbox,
+    "GPU|anisotropic_override" to R.string.set_anisotropic,
     "Console|widescreen" to R.string.set_widescreen,
     "Console|internal_display_resolution" to R.string.set_display_mode,
     "Vulkan|vulkan_lib_path" to R.string.set_driver,
     "HID|show_touch_overlay" to R.string.set_touch_overlay,
+    "HID|left_stick_deadzone_percentage" to R.string.set_left_deadzone,
+    "HID|right_stick_deadzone_percentage" to R.string.set_right_deadzone,
     "UI|android_soft_keyboard" to R.string.set_soft_keyboard,
     "UI|android_message_box" to R.string.set_message_box,
     "UI|show_achievement_notification" to R.string.set_achievements,
@@ -44,10 +47,13 @@ private val DESCRIPTIONS: Map<String, Int> = mapOf(
     "Display|postprocess_scaling_and_sharpening" to R.string.set_scaling_desc,
     "Display|postprocess_antialiasing" to R.string.set_antialiasing_desc,
     "Display|present_letterbox" to R.string.set_letterbox_desc,
+    "GPU|anisotropic_override" to R.string.set_anisotropic_desc,
     "Console|widescreen" to R.string.set_widescreen_desc,
     "Console|internal_display_resolution" to R.string.set_display_mode_desc,
     "Vulkan|vulkan_lib_path" to R.string.set_driver_desc,
     "HID|show_touch_overlay" to R.string.set_touch_overlay_desc,
+    "HID|left_stick_deadzone_percentage" to R.string.set_left_deadzone_desc,
+    "HID|right_stick_deadzone_percentage" to R.string.set_right_deadzone_desc,
     "UI|android_soft_keyboard" to R.string.set_soft_keyboard_desc,
     "UI|android_message_box" to R.string.set_message_box_desc,
     "UI|show_achievement_notification" to R.string.set_achievements_desc,
@@ -79,8 +85,13 @@ fun categoryTitle(category: SettingsCategory): String = CATEGORIES[category.titl
 
 /** A list option as shown; only words are translated (sizes, codes and filter names stay). */
 @Composable
-fun optionLabel(s: Setting.ListChoice, value: String, english: String): String =
-    if (s.key == "GPU|framerate_limit" && value == "0") stringResource(R.string.set_fps_unlimited) else english
+fun optionLabel(s: Setting.ListChoice, value: String, english: String): String = when {
+    s.key == "GPU|framerate_limit" && value == "0" -> stringResource(R.string.set_fps_unlimited)
+    s.key == "GPU|anisotropic_override" && value == "-1" -> stringResource(R.string.set_aniso_game)
+    s.key == "GPU|anisotropic_override" && value == "0" -> stringResource(R.string.set_option_off)
+    s.name.endsWith("_stick_deadzone_percentage") && value == "0.0" -> stringResource(R.string.set_option_off)
+    else -> english
+}
 
 /** U03: what saving the setting does, in the shown language. */
 @Composable
