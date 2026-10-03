@@ -1256,12 +1256,12 @@
     <string name="menu_hud_panel">Panel</string>
     <string name="panel_recent">Last %1$d s: p50 %2$s · p99 %3$s</string>
     <string name="panel_recent_none">Last seconds: no frames to measure</string>
-    <string name="panel_session_fps">Session: FPS %1$d median, %2$d low</string>
+    <string name="panel_session_fps">Session: FPS median %1$d, low %2$d</string>
     <string name="panel_session_none">Session: nothing measured yet</string>
     <string name="panel_p99">p99 %1$s</string>
     <string name="panel_stutter">stuttering</string>
-    <string name="panel_pipelines">Pipelines: %1$d created, %2$s s</string>
-    <string name="panel_audio">Audio: %1$d of %2$d blocks late</string>
+    <string name="panel_pipelines">Pipelines created: %1$d (%2$s s)</string>
+    <string name="panel_audio">Late audio blocks: %1$d of %2$d</string>
     <string name="panel_audio_clean">Audio: no underruns</string>
     <string name="panel_heat_ok">Heat: normal</string>
     <string name="panel_heat_near">Heat: near the phone\'s limit</string>
@@ -1276,7 +1276,7 @@
     <string name="panel_sustained">sustained mode</string>
     <string name="panel_changed">Changed from the defaults (%1$d):</string>
     <string name="panel_changed_none">Changed from the defaults: none</string>
-    <string name="panel_changed_more">and %1$d more</string>
+    <string name="panel_changed_more">and more: %1$d</string>
     <string name="km_drawn_hint">Tap a button on the controller to give it a key, or pick it in the list below.</string>
     <string name="km_swap_face">Swap A/B and X/Y</string>
     <string name="km_swap_face_note">For controllers laid out like Nintendo\'s, with A on the right. Tap again to undo.</string>
@@ -1293,7 +1293,7 @@
     <string name="drv_source_add">Add</string>
     <string name="drv_source_invalid">Not a GitHub repository.</string>
     <string name="drv_source_duplicate">Already in the list.</string>
-    <string name="drv_source_full">At most %1$d sources.</string>
+    <string name="drv_source_full">Source limit reached (%1$d).</string>
     <string name="drv_source_default">Use the usual source again</string>
     <string name="drv_source_failed">Could not read %1$s: %2$s</string>
     <string name="drv_suggested">Suggested for Adreno %1$d</string>

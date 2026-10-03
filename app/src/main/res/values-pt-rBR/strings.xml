@@ -1295,12 +1295,12 @@
     <string name="menu_hud_panel">Painel</string>
     <string name="panel_recent">Últimos %1$d s: p50 %2$s · p99 %3$s</string>
     <string name="panel_recent_none">Últimos segundos: sem quadros para medir</string>
-    <string name="panel_session_fps">Sessão: FPS %1$d mediana, %2$d baixa</string>
+    <string name="panel_session_fps">Sessão: FPS mediano %1$d, baixo %2$d</string>
     <string name="panel_session_none">Sessão: nada medido ainda</string>
     <string name="panel_p99">p99 %1$s</string>
     <string name="panel_stutter">engasgando</string>
-    <string name="panel_pipelines">Pipelines: %1$d criados, %2$s s</string>
-    <string name="panel_audio">Áudio: %1$d de %2$d blocos atrasados</string>
+    <string name="panel_pipelines">Pipelines criados: %1$d (%2$s s)</string>
+    <string name="panel_audio">Blocos de áudio atrasados: %1$d de %2$d</string>
     <string name="panel_audio_clean">Áudio: sem falhas</string>
     <string name="panel_heat_ok">Calor: normal</string>
     <string name="panel_heat_near">Calor: perto do limite do aparelho</string>
@@ -1315,7 +1315,7 @@
     <string name="panel_sustained">modo sustentado</string>
     <string name="panel_changed">Alterados do padrão (%1$d):</string>
     <string name="panel_changed_none">Alterados do padrão: nenhum</string>
-    <string name="panel_changed_more">e mais %1$d</string>
+    <string name="panel_changed_more">e mais: %1$d</string>
     <string name="km_drawn_hint">Toque num botão do controle para dar uma tecla a ele, ou escolha na lista abaixo.</string>
     <string name="km_swap_face">Trocar A/B e X/Y</string>
     <string name="km_swap_face_note">Para controles no padrão da Nintendo, com o A à direita. Toque de novo para desfazer.</string>
@@ -1332,7 +1332,7 @@
     <string name="drv_source_add">Adicionar</string>
     <string name="drv_source_invalid">Não é um repositório do GitHub.</string>
     <string name="drv_source_duplicate">Já está na lista.</string>
-    <string name="drv_source_full">No máximo %1$d fontes.</string>
+    <string name="drv_source_full">Limite de fontes atingido (%1$d).</string>
     <string name="drv_source_default">Voltar a usar a fonte de sempre</string>
     <string name="drv_source_failed">Não foi possível ler %1$s: %2$s</string>
     <string name="drv_suggested">Sugerido para Adreno %1$d</string>
