@@ -52,11 +52,11 @@ código do XenDroid. Quase tudo já existe aqui, e às vezes de forma mais compl
 | Arquivo do guest aberto para leitura e escrita virava só escrita ("Dirty Disc") | X360 Mobile v0.6.1 | **Tem**: `FileHandle::OpenExisting` trata O_RDONLY/O_WRONLY/O_RDWR como modo de 2 bits |
 | Bibliotecas nativas alinhadas a 16 KB | DroidDeck `06e67cd` | **Tem**: todas as `.so` do APK com `LOAD` alinhado a `0x4000` |
 | ADPF reportando o tempo de trabalho, não o intervalo entre quadros | DroidDeck `e217cbe` (tirou a sessão que fazia errado) | **Tem** certo: `PresenterPerformanceHints` reporta o trabalho medido do apresentador |
-| **APC (`kThreadUserCallback`) entregue à thread que recebe o sinal, sem slot global** | aX360e `a95d465` (2026-07-14) | **Não tem.** O ramo `XE_PLATFORM_xendroid` ainda passa o alvo por `g_thr_user_callback`. Hoje o único uso é acordar uma espera alertável com callback vazio (`xboxkrnl_threading.cc:1497`). Se dois alertas a threads diferentes se cruzam, um handler pode ler ponteiro nulo e cair. A correção é pequena: usar `current_thread_`, como o ramo macOS já faz. **Alta / P**, com teste em `threading_test.cc` e no aparelho |
+| **APC (`kThreadUserCallback`) entregue à thread que recebe o sinal, sem slot global** | aX360e `a95d465` (2026-07-14) | **Impl. + Local no lote 14a**: o APC vai para a thread que recebe o sinal (`current_thread_`, como o ramo macOS), sem o slot global; teste nativo `threading_apc_test` (9000 alertas cruzados, nenhum na thread errada); aparelho pendente |
 
 O resto do aX360e já existe no XenDroid: overlay de FPS (imgui), teclado do guest, editor
 de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idiomas** contra
-2 aqui, e os **204 cvars** expostos contra 135 chaves aqui (seções 3.4, 3.7 e 3.15).
+2 aqui, e os **204 cvars** expostos contra 135 chaves aqui (146 entradas depois dos lotes 14 e 15; seções 3.4, 3.7 e 3.15).
 
 ## 3. Matriz por área
 
@@ -75,9 +75,9 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Feature | Fonte | XenDroid | Cabe? |
 |---|---|---|---|
 | FPS, CPU, GPU (KGSL/devfreq), RAM, temperaturas | Bannerlator `484532f5`, DroidDeck `ab8542e`, Eden `fe51be43` | **Tem** (`HudMetric`, estilos compacto/completo) | — |
-| Potência em watts e estimativa de bateria/tempo de carga | Bannerlator `6a14c4a2` (detecta mA × µA), DroidDeck `2792071`, Eden `347d54bc` | **Não tem** | **Alta / P** |
+| Potência em watts e estimativa de bateria/tempo de carga | Bannerlator `6a14c4a2` (detecta mA × µA), DroidDeck `2792071`, Eden `347d54bc` | **Impl. + Local no lote 14f** (watts da bateria e tempo restante/de carga no HUD; aparelho pendente) | **Alta / P** |
 | Memória de GPU via KGSL | DroidDeck `0cc3fe6` | **Impl. + Local no lote 15g** (total do KGSL, todos os apps; aparelho pendente, roteiro 58) | Média / P |
-| FPS que cai a 0 quando não chega quadro novo (não congela no último valor) | Bannerlator `f520027c` | A conferir no HUD (o run já conta segundos sem quadro como ociosos) | Alta / P |
+| FPS que cai a 0 quando não chega quadro novo (não congela no último valor) | Bannerlator `f520027c` | **Impl. + Local no lote 14f** (o HUD mostra 0 sem quadro novo; aparelho pendente) | Alta / P |
 | Tamanhos, posição e contorno do HUD por jogo | Bannerlator (Fusion HUD pill/mega) | **Impl. + Local no lote 15g** (lugar e tamanho por jogo, caixa/contorno/texto; aparelho pendente, roteiro 58) | Média / P–M |
 | Cores de alerta por temperatura e °C/°F | Bannerlator `f6733d01` | **Não tem** | Alta / P (valor baixo) |
 | Linha de identificação (build, driver, SoC) | Eden `64ff59e8`, `2665c5cc` | **Parcial**: driver no menu (12b), build no Sobre | Alta / P |
@@ -87,8 +87,8 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Feature | Fonte | XenDroid | Cabe? |
 |---|---|---|---|
 | Win-FG/LSFG com multiplicador | Bannerlator, DroidDeck, Eden `2000fdfb` | **Tem**, experimental (F0x) | — |
-| Leitura ao vivo "base → mostrado" e quadros perdidos | Bannerlator `4341db5a`, DroidDeck (linha de desempenho) | **Parcial**: tempo de GPU ao vivo; submetidos, sintéticos e perdidos só no registro do run (F08) | Alta / P |
-| Aviso quando FPS × multiplicador passa do Hz da tela, e ajuste do Hz | Bannerlator `a6cdc8e0`, `2c57b3f8` | **Parcial**: o governador marca cadência × multiplicador acima do Hz, sem aviso no menu | Alta / P (aviso) |
+| Leitura ao vivo "base → mostrado" e quadros perdidos | Bannerlator `4341db5a`, DroidDeck (linha de desempenho) | **Impl. + Local no lote 14i** ("base → enviados" ao vivo na aba Gráficos, modo Desenvolvedor, build debug; quadros perdidos seguem no registro do run; aparelho pendente) | Alta / P |
+| Aviso quando FPS × multiplicador passa do Hz da tela, e ajuste do Hz | Bannerlator `a6cdc8e0`, `2c57b3f8` | **Impl. + Local no lote 14i** (aviso antes de ligar, com o limite Hz ÷ multiplicador; o Hz continua na escolha manual; aparelho pendente) | Alta / P (aviso) |
 | Governador probe/backoff com corte térmico | Bannerlator `1c18ff56`, Eden (`frame_gen_pacer`) | **Fora por desenho** (reconferido no lote 15r): F04 é consultivo e nunca age; agir exigiria A/B medido no aparelho, e o aviso térmico do 15j já cobre o corte térmico sem mexer em ajustes | Média / M, só com A/B no aparelho |
 | Cadência pelos quadros do jogo; desarmar no resize da Surface | DroidDeck `05933a5`, `565987e` | **Tem por desenho** (conferido no lote 15h): agenda por quadro guest (A02/F02); as imagens do FG têm o tamanho da saída do jogo, então um resize da Surface não as invalida | Média / P |
 | LSFG por FPS-alvo (60/90/120), além do multiplicador | Eden `df05d3de` | **Impl. + Local no lote 15d** (alvo exato: menor multiplicador inteiro + limite do jogo; o modo adaptativo do pacer não está ligado; aparelho pendente, roteiro 55) | Média / M |
@@ -102,7 +102,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Bilinear, CAS, FSR1 | Bannerlator, Eden | **Tem** (cvar e menu em jogo) | — |
 | Escala de resolução interna (supersampling) | Bannerlator `c3cbe491` | **Tem** (`draw_resolution_scale_x/y`) | — |
 | Modos Ajustar/Preencher/Esticar/Inteiro | Bannerlator `886b7708` | **Tem** | — |
-| **Filtragem anisotrópica por jogo** | Bannerlator `035d7165`; aX360e expõe `anisotropic_override` | **Não tem** (o cvar existe no Xenia, mas não está no esquema) | **Alta / P** |
+| **Filtragem anisotrópica por jogo** | Bannerlator `035d7165`; aX360e expõe `anisotropic_override` | **Impl. + Local no lote 14b** (`anisotropic_override` por jogo; aparelho pendente) | **Alta / P** |
 | Margem de TV (overscan) | Bannerlator (barras de área segura) | **Impl. + Local no lote 15h** (0–10% de cada lado, só na saída para TV; aparelho pendente, roteiro 59) | Média / P. Atenção: o `present_safe_area_x/y` do Xenia (exposto pelo aX360e) é outra coisa, quanto da imagem pode ser cortado para evitar faixas; esse entrou no lote 14b |
 | Debanding | Bannerlator `e836265d` | **Tem** (revisto no lote 14j): o "debanding" do Bannerlator é um dither terminal antes dos 8 bits, o mesmo que o `postprocess_dither` do Xenia (ruído azul), que não fazia nada até o lote 14b e agora também está no modo Jogador ("Reduzir faixas de cor") | — |
 | SGSR / SGSR HQ | Bannerlator `7e71cb8f` | **Impl. + Local no lote 14j** (SGSR 1, BSD-3-Clause com aviso no APK; testado em Vulkan por software; custo no aparelho a medir); SGSR HQ (direção de borda) não | Média / M |
@@ -136,17 +136,17 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Feature | Fonte | XenDroid | Cabe? |
 |---|---|---|---|
 | P1–P4 com hot-plug | Bannerlator (#333), DroidDeck | **Tem** (lote 6, U11) | — |
-| **Esconder/mostrar os controles de toque ao vivo quando um controle físico é usado ou conectado** | Bannerlator `f76b16e1`; Eden `e4dccd5a`; DroidDeck `432e197` | **Parcial**: decide uma vez por instalação se começam visíveis e somem depois de 8 s sem toque | **Alta / P** |
+| **Esconder/mostrar os controles de toque ao vivo quando um controle físico é usado ou conectado** | Bannerlator `f76b16e1`; Eden `e4dccd5a`; DroidDeck `432e197` | **Impl. + Local no lote 14d** (somem com o controle físico e voltam ao toque; aparelho pendente) | **Alta / P** |
 | Atalho para ligar/desligar os controles de toque | DroidDeck `e4b0338` | **Tem** | — |
 | Teste de controle com entrada ao vivo e rumble de teste | Bannerlator `5ddd0f6d`, `967a15dc`; X360 Mobile v0.6.0 | **Tem** (U05, U08); bateria por controle não | — |
-| Zona morta dos sticks físicos ajustável | aX360e (`left/right_stick_deadzone_percentage`) | **Não tem** (fixa em 8%) | **Alta / P** |
-| Giroscópio só enquanto um gatilho é segurado; modo orientação | Bannerlator `7cf04b57`, `c575091c` | **Parcial**: câmera por giroscópio com sensibilidade e calibração | Alta / P |
-| Entrada sem buffer (`requestUnbufferedDispatch`) | Bannerlator `3b08d65e` | **Não tem** | Alta / P (medir latência no aparelho) |
+| Zona morta dos sticks físicos ajustável | aX360e (`left/right_stick_deadzone_percentage`) | **Impl. + Local no lote 14b** (zona morta de cada stick por jogo; aparelho pendente) | **Alta / P** |
+| Giroscópio só enquanto um gatilho é segurado; modo orientação | Bannerlator `7cf04b57`, `c575091c` | **Impl. + Local no lote 14h** ("segurar para mirar": sempre, segurando LT ou LB; aparelho pendente); modo orientação não | Alta / P |
+| Entrada sem buffer (`requestUnbufferedDispatch`) | Bannerlator `3b08d65e` | **Impl. + Local no lote 14h** (sticks e toque sem agrupamento, Android 11+; latência a medir no aparelho) | Alta / P (medir latência no aparelho) |
 | Remapear tocando no botão desenhado; modelo "qualquer controle"; copiar mapeamento | Bannerlator `4344ef49`, `4811d46c` | **Impl. + Local no lote 15o** (controle desenhado, tocar para mapear, troca quando a tecla já é de outro botão, aviso de tecla repetida, A/B-X/Y no padrão Nintendo; aparelho pendente, roteiro 66); o mapeamento já é um só para qualquer controle, então copiar entre controles não se aplica | Média / M |
 | Editor de toque: grupos, zona morta por elemento, ajuste à grade | Bannerlator `9dd238bb`, `a20fca5a`; Eden `76be55bc` | **Impl. + Local** nas três partes: ajuste à grade (já existia, com posição, escala 0,5–3×, visibilidade, layouts por jogo e edição pela biblioteca), zona morta por elemento no lote 15f (direcional e analógicos) e grupos no lote 15r (ABXY, gatilho + bumper, Back + Start, analógico + clique, movem e redimensionam juntos); aparelho pendente, roteiros 57 e 69 | Média / M |
 | Deslizar o dedo de um botão para outro | Bannerlator `72db7f4d` | **Impl. + Local no lote 15f** (botões e direcional; analógico opcional; desligado por padrão; aparelho pendente, roteiro 57) | Média / M |
 | Sticks adaptativos e câmera por toque | DroidDeck `9530e7b`, `659ff48`; X360 Mobile v0.6.2 | **Tem** (sticks adaptativos, U07) | — |
-| Soltar o que está pressionado quando o toque é cancelado ou um diálogo assume | DroidDeck `c66e4ba`; X360 Mobile v0.6.2 | A conferir | Alta / P |
+| Soltar o que está pressionado quando o toque é cancelado ou um diálogo assume | DroidDeck `c66e4ba`; X360 Mobile v0.6.2 | **Tem** (conferido no lote 15z): o overlay solta tudo no cancelamento do toque (ACTION_CANCEL, perda de foco) e abrir o menu solta as entradas físicas | Alta / P |
 | Troca A/B | Eden `978ba3ed` | **Tem** (U04) | — |
 
 ### 3.8 Desempenho e energia
@@ -154,7 +154,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Feature | Fonte | XenDroid | Cabe? |
 |---|---|---|---|
 | Modo sustentado e ADPF | Bannerlator `cb19ec8e`; DroidDeck `06e67cd`, depois removidos em `e217cbe` | **Tem** (opções; ADPF reporta trabalho real) | Manter o sustentado desligado por padrão: o DroidDeck tirou porque "limita os clocks na maioria dos HALs" |
-| **Declarar o app como jogo** (`appCategory`/`isGame`, `game_mode_config` recusando limite de FPS e redução de resolução do sistema, `GameManager` em gameplay) | DroidDeck `06e67cd`; Bannerlator `35517de9` | **Não tem** | **Alta / P** (efeito depende do fabricante; medir) |
+| **Declarar o app como jogo** (`appCategory`/`isGame`, `game_mode_config` recusando limite de FPS e redução de resolução do sistema, `GameManager` em gameplay) | DroidDeck `06e67cd`; Bannerlator `35517de9` | **Impl. + Local no lote 14g** (`appCategory` jogo e `game_mode_config`; efeito depende do fabricante, aparelho pendente) | **Alta / P** (efeito depende do fabricante; medir) |
 | Watchdog térmico pelos pontos de corte do aparelho | Bannerlator `445d6655` | **Impl. + Local no lote 15j** (consultivo: headroom térmico do Android com histerese, aviso e linha do tempo; nunca age; aparelho pendente, roteiro 61) | Média / M |
 | Afinidade e núcleos grandes | Bannerlator `3c4b8983`; Eden `1925726b` | **Não exposto** | Baixa / M (o Eden fixou nos núcleos 0–3; não copiar sem medir) |
 | GPU travada no clock máximo via KGSL | Bannerlator `0f693dd5` | **Não tem** | Baixa / M (térmico; só opt-in) |
@@ -201,7 +201,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Catálogo de drivers com download | Eden `b60d0aab`, `8663d7fa`; Bannerlator `54c1dd35` | **Tem** (`drivers.json` e download) | — |
 | Fontes de driver do usuário; driver sugerido por GPU | Bannerlator `54c1dd35`; DroidDeck `f13c885` | **Impl. + Local no lote 15p** (repositórios do GitHub como fontes, adicionados e removidos no gerenciador; sugestão pela família da Adreno nos nomes dos builds; aparelho e rede pendentes, roteiro 67) | Média / M |
 | Cache invalidado quando o driver muda | Eden `1643d876`, `c2794985`; X360 Mobile v0.6.2 | **Tem** (A06: o arquivo do cache nomeia vendor, device e `pipelineCacheUUID`) | — |
-| **Limpar o cache de shaders de um jogo pela interface** | Eden `97a8470b`; X360 Mobile v0.5.2 | **Não tem** (caches ocultos em Dados do usuário) | **Alta / P** |
+| **Limpar o cache de shaders de um jogo pela interface** | Eden `97a8470b`; X360 Mobile v0.5.2 | **Impl. + Local no lote 14h** (na ficha do jogo; aparelho pendente) | **Alta / P** |
 | Variáveis do Turnip com ajuda | Eden `87d4c673`; Bannerlator `1933903c` | **Impl. + Local no lote 15i** (flags do TU_DEBUG uma a uma, com explicação; aparelho pendente, roteiro 60) | Média / P |
 
 ### 3.13 Logs, crashes e relatórios
@@ -211,8 +211,8 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Logs por sessão, manter N, limpar, compartilhar | DroidDeck `d6e4ab1`; Bannerlator `96742d22` | **Tem** | — |
 | Endereços, contas e identificadores apagados | Bannerlator `5149117f`; DroidDeck `3efa5ac`; Eden `bc55ed49` | **Tem** (A07, A11) | — |
 | Motivo da saída do processo (sinal ou código) | Bannerlator `4a76d7ca` | **Tem** (ApplicationExitInfo; linha do crash nativo, 12n) | — |
-| **Backtrace completo do tombstone** (ApplicationExitInfo, Android 12+) | Bannerlator `d883d01d`, `9a68627c` | **Não tem**: só a linha que o hook do core grava | **Alta / M** |
-| **Ajustes alterados no topo do log e no relatório do run** | Eden `cbb92e75`; X360 Mobile v0.6.0 (cvars não padrão na revisão) | **Não tem** | **Alta / P** |
+| **Backtrace completo do tombstone** (ApplicationExitInfo, Android 12+) | Bannerlator `d883d01d`, `9a68627c` | **Impl. + Local no lote 14e** (ApplicationExitInfo, Android 12+, no registro do run; aparelho pendente) | **Alta / M** |
+| **Ajustes alterados no topo do log e no relatório do run** | Eden `cbb92e75`; X360 Mobile v0.6.0 (cvars não padrão na revisão) | **Impl. + Local no lote 14c** (no `xe.log`, no registro e no relatório do run; aparelho pendente) | **Alta / P** |
 | Filtro e nível de log ajustáveis | Eden `b7f0f985`, `74ccea3d` | **Impl. + Local no lote 15i** (nível já existia; filtro por subsistema, `log_mask`) | Média / P |
 | Automação para testes | DroidDeck `54adf9a` (ponte de debug) | **Tem** por outro caminho (suíte `.uitest`, lote 13) | — |
 
@@ -221,7 +221,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Feature | Fonte | XenDroid | Cabe? |
 |---|---|---|---|
 | Canais, SHA-256 obrigatório, checagem de pacote e assinatura | DroidDeck `6beeb29`, `af7dc40`; Eden `79b162a3` | **Tem** (Stable/Preview/Off) | — |
-| Dizer "não dá para instalar" quando o Android recusaria | DroidDeck `fbc0014` | A conferir | Alta / P |
+| Dizer "não dá para instalar" quando o Android recusaria | DroidDeck `fbc0014` | **Tem** (conferido no lote 15z): o atualizador recusa antes, com o motivo, um arquivo que não é APK, de outro app, não mais novo ou de outra chave (R03) | Alta / P |
 | Mensagens assinadas no app; rollout escalonado; builds bloqueadas | X360 Mobile v0.6.2 | **Não tem** | Baixa / M (exige publicador) |
 
 ### 3.15 Configurações e comunidade
@@ -229,7 +229,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Feature | Fonte | XenDroid | Cabe? |
 |---|---|---|---|
 | Ajustes por jogo, presets, importar/exportar | todos | **Tem** (L08, C05, U06) | — |
-| **Expor mais cvars do Xenia** | aX360e `8025979` (204 cvars) | **Parcial**: 135 chaves | **Alta / P–M**: começar por `anisotropic_override`, `present_safe_area_x/y`, zonas mortas dos sticks, `async_shader_compilation` (com aviso) e os `occlusion_query_*` (compatibilidade) |
+| **Expor mais cvars do Xenia** | aX360e `8025979` (204 cvars) | **Parcial**: 135 chaves antes; o lote 14b expôs as que faltavam de imagem e controle (anisotrópica, área segura, zonas mortas, shaders assíncronos, oclusão) e o 15i/15j mais duas (filtro de log, buffer de áudio adaptativo): 146 entradas no esquema de ajustes | **Alta / P–M**: começar por `anisotropic_override`, `present_safe_area_x/y`, zonas mortas dos sticks, `async_shader_compilation` (com aviso) e os `occlusion_query_*` (compatibilidade) |
 | Configs da comunidade (buscar, "combina com meu aparelho", votos, aplicar só o que muda, enviar) | Bannerlator `09a319ff`, `8b0eea95` | **Impl. + Local no lote 15b**, desligado por padrão: cliente (buscar, ranking pelo aparelho, votos, aplicar pelo C05, enviar com consentimento, apagar) e servidor de referência com testes; falta alguém hospedar um servidor e o uso no aparelho (roteiro 53) | Média / G (exige servidor) |
 
 ### 3.16 Não se aplica
