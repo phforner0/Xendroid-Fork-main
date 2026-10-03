@@ -1316,4 +1316,11 @@
     <string name="panel_changed">Alterados do padrão (%1$d):</string>
     <string name="panel_changed_none">Alterados do padrão: nenhum</string>
     <string name="panel_changed_more">e mais %1$d</string>
+    <string name="km_drawn_hint">Toque num botão do controle para dar uma tecla a ele, ou escolha na lista abaixo.</string>
+    <string name="km_swap_face">Trocar A/B e X/Y</string>
+    <string name="km_swap_face_note">Para controles no padrão da Nintendo, com o A à direita. Toque de novo para desfazer.</string>
+    <string name="km_shared_warning">Uma tecla aciona dois botões, então um deles não faz nada: %1$s.</string>
+    <string name="km_swapped">%1$s tinha essa tecla, então ficou com a que %2$s tinha antes.</string>
+    <string name="km_now">Agora: %1$s</string>
+    <string name="km_shared_mark">%1$s · também em outro botão</string>
 </resources>

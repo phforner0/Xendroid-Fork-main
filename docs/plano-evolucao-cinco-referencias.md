@@ -570,6 +570,10 @@ terceiro nível do HUD: métricas ao vivo, ritmo dos últimos segundos e da sess
 histograma de tempos de quadro do núcleo, fontes de travada (pipelines, áudio), calor e os ajustes em
 vigor, incluindo os alterados do padrão. Só leitura; nada é ajustado sozinho.
 
+**Lote 15o (Impl. + Local; aparelho pendente, roteiro 66):** controle desenhado na tela de
+mapeamento (tocar no botão para mapear), destaque de sem tecla/repetido/alterado, troca automática
+quando a tecla já é de outro botão e o atalho A/B-X/Y para o padrão Nintendo.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

@@ -1277,4 +1277,11 @@
     <string name="panel_changed">Changed from the defaults (%1$d):</string>
     <string name="panel_changed_none">Changed from the defaults: none</string>
     <string name="panel_changed_more">and %1$d more</string>
+    <string name="km_drawn_hint">Tap a button on the controller to give it a key, or pick it in the list below.</string>
+    <string name="km_swap_face">Swap A/B and X/Y</string>
+    <string name="km_swap_face_note">For controllers laid out like Nintendo\'s, with A on the right. Tap again to undo.</string>
+    <string name="km_shared_warning">One key drives two buttons, so one of them does nothing: %1$s.</string>
+    <string name="km_swapped">%1$s had that key, so it got the one %2$s had before.</string>
+    <string name="km_now">Now: %1$s</string>
+    <string name="km_shared_mark">%1$s · on another button too</string>
 </resources>

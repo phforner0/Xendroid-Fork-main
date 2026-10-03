@@ -754,3 +754,8 @@ status, "Build da nuvem (fim do lote 14)").
    e Hz, modo sustentado/ADPF, ajustes alterados). Num trecho com engasgos (primeira vez num lugar novo,
    compilando shaders) aparece "engasgando" e os pipelines sobem; parado, o ritmo diz que não há quadros.
    Conferir que cabe na tela (arrastar e redimensionar com pinça) e que o custo do HUD não muda o FPS.
+66. Lote 15o — mapeamento desenhado: Biblioteca → ⋮ → Mapeamento de teclas: o controle desenhado cabe na
+   tela (retrato e paisagem) e cada toque abre a captura do botão certo; com TalkBack, cada botão é lido
+   com nome e tecla. Dar a A a tecla do B: aviso de troca e B fica com a tecla antiga de A; num jogo, os
+   dois funcionam. "Trocar A/B e X/Y" com um controle de Switch Pro / 8BitDo no modo Nintendo: os botões
+   seguem a posição; tocar de novo volta. Um botão "Limpar" fica destacado como sem tecla.

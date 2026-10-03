@@ -38,6 +38,12 @@ class KeymapStore(private val appContext: Context) {
         appContext.dataStore.edit { it[key(index)] = androidKeyCode }
     }
 
+    /** 15o: several buttons in one write (a key traded between two buttons, the face-button swap). */
+    suspend fun setBindings(changes: Map<Int, Int>) {
+        if (changes.isEmpty()) return
+        appContext.dataStore.edit { prefs -> changes.forEach { (index, code) -> prefs[key(index)] = code } }
+    }
+
     /** Clear a single binding (stores 0 = unbound, matching legacy "Clear"). */
     suspend fun clearBinding(index: Int) = setBinding(index, 0)
 

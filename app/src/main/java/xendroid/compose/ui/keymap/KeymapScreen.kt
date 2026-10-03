@@ -1,6 +1,7 @@
 package xendroid.compose.ui.keymap
 
 import xendroid.compose.data.GameButton
+import xendroid.compose.data.GameButtons
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
 import android.view.KeyEvent as AndroidKeyEvent
@@ -18,13 +19,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KeymapScreen(vm: KeymapViewModel, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val swap by vm.swap.collectAsStateWithLifecycle()
     var capturing by remember { mutableStateOf<KeymapRow?>(null) }
+    val snackbar = remember { SnackbarHostState() }
+    val unbound = stringResource(R.string.km_unbound)
+    fun bindingText(code: Int) = if (code == 0) unbound else keyLabel(code)
+
+    // 15o: say when a key was taken from another button, which got this one's old key.
+    swap?.let { traded ->
+        val message = stringResource(R.string.km_swapped, buttonLabel(GameButtons.ALL[traded.from]),
+            buttonLabel(GameButtons.ALL[traded.index]))
+        LaunchedEffect(traded) {
+            snackbar.showSnackbar(message)
+            vm.onSwapShown()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -39,13 +55,55 @@ fun KeymapScreen(vm: KeymapViewModel, onBack: () -> Unit) {
                     TextButton(onClick = { vm.onResetDefaults() }) { Text(stringResource(R.string.km_reset)) }
                 },
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+            // 15o: the controller drawn, each button where it sits; tapping one binds it.
+            item(key = "drawing") {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    ControllerDrawing(
+                        label = { buttonLabel(GameButtons.ALL[it]) },
+                        binding = { index -> bindingText(state.rows.firstOrNull { it.button.index == index }?.boundKey ?: 0) },
+                        state = { index ->
+                            val key = state.rows.firstOrNull { it.button.index == index }?.boundKey ?: 0
+                            when {
+                                state.rows.isEmpty() -> ButtonState.USUAL
+                                key == 0 -> ButtonState.UNBOUND
+                                index in state.shared -> ButtonState.SHARED
+                                index in state.changed -> ButtonState.CHANGED
+                                else -> ButtonState.USUAL
+                            }
+                        },
+                        onPick = { index -> state.rows.firstOrNull { it.button.index == index }?.let { capturing = it } },
+                        modifier = Modifier.widthIn(max = 560.dp),
+                    )
+                    Text(stringResource(R.string.km_drawn_hint), style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp))
+                    if (state.shared.isNotEmpty()) {
+                        val names = GameButtons.ALL.filter { it.index in state.shared }.map { buttonLabel(it) }
+                        Text(stringResource(R.string.km_shared_warning, names.joinToString(", ")),
+                            color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+            }
+            item(key = "swap-face") {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.km_swap_face)) },
+                    supportingContent = { Text(stringResource(R.string.km_swap_face_note)) },
+                    modifier = Modifier.clickable { vm.onSwapFaceButtons() },
+                )
+                HorizontalDivider()
+            }
             items(state.rows, key = { it.button.index }) { row ->
                 ListItem(
                     headlineContent = { Text(buttonLabel(row.button)) },
-                    supportingContent = { Text(if (row.boundKey == 0) stringResource(R.string.km_unbound) else keyLabel(row.boundKey)) },
+                    supportingContent = {
+                        Text(bindingText(row.boundKey).let {
+                            if (row.button.index in state.shared) stringResource(R.string.km_shared_mark, it) else it
+                        })
+                    },
                     trailingContent = {
                         TextButton(onClick = { vm.onClear(row.button.index) }) { Text(stringResource(R.string.km_clear)) }
                     },
@@ -59,6 +117,7 @@ fun KeymapScreen(vm: KeymapViewModel, onBack: () -> Unit) {
     capturing?.let { row ->
         KeyCaptureDialog(
             label = buttonLabel(row.button),
+            current = bindingText(row.boundKey),
             onKey = { code -> vm.onKeyCaptured(row.button.index, code); capturing = null },
             onDismiss = { capturing = null },
         )
@@ -66,7 +125,7 @@ fun KeymapScreen(vm: KeymapViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun KeyCaptureDialog(label: String, onKey: (Int) -> Unit, onDismiss: () -> Unit) {
+private fun KeyCaptureDialog(label: String, current: String, onKey: (Int) -> Unit, onDismiss: () -> Unit) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     BackHandler(enabled = true, onBack = onDismiss)
@@ -86,7 +145,12 @@ private fun KeyCaptureDialog(label: String, onKey: (Int) -> Unit, onDismiss: () 
                             onKey(ev.nativeKeyEvent.keyCode); true
                         } else false
                     }
-            ) { Text(stringResource(R.string.km_waiting)) }
+            ) {
+                Column {
+                    Text(stringResource(R.string.km_now, current))
+                    Text(stringResource(R.string.km_waiting))
+                }
+            }
         },
     )
 }
