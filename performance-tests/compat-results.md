@@ -13,7 +13,7 @@ em que o app foi pausado).
 | Jogo | Sintoma | Causa | Situação |
 |---|---|---|---|
 | Forza Horizon 2 (4D530AA4) | 24–27 fps, GPU 36–41 ms/frame na corrida | não tinha os quirks de GPU do Forza Horizon | quirks do FH1 no FH2 (b90): ~29,9 fps, GPU 20–22 ms |
-| Need for Speed: Most Wanted (45410961) | crash em ~40% das aberturas: `bctrl` para 0 em 0x898D834C (às vezes 0x898C9C80/0x898C9E44) | **ABA na pilha lock-free do pool de jobs**: o `stwcx.` emulado comparava só o valor | **corrigido** (b97/b98): 0 crashes em 14 aberturas |
+| Need for Speed: Most Wanted (45410961) | crash em ~40% das aberturas: `bctrl` para 0 em 0x898D834C (às vezes 0x898C9C80/0x898C9E44) | **ABA na pilha lock-free do pool de jobs**: o `stwcx.` emulado comparava só o valor | **corrigido** (b97/b98): 0 crashes em 14 aberturas; **em jogo** (b101) com os quirks de `fmadz` e memexport, sem crash em 4 corridas de 90 s |
 | Halo 4 (4D530919) | vídeos Bink do prólogo pretos (legendas empilhadas); o resto renderiza | aberto: 155× memexport para `k_8_8_8_8_A` e "Couldn't extract memexport stream constant index"; não é formato de textura sem host (o aviso novo não dispara) | aberto (precisa de captura do frame do vídeo) |
 | Sonic Unleashed (53450812) | um crash (SIGTRAP no thunk de resolução = chamada para endereço que não resolve) | não reproduzido depois; pode ser da mesma classe (ponteiro de função vindo de estrutura lock-free) | reavaliar no b98 |
 | GTA IV / Red Dead Redemption | 22 / 25 fps, presos na thread de comandos (GTA: ~8500 draws/frame) | — | próximo item |
@@ -101,6 +101,31 @@ mesmo).
 
 Nada pior; uma thread do guest gira bem menos (a CAS por valor deixava algum
 laço do jogo dar mais voltas).
+
+### Em jogo (b99–b101, 2026-10-03)
+
+Para passar da intro para a primeira cena 3D, o NFS precisou de três coisas:
+- `spirv_multiply_zero_test_on_bits` (quirk): o compilador do Turnip não
+  tem `fmadz`, usado pelo vertex shader 13EE4011483DC17D;
+- `memexport_enable` + `readback_resolve = uma` (quirks): a CPU lê dados que
+  a GPU exporta e para em `PM4_WAIT_REG_MEM` sem eles; como o driver não
+  importa a RAM do guest, o export é devolvido à RAM depois de cada desenho
+  que exporta (espera síncrona);
+- **devolver só os bytes que o desenho mudou** (b101). A b99 copiava a
+  faixa inteira de cada stream — a capacidade declarada (`index_count` ×
+  elemento), não o que o shader escreve — do espelho da GPU para a RAM. Uma
+  delas, `1BAC31A0` (409 600 bytes), cobre o gerenciador e o pool de jobs; a
+  cópia de 3 em 3 desenhos devolvia aos jobs estados velhos (gerados no
+  espelho antes de a CPU escrevê-los), e o jogo crashava em 0x898D834C com
+  um job no meio de uma lista, `fn` = 0 e geração antiga — o mesmo PC do
+  ABA, outra causa. Agora a GPU copia as faixas para um buffer visível ao
+  host logo antes do desenho e, terminado, só os bytes diferentes vão para a
+  RAM, um a um (o resto pode ter sido escrito pela CPU agora mesmo). Medido:
+  dos 409 600 bytes, o desenho muda **1**; dos 112 640, até 56 320; dos
+  5 632, até 3 520.
+
+b101: **4 de 4** aberturas chegaram à cena 3D (~170 s) e dirigiram 90 s sem
+crash (b99: um crash em duas), a ~19 fps, imagem correta.
 
 ### Ferramentas novas (diagnóstico)
 

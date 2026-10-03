@@ -38,6 +38,16 @@ static const Quirk kQuirks[] = {
     {0x49470804, "network_enabled", false, "hangs on a blocking recvfrom"},
     {0x4E4D083A, "spirv_multiply_zero_test_on_bits", true,
      "ir3 cannot compile fmadz"},
+    // NFS Most Wanted (Criterion): the Turnip compiler rejects fmadz in VS
+    // 13EE4011483DC17D. The bit test preserves the SM3 zero-multiply result.
+    {0x45410961, "spirv_multiply_zero_test_on_bits", true,
+     "ir3 cannot compile fmadz in the first 3D scene"},
+    // Its CPU consumes memory-exported geometry. Without guest-visible
+    // exports the CPU/GPU handshake stalls at PM4_WAIT_REG_MEM after the FMV.
+    {0x45410961, "memexport_enable", true,
+     "CPU consumes memexport output before continuing the command stream"},
+    {0x45410961, "readback_resolve", "uma",
+     "host-mapped fallback for memexport when guest RAM import is unavailable"},
     // Forza Horizon: both exact (the same image for every input); on the POCO
     // F7 (Adreno 825) together +3.0% fps, -3.7% GPU time (AB5, 2026-09-29).
     {0x4D5309C9, "spirv_texture_sign_branch", true,

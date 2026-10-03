@@ -1487,6 +1487,22 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // Temporary storage for memexport stream constants used in the draw.
   std::vector<draw_util::MemExportRange> memexport_ranges_;
 
+  // memexport_enable without guest RAM import (the readback fallback in
+  // IssueDraw): the GPU copies the export ranges of the shared memory buffer
+  // here right before the exporting draw, so only the bytes the draw changed
+  // go back to guest RAM. A range is the stream's declared capacity, and the
+  // buffer's copy of the bytes the draw doesn't write can be older than guest
+  // RAM - copying it all back rolled Need for Speed Most Wanted's job objects,
+  // which share pages with an export, back to freed states.
+  bool EnsureMemexportSnapshotBuffer(uint32_t size);
+  VkBuffer memexport_snapshot_buffer_ = VK_NULL_HANDLE;
+  VkDeviceMemory memexport_snapshot_memory_ = VK_NULL_HANDLE;
+  const uint8_t* memexport_snapshot_mapping_ = nullptr;
+  bool memexport_snapshot_coherent_ = false;
+  uint32_t memexport_snapshot_size_ = 0;
+  std::vector<VkBufferCopy> memexport_snapshot_regions_;
+  std::vector<uint8_t> memexport_readback_after_;
+
   // Backend-agnostic resolve-to-guest-RAM copy decisions and read-watch
   // consumption tracking, shared with the D3D12 backend.
 #include "../command_processor_resolve_readwatch.inc"
