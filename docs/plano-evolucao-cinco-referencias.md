@@ -488,6 +488,12 @@ a todos os discos e sobrevive a mover/renomear o arquivo e à limpeza de cache. 
 remota opcional (chave no Keystore, limites/backoff, offline) — sem provedor escolhido, nada
 é baixado; validação no aparelho (roteiro 19).
 
+**Lote 15a (Impl. + Local; aparelho pendente, roteiro 52):** biblioteca em carrossel/XMB para
+controle e sofá (Bannerlator `16c292d2`/`223b1b8c`, Eden `61ffb309`): modo salvo ao lado da
+grade, arte do jogo em foco ao fundo, capa e tempo de jogo no alto, barra de capas com a da vez à
+esquerda e a coluna de ações (Jogar, Detalhes, Favoritar) embaixo dela; controle e toque pelo
+modelo puro `CarouselNav`. Mesmos filtros, busca e ordem da grade.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

@@ -64,6 +64,9 @@ enum class LibrarySort(val label: String) {
     NAME_ASC("Name A–Z"), NAME_DESC("Name Z–A"), FORMAT("Format"), RECENT("Recently played"),
 }
 
+/** How the library shows the games: the grid, or the carousel made for a controller. */
+enum class LibraryView { GRID, CAROUSEL }
+
 /** Orders by the title's last finished run (newest first); never-played games follow by name. */
 fun sortByRecent(games: List<Game>, activity: Map<String, xendroid.compose.sessions.TitleActivity>): List<Game> =
     games.sortedWith(compareByDescending<Game> { game -> game.titleId?.uppercase()?.let { activity[it]?.lastPlayedAt } ?: Long.MIN_VALUE }
@@ -93,6 +96,18 @@ class GameLibraryViewModel(
         .map { raw -> LibrarySort.entries.firstOrNull { it.name == raw } ?: LibrarySort.NAME_ASC }
         .catch { Log.w("GameLibrary", "Reading library sort failed", it); emit(LibrarySort.NAME_ASC) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibrarySort.NAME_ASC)
+
+    val view = preferences.libraryView
+        .map { raw -> LibraryView.entries.firstOrNull { it.name == raw } ?: LibraryView.GRID }
+        .catch { Log.w("GameLibrary", "Reading the library view failed", it); emit(LibraryView.GRID) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryView.GRID)
+
+    fun setView(view: LibraryView) {
+        viewModelScope.launch {
+            runCatching { preferences.setLibraryView(view.name) }
+                .onFailure { Log.w("GameLibrary", "Saving the library view failed", it) }
+        }
+    }
 
     fun toggleFavorite(game: Game) {
         viewModelScope.launch {

@@ -662,3 +662,10 @@ status, "Build da nuvem (fim do lote 14)").
    gargalo. "Reduzir faixas de cor" (modo Jogador) num céu/neblina com degraus visíveis: os degraus
    somem na próxima abertura do jogo, sem ruído perceptível a 30 cm. Em Sobre → Licenças, o link
    "BSD-3-Clause" do SGSR abre o texto da licença.
+52. Lote 15a — biblioteca em carrossel: com um controle, no topo da biblioteca tocar "Carrossel" (ou
+   apertar View/Select): a arte do jogo em foco aparece ao fundo e a barra de capas embaixo. ◀ ▶ andam
+   um jogo por vez (segurado, num ritmo legível), LB/RB pulam 5, ▲ ▼ escolhem Jogar/Detalhes/Favoritar,
+   A executa, B volta para Jogar e, em Jogar, sai como sempre; Y marca favorito (estrela no nome).
+   Com o toque: tocar numa capa foca, tocar de novo abre o jogo. Filtros, busca e ordem iguais aos da
+   grade. Fechar e abrir o app: continua no carrossel, no último jogo focado. Conferir em retrato e
+   paisagem e com uma biblioteca grande (100+ jogos) se a rolagem fica fluida.

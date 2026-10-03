@@ -116,6 +116,7 @@ fun GameLibraryScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val sort by viewModel.sort.collectAsStateWithLifecycle()
+    val view by viewModel.view.collectAsStateWithLifecycle()
     val activity by viewModel.activity.collectAsStateWithLifecycle()
     val coverRevision by viewModel.coverRevision.collectAsStateWithLifecycle()
     // L05: the game whose cover is being picked; a result after a recreation has none and is dropped.
@@ -282,6 +283,12 @@ fun GameLibraryScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.lib_title)) },
                 actions = {
+                    // 15a: the grid or the carousel made for a controller (View/Select switches too).
+                    TextButton(onClick = {
+                        viewModel.setView(if (view == LibraryView.GRID) LibraryView.CAROUSEL else LibraryView.GRID)
+                    }) {
+                        Text(stringResource(if (view == LibraryView.GRID) R.string.lib_view_carousel else R.string.lib_view_grid))
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.lib_settings))
                     }
@@ -494,6 +501,22 @@ fun GameLibraryScreen(
                                         collectionFilter = null
                                     }
                                 }
+                            } else if (view == LibraryView.CAROUSEL) {
+                                GameCarousel(
+                                    games = visibleGames,
+                                    viewModel = viewModel,
+                                    coverRevision = coverRevision,
+                                    favorites = favorites,
+                                    activity = activity,
+                                    lastFocusedId = lastFocusedId,
+                                    focusAllowed = !searchHasFocus && pendingGame == null && pendingDiscInstall == null,
+                                    restoreFocus = focusRestoreTick,
+                                    onFocused = { lastFocusedId = it },
+                                    onLaunch = startGame,
+                                    onDetails = { lastFocusedId = it.stableId; pendingGame = it },
+                                    onSwitchView = { viewModel.setView(LibraryView.GRID) },
+                                    modifier = Modifier.weight(1f),
+                                )
                             } else {
                                 GameGrid(
                                     games = visibleGames,
@@ -508,6 +531,7 @@ fun GameLibraryScreen(
                                     onFocused = { lastFocusedId = it },
                                     onLaunch = startGame,
                                     onLongPress = { lastFocusedId = it.stableId; pendingGame = it },
+                                    onSwitchView = { viewModel.setView(LibraryView.CAROUSEL) },
                                 )
                             }
                         }
@@ -1025,6 +1049,7 @@ private fun GameGrid(
     focusAllowed: Boolean,
     lastFocusedId: String?,
     onFocused: (String) -> Unit,
+    onSwitchView: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val inputMode = LocalInputModeManager.current.inputMode
@@ -1044,7 +1069,12 @@ private fun GameGrid(
         state = gridState,
         columns = GridCells.Adaptive(minSize = 120.dp),
         contentPadding = PaddingValues(12.dp),
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().onPreviewKeyEvent { event ->
+            // 15a: View/Select switches to the carousel, as it switches back there.
+            if (event.nativeKeyEvent.keyCode != AndroidKeyEvent.KEYCODE_BUTTON_SELECT) return@onPreviewKeyEvent false
+            if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) onSwitchView()
+            true
+        },
     ) {
         items(games, key = { it.stableId }) { game ->
             GameCell(game, viewModel, onLaunch, onLongPress,

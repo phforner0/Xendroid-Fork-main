@@ -1183,4 +1183,9 @@
     <string name="menu_unbuffered_value">Entrada sem buffer (menos atraso): %1$s</string>
     <string name="set_dither">Reduzir faixas de cor</string>
     <string name="set_dither_desc">Acrescenta um ruído fino à imagem final para os degradês (céu, neblina, menus) não mostrarem degraus em telas de 8 bits. Vale na próxima abertura do jogo; deixe desligado em telas de 10 bits de verdade.</string>
+    <string name="lib_view_grid">Grade</string>
+    <string name="lib_view_carousel">Carrossel</string>
+    <string name="lib_details">Detalhes</string>
+    <string name="lib_not_played">Ainda não jogado</string>
+    <string name="lib_carousel_hint">◀ ▶ jogos · ▲ ▼ opções · A escolhe · Y favorito · LB/RB pula 5 · View: grade</string>
 </resources>

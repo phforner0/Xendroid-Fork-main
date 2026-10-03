@@ -1146,4 +1146,9 @@
     <string name="menu_unbuffered_value">Unbuffered input (lower latency): %1$s</string>
     <string name="set_dither">Reduce color banding</string>
     <string name="set_dither_desc">Adds a fine noise to the final image so gradients (skies, fog, menus) show no steps on 8-bit screens. Applies on the next game start; off on true 10-bit displays.</string>
+    <string name="lib_view_grid">Grid</string>
+    <string name="lib_view_carousel">Carousel</string>
+    <string name="lib_details">Details</string>
+    <string name="lib_not_played">Not played yet</string>
+    <string name="lib_carousel_hint">◀ ▶ games · ▲ ▼ options · A select · Y favorite · LB/RB jump 5 · View: grid</string>
 </resources>
