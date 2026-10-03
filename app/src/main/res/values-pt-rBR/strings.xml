@@ -1244,4 +1244,11 @@
         <item quantity="other">Não enviados: %1$d ajustes deste jogo que recomendações não podem mudar (%2$s).</item>
         <item quantity="many">Não enviados: %1$d ajustes deste jogo que recomendações não podem mudar (%2$s).</item>
     </plurals>
+    <string name="ge_split">Tela dividida</string>
+    <string name="ge_split_off">Desligada</string>
+    <string name="ge_split_tabletop">Em dobrável meio aberto</string>
+    <string name="ge_split_always">Sempre</string>
+    <string name="ge_split_desc">O jogo vai para a parte de cima da tela e os controles ficam fora dele: na dobra de um dobrável em pé meio aberto, ou no meio de uma tela em retrato ou quase quadrada (\"Sempre\"). Abaixo da dobra os controles ficam como num telefone deitado.</string>
+    <string name="menu_split_title">Tela dividida</string>
+    <string name="menu_split_value">Tela dividida (jogo em cima, controles embaixo): %1$s</string>
 </resources>

@@ -680,3 +680,13 @@ status, "Build da nuvem (fim do lote 14)").
    efeito; "Restaurar anterior" desfaz. Votar "Ajudou" e "Não ajudou" (tocar de novo retira); apagar o
    próprio ajuste e conferir que some da lista. Sem rede: "Buscar" mostra o erro de conexão e a lista
    anterior continua. Com um build sem a URL, o cartão não aparece.
+54. Lote 15c — tela dividida: num dobrável (Galaxy Z Fold/Flip, Pixel Fold), editor de controles →
+   Ajustes gerais → "Tela dividida: Em dobrável meio aberto" (ou pelo menu em jogo, aba Controles).
+   Jogar com o aparelho aberto e plano: nada muda. Dobrar até ~90° com a dobra na horizontal, apoiado na
+   mesa: a imagem passa para a metade de cima e os controles para a de baixo (Fold aberto: controles como
+   num telefone deitado; Flip em retrato: controles na metade de baixo). Desdobrar: volta à tela inteira.
+   Conferir que os toques acertam os botões na metade de baixo, que o HUD e o menu seguem legíveis, e no
+   log do run as linhas "split". Num telefone comum em retrato, "Sempre" põe o jogo em cima, sem os
+   controles por cima da imagem; deitado, não divide. Conectar um controle físico (com "Esconder enquanto
+   um controle joga como P1"): sem dobra, a imagem volta à tela inteira. Com geração de quadros ligada,
+   dobrar/desdobrar durante o jogo e anotar se a imagem continua (mesmo caminho de uma rotação).

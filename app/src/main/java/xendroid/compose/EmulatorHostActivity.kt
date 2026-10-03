@@ -47,6 +47,14 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.flow.first
+import xendroid.compose.gamepad.atRect
 import android.content.res.Configuration
 import android.widget.Toast
 import android.os.VibrationEffect
@@ -282,6 +290,12 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var externalDisplay: ExternalGameDisplay? = null
     /** Null until the TV output reports (it starts on the phone). */
     private val externalDisplayLabel = mutableStateOf<String?>(null)
+    /** The game is drawn on another display (the TV); the handset keeps only the controls. */
+    private val gameOnExternalDisplay = mutableStateOf(false)
+    /** 15c: a horizontal fold half open (tabletop), as (top, bottom) in window pixels. */
+    private val windowFold = mutableStateOf<Pair<Int, Int>?>(null)
+    /** 15c: the split last written to the run's timeline. */
+    private var splitRecorded: String? = null
     private val scalingEffect = mutableIntStateOf(-1)
     private val performanceHints by lazy { PresenterPerformanceHints(applicationContext) }
     private val performanceHintsLabel = mutableStateOf("Presenter ADPF · Off")
@@ -446,6 +460,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
         enterImmersiveMode()
         gameModeSignal.update(xendroid.compose.core.GamePhase.LOADING)
+        watchFold()
 
         EmuProcessLink.bindToMainProcess(this)
 
@@ -935,6 +950,29 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         )
     }
 
+    /** 15c: follows the fold of a foldable (Jetpack WindowManager); a horizontal one half open is
+     *  the tabletop posture "Split screen" waits for. Devices without one report none. */
+    private fun watchFold() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                try {
+                    androidx.window.layout.WindowInfoTracker.getOrCreate(this@EmulatorHostActivity)
+                        .windowLayoutInfo(this@EmulatorHostActivity)
+                        .collect { info ->
+                            val fold = info.displayFeatures.filterIsInstance<androidx.window.layout.FoldingFeature>().firstOrNull {
+                                it.state == androidx.window.layout.FoldingFeature.State.HALF_OPENED &&
+                                    it.orientation == androidx.window.layout.FoldingFeature.Orientation.HORIZONTAL
+                            }
+                            windowFold.value = fold?.bounds?.let { it.top to it.bottom }
+                        }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    Log.w(TAG, "The fold state is unavailable", e)
+                }
+            }
+        }
+    }
+
     private fun installSurfaceView() {
         val sv =
             SurfaceView(this).apply {
@@ -955,7 +993,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             surfaceAvailable = false
             pauseForLifecycle()
             if (started) session.detachSurface()
-        }, statusChanged = { externalDisplayLabel.value = it })
+        }, statusChanged = {
+            externalDisplayLabel.value = it
+            gameOnExternalDisplay.value = externalDisplay?.activeDisplay != null
+        })
 
         val compose =
             ComposeView(this).apply {
@@ -1047,13 +1088,36 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                         )
                     }
 
-                    Box(Modifier.fillMaxSize()) {
+                    // 15c: where the layout is in the window (to place a fold) and how big it is.
+                    var layoutBox by remember { mutableStateOf<Pair<IntSize, Int>?>(null) }
+                    val fold by windowFold
+                    val split = layoutBox?.let { (size, top) ->
+                        val hinge = fold?.let { (foldTop, foldBottom) ->
+                            xendroid.compose.gamepad.SplitScreen.hingeInLayout(foldTop, foldBottom, top, size.height)
+                        }
+                        // Without a fold the split is for the touch controls: a controller playing
+                        // (or the controls off) gives the picture the whole screen back.
+                        val touchShown = cfg.globals.enabled && padVisible
+                        if (gameOnExternalDisplay.value || (hinge == null && !touchShown)) null
+                        else xendroid.compose.gamepad.SplitScreen.layout(size.width, size.height,
+                            xendroid.compose.gamepad.SplitScreenMode.parse(cfg.globals.splitScreen), hinge)
+                    }
+                    LaunchedEffect(split) {
+                        val text = split?.let { "game ${it.game.width}x${it.game.height}, controls ${it.controls.width}x${it.controls.height}" }
+                        if (text != splitRecorded && (text != null || splitRecorded != null)) recordEvent("split", text ?: "off")
+                        splitRecorded = text
+                    }
+
+                    Box(Modifier.fillMaxSize().onGloballyPositioned { c ->
+                        val next = c.size to c.positionInWindow().y.roundToInt()
+                        if (next != layoutBox) layoutBox = next
+                    }) {
                             AndroidView(
                                 factory = {
                                     sv
                                 },
                                 modifier =
-                                    Modifier.fillMaxSize()
+                                    split?.let { Modifier.atRect(it.game) } ?: Modifier.fillMaxSize()
                             )
 
                             bootStatus.value?.let {
@@ -1108,7 +1172,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     },
 
                                     modifier =
-                                        Modifier.fillMaxSize(),
+                                        split?.let { Modifier.atRect(it.controls) } ?: Modifier.fillMaxSize(),
                                 )
                             }
 
@@ -1378,6 +1442,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                 })),
                                             InGameAction.UNBUFFERED_INPUT to stringResource(R.string.menu_unbuffered_value,
                                                 if (unbufferedInput.value) on else off),
+                                            InGameAction.SPLIT_SCREEN to stringResource(R.string.menu_split_value, stringResource(
+                                                xendroid.compose.gamepad.splitScreenLabel(xendroid.compose.gamepad.SplitScreenMode.parse(cfg.globals.splitScreen)))),
                                             InGameAction.GYRO_SENSITIVITY to stringResource(R.string.menu_gyro_sensitivity_value, listOf(
                                                 stringResource(R.string.menu_low), stringResource(R.string.menu_normal), stringResource(R.string.menu_high))[gyroSensitivity.intValue]),
                                             InGameAction.CONTROLLER_RUMBLE to stringResource(R.string.menu_rumble_value, rumbleNames.getValue(rumbleSettings.value.default),
@@ -2670,6 +2736,17 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             if (!gyroCamera.available) return
             gyroAim.value = gyroAim.value.next()
             getSharedPreferences("touch_options", MODE_PRIVATE).edit().putString("gyro_aim", gyroAim.value.name).apply()
+            return
+        }
+        if (action == InGameAction.SPLIT_SCREEN) {
+            // Saved with the touch controls (as the editor's "Split screen"): off, at a fold, always.
+            lifecycleScope.launch {
+                runCatching {
+                    val cfg = gamepad.config.first()
+                    val next = xendroid.compose.gamepad.SplitScreenMode.parse(cfg.globals.splitScreen).next()
+                    gamepad.save(cfg.copy(globals = cfg.globals.copy(splitScreen = next.key)))
+                }.onFailure { Log.w(TAG, "Saving the split screen mode failed", it) }
+            }
             return
         }
         if (action == InGameAction.UNBUFFERED_INPUT) {

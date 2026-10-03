@@ -118,7 +118,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Jogo na TV com o aparelho ao lado | Bannerlator `a1206106` | **Tem** (tela externa, 12m); pausar ao desconectar a conferir | — |
 | Cast (Chromecast) | Bannerlator `1357d1c5` | **Não tem** | Baixa / G (só vídeo e latência alta no próprio Bannerlator) |
 | Formato por aparelho (painel 4:3/3:2 exato, 16:9 fixo, esticar) | DroidDeck `9c47095`, `5179b54` | **Parcial**: modos de tela e letterbox | Média / P |
-| Jogo numa metade da tela e controles na outra (dobráveis, telas altas) | Bannerlator `440d3dc4` | **Não tem** | Média / M |
+| Jogo numa metade da tela e controles na outra (dobráveis, telas altas) | Bannerlator `440d3dc4` | **Impl. + Local no lote 15c** (dobra em postura de mesa via Jetpack WindowManager, ou "Sempre" em retrato/tela quase quadrada; desligada por padrão; aparelho pendente, roteiro 54) | Média / M |
 | Escala da interface (UI e fonte) | Bannerlator `d4b33955` | **Não tem** (segue a fonte do sistema) | Média / P |
 | As duas orientações paisagem | X360 Mobile v0.6.1 | **Tem** | — |
 

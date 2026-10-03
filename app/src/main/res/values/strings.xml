@@ -1205,4 +1205,11 @@
         <item quantity="one">Not sent: %1$d setting of this game that recommendations may not change (%2$s).</item>
         <item quantity="other">Not sent: %1$d settings of this game that recommendations may not change (%2$s).</item>
     </plurals>
+    <string name="ge_split">Split screen</string>
+    <string name="ge_split_off">Off</string>
+    <string name="ge_split_tabletop">On a half-open foldable</string>
+    <string name="ge_split_always">Always</string>
+    <string name="ge_split_desc">The game goes to the upper part of the screen and the controls stay clear of it: at the fold of a foldable standing half open, or in the middle of a portrait or nearly square screen (\"Always\"). The controls are laid out below the fold as on a phone held sideways.</string>
+    <string name="menu_split_title">Split screen</string>
+    <string name="menu_split_value">Split screen (game above, controls below): %1$s</string>
 </resources>

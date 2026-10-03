@@ -505,6 +505,13 @@ Servidor de referência (Python + SQLite) com testes próprios, contrato verific
 um teste ponta a ponta cliente↔servidor. Protocolo e privacidade: `docs/community-configs.md`.
 Não há servidor público: oferecer o recurso exige alguém hospedar e moderar um.
 
+**Lote 15c (Impl. + Local; aparelho pendente, roteiro 54):** tela dividida (Bannerlator
+`440d3dc4`): o jogo acima da dobra de um dobrável em postura de mesa (Jetpack WindowManager) ou, se o
+jogador escolher "Sempre", no meio de uma tela em retrato/quase quadrada; os controles de toque fora da
+imagem (abaixo da dobra como num telefone deitado, ou na tela toda em retrato). Geometria pura em
+`gamepad/SplitScreen.kt`; a superfície é redimensionada e o presenter encaixa a imagem como numa
+rotação. Desligada por padrão.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

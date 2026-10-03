@@ -338,6 +338,15 @@ private fun EditorChrome(
     }
 }
 
+/** 15c: the name of a split-screen mode, for the editor and the in-game menu. */
+@androidx.annotation.StringRes
+fun splitScreenLabel(mode: SplitScreenMode): Int = when (mode) {
+    SplitScreenMode.OFF -> R.string.ge_split_off
+    SplitScreenMode.TABLETOP -> R.string.ge_split_tabletop
+    SplitScreenMode.ALWAYS -> R.string.ge_split_always
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GlobalsEditor(
     globals: GamepadGlobalsDto,
@@ -367,6 +376,16 @@ private fun GlobalsEditor(
                 onCheckedChange = { v -> mutate { it.copy(hideWithController = v) } })
         }
         Text(stringResource(R.string.ge_hide_with_controller_desc), style = MaterialTheme.typography.bodySmall)
+        // 15c: the game above, the controls clear of it.
+        Text(stringResource(R.string.ge_split), modifier = Modifier.padding(top = 4.dp))
+        val split = SplitScreenMode.parse(globals.splitScreen)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            SplitScreenMode.entries.forEach { mode ->
+                FilterChip(selected = split == mode, onClick = { mutate { it.copy(splitScreen = mode.key) } },
+                    label = { Text(stringResource(splitScreenLabel(mode))) })
+            }
+        }
+        Text(stringResource(R.string.ge_split_desc), style = MaterialTheme.typography.bodySmall)
         // U07: the touch camera (turned on in the in-game menu): how fast it turns and how much
         // of the right side of the screen it takes.
         Text(stringResource(R.string.ge_camera_speed, (globals.cameraSensitivity * 100).roundToInt()))

@@ -33,6 +33,8 @@ enum class InGameAction {
     GYRO_AIM,
     /** Controller input as it arrives instead of batched to the next frame (an A/B switch). */
     UNBUFFERED_INPUT,
+    /** 15c: the game above and the touch controls clear of it: off, at a fold, always. */
+    SPLIT_SCREEN,
 }
 
 /** Every option once, on the tab it belongs to (U01), most used first. */
@@ -54,7 +56,7 @@ val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
         InGameAction.HUD_RAM, InGameAction.HUD_BATTERY, InGameAction.HUD_SOC, InGameAction.HUD_POWER,
     ),
     InGamePage.CONTROLS to listOf(InGameAction.TOUCH_CONTROLS, InGameAction.ADAPTIVE_STICKS, InGameAction.TOUCH_CAMERA,
-        InGameAction.EDIT_TOUCH_LAYOUT,
+        InGameAction.EDIT_TOUCH_LAYOUT, InGameAction.SPLIT_SCREEN,
         InGameAction.PHONE_CONTROLLERS, InGameAction.CONTROLLER_RUMBLE,
         InGameAction.GYRO_CAMERA, InGameAction.GYRO_AIM, InGameAction.GYRO_SENSITIVITY, InGameAction.GYRO_CALIBRATE,
         InGameAction.UNBUFFERED_INPUT),

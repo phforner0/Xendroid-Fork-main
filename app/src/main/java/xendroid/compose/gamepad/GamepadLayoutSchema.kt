@@ -71,6 +71,8 @@ data class GamepadGlobalsDto(
     val cameraAreaStart: Float = TouchCamera.DEFAULT_AREA_START,
     /** The controls step aside while a physical controller plays P1 ([TouchOverlayPresence]). */
     val hideWithController: Boolean = true,
+    /** 15c: a [SplitScreenMode] key: the game in the upper part and the controls clear of it. */
+    val splitScreen: String = SplitScreenMode.OFF.key,
 )
 
 /** A game's own layout (U06); an orientation it has none for uses the shared one. */
