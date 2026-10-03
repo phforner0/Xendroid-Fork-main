@@ -184,14 +184,15 @@ maior fonte). As 11 falhas, por causa:
   Arquivos já manda assim); o teste usava a forma antiga. Item 26 — o arquivo do usuário vem depois
   dos patches do catálogo numa lista preguiçosa; o teste rola até ele.
 
-Os testes que falharam voltam a rodar com o APK de teste novo; até lá, esses itens seguem pendentes.
+Os testes que falharam voltam a rodar com o APK de teste novo (build `5b626538`, só as nove classes com
+`-e class`); até lá, esses itens seguem pendentes.
 
 | Item | Teste | Cobre | Continua manual |
 |---|---|---|---|
 | 3 | `Item03SaveRecoveryTest` | journal danificado nomeado e mantido; ao abrir um jogo (processo `:emu` de verdade, com um arquivo que não é jogo: o armazenamento é preparado antes de abrir o jogo) o diálogo nomeia a transação; o save original fica | — |
 | 4 | `Item04ProfilesTest` | prévia da exclusão na tela Perfis com o jogo dos saves; lixeira, restaurar com os saves, excluir de vez (código nativo de perfis); imagem enorme e arquivo que não é imagem dão a mensagem e não criam nada; foto 4000×3000 vira o avatar | — |
 | 13 | `Item13DataBundleTest` | exportar, mudar, importar pela seção real (o seletor do sistema respondido pelo Espresso-Intents): a prévia lista exatamente as mudanças e o backup, os valores voltam, o caminho do driver deste aparelho fica, um arquivo que não é pacote é recusado com a mensagem | — |
-| 16 | `Item16PlayerModeTest` | "Jogador" = 22 ajustes em uma seção, o limite de FPS mudado ali aparece em Developer → GPU, ajuste avançado mantido; ajustes do jogo seguem o modo; menu em jogo sem Win-FG, LSFG, ADPF, submissões, pausa em segundo plano e modo sustentado (e com eles em Developer) | o menu dentro de um jogo rodando (grupo C) |
+| 16 | `Item16PlayerModeTest` | "Jogador" = 23 ajustes em uma seção, o limite de FPS mudado ali aparece em Developer → GPU, ajuste avançado mantido; ajustes do jogo seguem o modo; menu em jogo sem Win-FG, LSFG, ADPF, submissões, pausa em segundo plano e modo sustentado (e com eles em Developer) | o menu dentro de um jogo rodando (grupo C) |
 | 17 | `Item17FirstRunAssistantTest` | assistente na `MainActivity` a partir do estado de instalação nova: checagens (GPU, arm64, Android), "!" e o botão da pasta (o voltar do telefone volta ao assistente), idioma/região pt/BR gravados no console, Perfis e volta, "Pronto" sem modo = Jogador, só uma vez, ⋮ reabre | — |
 | 24 | `Item24UserDataProviderTest` | o DocumentsProvider como o app Arquivos o chama: caches e controles internos ocultos, cópia vira "(1)", renomear e apagar, tudo somente leitura com o lease ocupado (ler continua), "Jogos por título" com pastas de reunião sem renomear/mover/apagar | as telas do Arquivos, um app de terceiros com a raiz, a permissão sobreviver à atualização do APK |
 | 26 | `Item26UserPatchesTest` | arquivo próprio entra com os patches desligados e "adicionado por você", repetido vira "(1)", de outro jogo é recusado com o Title ID, escrita sem `address` recusada com a linha, aviso de conflito com o endereço, remover | jogar com o patch e o `xe.log` (grupo C) |
