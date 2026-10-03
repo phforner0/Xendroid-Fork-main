@@ -119,7 +119,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Cast (Chromecast) | Bannerlator `1357d1c5` | **Não tem** | Baixa / G (só vídeo e latência alta no próprio Bannerlator) |
 | Formato por aparelho (painel 4:3/3:2 exato, 16:9 fixo, esticar) | DroidDeck `9c47095`, `5179b54` | **Tem por desenho** (conferido no lote 15k): Ajustar/Preencher/Esticar/Inteiro sobre a forma do próprio painel; o piso de 16:9 do DroidDeck era do gamescope | Média / P |
 | Jogo numa metade da tela e controles na outra (dobráveis, telas altas) | Bannerlator `440d3dc4` | **Impl. + Local no lote 15c** (dobra em postura de mesa via Jetpack WindowManager, ou "Sempre" em retrato/tela quase quadrada; desligada por padrão; aparelho pendente, roteiro 54) | Média / M |
-| Escala da interface (UI e fonte) | Bannerlator `d4b33955` | **Não tem** (segue a fonte do sistema) | Média / P |
+| Escala da interface (UI e fonte) | Bannerlator `d4b33955` | **Impl. + Local no lote 15l** (interface 85–130 % e texto 85–150 %, com limites de layout; controles de toque, HUD e editor fora; aparelho pendente, roteiro 63) | Média / P |
 | As duas orientações paisagem | X360 Mobile v0.6.1 | **Tem** | — |
 
 ### 3.6 Limite de FPS, ritmo e velocidade
@@ -179,7 +179,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Carrossel, XMB, tela "Big Picture" para controle | Eden `61ffb309`; Bannerlator `16c292d2`, `223b1b8c` | **Impl. + Local no lote 15a** (carrossel salvo ao lado da grade, controle e toque; aparelho pendente, roteiro 52) | Média / G |
 | Tela de carregamento com a arte do jogo | Bannerlator `e2acda52`, `da778368` | **Impl. + Local no lote 15e** (capa, nome, etapa com barra, aviso de primeira vez lenta; aparelho pendente, roteiro 56) | Média / P |
 | Tela de fim de sessão com "tentar de novo" e "compartilhar logs" | DroidDeck `02f356f` | **Impl. + Local no lote 15e** (falha ao iniciar: Voltar, Tentar de novo num `:emu` novo, Compartilhar logs; aparelho pendente, roteiro 56) | Média / P |
-| Mais idiomas; idioma escolhido dentro do app | aX360e (25), X360 Mobile (5), DroidDeck `c711c62`; Eden `cfbef5c4` | **Parcial**: en e pt-BR; idioma por app do Android | Média / M por idioma |
+| Mais idiomas; idioma escolhido dentro do app | aX360e (25), X360 Mobile (5), DroidDeck `c711c62`; Eden `cfbef5c4` | **Parcial**: en e pt-BR; escolha dentro do app **Impl. + Local no lote 15l** (idioma por app do Android 13+, por atividade antes; aparelho pendente, roteiro 63); mais idiomas dependem de tradução | Média / M por idioma |
 | Temas e cor de destaque | Bannerlator `5d75439f` | **Parcial**: claro/escuro do sistema | Baixa / P |
 | Informações do sistema | Eden `b9655669` | **Tem** (Diagnóstico) | — |
 | App como tela inicial do aparelho | DroidDeck `12c1036` | **Não tem** | Baixa / M |

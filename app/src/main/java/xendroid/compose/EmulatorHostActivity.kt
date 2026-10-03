@@ -468,8 +468,18 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var lTriggerDown = false
     private var rTriggerDown = false
 
+    /** 15l: the UI scale chosen in the library, for the in-game menu and panels (read per game). */
+    private var uiScale = xendroid.compose.ui.theme.UiScale.DEFAULT
+
+    /** 15l: before Android 13 the language chosen in the app is applied here. */
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(newBase)
+        xendroid.compose.settings.AppLanguageStore.overrideFor(newBase)?.let { applyOverrideConfiguration(it) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        uiScale = xendroid.compose.ui.theme.UiScaleStore.read(this)
         // L02: the interface mode chosen in the library; read once per game process.
         menuState.value = menuState.value.copy(
             developer = xendroid.compose.settings.UiModeStore.read(this) == xendroid.compose.settings.UiMode.DEVELOPER)
@@ -1502,7 +1512,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     titleId = activeTitleState.value,
                                 ) }
                             } else if (menuState.value.open) {
-                                xendroidTheme {
+                                xendroidTheme(scale = uiScale) {
                                     // U02: from string resources (en / pt-BR); status texts built by
                                     // other components (ADPF, TV, phone controllers) are still English.
                                     val on = stringResource(R.string.menu_on)
@@ -1644,7 +1654,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                             }
 
                             keyboardRequest?.let { req ->
-                                xendroidTheme {
+                                xendroidTheme(scale = uiScale) {
                                     GuestKeyboardPanel(
                                         request = req,
 
@@ -1704,7 +1714,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                             }
 
                             messageBoxRequest?.let { req ->
-                                xendroidTheme {
+                                xendroidTheme(scale = uiScale) {
                                     GuestMessageBoxPanel(
                                         request = req,
 
@@ -1759,7 +1769,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                             }
 
                             discRequest?.let { req ->
-                                xendroidTheme {
+                                xendroidTheme(scale = uiScale) {
                                     DiscSwapPanel(
                                         request = req,
 

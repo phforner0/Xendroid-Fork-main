@@ -84,6 +84,10 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
                 HorizontalDivider()
                 MenuButtonsRow()
                 HorizontalDivider()
+                UiScaleRows()
+                HorizontalDivider()
+                AppLanguageRow()
+                HorizontalDivider()
                 DataBundleSection(beforeImport = vm::flush, afterImport = vm::onResume)
                 UpdateChannelSection()
             },

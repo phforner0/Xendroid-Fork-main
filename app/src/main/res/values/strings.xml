@@ -1240,4 +1240,17 @@
     <string name="tu_kept">Also kept, as they are: %1$s</string>
     <string name="host_thermal_near">The phone is close to its heat limit and will slow down soon. A lower resolution or FPS limit, or turning off forced GPU clocks or frame generation, keeps it cooler.</string>
     <string name="host_thermal_throttling">The phone has reached its heat limit and is slowing down. A lower resolution or FPS limit, or turning off forced GPU clocks or frame generation, keeps it cooler.</string>
+    <string name="ui_size">Interface size: %1$s</string>
+    <string name="ui_size_note">Makes the app\'s screens and the in-game menu larger or smaller. Touch controls, the HUD and the touch editor keep their own size.</string>
+    <string name="ui_size_limited">On this screen it can go up to %1$s, so the layouts still fit.</string>
+    <string name="ui_text_size">Text size: %1$s</string>
+    <string name="ui_text_size_note">On top of the phone\'s font size.</string>
+    <string name="ui_smaller">Smaller</string>
+    <string name="ui_larger">Larger</string>
+    <string name="app_language">Language: %1$s</string>
+    <string name="app_language_note">The app\'s own language. The language games see is the “User language” setting.</string>
+    <string name="app_language_title">App language</string>
+    <string name="app_language_system">Phone\'s language</string>
+    <string name="app_language_change">Change</string>
+    <string name="ui_text_size_limited">With the phone\'s font size it can go up to %1$s.</string>
 </resources>

@@ -67,10 +67,17 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit, inGame: Boolean = false,
                         titleId: String? = null) {
+    // 15l: the controls show the size they have over the game, so the app's UI scale stays out.
+    xendroid.compose.ui.theme.NaturalSize { GamepadEditorContent(controller, onDone, inGame, titleId) }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GamepadEditorContent(controller: GamepadController, onDone: () -> Unit, inGame: Boolean,
+                                 titleId: String?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val persisted by controller.config.collectAsState(initial = GamepadConfigDto())

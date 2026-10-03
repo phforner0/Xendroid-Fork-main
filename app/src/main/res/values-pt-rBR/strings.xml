@@ -1279,4 +1279,17 @@
     <string name="tu_kept">Também mantidas como estão: %1$s</string>
     <string name="host_thermal_near">O telefone está perto do limite de calor e vai reduzir o desempenho em breve. Resolução ou limite de FPS menores, ou desligar o clock máximo forçado da GPU ou a geração de quadros, o mantêm mais frio.</string>
     <string name="host_thermal_throttling">O telefone chegou ao limite de calor e está reduzindo o desempenho. Resolução ou limite de FPS menores, ou desligar o clock máximo forçado da GPU ou a geração de quadros, o mantêm mais frio.</string>
+    <string name="ui_size">Tamanho da interface: %1$s</string>
+    <string name="ui_size_note">Aumenta ou diminui as telas do app e o menu em jogo. Os controles de toque, o HUD e o editor de toque mantêm o tamanho próprio.</string>
+    <string name="ui_size_limited">Nesta tela vai até %1$s, para os layouts ainda caberem.</string>
+    <string name="ui_text_size">Tamanho do texto: %1$s</string>
+    <string name="ui_text_size_note">Além do tamanho de fonte do aparelho.</string>
+    <string name="ui_smaller">Menor</string>
+    <string name="ui_larger">Maior</string>
+    <string name="app_language">Idioma: %1$s</string>
+    <string name="app_language_note">O idioma do próprio app. O idioma que os jogos veem é o ajuste “Idioma do console”.</string>
+    <string name="app_language_title">Idioma do app</string>
+    <string name="app_language_system">Idioma do aparelho</string>
+    <string name="app_language_change">Alterar</string>
+    <string name="ui_text_size_limited">Com o tamanho de fonte do aparelho, vai até %1$s.</string>
 </resources>

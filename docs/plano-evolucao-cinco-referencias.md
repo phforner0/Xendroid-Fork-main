@@ -553,6 +553,13 @@ presenter (kernel escrito a partir da definição, 4×4 texels, limitado aos 4 m
 halos), testado com os shaders reais em Vulkan por software. "Formato por aparelho" conferido: já coberto
 pelos modos de tela sobre a forma do painel.
 
+**Lote 15l (Impl. + Local; aparelho pendente, roteiro 63):** escala da interface (85–130 %) e do texto
+(85–150 % sobre a fonte do sistema) para a biblioteca, as Configurações e o menu em jogo, com limites
+que mantêm os layouts (lado menor ≥ 320 dp; fonte × fator entre 0,7 e 2) e sem tocar nos controles de
+toque, no HUD e no editor; idioma escolhido dentro do app (aparelho / English / Português) pelo idioma
+por app do Android 13+ e, antes dele, aplicado por atividade. Mais idiomas continuam dependendo de
+tradução (só en e pt-BR existem).
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

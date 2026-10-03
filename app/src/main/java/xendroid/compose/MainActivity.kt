@@ -1,6 +1,8 @@
 package xendroid.compose
 
+import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.util.Log
 import android.view.KeyEvent
@@ -24,7 +26,10 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import xendroid.compose.ui.AppNavHost
+import xendroid.compose.ui.theme.UiScale
+import xendroid.compose.ui.theme.UiScaleStore
 import xendroid.compose.ui.theme.xendroidTheme
+import xendroid.compose.settings.AppLanguageStore
 import xendroid.compose.settings.ConfigStore
 import xendroid.compose.settings.seedTouchOverlayDefault
 import xendroid.compose.updater.LatestVersionDialog
@@ -46,6 +51,24 @@ class MainActivity : ComponentActivity() {
 
     private var updateResult by mutableStateOf<UpdateResult?>(null)
     private var backupSyncJob: Job? = null
+
+    // 15l: the UI scale chosen in Settings, followed as it changes (the listener is held here
+    // because SharedPreferences keeps only a weak reference to it).
+    private var uiScale by mutableStateOf(UiScale.DEFAULT)
+    private val uiScaleListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, _ ->
+        uiScale = UiScaleStore.read(prefs)
+    }
+
+    /** 15l: before Android 13 the language chosen in the app is applied here. */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(newBase)
+        AppLanguageStore.overrideFor(newBase)?.let { applyOverrideConfiguration(it) }
+    }
+
+    override fun onDestroy() {
+        UiScaleStore.prefs(this).unregisterOnSharedPreferenceChangeListener(uiScaleListener)
+        super.onDestroy()
+    }
     override fun onStart() {
         super.onStart()
         if (backupSyncJob?.isActive != true) backupSyncJob = lifecycleScope.launch {
@@ -148,12 +171,16 @@ class MainActivity : ComponentActivity() {
 
         if (savedInstanceState == null) relaunchIfAsked(intent)
 
+        AppLanguageStore.moveToSystem(this)
+        uiScale = UiScaleStore.read(this)
+        UiScaleStore.prefs(this).registerOnSharedPreferenceChangeListener(uiScaleListener)
+
         val container = AppContainer(applicationContext)
 
         enableEdgeToEdge()
 
        setContent {
-            xendroidTheme {
+            xendroidTheme(scale = uiScale) {
 
                 AppNavHost(container)
 

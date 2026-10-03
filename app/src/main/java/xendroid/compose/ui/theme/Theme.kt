@@ -5,6 +5,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.graphics.Color
 
 // Xbox green brand palette (replaces Material's default purple for primary/secondary/tertiary).
@@ -41,14 +47,40 @@ private val LightColors = lightColorScheme(
     onTertiaryContainer = Color(0xFF002023),
 )
 
-/** Material 3 theme for the Compose frontend, themed to Xbox green. */
+/**
+ * Material 3 theme for the Compose frontend, themed to Xbox green. With a [scale] (15l), what it
+ * holds is drawn larger or smaller; [NaturalSize] brings back the system's size inside it.
+ */
 @Composable
 fun xendroidTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    scale: UiScale = UiScale.DEFAULT,
     content: @Composable () -> Unit,
 ) {
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
-        content = content,
-    )
+    ) {
+        if (scale == UiScale.DEFAULT) content()
+        else {
+            val natural = LocalNaturalDensity.current ?: LocalDensity.current
+            val configuration = LocalConfiguration.current
+            val shortSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp).toFloat()
+            val scaled = remember(natural, scale, shortSide) { UiScaling.density(natural, scale, shortSide) }
+            CompositionLocalProvider(LocalDensity provides scaled, LocalNaturalDensity provides natural, content = content)
+        }
+    }
+}
+
+/** The system's density where a [xendroidTheme] scale is in effect; null where none is. */
+val LocalNaturalDensity = staticCompositionLocalOf<Density?> { null }
+
+/**
+ * Draws [content] at the system's size even inside a scaled theme: for what must match the game,
+ * like the touch editor, whose controls show the size they have over the game.
+ */
+@Composable
+fun NaturalSize(content: @Composable () -> Unit) {
+    val natural = LocalNaturalDensity.current
+    if (natural == null) content()
+    else CompositionLocalProvider(LocalDensity provides natural, LocalNaturalDensity provides null, content = content)
 }

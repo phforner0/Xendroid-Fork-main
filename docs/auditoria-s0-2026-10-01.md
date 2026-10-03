@@ -735,3 +735,11 @@ status, "Build da nuvem (fim do lote 14)").
    jogo, Gráficos → efeito de escala até "Lanczos"): bordas e textos mais nítidos que o bilinear, sem halos
    claros/escuros em volta; comparar com FSR e SGSR. Medir com "Compare runs" (C07) o custo: mesmo trecho,
    A = bilinear, B = Lanczos — FPS mediano, tempo de quadro e temperatura.
+63. Lote 15l — Escala da interface e idioma do app: em Configurações, Tamanho da interface 130 %
+   num telefone: a biblioteca, a ficha do jogo e as Configurações crescem sem cortar texto nem botão; num
+   telefone com lado menor de ~360 dp a linha avisa o limite (112,5 %). Tamanho do texto 150 % com a fonte
+   do sistema no máximo: nada passa de 2×. Abrir o editor de toque: os controles têm o mesmo tamanho que
+   no jogo. Abrir um jogo depois: o menu em jogo e o teclado do jogo no tamanho escolhido; controles de
+   toque e HUD como antes. Idioma do app: trocar para Português (Brasil) num aparelho em inglês e voltar
+   para "Idioma do aparelho", no Android 13+ (confere também em Ajustes → Apps → XenDroid → Idioma) e num
+   Android 12 ou anterior (a tela é recriada; o menu em jogo segue o idioma ao abrir um jogo).
