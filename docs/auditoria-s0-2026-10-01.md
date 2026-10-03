@@ -173,6 +173,30 @@ O que cada teste não alcança continua na lista abaixo, como antes.
 O `ConfigTransactionsInstrumentedTest` (configuração por JNI/TOML) também roda ali, agora no pacote
 `.uitest`.
 
+**Grupo B (precisa de arquivo de jogo, sem iniciar o jogo).** A pasta de jogos do telefone vai como
+argumento (caminho do telefone, nunca no git); sem ele esses testes ficam "ignorados", não falham:
+
+```bash
+./gradlew :app:connectedUitestAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.gameDir=/sdcard/Games
+# opcionais: scratchDir (pasta com uma CÓPIA de um jogo pequeno, que os testes renomeiam e
+# devolvem), dlcPackage (um DLC ou title update de um jogo da pasta), scanWholeStorage=true
+```
+
+A pasta `gameDir` só é listada e lida; biblioteca, capas, conteúdo e histórico escritos são os do
+pacote `.uitest`. Medidas (tempos de varredura) vão para `Download/xendroid-roadmap/results.txt` e
+para o logcat (`XendroidRoadmap`).
+
+| Item | Teste | Cobre | Continua manual |
+|---|---|---|---|
+| 18 | `Item18GameFoldersTest` | a mesma pasta por outro caminho (`/sdcard` ↔ `/storage/emulated/0`) e uma subpasta não repetem jogos; pasta vazia não acrescenta; uma pasta que some mostra "1 pasta de jogos não está disponível…" e o resto fica, e volta quando ela volta; o diálogo marca "a instalação vai aqui" e "não disponível agora"; remover a pasta tira os jogos e não mexe em arquivo | cartão SD de verdade (e a velocidade da volta), revogar o acesso |
+| 19 | `Item19CoversTest` | foto 4000×3000 vira capa de no máximo 512 px; foto em pé com giro EXIF sai em pé; arquivo que não é imagem e PNG corrompido dão a mensagem e nada muda; limpar o cache mantém a capa; todos os discos do título a mostram; "Usar o ícone do jogo" a remove | renomear/mover o arquivo do jogo (é do usuário), o atalho, olhar o tile |
+| 20 | `Item20MissingGamesTest` (`scratchDir`) | jogo renomeado para `.bak` sai da lista e o aviso "1 jogo … não está mais na biblioteca" abre o diálogo com "Arquivo não encontrado" e o caminho antigo; o nome de volta traz o jogo; a pasta inteira longe (outra pasta disponível) só aparece no aviso de pasta e em ⋮ → "Jogos que saíram" como "pasta não disponível"; pasta tirada da biblioteca = "fora das suas pastas"; "Remover" esconde; nenhum arquivo é apagado | tempo de jogo/relato mantidos (precisa de run, grupo C) |
+| 21 | `Item21GameSheetTest` | a ficha (toque longo) diz "N de M ligados" e o número segue um patch ligado; coleções: "RPGs", "rpgs" recusado, segundo jogo, o filtro "RPGs (2)" mostra só eles, apagar mantém os jogos; a coleção vai no pacote de dados ("Coleções — novas: 1…") e volta | TU/DLC na ficha (o item 23 instala um), "Jogado por último como" (grupo C), mover arquivo |
+| 22 | `Item22ScanTest` | (a) reaberto, a lista aparece na hora (tempo anotado); (b) com o cache limpo, "Parar" no meio dá "Varredura interrompida…" e "Tentar de novo" termina; (d) com `scanWholeStorage`, o armazenamento inteiro e o aviso de lista parcial; (e) varredura quente de 1.000 e 10.000 arquivos cronometrada | (c) mover uma pasta de jogos, (f) apagar um jogo com o app em segundo plano |
+| 23 | `Item23ContentTrashTest` (`dlcPackage`) | instalar pelo fluxo real, "Mover para a lixeira" (some da aba, na lixeira com tamanho e data), "Restaurar", reinstalado → "Restaurar" recusa com "…está instalado de novo…", "Apagar" de vez; com o lease ocupado (jogo aberto) "Feche o jogo em execução antes." e nada se move | o jogo ver ou não o pacote (grupo C), matar o app no meio |
+| 33 | `Item33PlayAsTest` | com A como P1 e B como P2: tocar no jogo pergunta "Jogar como" com os dois e B "· P2"; escolher B avisa que vai para P1; Cancelar não inicia nada; a ficha diz "Entra como A" | o jogo abrir com o perfil, "Não perguntar de novo", P2 logado no jogo (grupo C) |
+
 1. Config: editar uma opção global na biblioteca enquanto um jogo **sem** config por
    jogo inicia; conferir no `xe.log` "SaveConfig skipped" e que a edição persiste.
 2. Lease: iniciar um jogo logo após voltar à biblioteca com backup automático ativo;
