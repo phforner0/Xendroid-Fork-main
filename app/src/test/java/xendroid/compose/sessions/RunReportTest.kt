@@ -49,6 +49,22 @@ class RunReportTest {
         assertTrue(lines.any { it == "Timeline: 2 events" })
         assertTrue(lines.any { it == "Your compatibility results: 1 (with your notes)" })
         assertTrue(lines.none { "Pedro" in it || "/storage" in it })
+        assertTrue(lines.none { it.startsWith("Settings") })               // an older run: not recorded
+    }
+
+    @Test fun theBootsChangedSettingsAreListedAndRedacted() {
+        val settings = listOf("GPU|framerate_limit = 30 (default 60) · this game",
+            "Network|api_address = \"10.0.0.7:36000\" (default \"127.0.0.1:36000\")",
+            "(more settings changed, not listed)")
+        val report = RunReports.build(run.copy(changedSettings = settings), events, notes, device, now = 99)
+        assertEquals("Network|api_address = \"[ip]:36000\" (default \"[ip]:36000\")", report.run.changedSettings!![1])
+        val lines = RunReports.preview(report)
+        val head = lines.indexOf("Settings changed from defaults: 2")
+        assertTrue(head > 0)
+        assertEquals("  GPU|framerate_limit = 30 (default 60) · this game", lines[head + 1])
+        assertEquals("  (more settings changed, not listed)", lines[head + 3])
+        assertTrue(RunReports.preview(RunReports.build(run.copy(changedSettings = emptyList()), null, emptyList(), device, 0))
+            .contains("Settings: all at the core's defaults"))
     }
 
     @Test fun theZipHoldsTheJsonAndTheTimeline() {

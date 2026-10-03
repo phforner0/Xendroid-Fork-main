@@ -594,3 +594,10 @@ itens 8, 15 e 37.
    personagem/câmera não se mexe com o stick quase no centro (útil com drift). Desenvolvedor: área
    mantida a 90% num jogo com faixas corta um pouco as bordas em vez de desenhar faixas; compilação
    assíncrona desligada troca os objetos que somem por engasgos. Anotar FPS antes/depois (16x e FSR).
+44. Lote 14c — ajustes alterados no log e no relatório: com "Filtragem anisotrópica" em 16x no
+   global e "Limite de FPS" 30 só num jogo, abrir esse jogo e sair. O log da sessão (Diagnostics)
+   começa com "Settings changed from defaults: N" e as linhas `GPU|anisotropic_override = 5
+   (default -1)` e `GPU|framerate_limit = 30 (default 60) · this game`; sem XUID, pastas nem
+   caminhos (driver próprio aparece como "(a path)"). Na ficha, "Share last run report" mostra o
+   mesmo bloco na prévia e no `run-report.json`. Com tudo no padrão: "Settings: all at the core's
+   defaults". Um run gravado antes desta versão não mostra a linha.

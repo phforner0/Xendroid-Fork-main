@@ -57,6 +57,7 @@ object RunReports {
                 gamePath = "[game file]" + (format?.let { ".$it" } ?: ""),
                 profileXuid = null,
                 endReason = run.endReason?.let(LogRedactor::redact),
+                changedSettings = run.changedSettings?.map(LogRedactor::redact),
             ),
             events = events?.copy(events = events.events.map { it.copy(detail = LogRedactor.redact(it.detail)) }),
             compatibility = compatibility.map { it.copy(note = LogRedactor.redact(it.note)) },
@@ -78,6 +79,12 @@ object RunReports {
             describeFrameTimes(perf)?.let { add("Frame time: $it") }
             describeAudio(perf)?.let { add("Audio: $it") }
             describeFrameGeneration(perf)?.let { add("Frame generation: $it") }
+        }
+        run.changedSettings?.let { settings ->
+            // The core's own "(more settings changed, not listed)" is not a setting.
+            val count = settings.count { !it.startsWith("(") }
+            add(if (count == 0) "Settings: all at the core's defaults" else "Settings changed from defaults: $count")
+            settings.forEach { add("  $it") }
         }
         add("Timeline: ${report.events?.events?.size ?: 0} events")
         add("Your compatibility results: ${report.compatibility.size}" +

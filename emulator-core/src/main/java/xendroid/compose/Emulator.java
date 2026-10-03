@@ -46,6 +46,9 @@ public class Emulator extends xendroid.emulator.Emulator{
     // L10: the active title's module hashes as its patches were matched (main executable
     // first); empty before a title loads.
     public native long[] module_hashes();
+    // C06: settings away from the core's defaults as the run booted (game config applied;
+    // no profiles, storage or paths), one "Section|name = value (default x)" line each.
+    public native String[] changed_settings();
     public native void set_presentation_mode(int mode);
     public native void set_scaling_effect(int effect);
     public native void set_color_filter(int mode);

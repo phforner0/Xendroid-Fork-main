@@ -169,6 +169,9 @@ class EmulatorSession {
      *  first), 16 hex digits each; empty before a title loads. */
     fun moduleHashes(): List<String> =
         if (booted) core.module_hashes()?.map { "%016X".format(it) }.orEmpty() else emptyList()
+    /** C06: the settings away from the core's defaults as this run booted (game config
+     *  applied; no profiles, storage or paths), one line each; null before boot. */
+    fun changedSettings(): List<String>? = if (booted) core.changed_settings()?.filterNotNull() else null
     /** Cumulative guest frame-time counts per 1 ms bucket; null before boot. */
     fun guestFrameTimeHistogram(): LongArray? = if (booted) core.guest_frame_time_histogram() else null
     /** GPU time per timed frame-generation pass (0.25 ms buckets) + untimed passes last; null before boot. */

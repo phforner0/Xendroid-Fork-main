@@ -1102,7 +1102,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             val profile = runCatching { firstPlayerXuid() }
                                                 .onFailure { Log.w(TAG, "Reading P1's profile failed", it) }.getOrNull()
                                             val modules = runCatching { session.moduleHashes() }.getOrDefault(emptyList())
-                                            if (activeRun != null) runCatching { xendroid.compose.sessions.SessionRuns.store().running(activeRun, activeTitle, driver, profile, modules) }
+                                            val settings = runCatching { session.changedSettings() }
+                                                .onFailure { Log.w(TAG, "Reading the changed settings failed", it) }.getOrNull()
+                                            if (activeRun != null) runCatching { xendroid.compose.sessions.SessionRuns.store().running(activeRun, activeTitle, driver, profile, modules, settings) }
                                                 .onFailure { Log.w(TAG, "Recording the running title failed", it) }
                                         }
                                         // C07: the vblank cap this run booted with, for comparisons; U01: the

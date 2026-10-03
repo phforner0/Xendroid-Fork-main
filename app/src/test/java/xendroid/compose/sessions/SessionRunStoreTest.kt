@@ -201,6 +201,25 @@ class SessionRunStoreTest {
         assertEquals(driver, store.heartbeat(run.runId, driver = driver.copy(uuid = "f".repeat(32)))!!.driver)
     }
 
+    @Test fun theBootsChangedSettingsAreKeptOnceAndBounded() {
+        val store = store()
+        val run = store.begin("library", "/f.iso", "v", pid = 3)
+        assertNull(store.running(run.runId, "4D5309C9")!!.changedSettings)   // not known: not "all defaults"
+        val lines = listOf("GPU|framerate_limit = 30 (default 60) · this game", "Bad|line = a\u0000b", " ")
+        assertEquals(listOf("GPU|framerate_limit = 30 (default 60) · this game", "Bad|line = ab"),
+            store.running(run.runId, "4D5309C9", changedSettings = lines)!!.changedSettings)
+        // The boot's list stays: a later title change in the same process reports it again.
+        assertEquals(2, store.running(run.runId, "4D5309C9", changedSettings = emptyList())!!.changedSettings!!.size)
+
+        val other = store.begin("library", "/g.iso", "v", pid = 4)
+        val huge = List(500) { "A|n$it = " + "x".repeat(1_000) }
+        val kept = store.running(other.runId, "4D5309C9", changedSettings = huge)!!.changedSettings!!
+        assertEquals(201, kept.size)
+        assertTrue(kept.all { it.length <= 240 })
+        assertEquals(emptyList<String>(), store.running(store.begin("library", "/h.iso", "v", pid = 5).runId,
+            "4D5309C9", changedSettings = emptyList())!!.changedSettings)    // everything at its default
+    }
+
     @Test fun runEndingsAreDescribedForTheLibrary() {
         val base = SessionRun(runId = "00000000-0000-0000-0000-000000000001", state = RunState.FAILED,
             launchSource = "library", gamePath = "/x", buildVersion = "v", pid = 1, startedAt = 0,

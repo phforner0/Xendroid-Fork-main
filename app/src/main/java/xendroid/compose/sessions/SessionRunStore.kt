@@ -43,6 +43,10 @@ data class SessionRun(
     /** L10: the game's module hashes as its patches were matched (main executable first), so
      *  the patches screen can tell which files are for this version. */
     val moduleHashes: List<String> = emptyList(),
+    /** C06: the settings away from the core's defaults as the run booted, one line each
+     *  ("GPU|framerate_limit = 30 (default 60) · this game"); null when not recorded (older
+     *  runs, a title that never started), empty when everything was at its default. */
+    val changedSettings: List<String>? = null,
 ) {
     /** Time the title was actually running; null until it started. */
     val playedMs: Long? get() = runningAt?.let { start -> ((endedAt ?: lastSeenAt) - start).coerceAtLeast(0) }
@@ -125,18 +129,25 @@ class SessionRunStore(
     }
 
     /** First observation of the running title (from the core). Later calls only refresh lastSeenAt
-     * and fill in the driver if it was not known yet. */
+     * and fill in the driver (and the boot's changed settings) if they were not known yet. */
     fun running(runId: String, titleId: String, driver: xendroid.compose.driver.DriverIdentity? = null,
-                profileXuid: String? = null, moduleHashes: List<String> = emptyList()): SessionRun? =
+                profileXuid: String? = null, moduleHashes: List<String> = emptyList(),
+                changedSettings: List<String>? = null): SessionRun? =
         transition(runId) { run, now ->
             require(titlePattern.matches(titleId)) { "Invalid Title ID" }
             val profile = profileXuid?.trim()?.uppercase()?.takeIf { xuidPattern.matches(it) }
+            val settings = run.changedSettings ?: changedSettings?.let(::boundSettings)
             if (run.state == RunState.BEGIN) {
                 run.copy(state = RunState.RUNNING, titleId = titleId, runningAt = now, lastSeenAt = now, driver = driver,
-                    profileXuid = profile, moduleHashes = mergeHashes(run.moduleHashes, moduleHashes))
+                    profileXuid = profile, moduleHashes = mergeHashes(run.moduleHashes, moduleHashes),
+                    changedSettings = settings)
             } else run.copy(lastSeenAt = now, driver = run.driver ?: driver, profileXuid = run.profileXuid ?: profile,
-                moduleHashes = mergeHashes(run.moduleHashes, moduleHashes))
+                moduleHashes = mergeHashes(run.moduleHashes, moduleHashes), changedSettings = settings)
         }
+
+    /** One printable line per setting, each and all of them bounded (the record stays small). */
+    private fun boundSettings(lines: List<String>): List<String> =
+        lines.map { line -> line.filter { it >= ' ' }.take(MAX_SETTING_CHARS) }.filter { it.isNotBlank() }.take(MAX_SETTINGS)
 
     fun heartbeat(runId: String, performance: RunPerformance? = null,
                   driver: xendroid.compose.driver.DriverIdentity? = null,
@@ -243,6 +254,9 @@ class SessionRunStore(
         const val FATAL = ".fatal"
         const val NATIVE_CRASH = "native crash: "
         const val MAX_MODULE_HASHES = 16
+        // The core lists at most 200 and says when there were more (xe_changed_settings.h).
+        const val MAX_SETTINGS = 201
+        const val MAX_SETTING_CHARS = 240
     }
 }
 

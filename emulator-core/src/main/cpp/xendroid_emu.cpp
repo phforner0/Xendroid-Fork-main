@@ -46,6 +46,7 @@
 #include "xe_aaudio_audio_system.h"
 
 #include "xendroid_emu.h"
+#include "xe_changed_settings_cvars.h"
 //#include "nlohmann/json.hpp"
 
 #define LOG_TAG "xendroid_native"
@@ -328,6 +329,17 @@ bool EmulatorApp::OnInitialize() {
         std::string game_path = cvars::target;
         config::LoadGameConfigForFile(
             std::filesystem::absolute(std::filesystem::u8path(game_path)));
+    }
+
+    // The settings away from the core's defaults, first in the log (global config
+    // and this game's own), so a log alone says what the run was set to; the run
+    // record gets the same list (Emulator.changed_settings).
+    {
+        const auto changed = xendroid::RecordBootSettings();
+        XELOGI("Settings changed from defaults: {}", changed.size());
+        for (const auto& line : changed) {
+            XELOGI("  {}", line);
+        }
     }
 
     // Android has no UI-thread paint pump that the kUIThreadOnRequest present mode

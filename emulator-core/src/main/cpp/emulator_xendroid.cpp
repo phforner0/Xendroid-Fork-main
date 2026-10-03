@@ -3,6 +3,7 @@
 #include "emulator_xendroid.h"
 #include "emulator.h"
 #include "xendroid_emu.h"
+#include "xe_changed_settings_cvars.h"
 #include "xe_android_disc_swap.h"
 #include "xe_android_message_box.h"
 #include "xe_android_text_input.h"
@@ -1337,6 +1338,23 @@ static jlongArray j_module_hashes(JNIEnv* env, jobject thiz) {
     return array;
 }
 
+// C06: the settings away from the core's defaults as this run booted (game config
+// applied; no profiles, storage or paths), one line each; empty before boot.
+static jobjectArray j_changed_settings(JNIEnv* env, jobject thiz) {
+    const std::vector<std::string> lines = xendroid::BootSettings();
+    jclass string_class = env->FindClass("java/lang/String");
+    if (!string_class) return nullptr;
+    jobjectArray array = env->NewObjectArray(jsize(lines.size()), string_class, nullptr);
+    if (!array) return nullptr;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        jstring line = env->NewStringUTF(lines[i].c_str());
+        if (!line) return nullptr;
+        env->SetObjectArrayElement(array, jsize(i), line);
+        env->DeleteLocalRef(line);
+    }
+    return array;
+}
+
 static jint j_build_lsfg_cache(JNIEnv* env, jobject thiz, jstring dll, jstring cache) {
     if (!dll || !cache) return int(lsfg::DllStatus::UnreadableFile);
     const char* dll_chars = env->GetStringUTFChars(dll, nullptr);
@@ -2014,6 +2032,7 @@ int register_xendroid_Emulator(JNIEnv* env){
             ,{"host_present_submission_count", "()J", (void *) j_host_present_submission_count}
             ,{"active_title_id", "()Ljava/lang/String;", (void *) j_active_title_id}
             ,{"module_hashes", "()[J", (void *) j_module_hashes}
+            ,{"changed_settings", "()[Ljava/lang/String;", (void *) j_changed_settings}
             ,{"set_presentation_mode", "(I)V", (void *) j_set_presentation_mode}
             ,{"set_scaling_effect", "(I)V", (void *) j_set_scaling_effect}
             ,{"set_color_filter", "(I)V", (void *) j_set_color_filter}

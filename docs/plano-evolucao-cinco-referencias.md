@@ -351,6 +351,12 @@ Testes JVM cobrem finalização concorrente, reconciliação e poda.
   ZIP com JSON + linha do tempo, redação de caminhos/contas/endereços, caminho do jogo
   reduzido ao formato, sem logs; sai só pela folha de compartilhamento escolhida pelo
   usuário. Não há servidor nem envio automático (projeto separado, como previsto).
+  **v1.1 (lote 14c, Impl. + Local; aparelho pendente, roteiro 44):** os ajustes fora do
+  padrão do core com que o run começou (config global + do jogo + quirks, uma linha por
+  ajuste com o padrão ao lado e "· this game" quando vêm do jogo; sem perfis, pastas nem
+  caminhos) vão no início do log da sessão, no registro do run e no relatório (prévia +
+  JSON, cada linha pelo redator). Retrato tirado uma vez no boot, não ao vivo, porque
+  alguns cvars de texto mudam em tempo de execução em outras threads.
 - **U09 (parte, lote 3):** rótulo de estado sobre a tela preta até o primeiro quadro
   guest (iniciando / preparando gráficos com N pipelines criados / aguardando o
   primeiro quadro, com segundos), a partir dos contadores do core. Lote 12e: "Cancel" no

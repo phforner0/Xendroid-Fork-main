@@ -59,6 +59,11 @@ class IConfigVar : virtual public ICommandVar {
   virtual void LoadGameConfigValue(const toml::node* result) = 0;
   virtual void ClearGameConfigValue() = 0;
   virtual void ResetConfigValueToDefault() = 0;
+  // XenDroid: the value in effect (command line, game config, global config or
+  // default), rendered like the config file does, and whether the game's own
+  // config set it - for the run's list of settings away from their defaults.
+  virtual std::string effective_value() const = 0;
+  virtual bool from_game_config() const = 0;
   // Save/restore mechanism for temporarily loading values without contaminating
   // config
   virtual void* SaveConfigValueState() const = 0;
@@ -115,6 +120,12 @@ class ConfigVar : public CommandVar<T>, virtual public IConfigVar {
   void OverrideConfigValue(T val);
   void* SaveConfigValueState() const override;
   void RestoreConfigValueState(void* saved_state) override;
+  std::string effective_value() const override {
+    return this->ToString(*this->current_value_);
+  }
+  bool from_game_config() const override {
+    return game_config_value_ != nullptr;
+  }
 
  private:
   std::string category_;
