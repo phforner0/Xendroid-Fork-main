@@ -44,6 +44,12 @@ import xendroid.compose.core.BatteryTimeEstimate
 import xendroid.compose.core.EmulatorSession
 import xendroid.compose.core.presentSubmissionRate
 import xendroid.compose.core.HudMetric
+import xendroid.compose.core.HudLook
+import xendroid.compose.core.HudPlacement
+import xendroid.compose.core.HudPlacements
+import xendroid.compose.core.KgslMemory
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
 
 private data class GpuCounter(
     val busy: Long,
@@ -173,6 +179,29 @@ private fun readCpuSocTemperature(): Float? {
     }.getOrNull()
 }
 
+/** 15g: the HUD's place, size and look in its preferences ([HudPlacements]' keys). */
+internal class HudPreferences(private val prefs: android.content.SharedPreferences) : HudPlacements.Store {
+    override fun float(key: String): Float? =
+        if (prefs.contains(key)) runCatching { prefs.getFloat(key, 0f) }.getOrNull() else null
+    override fun string(key: String): String? = runCatching { prefs.getString(key, null) }.getOrNull()
+    override fun put(values: Map<String, Any>) {
+        prefs.edit().apply {
+            values.forEach { (key, value) ->
+                when (value) {
+                    is Float -> putFloat(key, value)
+                    is String -> putString(key, value)
+                }
+            }
+        }.apply()
+    }
+
+    companion object {
+        fun of(context: Context) = HudPreferences(context.getSharedPreferences("fps_overlay", Context.MODE_PRIVATE))
+    }
+}
+
+/** [titleId]: the running game, whose own HUD place and size are used and kept (15g); [look]:
+ *  box, outline or plain text. */
 @Composable
 fun FpsOverlay(
     session: EmulatorSession,
@@ -181,19 +210,19 @@ fun FpsOverlay(
     metrics: Set<HudMetric> = HudMetric.entries.toSet(),
     modifier: Modifier = Modifier,
     pollHz: Int = 4,
-    baseFontSizeSp: Float = 9f
+    baseFontSizeSp: Float = 9f,
+    titleId: String? = null,
+    look: HudLook = HudLook.BOX,
 ) {
     if (!visible) return
 
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("fps_overlay", Context.MODE_PRIVATE) }
+    val store = remember { HudPreferences.of(context) }
+    val placed = remember(titleId) { HudPlacements.read(store, titleId) }
 
-    var offset by remember {
-        mutableStateOf(Offset(prefs.getFloat("x", 0f), prefs.getFloat("y", 0f)))
-    }
-    var scale by remember {
-        mutableStateOf(prefs.getFloat("scale", 1.0f))
-    }
+    var offset by remember(titleId) { mutableStateOf(Offset(placed.x, placed.y)) }
+    var scale by remember(titleId) { mutableStateOf(placed.scale) }
+    val currentLook by rememberUpdatedState(look)
 
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     val currentContainerSize by rememberUpdatedState(containerSize)
@@ -208,6 +237,7 @@ fun FpsOverlay(
     var batTemp by remember { mutableStateOf(0f) }
     var socTemp by remember { mutableStateOf<Float?>(null) }
     var powerLine by remember { mutableStateOf<String?>(null) }
+    var gpuMemoryLine by remember { mutableStateOf<String?>(null) }
     val batteryEstimate = remember { BatteryTimeEstimate() }
 
     LaunchedEffect(pollHz, compact, metrics) {
@@ -244,6 +274,7 @@ fun FpsOverlay(
             }
 
             var nextPowerLine = powerLine
+            var nextGpuMemoryLine = gpuMemoryLine
             val stats = withContext(Dispatchers.IO) {
                 if (HudMetric.GPU in metrics && gpuSource == null) {
                     gpuSource = findGpuSource()
@@ -297,6 +328,10 @@ fun FpsOverlay(
                             it.pluggedIn, left, it.minutesToFull)
                     } ?: "PWR N/A"
                 }
+                // 15g: KGSL's total once a second (one small sysfs read).
+                if (HudMetric.GPU_MEMORY in metrics && tick % pollHz.coerceIn(1, 10) == 0L) {
+                    nextGpuMemoryLine = KgslMemory.line(runCatching { KgslMemory.parse(File(KgslMemory.PATH).readText()) }.getOrNull())
+                }
                 tick++
                 Triple(cpuUsage, gpuUsage, ram) to (bTemp to sTemp)
             }
@@ -310,6 +345,7 @@ fun FpsOverlay(
             batTemp = stats.second.first
             socTemp = stats.second.second
             powerLine = nextPowerLine
+            gpuMemoryLine = nextGpuMemoryLine
 
             delay(periodMs)
         }
@@ -332,6 +368,7 @@ fun FpsOverlay(
                     }
                     if (HudMetric.CPU in metrics) append(String.format(Locale.US, "CPU %.0f%%\n", cpu))
                     if (HudMetric.GPU in metrics) append(gpu?.let { "GPU $it%\n" } ?: "GPU N/A\n")
+                    if (HudMetric.GPU_MEMORY in metrics) gpuMemoryLine?.let { append(it).append("\n") }
                     if (HudMetric.RAM in metrics) append(String.format(Locale.US, "RAM %.1f/%.1f GB\n", usedGb, totalGb))
                     if (HudMetric.BATTERY_TEMPERATURE in metrics) append(String.format(Locale.US, "BAT %.1f°C\n", batTemp))
                     if (HudMetric.SOC_TEMPERATURE in metrics) append(socTemp?.let { String.format(Locale.US, "SoC/CPU %.0f°C", it) } ?: "SoC/CPU N/A")
@@ -344,13 +381,15 @@ fun FpsOverlay(
             color = Color.White.copy(alpha = 0.85f),
             fontSize = (baseFontSizeSp * scale).sp,
             fontFamily = FontFamily.Monospace,
+            // 15g: an outline (a dark halo around the letters) instead of the box, or plain text.
+            style = if (look == HudLook.OUTLINE) TextStyle(shadow = Shadow(Color.Black, Offset(1f, 1f), blurRadius = 4f)) else TextStyle.Default,
             modifier = Modifier
                 .offset { IntOffset(offset.x.roundToInt(), offset.y.roundToInt()) }
-                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                .let { if (look == HudLook.BOX) it.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp)) else it }
                 .padding(horizontal = (4 * scale).dp, vertical = (3 * scale).dp)
-                .pointerInput(Unit) {
+                .pointerInput(titleId) {
                     detectTransformGestures { _, pan, zoom, _ ->
-                        scale = (scale * zoom).coerceIn(0.5f, 2.5f)
+                        scale = (scale * zoom).coerceIn(HudPlacements.MIN_SCALE, HudPlacements.MAX_SCALE)
 
                         val bounds = currentContainerSize
                         val maxX = maxOf(0f, bounds.width.toFloat() - size.width)
@@ -361,11 +400,8 @@ fun FpsOverlay(
                             y = (offset.y + pan.y).coerceIn(0f, maxY)
                         )
 
-                        prefs.edit()
-                            .putFloat("x", offset.x)
-                            .putFloat("y", offset.y)
-                            .putFloat("scale", scale)
-                            .apply()
+                        // 15g: kept for this game, and as where the next game without its own starts.
+                        HudPlacements.write(store, titleId, HudPlacement(offset.x, offset.y, scale, currentLook))
                     }
                 }
         )

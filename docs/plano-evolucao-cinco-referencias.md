@@ -531,6 +531,10 @@ deslizáveis (Bannerlator `72db7f4d`: botão solta ao sair e o próximo aperta; 
 analógico por deslize opcional) e zona morta por elemento (Bannerlator `a20fca5a`: centro neutro do
 direcional, zona morta própria do analógico), regras puras em `gamepad/TouchSlide.kt`.
 
+**Lote 15g (Impl. + Local; aparelho pendente, roteiro 58):** HUD com memória da GPU pelo KGSL
+(DroidDeck `0cc3fe6`, total de todos os apps, assim rotulado) e lugar/tamanho/aparência (caixa, contorno,
+texto) guardados por jogo, com o último lugar como padrão (Bannerlator, HUD "Fusion").
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

@@ -1266,4 +1266,10 @@
     <string name="ge_slide_buttons">Deslizar entre os botões e o direcional</string>
     <string name="ge_slide_sticks">Deslizar até um analógico para pegá-lo</string>
     <string name="ge_slide_desc">Sem levantar o dedo: um botão solta quando o dedo sai dele e o próximo em que ele entra é apertado; o direcional só passa para outro controle sob o dedo. A zona morta de um analógico (selecione-o) é dele, somada à do jogo.</string>
+    <string name="menu_metric_gpu_memory">Memória da GPU (todos os apps)</string>
+    <string name="menu_hud_look_title">Aparência do HUD</string>
+    <string name="menu_hud_look">Aparência do HUD: %1$s (guardada para este jogo)</string>
+    <string name="menu_hud_look_box">caixa</string>
+    <string name="menu_hud_look_outline">texto com contorno</string>
+    <string name="menu_hud_look_plain">texto simples</string>
 </resources>

@@ -37,6 +37,10 @@ enum class InGameAction {
     SPLIT_SCREEN,
     /** 15d: LSFG by an output target (60/90/120/the display) instead of a multiplier by hand. */
     LSFG_TARGET,
+    /** 15g: GPU memory (KGSL's total) on the HUD. */
+    HUD_GPU_MEMORY,
+    /** 15g: the HUD's look: a box, an outline around the letters, or plain text. */
+    HUD_LOOK,
 }
 
 /** Every option once, on the tab it belongs to (U01), most used first. */
@@ -52,10 +56,11 @@ val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
         InGameAction.FPS_UNLIMITED, InGameAction.FPS_30, InGameAction.FPS_45,
         InGameAction.FPS_60, InGameAction.FPS_90, InGameAction.FPS_120,
         InGameAction.SAVE_GAME_FPS, InGameAction.INHERIT_GAME_FPS,
-        InGameAction.PERFORMANCE_HUD, InGameAction.HUD_STYLE, InGameAction.REFRESH_RATE,
+        InGameAction.PERFORMANCE_HUD, InGameAction.HUD_STYLE, InGameAction.HUD_LOOK, InGameAction.REFRESH_RATE,
         InGameAction.SAVE_GLOBAL_FPS, InGameAction.SUSTAINED_PERFORMANCE, InGameAction.PERFORMANCE_HINTS,
         InGameAction.HUD_HOST_SUBMISSIONS, InGameAction.HUD_CPU, InGameAction.HUD_GPU,
         InGameAction.HUD_RAM, InGameAction.HUD_BATTERY, InGameAction.HUD_SOC, InGameAction.HUD_POWER,
+        InGameAction.HUD_GPU_MEMORY,
     ),
     InGamePage.CONTROLS to listOf(InGameAction.TOUCH_CONTROLS, InGameAction.ADAPTIVE_STICKS, InGameAction.TOUCH_CAMERA,
         InGameAction.EDIT_TOUCH_LAYOUT, InGameAction.SPLIT_SCREEN,
@@ -74,6 +79,7 @@ val advancedActions: Set<InGameAction> = setOf(
     InGameAction.SAVE_GLOBAL_FPS, InGameAction.SUSTAINED_PERFORMANCE, InGameAction.PERFORMANCE_HINTS,
     InGameAction.HUD_HOST_SUBMISSIONS, InGameAction.HUD_CPU, InGameAction.HUD_GPU,
     InGameAction.HUD_RAM, InGameAction.HUD_BATTERY, InGameAction.HUD_SOC, InGameAction.HUD_POWER,
+    InGameAction.HUD_GPU_MEMORY,
     InGameAction.GYRO_CALIBRATE, InGameAction.BACKGROUND_POLICY, InGameAction.UNBUFFERED_INPUT,
 )
 

@@ -317,6 +317,8 @@ private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: 
         InGameAction.HUD_BATTERY -> HudMetric.BATTERY_TEMPERATURE.label(metrics)
         InGameAction.HUD_SOC -> HudMetric.SOC_TEMPERATURE.label(metrics)
         InGameAction.HUD_POWER -> HudMetric.POWER.label(metrics)
+        InGameAction.HUD_GPU_MEMORY -> HudMetric.GPU_MEMORY.label(metrics)
+        InGameAction.HUD_LOOK -> stringResource(R.string.menu_hud_look_title)
         InGameAction.TOUCH_CONTROLS -> stringResource(R.string.menu_touch_controls, onOff(touch))
         InGameAction.ADAPTIVE_STICKS -> stringResource(R.string.menu_adaptive_sticks, onOff(adaptive))
         InGameAction.EDIT_TOUCH_LAYOUT -> stringResource(R.string.menu_edit_layout)
@@ -355,6 +357,7 @@ private fun HudMetric.label(metrics: Set<HudMetric>): String {
         HudMetric.BATTERY_TEMPERATURE -> stringResource(R.string.menu_metric_battery)
         HudMetric.SOC_TEMPERATURE -> stringResource(R.string.menu_metric_soc)
         HudMetric.POWER -> stringResource(R.string.menu_metric_power)
+        HudMetric.GPU_MEMORY -> stringResource(R.string.menu_metric_gpu_memory)
         else -> label
     }
     return stringResource(R.string.menu_hud_metric, name, onOff(this in metrics))

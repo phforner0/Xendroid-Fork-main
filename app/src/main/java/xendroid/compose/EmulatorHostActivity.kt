@@ -335,6 +335,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val performanceOverlayEnabled = mutableStateOf(false)
     private val compactPerformanceOverlay = mutableStateOf(false)
     private val hudMetrics = mutableStateOf(HudMetric.entries.toSet())
+    /** 15g: the HUD's look for the running game (or the last one set). */
+    private val hudLook = mutableStateOf(xendroid.compose.core.HudLook.BOX)
 
     // Fullscreen stretch:
     // false = preserve aspect ratio / black bars
@@ -542,6 +544,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 .getBoolean("performance_overlay_compact", false)
             val savedMetrics = getSharedPreferences("fps_overlay", MODE_PRIVATE).getStringSet("hud_metrics", null)
             if (savedMetrics != null) hudMetrics.value = HudMetric.entries.filter { it.name in savedMetrics }.toSet()
+            hudLook.value = xendroid.compose.core.HudPlacements.read(HudPreferences.of(this@EmulatorHostActivity), null).look
 
             fullscreenStretchEnabled.value =
                 getSharedPreferences(
@@ -1285,6 +1288,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     if (activeTitle != controlsTitleId) {
                                         controlsTitleId = activeTitle
                                         activeTitleState.value = activeTitle
+                                        // 15g: this game's own HUD look, when it has one.
+                                        hudLook.value = xendroid.compose.core.HudPlacements.read(
+                                            HudPreferences.of(this@EmulatorHostActivity), activeTitle).look
                                         if (bootStatus.value != null && loadingArt.value == null && activeTitle != null) {
                                             loadingArt.value = withContext(Dispatchers.IO) {
                                                 runCatching {
@@ -1452,6 +1458,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         performanceOverlayEnabled.value,
                                 compact = compactPerformanceOverlay.value,
                                 metrics = hudMetrics.value,
+                                titleId = activeTitleState.value,
+                                look = hudLook.value,
 
                                 modifier =
                                     Modifier.fillMaxSize(),
@@ -1507,6 +1515,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                 })),
                                             InGameAction.UNBUFFERED_INPUT to stringResource(R.string.menu_unbuffered_value,
                                                 if (unbufferedInput.value) on else off),
+                                            InGameAction.HUD_LOOK to stringResource(R.string.menu_hud_look, stringResource(when (hudLook.value) {
+                                                xendroid.compose.core.HudLook.BOX -> R.string.menu_hud_look_box
+                                                xendroid.compose.core.HudLook.OUTLINE -> R.string.menu_hud_look_outline
+                                                xendroid.compose.core.HudLook.PLAIN -> R.string.menu_hud_look_plain
+                                            })),
                                             InGameAction.SPLIT_SCREEN to stringResource(R.string.menu_split_value, stringResource(
                                                 xendroid.compose.gamepad.splitScreenLabel(xendroid.compose.gamepad.SplitScreenMode.parse(cfg.globals.splitScreen)))),
                                             InGameAction.GYRO_SENSITIVITY to stringResource(R.string.menu_gyro_sensitivity_value, listOf(
@@ -2977,6 +2990,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             InGameAction.HUD_BATTERY -> HudMetric.BATTERY_TEMPERATURE
             InGameAction.HUD_SOC -> HudMetric.SOC_TEMPERATURE
             InGameAction.HUD_POWER -> HudMetric.POWER
+            InGameAction.HUD_GPU_MEMORY -> HudMetric.GPU_MEMORY
             else -> null
         }
         if (metric != null) {
@@ -3037,6 +3051,15 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 performanceOverlayEnabled.value = enabled
                 getSharedPreferences("fps_overlay", MODE_PRIVATE).edit()
                     .putBoolean("performance_overlay_enabled", enabled).apply()
+            }
+            InGameAction.HUD_LOOK -> {
+                // 15g: kept with this game's HUD place and size.
+                val store = HudPreferences.of(this)
+                val title = activeTitleState.value
+                val placement = xendroid.compose.core.HudPlacements.read(store, title)
+                val next = placement.look.next()
+                xendroid.compose.core.HudPlacements.write(store, title, placement.copy(look = next))
+                hudLook.value = next
             }
             InGameAction.HUD_STYLE -> {
                 val compact = !compactPerformanceOverlay.value

@@ -711,3 +711,8 @@ status, "Build da nuvem (fim do lote 14)").
    escapa um pouco do direcional continua nele. Com "Deslizar até um analógico", um dedo livre que entra no
    analógico o move. Desligado: tudo como antes. Selecionar o direcional e mudar a "Zona morta" para 50%:
    toques perto do centro não apertam direção; um analógico com 20%: pequenos toques não movem a câmera.
+58. Lote 15g — HUD: ligar o HUD completo e, em Sistema → Mais opções, "Memória da GPU": num Adreno
+   aparece "GPU mem X GB (all apps)" e o valor sobe ao entrar numa área pesada; num Mali, "GPU mem N/A".
+   Arrastar e pinçar o HUD no jogo A, sair, abrir o jogo B (sem lugar próprio): começa onde ficou em A;
+   mudar em B, voltar a A: A continua no seu lugar. "Aparência do HUD": caixa → contorno → texto simples;
+   conferir a leitura do contorno sobre cenas claras e escuras.

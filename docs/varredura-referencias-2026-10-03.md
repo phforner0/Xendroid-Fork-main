@@ -76,9 +76,9 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 |---|---|---|---|
 | FPS, CPU, GPU (KGSL/devfreq), RAM, temperaturas | Bannerlator `484532f5`, DroidDeck `ab8542e`, Eden `fe51be43` | **Tem** (`HudMetric`, estilos compacto/completo) | — |
 | Potência em watts e estimativa de bateria/tempo de carga | Bannerlator `6a14c4a2` (detecta mA × µA), DroidDeck `2792071`, Eden `347d54bc` | **Não tem** | **Alta / P** |
-| Memória de GPU via KGSL | DroidDeck `0cc3fe6` | **Não tem** | Média / P |
+| Memória de GPU via KGSL | DroidDeck `0cc3fe6` | **Impl. + Local no lote 15g** (total do KGSL, todos os apps; aparelho pendente, roteiro 58) | Média / P |
 | FPS que cai a 0 quando não chega quadro novo (não congela no último valor) | Bannerlator `f520027c` | A conferir no HUD (o run já conta segundos sem quadro como ociosos) | Alta / P |
-| Tamanhos, posição e contorno do HUD por jogo | Bannerlator (Fusion HUD pill/mega) | **Parcial**: dois estilos, posição fixa | Média / P–M |
+| Tamanhos, posição e contorno do HUD por jogo | Bannerlator (Fusion HUD pill/mega) | **Impl. + Local no lote 15g** (lugar e tamanho por jogo, caixa/contorno/texto; aparelho pendente, roteiro 58) | Média / P–M |
 | Cores de alerta por temperatura e °C/°F | Bannerlator `f6733d01` | **Não tem** | Alta / P (valor baixo) |
 | Linha de identificação (build, driver, SoC) | Eden `64ff59e8`, `2665c5cc` | **Parcial**: driver no menu (12b), build no Sobre | Alta / P |
 

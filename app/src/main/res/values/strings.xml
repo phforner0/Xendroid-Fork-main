@@ -1227,4 +1227,10 @@
     <string name="ge_slide_buttons">Slide between buttons and the d-pad</string>
     <string name="ge_slide_sticks">Slide onto a stick to take it</string>
     <string name="ge_slide_desc">Without lifting the finger: a button lets go when the finger slides off it and the next one it slides onto is pressed; the d-pad hands over only to another control under the finger. A stick\'s dead zone (select it) is its own, on top of the game\'s.</string>
+    <string name="menu_metric_gpu_memory">GPU memory (all apps)</string>
+    <string name="menu_hud_look_title">HUD look</string>
+    <string name="menu_hud_look">HUD look: %1$s (kept for this game)</string>
+    <string name="menu_hud_look_box">box</string>
+    <string name="menu_hud_look_outline">outlined text</string>
+    <string name="menu_hud_look_plain">plain text</string>
 </resources>
