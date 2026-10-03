@@ -354,6 +354,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var generatedPerSecond = 0.0
     private val fgPreset = mutableIntStateOf(2)
     private val lsfgMultiplier = mutableIntStateOf(2)
+    /** 15d: [xendroid.compose.core.FrameGenerationTarget] choice; off = the multiplier above, by hand. */
+    private val lsfgTarget = mutableIntStateOf(xendroid.compose.core.FrameGenerationTarget.OFF)
     private val generationCap = xendroid.compose.core.GenerationCap()
     private val audioVolume = mutableIntStateOf(100)
     private val gpuLabel = mutableStateOf("")
@@ -1421,7 +1423,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             InGameAction.COLOR_FILTER to if (presentationState.value.colorError != 0) stringResource(R.string.menu_color_filter_unavailable) else
                                                 stringResource(R.string.menu_color_filter_value, listOf(off, stringResource(R.string.menu_color_grayscale),
                                                     stringResource(R.string.menu_color_contrast), stringResource(R.string.menu_color_warm))[presentationState.value.colorFilter.coerceIn(0, 3)]),
-                                            InGameAction.LSFG_MULTIPLIER to stringResource(R.string.menu_lsfg_multiplier_value, lsfgMultiplier.intValue),
+                                            InGameAction.LSFG_MULTIPLIER to if (lsfgTarget.intValue != xendroid.compose.core.FrameGenerationTarget.OFF)
+                                                stringResource(R.string.menu_lsfg_multiplier_target, lsfgMultiplier.intValue)
+                                                else stringResource(R.string.menu_lsfg_multiplier_value, lsfgMultiplier.intValue),
+                                            InGameAction.LSFG_TARGET to stringResource(R.string.menu_lsfg_target_value, lsfgTargetText()),
                                             InGameAction.PERFORMANCE_HINTS to performanceHintsLabel.value,
                                             InGameAction.EXTERNAL_DISPLAY to (externalDisplayLabel.value ?: stringResource(R.string.tv_phone)),
                                             InGameAction.SCALING_EFFECT to stringResource(R.string.menu_scaling_value,
@@ -2681,10 +2686,14 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             xendroid.compose.core.FrameGenerationReadout.running(lastGuestFps, generatedPerSecond,
                 if (state.engine == 1) state.multiplier else 2, hz)
         } else {
+            // 15d: with a target, LSFG runs at the planned multiplier from the planned cap.
+            val target = xendroid.compose.core.FrameGenerationTarget.plan(lsfgTarget.intValue, hz,
+                generationCap.playerLimit(session.fpsLimit()))
             listOfNotNull(
                 xendroid.compose.core.FrameGenerationReadout.preview("Win-FG", 2, lastGuestFps, hz),
                 lsfgCache.value?.let {
-                    xendroid.compose.core.FrameGenerationReadout.preview("LSFG Native", lsfgMultiplier.intValue, lastGuestFps, hz)
+                    xendroid.compose.core.FrameGenerationReadout.preview("LSFG Native", target?.multiplier ?: lsfgMultiplier.intValue,
+                        target?.let { plan -> minOf(lastGuestFps, plan.cap.toDouble()) } ?: lastGuestFps, hz)
                 },
             )
         }
@@ -2695,6 +2704,30 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             session.setFpsLimit(capped)
             fpsLimitState.intValue = session.fpsLimit()
         }
+    }
+
+    /** 15d: the game at exactly [cap] FPS while LSFG meets a target. */
+    private fun prepareExactCap(cap: Int) {
+        generationCap.prepareExact(session.fpsLimit(), cap)?.let { capped ->
+            session.setFpsLimit(capped)
+            fpsLimitState.intValue = session.fpsLimit()
+        }
+    }
+
+    /** 15d: "120 FPS → 2× with the game at 60 FPS", or "off: multiplier by hand", in the shown language. */
+    @androidx.compose.runtime.Composable
+    private fun lsfgTargetText(): String {
+        val choice = lsfgTarget.intValue
+        if (choice == xendroid.compose.core.FrameGenerationTarget.OFF) return stringResource(R.string.menu_lsfg_target_off)
+        val hz = currentOutputHz()
+        val name = if (choice == xendroid.compose.core.FrameGenerationTarget.SCREEN)
+            stringResource(R.string.menu_lsfg_target_screen, hz.roundToInt())
+        else stringResource(R.string.menu_lsfg_target_fps, choice)
+        val plan = xendroid.compose.core.FrameGenerationTarget.plan(choice, hz, generationCap.playerLimit(fpsLimitState.intValue))
+            ?: return name
+        return stringResource(R.string.menu_lsfg_target_plan, name, plan.multiplier, plan.cap) +
+            (if (plan.limitedByDisplay) " " + stringResource(R.string.menu_lsfg_target_display, plan.target) else "") +
+            (if (plan.belowTarget) " " + stringResource(R.string.menu_lsfg_target_below, plan.output) else "")
     }
 
     private fun restoreGenerationCap() {
@@ -2710,7 +2743,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             return
         }
         if (!BuildConfig.DEBUG && action in listOf(InGameAction.WINFG, InGameAction.WINFG_PRESET,
-                InGameAction.LSFG, InGameAction.LSFG_MULTIPLIER)) return
+                InGameAction.LSFG, InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET)) return
         if (action == InGameAction.COLOR_FILTER) {
             session.setColorFilter((session.presentationState().colorFilter + 1) % 4)
             presentationState.value = session.presentationState()
@@ -2821,15 +2854,35 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             }
             return
         }
-        if (action == InGameAction.LSFG || action == InGameAction.LSFG_MULTIPLIER) {
-            if (action == InGameAction.LSFG_MULTIPLIER) lsfgMultiplier.intValue = if (lsfgMultiplier.intValue == 4) 2 else lsfgMultiplier.intValue + 1
+        if (action == InGameAction.LSFG || action == InGameAction.LSFG_MULTIPLIER || action == InGameAction.LSFG_TARGET) {
+            when (action) {
+                InGameAction.LSFG_MULTIPLIER -> {
+                    // A multiplier chosen by hand ends the target (15d).
+                    lsfgTarget.intValue = xendroid.compose.core.FrameGenerationTarget.OFF
+                    lsfgMultiplier.intValue = if (lsfgMultiplier.intValue == 4) 2 else lsfgMultiplier.intValue + 1
+                }
+                InGameAction.LSFG_TARGET -> lsfgTarget.intValue = xendroid.compose.core.FrameGenerationTarget.next(lsfgTarget.intValue)
+                else -> {}
+            }
             val cache = lsfgCache.value ?: return
             val current = session.presentationState()
-            if (action == InGameAction.LSFG_MULTIPLIER && !(current.requested && current.engine == 1)) return
-            val enabled = if (action == InGameAction.LSFG) !(current.requested && current.engine == 1) else true
+            val running = current.requested && current.engine == 1
+            if (action != InGameAction.LSFG && !running) return
+            val enabled = if (action == InGameAction.LSFG) !running else true
             val hz = currentOutputHz()
-            if (enabled) prepareGenerationCap(hz, lsfgMultiplier.intValue) else restoreGenerationCap()
+            // 15d: a target picks the multiplier and caps the game at target ÷ multiplier, planned
+            // from the player's own limit (never from a cap frame generation put there).
+            val plan = xendroid.compose.core.FrameGenerationTarget.plan(lsfgTarget.intValue, hz,
+                generationCap.playerLimit(session.fpsLimit()))
+            if (plan != null) lsfgMultiplier.intValue = plan.multiplier
+            when {
+                !enabled -> restoreGenerationCap()
+                plan != null -> prepareExactCap(plan.cap)
+                else -> prepareGenerationCap(hz, lsfgMultiplier.intValue)
+            }
             session.setLsfg(enabled, cache, hz, lsfgMultiplier.intValue)
+            if (enabled) recordEvent("lsfg", plan?.let { "target ${it.target}/s: ${it.multiplier}x from ${it.cap} FPS" }
+                ?: "${lsfgMultiplier.intValue}x by hand")
             presentationState.value = session.presentationState()
             return
         }

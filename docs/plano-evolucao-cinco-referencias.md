@@ -512,6 +512,15 @@ imagem (abaixo da dobra como num telefone deitado, ou na tela toda em retrato). 
 `gamepad/SplitScreen.kt`; a superfície é redimensionada e o presenter encaixa a imagem como numa
 rotação. Desligada por padrão.
 
+**Lote 15d (Impl. + Local, alvo exato; aparelho pendente, roteiro 55):** geração de quadros LSFG
+por FPS-alvo (Eden `df05d3de`): 60/90/120 ou a taxa da tela, atendido com o menor multiplicador
+inteiro cujo limite alvo÷multiplicador o limite do jogador permite (`core/FrameGenerationTarget.kt`),
+com o limite automático já existente. O modo adaptativo do pacer portado do Eden (saídas por quadro
+variando, crédito fracionário) segue sem ligar: a thread de FG do XenDroid agenda um número fixo de
+saídas por quadro real e o caminho do quadro real não alimenta o motor quando não há quadro gerado —
+mudança de apresentação que só o aparelho valida. FG continua experimental, desligado e atrás dos
+mesmos gates.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

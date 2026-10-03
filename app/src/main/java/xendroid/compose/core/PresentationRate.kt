@@ -27,6 +27,18 @@ class GenerationCap {
         return capped
     }
 
+    /** 15d: caps at exactly [cap] (a target's game rate); the limit before any automatic cap
+     *  is kept the same way as [prepare]'s. */
+    fun prepareExact(current: Int, cap: Int): Int? {
+        if (cap == current) return null
+        if (before == null) before = current
+        automatic = cap
+        return cap
+    }
+
+    /** The player's own limit: the one before the automatic cap, if one is applied. */
+    fun playerLimit(current: Int): Int = before ?: current
+
     /** The limit to put back, or null when the user changed it after the automatic cap. */
     fun restore(current: Int): Int? {
         val result = before?.takeIf { automatic == current }

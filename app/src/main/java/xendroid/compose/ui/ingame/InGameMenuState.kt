@@ -35,6 +35,8 @@ enum class InGameAction {
     UNBUFFERED_INPUT,
     /** 15c: the game above and the touch controls clear of it: off, at a fold, always. */
     SPLIT_SCREEN,
+    /** 15d: LSFG by an output target (60/90/120/the display) instead of a multiplier by hand. */
+    LSFG_TARGET,
 }
 
 /** Every option once, on the tab it belongs to (U01), most used first. */
@@ -44,7 +46,7 @@ val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
         InGameAction.SCALING_EFFECT, InGameAction.EXTERNAL_DISPLAY,
         InGameAction.WINFG, InGameAction.WINFG_PRESET, InGameAction.LSFG, InGameAction.DRIVER_INFO,
         InGameAction.STRETCH, InGameAction.COLOR_FILTER,
-        InGameAction.LSFG_MULTIPLIER, InGameAction.IMPORT_LSFG_DLL, InGameAction.CLEAR_LSFG_CACHE,
+        InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET, InGameAction.IMPORT_LSFG_DLL, InGameAction.CLEAR_LSFG_CACHE,
     ),
     InGamePage.SYSTEM to listOf(
         InGameAction.FPS_UNLIMITED, InGameAction.FPS_30, InGameAction.FPS_45,
@@ -68,7 +70,7 @@ val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
 /** U01: behind "More options" on their tab: persistence, imports, fine HUD and power tuning. */
 val advancedActions: Set<InGameAction> = setOf(
     InGameAction.STRETCH, InGameAction.COLOR_FILTER,
-    InGameAction.LSFG_MULTIPLIER, InGameAction.IMPORT_LSFG_DLL, InGameAction.CLEAR_LSFG_CACHE,
+    InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET, InGameAction.IMPORT_LSFG_DLL, InGameAction.CLEAR_LSFG_CACHE,
     InGameAction.SAVE_GLOBAL_FPS, InGameAction.SUSTAINED_PERFORMANCE, InGameAction.PERFORMANCE_HINTS,
     InGameAction.HUD_HOST_SUBMISSIONS, InGameAction.HUD_CPU, InGameAction.HUD_GPU,
     InGameAction.HUD_RAM, InGameAction.HUD_BATTERY, InGameAction.HUD_SOC, InGameAction.HUD_POWER,
@@ -78,7 +80,7 @@ val advancedActions: Set<InGameAction> = setOf(
 /** L02: hidden in Player mode (engine internals and experiments); build gates still apply. */
 val developerActions: Set<InGameAction> = setOf(
     InGameAction.WINFG, InGameAction.WINFG_PRESET, InGameAction.LSFG, InGameAction.IMPORT_LSFG_DLL,
-    InGameAction.CLEAR_LSFG_CACHE, InGameAction.LSFG_MULTIPLIER, InGameAction.PERFORMANCE_HINTS,
+    InGameAction.CLEAR_LSFG_CACHE, InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET, InGameAction.PERFORMANCE_HINTS,
     InGameAction.HUD_HOST_SUBMISSIONS, InGameAction.BACKGROUND_POLICY, InGameAction.SUSTAINED_PERFORMANCE,
     InGameAction.UNBUFFERED_INPUT,
 )

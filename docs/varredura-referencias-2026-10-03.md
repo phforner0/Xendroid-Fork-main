@@ -91,7 +91,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Aviso quando FPS × multiplicador passa do Hz da tela, e ajuste do Hz | Bannerlator `a6cdc8e0`, `2c57b3f8` | **Parcial**: o governador marca cadência × multiplicador acima do Hz, sem aviso no menu | Alta / P (aviso) |
 | Governador probe/backoff com corte térmico | Bannerlator `1c18ff56`, Eden (`frame_gen_pacer`) | **Parcial** por desenho: F04 é consultivo e nunca age | Média / M, só com A/B no aparelho |
 | Cadência pelos quadros do jogo; desarmar no resize da Surface | DroidDeck `05933a5`, `565987e` | **Parcial**: agenda por quadro guest (A02/F02); resize a conferir | Média / P |
-| LSFG por FPS-alvo (60/90/120), além do multiplicador | Eden `df05d3de` | **Não tem** | Média / M |
+| LSFG por FPS-alvo (60/90/120), além do multiplicador | Eden `df05d3de` | **Impl. + Local no lote 15d** (alvo exato: menor multiplicador inteiro + limite do jogo; o modo adaptativo do pacer não está ligado; aparelho pendente, roteiro 55) | Média / M |
 | Resolução de captura menor para o LSFG | Bannerlator `28ae0197` | **Não tem** | Baixa / M |
 | LSFG desabilitado até haver DLL | DroidDeck | **Tem** | — |
 

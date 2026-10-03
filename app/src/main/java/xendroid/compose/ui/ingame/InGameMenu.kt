@@ -304,6 +304,7 @@ private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: 
             listOf(R.string.menu_preset_quality, R.string.menu_preset_balanced, R.string.menu_preset_performance)[preset.coerceIn(0, 2)]))
         InGameAction.LSFG -> stringResource(R.string.menu_lsfg, onOff(presentation.requested && presentation.engine == 1))
         InGameAction.LSFG_MULTIPLIER -> stringResource(R.string.menu_lsfg_multiplier)
+        InGameAction.LSFG_TARGET -> stringResource(R.string.menu_lsfg_target)
         InGameAction.IMPORT_LSFG_DLL -> stringResource(R.string.menu_import_lsfg)
         InGameAction.CLEAR_LSFG_CACHE -> stringResource(R.string.menu_clear_lsfg)
         InGameAction.PERFORMANCE_HUD -> stringResource(R.string.menu_performance_hud, onOff(hud))
@@ -372,4 +373,4 @@ private val InGameAction.isPersistence: Boolean
 
 private val InGameAction.isFrameGeneration: Boolean
     get() = this == InGameAction.WINFG || this == InGameAction.WINFG_PRESET ||
-        this == InGameAction.LSFG || this == InGameAction.LSFG_MULTIPLIER
+        this == InGameAction.LSFG || this == InGameAction.LSFG_MULTIPLIER || this == InGameAction.LSFG_TARGET

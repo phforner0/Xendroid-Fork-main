@@ -690,3 +690,10 @@ status, "Build da nuvem (fim do lote 14)").
    controles por cima da imagem; deitado, não divide. Conectar um controle físico (com "Esconder enquanto
    um controle joga como P1"): sem dobra, a imagem volta à tela inteira. Com geração de quadros ligada,
    dobrar/desdobrar durante o jogo e anotar se a imagem continua (mesmo caminho de uma rotação).
+55. Lote 15d — LSFG por FPS-alvo (build de desenvolvimento, modo Desenvolvedor, LSFG importado): menu
+   em jogo → Gráficos → Mais opções → "Alvo do LSFG" até "120 FPS" num jogo limitado a 60 numa tela de
+   120 Hz: o menu mostra "120 FPS → 2× com o jogo a 60 FPS". Ligar o LSFG: o HUD mostra base ~60 e ~120
+   quadros/s enviados. Trocar o limite do jogo para 30 e escolher de novo o alvo: "4× com o jogo a 30".
+   Alvo "a tela" num aparelho de 144 Hz com jogo a 60: "3× com o jogo a 48". Desligar o LSFG: o limite
+   volta ao que o jogador tinha. Anotar em cada caso, com "Compare runs" (C07), FPS mediano, ritmo
+   (frame-time) e temperatura, e se há tremida visível. Escolher um multiplicador à mão: o alvo desliga.
