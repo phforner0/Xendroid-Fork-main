@@ -617,3 +617,10 @@ itens 8, 15 e 37.
    Conferir com `adb shell cat /data/tombstones/tombstone_NN` (ou `adb bugreport`): mesmos pcs
    relativos e BuildId no topo. Nomes C++ aparecem "mangled" (`_ZN2xe…`; `c++filt` lê). No Android
    11 a linha não aparece (não há tombstone no `ApplicationExitInfo`).
+47. Lote 14f — HUD: menu → Sistema → "Mais opções" → "Potência e tempo de bateria" ligado, HUD
+   completo. Na bateria, a linha "PWR x.x W · BAT nn% ~h min" aparece; comparar os watts com um app
+   de bateria (AccuBattery/Ampere) num jogo pesado (devem bater na ordem de grandeza: 3–12 W, nunca
+   0.0 W nem milhares); a estimativa aparece logo (com contador de carga) ou depois de cair 2%, e não
+   pula com um load. Na tomada: "PWR plugged in · BAT nn% full in …" (quando o Android estima).
+   FPS a 0: pausar pelo menu ou numa tela de load longa sem quadros, o HUD vai a "FPS 0 · 0.0 ms"
+   em ~1 s (antes ficava no último valor) e volta sozinho quando o jogo apresenta de novo.

@@ -39,6 +39,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 import kotlin.math.roundToInt
+import xendroid.compose.core.BatteryReadout
+import xendroid.compose.core.BatteryTimeEstimate
 import xendroid.compose.core.EmulatorSession
 import xendroid.compose.core.presentSubmissionRate
 import xendroid.compose.core.HudMetric
@@ -120,6 +122,32 @@ private fun readBatteryTemperature(context: Context): Float {
     return temp / 10.0f
 }
 
+/** The battery as the power line needs it: the sticky broadcast plus the fuel gauge's current
+ *  and charge counter (Long.MIN_VALUE where the device does not report them). */
+private class BatterySample(
+    val percent: Int?,
+    val pluggedIn: Boolean,
+    val voltageRaw: Int,
+    val currentRaw: Long,
+    val chargeRaw: Long,
+    val minutesToFull: Int?,
+)
+
+private fun readBatterySample(context: Context): BatterySample? {
+    val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return null
+    val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+    val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+    val manager = context.getSystemService(BatteryManager::class.java)
+    return BatterySample(
+        percent = if (level >= 0 && scale > 0) level * 100 / scale else null,
+        pluggedIn = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0,
+        voltageRaw = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0),
+        currentRaw = manager?.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW) ?: Long.MIN_VALUE,
+        chargeRaw = manager?.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER) ?: Long.MIN_VALUE,
+        minutesToFull = manager?.computeChargeTimeRemaining()?.takeIf { it >= 0 }?.let { (it / 60_000).toInt() },
+    )
+}
+
 private fun readCpuSocTemperature(): Float? {
     return runCatching {
         val thermalDir = File("/sys/class/thermal")
@@ -179,6 +207,8 @@ fun FpsOverlay(
     var ramTotal by remember { mutableStateOf(0L) }
     var batTemp by remember { mutableStateOf(0f) }
     var socTemp by remember { mutableStateOf<Float?>(null) }
+    var powerLine by remember { mutableStateOf<String?>(null) }
+    val batteryEstimate = remember { BatteryTimeEstimate() }
 
     LaunchedEffect(pollHz, compact, metrics) {
         val periodMs = 1000L / pollHz.coerceIn(1, 10)
@@ -190,6 +220,7 @@ fun FpsOverlay(
         var previousPresentNs = previousWallNs
         var previousGpu: GpuCounter? = null
         var gpuSource: GpuSource? = null
+        var tick = 0L
 
         while (true) {
             val currentFps = session.averageFps()
@@ -212,6 +243,7 @@ fun FpsOverlay(
                 previousPresentNs = presentNs
             }
 
+            var nextPowerLine = powerLine
             val stats = withContext(Dispatchers.IO) {
                 if (HudMetric.GPU in metrics && gpuSource == null) {
                     gpuSource = findGpuSource()
@@ -255,6 +287,17 @@ fun FpsOverlay(
                 val bTemp = if (HudMetric.BATTERY_TEMPERATURE in metrics) readBatteryTemperature(context) else 0f
                 val sTemp = if (HudMetric.SOC_TEMPERATURE in metrics) readCpuSocTemperature() else null
                 val ram = if (HudMetric.RAM in metrics) readRamUsage(context) else (0L to 0L)
+                // The fuel gauge once a second: four binder calls are not worth 4 Hz.
+                if (HudMetric.POWER in metrics && tick % pollHz.coerceIn(1, 10) == 0L) {
+                    val battery = runCatching { readBatterySample(context) }.getOrNull()
+                    nextPowerLine = battery?.let {
+                        val left = batteryEstimate.sample(SystemClock.elapsedRealtime(), it.percent, it.chargeRaw,
+                            it.currentRaw, it.pluggedIn)
+                        BatteryReadout.line(BatteryReadout.watts(it.currentRaw, it.voltageRaw), it.percent,
+                            it.pluggedIn, left, it.minutesToFull)
+                    } ?: "PWR N/A"
+                }
+                tick++
                 Triple(cpuUsage, gpuUsage, ram) to (bTemp to sTemp)
             }
 
@@ -266,6 +309,7 @@ fun FpsOverlay(
             ramTotal = stats.first.third.second
             batTemp = stats.second.first
             socTemp = stats.second.second
+            powerLine = nextPowerLine
 
             delay(periodMs)
         }
@@ -291,6 +335,10 @@ fun FpsOverlay(
                     if (HudMetric.RAM in metrics) append(String.format(Locale.US, "RAM %.1f/%.1f GB\n", usedGb, totalGb))
                     if (HudMetric.BATTERY_TEMPERATURE in metrics) append(String.format(Locale.US, "BAT %.1f°C\n", batTemp))
                     if (HudMetric.SOC_TEMPERATURE in metrics) append(socTemp?.let { String.format(Locale.US, "SoC/CPU %.0f°C", it) } ?: "SoC/CPU N/A")
+                    if (HudMetric.POWER in metrics) powerLine?.let {
+                        if (isNotEmpty() && !endsWith("\n")) append("\n")
+                        append(it)
+                    }
                 }
             },
             color = Color.White.copy(alpha = 0.85f),

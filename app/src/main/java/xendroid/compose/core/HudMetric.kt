@@ -4,4 +4,6 @@ package xendroid.compose.core
 enum class HudMetric(val label: String) {
     HOST_SUBMISSIONS("Vulkan submissions"), CPU("CPU"), GPU("GPU"), RAM("RAM"),
     BATTERY_TEMPERATURE("Battery temperature"), SOC_TEMPERATURE("SoC temperature"),
+    /** Watts from the battery and the time it would last at that rate ([BatteryReadout]). */
+    POWER("Power and battery time"),
 }

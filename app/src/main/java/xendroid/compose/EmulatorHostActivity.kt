@@ -2675,6 +2675,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             InGameAction.HUD_RAM -> HudMetric.RAM
             InGameAction.HUD_BATTERY -> HudMetric.BATTERY_TEMPERATURE
             InGameAction.HUD_SOC -> HudMetric.SOC_TEMPERATURE
+            InGameAction.HUD_POWER -> HudMetric.POWER
             else -> null
         }
         if (metric != null) {

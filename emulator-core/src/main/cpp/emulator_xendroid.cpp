@@ -1141,7 +1141,8 @@ static jstring j_debug_overlay_text(JNIEnv* env, jobject thiz) {
 }
 
 // Last presented guest-frame interval in ms (the raw present-to-present delta,
-// NOT the 120-frame average). 0 before the first present / right after a pause.
+// NOT the 120-frame average). 0 before the first present, right after a pause and
+// once a second passes without a guest frame (frame_stats.h).
 // Backed by the same lock-free atomic RecordGuestPresent() publishes; safe from
 // any thread. Independent of the show_debug_overlay cvar (the Compose overlay
 // owns its own visibility), unlike debug_overlay_text().
@@ -1160,7 +1161,7 @@ static jdouble j_instant_fps(JNIEnv* env, jobject thiz) {
     return instant_ms > 0.f ? (jdouble)(1000.0 / (double)instant_ms) : (jdouble)0.0;
 }
 
-// RenderDoc-style average fps over a ~1s window.
+// RenderDoc-style average fps over a ~1s window; 0 after a second without a guest frame.
 static jdouble j_average_fps(JNIEnv* env, jobject thiz) {
     float instant_ms = 0.f, avg_ms = 0.f, fps = 0.f;
     xe::GetFrameStats(instant_ms, avg_ms, fps);

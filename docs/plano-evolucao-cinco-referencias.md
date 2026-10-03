@@ -594,6 +594,11 @@ HUD, bloco técnico do último run e logs. Falta: revisão do texto, RTL e texto
 (FPS/energia/HUD), Controls (layout/jogadores/gyro) e Session (pausa/som/logs/sair), com o
 avançado de cada aba atrás de "More options" (abre no lugar, por aba, sem opções de dev no
 Player). Lote 12b: linha do driver na aba Graphics (carregado × ajuste no início e agora).
+Lote 14f (Impl. + Local; aparelho pendente, roteiro 47): o HUD completo ganha "Potência e tempo
+de bateria" (watts = corrente × tensão com unidade detectada, mA × µA e mV × µV; tempo pela
+carga contra a corrente suavizada, ou pela queda da porcentagem sem contador de carga; na
+tomada, "full in" pelo Android); FPS e frametime publicados pelo core vão a 0 depois de 1 s sem
+quadro do jogo (antes ficavam no último valor durante travamentos e loads).
 Falta: validação no aparelho (roteiro 27).
 
 **Estado 2026-10-02:** U03 (parte) — driver pedido × carregado na linha do driver,

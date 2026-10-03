@@ -55,8 +55,8 @@ class InGameMenuStateTest {
         assertEquals(toggle, open.selected)
         assertEquals(closed, open.actions().take(closed.size))                      // common ones unchanged
         assertTrue(InGameAction.HUD_CPU in open.actions() && InGameAction.SAVE_GLOBAL_FPS in open.actions())
-        assertEquals(9, open.advancedCount())                                      // global save, power, 6 HUD items
-        assertEquals(closed.size + 9, open.count)
+        assertEquals(10, open.advancedCount())                                     // global save, power, 7 HUD items
+        assertEquals(closed.size + 10, open.count)
         // Other tabs keep theirs closed; closing again hides them.
         assertTrue(open.actions(InGamePage.GRAPHICS).none { it in advancedActions })
         assertEquals(closed, open.toggleAdvanced().actions())

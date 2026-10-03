@@ -1121,4 +1121,5 @@
     <string name="set_option_off">Off</string>
     <string name="ge_hide_with_controller">Hide while a controller plays P1</string>
     <string name="ge_hide_with_controller_desc">Its first button or stick push hides them; they come back when it disconnects or from the menu. Touching the screen does not bring them back.</string>
+    <string name="menu_metric_power">Power and battery time</string>
 </resources>
