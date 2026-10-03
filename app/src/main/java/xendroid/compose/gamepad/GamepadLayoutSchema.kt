@@ -69,6 +69,8 @@ data class GamepadGlobalsDto(
     val cameraSensitivity: Float = 1f,
     /** U07: where the touch camera's area starts, as a fraction of the width (0.3–0.7). */
     val cameraAreaStart: Float = TouchCamera.DEFAULT_AREA_START,
+    /** The controls step aside while a physical controller plays P1 ([TouchOverlayPresence]). */
+    val hideWithController: Boolean = true,
 )
 
 /** A game's own layout (U06); an orientation it has none for uses the shared one. */

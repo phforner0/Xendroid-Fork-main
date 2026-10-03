@@ -336,7 +336,7 @@
     <string name="set_driver">Driver Vulkan personalizado</string>
     <string name="set_driver_desc">Caminho de uma biblioteca de driver Vulkan personalizada (por exemplo Turnip) para carregar no lugar do driver do sistema</string>
     <string name="set_touch_overlay">Mostrar controle na tela</string>
-    <string name="set_touch_overlay_desc">Desenha o controle na tela durante o jogo. Começa desligado se havia um controle físico ligado na primeira abertura, e ligado se não havia</string>
+    <string name="set_touch_overlay_desc">Desenha o controle na tela durante o jogo. Começa desligado se havia um controle físico ligado na primeira abertura, e ligado se não havia. Ligado, some quando um controle joga como P1 e volta quando ele desconecta (opção do layout de toque)</string>
     <string name="set_soft_keyboard">Teclado do Android para texto do jogo</string>
     <string name="set_soft_keyboard_desc">Abre o teclado do Android quando o jogo pede para digitar (gamertags, nomes de save). Desligado, o jogo recebe o próprio texto padrão</string>
     <string name="set_message_box">Diálogo do Android para mensagens do jogo</string>
@@ -1154,4 +1154,6 @@
     <string name="set_right_deadzone">Zona morta do stick direito</string>
     <string name="set_right_deadzone_desc">Ignora movimentos pequenos do stick direito, para um controle com drift. Soma-se à pequena zona morta que o app já aplica.</string>
     <string name="set_option_off">Desligada</string>
+    <string name="ge_hide_with_controller">Esconder enquanto um controle joga como P1</string>
+    <string name="ge_hide_with_controller_desc">O primeiro botão ou movimento do stick esconde os controles; eles voltam quando o controle desconecta ou pelo menu. Tocar na tela não os traz de volta.</string>
 </resources>

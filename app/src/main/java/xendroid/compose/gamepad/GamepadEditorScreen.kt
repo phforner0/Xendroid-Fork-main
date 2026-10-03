@@ -361,6 +361,12 @@ private fun GlobalsEditor(
             Switch(checked = globals.hapticsEnabled,
                 onCheckedChange = { v -> mutate { it.copy(hapticsEnabled = v) } })
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.ge_hide_with_controller), modifier = Modifier.weight(1f).padding(end = 8.dp))
+            Switch(checked = globals.hideWithController,
+                onCheckedChange = { v -> mutate { it.copy(hideWithController = v) } })
+        }
+        Text(stringResource(R.string.ge_hide_with_controller_desc), style = MaterialTheme.typography.bodySmall)
         // U07: the touch camera (turned on in the in-game menu): how fast it turns and how much
         // of the right side of the screen it takes.
         Text(stringResource(R.string.ge_camera_speed, (globals.cameraSensitivity * 100).roundToInt()))

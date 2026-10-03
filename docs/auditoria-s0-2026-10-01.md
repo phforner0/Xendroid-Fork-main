@@ -601,3 +601,12 @@ itens 8, 15 e 37.
    caminhos (driver próprio aparece como "(a path)"). Na ficha, "Share last run report" mostra o
    mesmo bloco na prévia e no `run-report.json`. Com tudo no padrão: "Settings: all at the core's
    defaults". Um run gravado antes desta versão não mostra a linha.
+45. Lote 14d — controles de toque com controle físico: com "Mostrar controle na tela" ligado e um
+   controle Bluetooth ligado, abrir um jogo: os controles de toque aparecem; apertar A (ou mover um
+   stick além da metade) faz eles sumirem na hora, e um stick com drift parado no centro não. Tocar
+   na tela não os traz de volta (a câmera por toque também sai). Desligar o controle: voltam na
+   hora. Menu → "Controles de toque · esta sessão" (mostra "desligado" enquanto estão escondidos)
+   com o controle ligado: aparecem e ficam, mesmo apertando botões,
+   até o controle desconectar. Com dois controles, trocar P1↔P2 no menu: os controles voltam quando o
+   que os escondeu vira P2. No editor de toque (Gerais), "Esconder enquanto um controle joga como P1"
+   desligado: nada some. A linha do tempo do run registra "touch controls · hidden/shown".

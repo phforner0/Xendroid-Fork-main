@@ -549,6 +549,13 @@ validação no aparelho (roteiro 32).
 (`gamepad/TouchCamera.kt` no `GamepadOverlay`): lado direito livre vira analógico direito pela
 velocidade do dedo, zerando em repouso/soltar/cancelar; controles mantêm prioridade. Lote 12o:
 velocidade e área ajustáveis no editor (Gerais). Falta: a sensação no aparelho (roteiro 31).
+Lote 14d (Impl. + Local; aparelho pendente, roteiro 45): os controles de toque saem quando um
+controle físico **joga como P1** (primeiro botão, ou stick/gatilho/hat além da metade) e voltam
+quando ele desconecta ou passa a jogar outro jogador; tocar na tela não os traz de volta (regra do
+Eden `e4dccd5a`); controle de P2–P4 e dispositivo virtual não contam (Bannerlator `f76b16e1`,
+DroidDeck `432e197`); mostrar pelo menu vale até o controle sair. Opção "Esconder enquanto um
+controle joga como P1" no editor (Gerais), ligada por padrão; o ajuste "Mostrar controle na tela"
+continua decidindo antes. `gamepad/TouchOverlayPresence.kt` + `TouchOverlayPresenceTest`.
 
 **Estado U05 (2026-10-02, v1, Impl. + Local):** "Test controllers" na biblioteca
 (`ui/controllertest/`, `gamepad/ControllerTest.kt`): botões com checklist, analógicos sobre a

@@ -258,6 +258,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         override fun onInputDeviceAdded(deviceId: Int) = noteController(deviceId, "connected")
         override fun onInputDeviceRemoved(deviceId: Int) {
             controllers.remove(deviceId)?.let { recordEvent("controller", "disconnected ($it)", flush = true) }
+            if (deviceId == touchHiddenBy) touchControlsBack("the controller disconnected")
             // Release only what the lost controller held (I04); its player slot frees up.
             controllerKeys.remove(deviceId)?.let { key ->
                 controllerSlots.disconnect(key)?.let { slot ->
@@ -315,6 +316,12 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val fullscreenStretchEnabled = mutableStateOf(false)
 
     private val showTouchOverlay = mutableStateOf<Boolean?>(null)
+    /** The on-screen controls put aside by P1's physical controller (main thread only). */
+    private val touchPresence = xendroid.compose.gamepad.TouchOverlayPresence()
+    private val overlayHiddenByController = mutableStateOf(false)
+    private var touchHiddenBy = -1
+    /** The touch layout's "Hide while a controller plays P1", read outside composition. */
+    private var hideTouchWithController = true
     private val menuState = mutableStateOf(InGameMenuState())
     private val menuPaused = mutableStateOf(false)
     private val editorOpen = mutableStateOf(false)
@@ -710,6 +717,25 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (slot != null && slot > 0) session.setSlotConnected(slot, true, "Controller ${slot + 1}")
     }
 
+    /** A press, or a push past half, from a physical controller: playing P1, it puts the
+     *  on-screen controls aside (TouchOverlayPresence). Virtual devices never count. */
+    private fun noteControllerUse(event: android.view.InputEvent) {
+        if (overlayHiddenByController.value) return
+        val device = event.device ?: return
+        if (device.isVirtual) return
+        if (touchPresence.controllerInput(hideTouchWithController, playerSlot(event.deviceId))) {
+            touchHiddenBy = event.deviceId
+            overlayHiddenByController.value = true
+            recordEvent("touch controls", "hidden: a controller is playing P1")
+        }
+    }
+
+    private fun touchControlsBack(why: String) {
+        touchHiddenBy = -1
+        if (touchPresence.controllerGone()) recordEvent("touch controls", "shown: $why")
+        overlayHiddenByController.value = false
+    }
+
     /** L06: P1's profile as the config names it (the core signed it in at boot); null = nobody. */
     private fun firstPlayerXuid(): String? {
         val handle = xendroid.compose.settings.ConfigStore(applicationContext).openLiveSnapshot()
@@ -939,8 +965,17 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                         label = "padAlpha"
                     )
 
+                    LaunchedEffect(cfg.globals.hideWithController) {
+                        hideTouchWithController = cfg.globals.hideWithController
+                        if (!hideTouchWithController && overlayHiddenByController.value) {
+                            touchPresence.disabled()
+                            touchHiddenBy = -1
+                            overlayHiddenByController.value = false
+                        }
+                    }
+
                     val padVisible =
-                        showTouchOverlay.value == true
+                        showTouchOverlay.value == true && !overlayHiddenByController.value
 
                     val overlayActive =
                         booted &&
@@ -1080,6 +1115,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     showTouchOverlay.value =
                                         session
                                             .showTouchOverlayEnabled()
+                                    // The controller that put the touch controls aside now plays P2–P4.
+                                    if (overlayHiddenByController.value && touchHiddenBy >= 0 && playerSlot(touchHiddenBy) != 0) {
+                                        touchControlsBack("the controller now plays another player")
+                                    }
 
                                     val activeTitle = session.activeTitleId()
                                     performanceHints.update(session.presenterWork(),
@@ -1305,7 +1344,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         performanceHud = performanceOverlayEnabled.value,
                                         compactHud = compactPerformanceOverlay.value,
                                         hudMetrics = hudMetrics.value,
-                                        touchControls = showTouchOverlay.value == true,
+                                        touchControls = showTouchOverlay.value == true && !overlayHiddenByController.value,
                                         adaptiveSticks = adaptiveSticks.value,
                                         stretch = fullscreenStretchEnabled.value,
                                         volume = audioVolume.intValue,
@@ -1813,6 +1852,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     // class is library-restricted. Keep the restriction exception local to this override.
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && isControllerEvent(event) &&
+            event.keyCode != KeyEvent.KEYCODE_BACK) noteControllerUse(event)
         // U10: a controller types on the grid; the focused text field must not eat its D-pad.
         if (keyboardRequestState.value != null && !editorOpen.value && isControllerEvent(event)) {
             return when (event.action) {
@@ -1973,6 +2014,18 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     InputDevice.SOURCE_JOYSTICK ==
                     InputDevice.SOURCE_JOYSTICK
             )
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK &&
+            xendroid.compose.gamepad.TouchOverlayPresence.pushed(
+                event.getAxisValue(MotionEvent.AXIS_X), event.getAxisValue(MotionEvent.AXIS_Y),
+                event.getAxisValue(MotionEvent.AXIS_Z), event.getAxisValue(MotionEvent.AXIS_RZ),
+                event.getAxisValue(MotionEvent.AXIS_LTRIGGER), event.getAxisValue(MotionEvent.AXIS_RTRIGGER),
+                event.getAxisValue(MotionEvent.AXIS_BRAKE), event.getAxisValue(MotionEvent.AXIS_GAS),
+                event.getAxisValue(MotionEvent.AXIS_HAT_X), event.getAxisValue(MotionEvent.AXIS_HAT_Y))
+        ) noteControllerUse(event)
+        return super.dispatchGenericMotionEvent(event)
+    }
 
     override fun onGenericMotionEvent(
         event: MotionEvent
@@ -2396,8 +2449,20 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     private fun toggleTouchOverlay() {
+        // Put aside by a controller: showing them overrules it until that controller goes,
+        // and the setting (on) stays as it is.
+        if (overlayHiddenByController.value && showTouchOverlay.value == true) {
+            touchPresence.shownByUser()
+            overlayHiddenByController.value = false
+            recordEvent("touch controls", "shown from the menu while a controller plays P1")
+            return
+        }
         val next =
             showTouchOverlay.value != true
+        if (next) {
+            touchPresence.shownByUser()
+            overlayHiddenByController.value = false
+        }
 
         showTouchOverlay.value =
             next

@@ -336,7 +336,7 @@
     <string name="set_driver">Custom Vulkan driver</string>
     <string name="set_driver_desc">Path to a custom Vulkan driver library (e.g. Turnip) to load instead of the system driver</string>
     <string name="set_touch_overlay">Show on-screen controller</string>
-    <string name="set_touch_overlay_desc">Draw the on-screen controller while playing. Starts off when a physical controller was attached on first launch, on when none was</string>
+    <string name="set_touch_overlay_desc">Draw the on-screen controller while playing. Starts off when a physical controller was attached on first launch, on when none was. While on, a controller playing P1 puts it aside until it disconnects (touch layout option)</string>
     <string name="set_soft_keyboard">Android keyboard for game text input</string>
     <string name="set_soft_keyboard_desc">Pops up the Android keyboard when a game asks you to type (gamertags, save names). With this off the game is answered with its own default text</string>
     <string name="set_message_box">Android dialog for game message boxes</string>
@@ -1119,4 +1119,6 @@
     <string name="set_right_deadzone">Right stick dead zone</string>
     <string name="set_right_deadzone_desc">Ignores small movements of the right stick, for a controller whose stick drifts. It adds to the small dead zone the app already applies.</string>
     <string name="set_option_off">Off</string>
+    <string name="ge_hide_with_controller">Hide while a controller plays P1</string>
+    <string name="ge_hide_with_controller_desc">Its first button or stick push hides them; they come back when it disconnects or from the menu. Touching the screen does not bring them back.</string>
 </resources>
