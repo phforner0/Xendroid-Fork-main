@@ -101,7 +101,9 @@ object UiScaleStore {
 
     fun read(context: Context): UiScale = read(prefs(context))
 
+    /** Saved without blocking the tap on disk: the frontend's listener sees it at once, and Android
+     *  finishes the write before the activity stops, so a game started afterwards reads it. */
     fun write(context: Context, scale: UiScale) {
-        prefs(context).edit(commit = true) { putFloat(SIZE, scale.size); putFloat(TEXT, scale.text) }
+        prefs(context).edit { putFloat(SIZE, scale.size); putFloat(TEXT, scale.text) }
     }
 }

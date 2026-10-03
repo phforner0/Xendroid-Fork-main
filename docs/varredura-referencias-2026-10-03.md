@@ -107,7 +107,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Debanding | Bannerlator `e836265d` | **Tem** (revisto no lote 14j): o "debanding" do Bannerlator é um dither terminal antes dos 8 bits, o mesmo que o `postprocess_dither` do Xenia (ruído azul), que não fazia nada até o lote 14b e agora também está no modo Jogador ("Reduzir faixas de cor") | — |
 | SGSR / SGSR HQ | Bannerlator `7e71cb8f` | **Impl. + Local no lote 14j** (SGSR 1, BSD-3-Clause com aviso no APK; testado em Vulkan por software; custo no aparelho a medir); SGSR HQ (direção de borda) não | Média / M |
 | NIS, Lanczos, Spline, cúbico, MMPX, área | Bannerlator `6ff165f7`; Eden `f33a771d`, `b66adfe0`, `dbeae7ad`, `2946cdbd` | **Impl. + Local no lote 15k**: Lanczos-2 (sem halos; testado em Vulkan por software; custo no aparelho pendente, roteiro 62); os demais não | Média / M (escolher um ou dois) |
-| Efeitos (CRT, cor, fake-HDR), presets de um toque, shaders de pós-processamento | Bannerlator `a05106c5`; Eden `ed566919` | **Parcial**: filtro de cor (Desligado/Cinza/Contraste/Quente) e, no lote 15m, **visual de CRT** como efeito de escala (Impl. + Local: linhas de varredura com período inteiro de pixels da tela, cantos mais escuros; aparelho pendente, roteiro 64); e, no lote 15q, o modo **Vívido (falso HDR)** no filtro de cor (Impl. + Local; aparelho pendente, roteiro 68); presets de um toque e shaders do usuário não | Média / M |
+| Efeitos (CRT, cor, fake-HDR), presets de um toque, shaders de pós-processamento | Bannerlator `a05106c5`; Eden `ed566919` | **Parcial**: filtro de cor (Desligado/Cinza/Contraste/Quente) e, no lote 15m, **visual de CRT** como efeito de escala (Impl. + Local: linhas de varredura com período inteiro de pixels da tela, cantos mais escuros; aparelho pendente, roteiro 64); e, no lote 15q, o modo **Vívido (falso HDR)** no filtro de cor (Impl. + Local; aparelho pendente, roteiro 68); "presets de um toque" ficam com os perfis recomendados por jogo (C05, aplicar e desfazer de uma vez); shaders de pós-processamento do usuário ficam fora por desenho (compilar GLSL de terceiros dentro do presenter, sem como validar custo e segurança sem aparelho) | Média / M |
 | ReShade (.fx) com catálogo | Bannerlator `edf46af9` | **Não tem** | Baixa / G |
 
 ### 3.5 Tela, Hz e TV
@@ -143,7 +143,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Giroscópio só enquanto um gatilho é segurado; modo orientação | Bannerlator `7cf04b57`, `c575091c` | **Parcial**: câmera por giroscópio com sensibilidade e calibração | Alta / P |
 | Entrada sem buffer (`requestUnbufferedDispatch`) | Bannerlator `3b08d65e` | **Não tem** | Alta / P (medir latência no aparelho) |
 | Remapear tocando no botão desenhado; modelo "qualquer controle"; copiar mapeamento | Bannerlator `4344ef49`, `4811d46c` | **Impl. + Local no lote 15o** (controle desenhado, tocar para mapear, troca quando a tecla já é de outro botão, aviso de tecla repetida, A/B-X/Y no padrão Nintendo; aparelho pendente, roteiro 66); o mapeamento já é um só para qualquer controle, então copiar entre controles não se aplica | Média / M |
-| Editor de toque: grupos, zona morta por elemento, ajuste à grade | Bannerlator `9dd238bb`, `a20fca5a`; Eden `76be55bc` | **Parcial**: posição, escala 0,5–3×, visibilidade, layouts por jogo, edição pela biblioteca (U06), ajuste à grade e, no lote 15f, zona morta por elemento (direcional e analógicos); e, no lote 15r, **grupos** que se movem e redimensionam juntos (Impl. + Local; aparelho pendente, roteiro 69) | Média / M |
+| Editor de toque: grupos, zona morta por elemento, ajuste à grade | Bannerlator `9dd238bb`, `a20fca5a`; Eden `76be55bc` | **Impl. + Local** nas três partes: ajuste à grade (já existia, com posição, escala 0,5–3×, visibilidade, layouts por jogo e edição pela biblioteca), zona morta por elemento no lote 15f (direcional e analógicos) e grupos no lote 15r (ABXY, gatilho + bumper, Back + Start, analógico + clique, movem e redimensionam juntos); aparelho pendente, roteiros 57 e 69 | Média / M |
 | Deslizar o dedo de um botão para outro | Bannerlator `72db7f4d` | **Impl. + Local no lote 15f** (botões e direcional; analógico opcional; desligado por padrão; aparelho pendente, roteiro 57) | Média / M |
 | Sticks adaptativos e câmera por toque | DroidDeck `9530e7b`, `659ff48`; X360 Mobile v0.6.2 | **Tem** (sticks adaptativos, U07) | — |
 | Soltar o que está pressionado quando o toque é cancelado ou um diálogo assume | DroidDeck `c66e4ba`; X360 Mobile v0.6.2 | A conferir | Alta / P |
@@ -276,6 +276,17 @@ aparelho fica pendente.
 
 Maiores, para depois: carrossel/XMB, configs da comunidade (exige servidor), divisão da tela
 em dobráveis, mais idiomas, LSFG por FPS-alvo.
+
+**Lote 15 (fechado):** as maiores e os demais itens de média prioridade viáveis sem aparelho
+entraram como Implementado + Testado localmente — carrossel/XMB (15a), configs da comunidade com
+servidor de referência (15b), tela dividida (15c), LSFG por FPS-alvo exato (15d), carregamento e
+"tentar de novo" (15e), toque deslizante e zona morta por elemento (15f), HUD por jogo e memória da
+GPU (15g), margem de TV (15h), flags do Turnip e filtro de log (15i), buffer de áudio adaptativo e
+aviso térmico (15j), Lanczos (15k), escala da interface e idioma no app (15l), CRT (15m), painel de
+desempenho (15n), mapeamento desenhado (15o), fontes de driver e sugestão por GPU (15p), filtro
+"Vívido" (15q) e grupos no editor de toque (15r). Fora por desenho: governador probe/backoff,
+shaders do usuário; mais idiomas dependem de tradução. Tudo segue com validação no aparelho
+pendente (roteiros 52–69 da auditoria).
 
 ## 6. O que o XenDroid já tem e as referências não
 
