@@ -3,7 +3,6 @@ package xendroid.compose.driver
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -15,8 +14,14 @@ data class DriverInfo(
     val name: String,
     val version: String,
     val url: String,
-    val sha256: String = ""
+    val sha256: String = "",
+    /** 15p: the GitHub repository ("owner/repo") the release came from, and when it was published (ISO). */
+    val source: String = "",
+    val publishedAt: String = "",
 )
+
+/** 15p: what the sources gave, and the ones that could not be read (source to reason). */
+data class DriverListing(val drivers: List<DriverInfo>, val failures: List<Pair<String, String>>)
 
 /** GitHub release assets may publish a digest; absent/malformed values are not verified. */
 fun githubAssetSha256(digest: String?): String? =
@@ -25,11 +30,21 @@ fun githubAssetSha256(digest: String?): String? =
 
 object DriverRepository {
 
-    private const val RELEASES_API =
-        "https://api.github.com/repos/K11MCH1/AdrenoToolsDrivers/releases"
+    /** 15p: every source's releases, in the order of [sources]; one that fails does not stop the others. */
+    suspend fun loadDrivers(sources: List<String> = listOf(DriverSources.DEFAULT)): DriverListing = withContext(Dispatchers.IO) {
+        val drivers = mutableListOf<DriverInfo>()
+        val failures = mutableListOf<Pair<String, String>>()
+        for (source in sources) {
+            currentCoroutineContext().ensureActive()
+            runCatching { DriverReleases.parse(fetch(DriverSources.releasesApi(source)), source) }
+                .onSuccess { drivers += it }
+                .onFailure { failures += source to (it.message ?: it.javaClass.simpleName) }
+        }
+        DriverListing(drivers, failures)
+    }
 
-    suspend fun loadDrivers(): List<DriverInfo> = withContext(Dispatchers.IO) {
-        val connection = URL(RELEASES_API).openConnection() as HttpURLConnection
+    private fun fetch(api: String): String {
+        val connection = URL(api).openConnection() as HttpURLConnection
 
         connection.connectTimeout = 10000
         connection.readTimeout = 15000
@@ -41,52 +56,19 @@ object DriverRepository {
             if (connection.responseCode != HttpURLConnection.HTTP_OK) {
                 throw Exception("GitHub API HTTP ${connection.responseCode}")
             }
-
-            val json = connection.inputStream.bufferedReader().use { it.readText() }
-            val releases = JSONArray(json)
-
-            buildList {
-                for (i in 0 until releases.length()) {
-                    val release = releases.getJSONObject(i)
-
-                    if (release.optBoolean("draft", false) ||
-                        release.optBoolean("prerelease", false)
-                    ) {
-                        continue
-                    }
-
-                    val releaseName = release.optString("name").ifBlank {
-                        release.optString("tag_name")
-                    }
-
-                    val tagName = release.optString("tag_name")
-                    val assets = release.optJSONArray("assets") ?: continue
-
-                    for (j in 0 until assets.length()) {
-                        val asset = assets.getJSONObject(j)
-
-                        val assetName = asset.optString("name")
-                        val downloadUrl = asset.optString("browser_download_url")
-
-                        if (!assetName.endsWith(".zip", ignoreCase = true)) {
-                            continue
-                        }
-
-                        if (downloadUrl.isBlank()) {
-                            continue
-                        }
-
-                        add(
-                            DriverInfo(
-                                name = assetName,
-                                version = "$releaseName ($tagName)",
-                                url = downloadUrl,
-                                sha256 = githubAssetSha256(asset.optString("digest")).orEmpty(),
-                            )
-                        )
-                    }
+            // A releases page is small; a source that answers with megabytes is not one.
+            val bytes = connection.inputStream.use { input ->
+                val out = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(16384)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count == -1) break
+                    out.write(buffer, 0, count)
+                    require(out.size() <= 4 * 1024 * 1024) { "release list over 4 MB" }
                 }
+                out.toByteArray()
             }
+            return String(bytes, Charsets.UTF_8)
         } finally {
             connection.disconnect()
         }

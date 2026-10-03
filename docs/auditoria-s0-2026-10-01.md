@@ -759,3 +759,9 @@ status, "Build da nuvem (fim do lote 14)").
    com nome e tecla. Dar a A a tecla do B: aviso de troca e B fica com a tecla antiga de A; num jogo, os
    dois funcionam. "Trocar A/B e X/Y" com um controle de Switch Pro / 8BitDo no modo Nintendo: os botões
    seguem a posição; tocar de novo volta. Um botão "Limpar" fica destacado como sem tecla.
+67. Lote 15p — fontes de driver: num aparelho Adreno com rede, Ajustes → Driver Vulkan personalizado →
+   Gerenciar drivers: a lista vem da fonte de sempre; "Fontes" → adicionar um repositório de Turnip (ex.: um link
+   de releases do GitHub) → a lista recarrega com os dois e cada item diz de onde veio; um repositório
+   que não existe dá aviso sem travar o resto. O item "Sugerido para Adreno N" aparece no topo e é da
+   família certa (num 7xx nunca um build A8XX); baixar e usar o sugerido inicia o jogo com ele (U03 diz
+   qual driver carregou).

@@ -390,6 +390,11 @@ private fun DriverActionRow(
 
     var showManager by remember { mutableStateOf(false) }
     var drivers by remember { mutableStateOf<List<DriverInfo>>(emptyList()) }
+    // 15p: the GitHub repositories the manager reads, and the driver suggested for this GPU.
+    var sources by remember { mutableStateOf(xendroid.compose.driver.DriverSources.decode(prefs.getString("sources", null))) }
+    var editingSources by remember { mutableStateOf(false) }
+    val adreno = remember { xendroid.compose.driver.DriverSuggestion.adrenoModel(xendroid.compose.core.EmulatorRuntime.gpuDeviceName) }
+    val suggested = remember(drivers) { xendroid.compose.driver.DriverSuggestion.suggest(drivers, xendroid.compose.core.EmulatorRuntime.gpuDeviceName) }
     var loading by remember { mutableStateOf(false) }
     var downloading by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableIntStateOf(0) }
@@ -446,9 +451,12 @@ private fun DriverActionRow(
 
         scope.launch {
             runCatching {
-                DriverRepository.loadDrivers()
-            }.onSuccess {
-                drivers = it
+                DriverRepository.loadDrivers(sources)
+            }.onSuccess { listing ->
+                drivers = listing.drivers
+                listing.failures.forEach { (source, reason) ->
+                    Toast.makeText(context, context.getString(R.string.drv_source_failed, source, reason), Toast.LENGTH_LONG).show()
+                }
             }.onFailure {
                 Toast.makeText(
                     context,
@@ -549,7 +557,10 @@ private fun DriverActionRow(
                     }
 
                     drivers.isEmpty() -> {
-                        Text(stringResource(R.string.drv_none))
+                        Column {
+                            DriverSourcesLine(sources) { editingSources = true }
+                            Text(stringResource(if (sources.isEmpty()) R.string.drv_sources_none else R.string.drv_none))
+                        }
                     }
 
                     else -> {
@@ -558,8 +569,16 @@ private fun DriverActionRow(
                                 .fillMaxWidth()
                                 .heightIn(max = 450.dp)
                         ) {
+                            item(key = "sources") {
+                                DriverSourcesLine(sources) { editingSources = true }
+                                if (suggested != null && adreno != null) {
+                                    Text(stringResource(R.string.drv_suggested_note), style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                HorizontalDivider()
+                            }
                             items(
-                                drivers,
+                                listOfNotNull(suggested) + drivers.filter { it != suggested },
                                 key = { "${it.name}_${it.url}" }
                             ) { driver ->
 
@@ -583,11 +602,21 @@ private fun DriverActionRow(
                                         style = MaterialTheme.typography.bodyLarge
                                     )
 
+                                    if (driver == suggested && adreno != null) {
+                                        Text(stringResource(R.string.drv_suggested, adreno),
+                                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                    }
+
                                     Text(
                                         driver.version,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+
+                                    if (driver.source.isNotEmpty() && sources.size > 1) {
+                                        Text(stringResource(R.string.drv_from, driver.source), style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
 
                                     Text(
                                         if (driver.sha256.isBlank()) stringResource(R.string.drv_no_checksum)
@@ -701,6 +730,82 @@ private fun DriverActionRow(
             }
         )
     }
+    if (editingSources) {
+        DriverSourcesDialog(
+            sources = sources,
+            onChange = { next ->
+                sources = next
+                prefs.edit().putString("sources", xendroid.compose.driver.DriverSources.encode(next)).apply()
+                drivers = emptyList()   // read again from the new list
+                loadDrivers()
+            },
+            onDismiss = { editingSources = false },
+        )
+    }
+}
+
+/** 15p: the sources the manager reads, with the button that edits them. */
+@Composable
+private fun DriverSourcesLine(sources: List<String>, onEdit: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (sources.isEmpty()) stringResource(R.string.drv_sources_none)
+            else stringResource(R.string.drv_sources, sources.joinToString(", ")),
+            style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onEdit) { Text(stringResource(R.string.drv_sources_edit)) }
+    }
+}
+
+/** 15p: add or remove the GitHub repositories the driver manager reads. */
+@Composable
+internal fun DriverSourcesDialog(sources: List<String>, onChange: (List<String>) -> Unit, onDismiss: () -> Unit) {
+    var input by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val invalid = stringResource(R.string.drv_source_invalid)
+    val duplicate = stringResource(R.string.drv_source_duplicate)
+    val full = stringResource(R.string.drv_source_full, xendroid.compose.driver.DriverSources.MAX)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.drv_sources_title)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.drv_sources_note), style = MaterialTheme.typography.bodySmall)
+                sources.forEach { source ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(source, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { onChange(xendroid.compose.driver.DriverSources.remove(sources, source)) }) {
+                            Text(stringResource(R.string.common_remove))
+                        }
+                    }
+                }
+                if (sources.none { it.equals(xendroid.compose.driver.DriverSources.DEFAULT, ignoreCase = true) }) {
+                    TextButton(onClick = {
+                        onChange(xendroid.compose.driver.DriverSources.add(sources, xendroid.compose.driver.DriverSources.DEFAULT).first)
+                    }) { Text(stringResource(R.string.drv_source_default)) }
+                }
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it; problem = null },
+                    label = { Text(stringResource(R.string.drv_source_hint)) },
+                    singleLine = true,
+                    isError = problem != null,
+                    supportingText = problem?.let { { Text(it) } },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(onClick = {
+                    val (next, result) = xendroid.compose.driver.DriverSources.add(sources, input)
+                    problem = when (result) {
+                        xendroid.compose.driver.DriverSources.Added.ADDED -> { onChange(next); input = ""; null }
+                        xendroid.compose.driver.DriverSources.Added.INVALID -> invalid
+                        xendroid.compose.driver.DriverSources.Added.ALREADY_THERE -> duplicate
+                        xendroid.compose.driver.DriverSources.Added.FULL -> full
+                    }
+                }) { Text(stringResource(R.string.drv_source_add)) }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
+    )
 }
 
 @Composable

@@ -199,7 +199,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Feature | Fonte | XenDroid | Cabe? |
 |---|---|---|---|
 | Catálogo de drivers com download | Eden `b60d0aab`, `8663d7fa`; Bannerlator `54c1dd35` | **Tem** (`drivers.json` e download) | — |
-| Fontes de driver do usuário; driver sugerido por GPU | Bannerlator `54c1dd35`; DroidDeck `f13c885` | **Não tem** | Média / M |
+| Fontes de driver do usuário; driver sugerido por GPU | Bannerlator `54c1dd35`; DroidDeck `f13c885` | **Impl. + Local no lote 15p** (repositórios do GitHub como fontes, adicionados e removidos no gerenciador; sugestão pela família da Adreno nos nomes dos builds; aparelho e rede pendentes, roteiro 67) | Média / M |
 | Cache invalidado quando o driver muda | Eden `1643d876`, `c2794985`; X360 Mobile v0.6.2 | **Tem** (A06: o arquivo do cache nomeia vendor, device e `pipelineCacheUUID`) | — |
 | **Limpar o cache de shaders de um jogo pela interface** | Eden `97a8470b`; X360 Mobile v0.5.2 | **Não tem** (caches ocultos em Dados do usuário) | **Alta / P** |
 | Variáveis do Turnip com ajuda | Eden `87d4c673`; Bannerlator `1933903c` | **Impl. + Local no lote 15i** (flags do TU_DEBUG uma a uma, com explicação; aparelho pendente, roteiro 60) | Média / P |

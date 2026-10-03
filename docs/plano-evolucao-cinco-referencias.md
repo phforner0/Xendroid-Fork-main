@@ -574,6 +574,11 @@ vigor, incluindo os alterados do padrão. Só leitura; nada é ajustado sozinho.
 mapeamento (tocar no botão para mapear), destaque de sem tecla/repetido/alterado, troca automática
 quando a tecla já é de outro botão e o atalho A/B-X/Y para o padrão Nintendo.
 
+**Lote 15p (Impl. + Local; aparelho e rede pendentes, roteiro 67):** fontes de driver do usuário
+(repositórios do GitHub adicionados e removidos no gerenciador, lidos um a um) e o driver sugerido
+para a GPU Adreno pelos nomes dos builds (modelo, família, genérico; nunca outra família), com os
+downloads conferidos como antes.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

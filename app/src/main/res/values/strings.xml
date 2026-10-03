@@ -1284,4 +1284,19 @@
     <string name="km_swapped">%1$s had that key, so it got the one %2$s had before.</string>
     <string name="km_now">Now: %1$s</string>
     <string name="km_shared_mark">%1$s · on another button too</string>
+    <string name="drv_sources">Sources: %1$s</string>
+    <string name="drv_sources_none">No sources: add one to list drivers.</string>
+    <string name="drv_sources_edit">Sources</string>
+    <string name="drv_sources_title">Driver sources</string>
+    <string name="drv_sources_note">GitHub repositories whose releases carry driver packages (.zip). Every download is still checked: an arm64 Vulkan library, and its SHA-256 when the release gives one.</string>
+    <string name="drv_source_hint">owner/repo or a GitHub link</string>
+    <string name="drv_source_add">Add</string>
+    <string name="drv_source_invalid">Not a GitHub repository.</string>
+    <string name="drv_source_duplicate">Already in the list.</string>
+    <string name="drv_source_full">At most %1$d sources.</string>
+    <string name="drv_source_default">Use the usual source again</string>
+    <string name="drv_source_failed">Could not read %1$s: %2$s</string>
+    <string name="drv_suggested">Suggested for Adreno %1$d</string>
+    <string name="drv_suggested_note">Chosen from the file names, newest first; not a guarantee.</string>
+    <string name="drv_from">From %1$s</string>
 </resources>

@@ -1323,4 +1323,19 @@
     <string name="km_swapped">%1$s tinha essa tecla, então ficou com a que %2$s tinha antes.</string>
     <string name="km_now">Agora: %1$s</string>
     <string name="km_shared_mark">%1$s · também em outro botão</string>
+    <string name="drv_sources">Fontes: %1$s</string>
+    <string name="drv_sources_none">Nenhuma fonte: adicione uma para listar drivers.</string>
+    <string name="drv_sources_edit">Fontes</string>
+    <string name="drv_sources_title">Fontes de drivers</string>
+    <string name="drv_sources_note">Repositórios do GitHub cujos releases trazem pacotes de driver (.zip). Todo download continua conferido: biblioteca Vulkan arm64 e o SHA-256 quando o release informa.</string>
+    <string name="drv_source_hint">dono/repositório ou um link do GitHub</string>
+    <string name="drv_source_add">Adicionar</string>
+    <string name="drv_source_invalid">Não é um repositório do GitHub.</string>
+    <string name="drv_source_duplicate">Já está na lista.</string>
+    <string name="drv_source_full">No máximo %1$d fontes.</string>
+    <string name="drv_source_default">Voltar a usar a fonte de sempre</string>
+    <string name="drv_source_failed">Não foi possível ler %1$s: %2$s</string>
+    <string name="drv_suggested">Sugerido para Adreno %1$d</string>
+    <string name="drv_suggested_note">Escolhido pelos nomes dos arquivos, o mais novo primeiro; não é garantia.</string>
+    <string name="drv_from">De %1$s</string>
 </resources>
