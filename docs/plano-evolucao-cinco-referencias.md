@@ -587,6 +587,11 @@ shaders do usuário continuam fora.
 gatilho + bumper, Back + Start, analógico + clique) que se movem e redimensionam juntos mantendo a
 forma. O governador probe/backoff segue fora por desenho (F04 consultivo; só com A/B no aparelho).
 
+**Fim do lote 15 (build da nuvem em `d272712f`, APK compilado e não testado no telefone):** os
+itens maiores da varredura e os demais de média prioridade viáveis sem aparelho entraram como
+Implementado + Testado localmente (15a–15r); nada foi validado no aparelho nem aprovado para release.
+O que falta é o roteiro de aparelho da auditoria (itens 52–69), com o APK desta build.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

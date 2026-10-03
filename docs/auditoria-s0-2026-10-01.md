@@ -239,7 +239,12 @@ itens 8, 15 e 37. Os itens 43 a 51 (lote 14, varredura das referências: ajustes
 controle, ajustes alterados no relatório, controles de toque com controle físico, tombstone, HUD de
 potência, Game Mode, entrada sem buffer/giroscópio/cache de shaders, avisos da FG, SGSR e faixas de
 cor) também são manuais por enquanto; o build com eles é o `e70b7c1c` (APKs e SHA-256 na tabela de
-status, "Build da nuvem (fim do lote 14)").
+status, "Build da nuvem (fim do lote 14)"). Os itens 52 a 69 (lote 15: carrossel, configs da
+comunidade, tela dividida, LSFG por FPS-alvo, carregamento e "tentar de novo", toque deslizante e zona
+morta, HUD por jogo, margem de TV, Turnip/log, áudio adaptativo e aviso térmico, Lanczos, escala da
+interface e idioma, CRT, painel de desempenho, mapeamento desenhado, fontes de driver, filtro "Vívido"
+e grupos do editor de toque) são manuais; o build com eles é o `d272712f` (APKs e SHA-256 na tabela de
+status, "Build da nuvem (fim do lote 15)"), que traz também os itens anteriores.
 
 1. Config: editar uma opção global na biblioteca enquanto um jogo **sem** config por
    jogo inicia; conferir no `xe.log` "SaveConfig skipped" e que a edição persiste.
