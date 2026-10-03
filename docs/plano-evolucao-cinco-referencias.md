@@ -575,14 +575,20 @@ Falta: validação no aparelho (roteiro 27).
 **Estado 2026-10-02:** U03 (parte) — driver pedido × carregado na linha do driver,
 pela identidade gravada no run, sem falso alarme para runs anteriores à troca; lote 12b/12f:
 a mesma comparação no menu em jogo e, sem KGSL, o ajuste do driver mostrado indisponível com a
-causa e o que roda no lugar. U06 v1 —
+causa e o que roda no lugar. Falta no U03: o valor efetivo de cada ajuste (ex.: a escala de
+resolução realmente usada) — o core não informa hoje; exige uma leitura por ajuste via JNI e
+conferência no aparelho. U06 v1 —
 layout de toque por Title ID e orientação ("This game only" no editor dentro do jogo),
 com retorno ao compartilhado. U06 v2 (lote 12d) — layouts nomeados (salvar/aplicar com prévia do
 que muda/apagar), arquivo `xendroid-touch-layout` versionado com importação validada, e campos e
 controles desconhecidos preservados (corrige a perda deles a cada edição). U08 (parte) — intensidade
 de rumble Off/Low/Medium/High aplicada ao controle de cada jogador; lote 12g: intensidade
-própria por controle (pelo descritor), escolhida em Test controllers. U09 (parte, lote 3) —
-estado do boot.
+própria por controle (pelo descritor), escolhida em Test controllers; o giroscópio do
+telefone já calibra em repouso. Falta no U08: o giroscópio do próprio controle como câmera — a
+convenção de eixos dos controles no Android muda com o driver (hid-playstation, hid-nintendo);
+medir no aparelho com Test controllers (mostra x/y/z) antes de mapear, para não entregar um
+mapeamento chutado. U09 v1 — estado do boot (lote 3), Cancel no aviso de carregamento e saída
+conforme a origem (lote 12e); falta só o aparelho (roteiro 39).
 
 Referências concretas [X1/X2], [B3], [D1/D2], [E2/E5]. O visual Blades/Metro pode
 inspirar hierarquia própria; não é necessário reproduzir logo/arte proprietária.
