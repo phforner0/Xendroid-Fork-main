@@ -331,6 +331,13 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val presentationState = mutableStateOf(PresentationState())
     private val fgGovernor = xendroid.compose.core.FrameGenerationGovernor()
     private val fgBudgetLabel = mutableStateOf<String?>(null)
+    /** FG before it is on (what it would cost here) or while it runs (base → submitted). */
+    private val fgNotes = mutableStateOf<List<String>>(emptyList())
+    /** The guest's FPS in the last second it ran with the menu closed (the menu pauses it). */
+    private var lastGuestFps = 0.0
+    private var lastGenerated = -1L
+    private var lastGeneratedNs = 0L
+    private var generatedPerSecond = 0.0
     private val fgPreset = mutableIntStateOf(2)
     private val lsfgMultiplier = mutableIntStateOf(2)
     private val generationCap = xendroid.compose.core.GenerationCap()
@@ -1219,6 +1226,20 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         slots = fgNow.syntheticSlots, lateSkips = fgNow.lateSkips,
                                         thermalStatus = lastThermalStatus,
                                     ))?.let { recordEvent("fg budget", it.text) }
+                                    // What frame generation does, or would do, at this refresh rate.
+                                    if (runningNow && !menuState.value.open) {
+                                        session.averageFps().takeIf { it > 0 }?.let { lastGuestFps = it }
+                                        val generatedNs = android.os.SystemClock.elapsedRealtimeNanos()
+                                        if (lastGenerated >= 0 && generatedNs > lastGeneratedNs) {
+                                            generatedPerSecond = (fgNow.generated - lastGenerated).coerceAtLeast(0) *
+                                                1e9 / (generatedNs - lastGeneratedNs)
+                                        }
+                                        lastGenerated = fgNow.generated
+                                        lastGeneratedNs = generatedNs
+                                    } else {
+                                        lastGenerated = -1L
+                                    }
+                                    if (BuildConfig.DEBUG) fgNotes.value = frameGenerationNotes(fgNow)
                                     fgBudgetLabel.value = fgGovernor.current.takeIf {
                                         it.verdict != xendroid.compose.core.FrameGenerationGovernor.Verdict.OFF
                                     }?.let { "Budget (advisory, never acts): ${it.text}" }
@@ -1380,6 +1401,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         ),
                                         phoneControllers = phoneControllersDetails.value,
                                         frameGenerationBudget = fgBudgetLabel.value,
+                                        frameGenerationNotes = fgNotes.value,
                                         performanceHud = performanceOverlayEnabled.value,
                                         compactHud = compactPerformanceOverlay.value,
                                         hudMetrics = hudMetrics.value,
@@ -2586,6 +2608,21 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     @Suppress("DEPRECATION")
     private fun currentOutputHz(): Float = externalDisplay?.activeDisplay?.refreshRate ?:
         (if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else windowManager.defaultDisplay.refreshRate) ?: 60f
+
+    private fun frameGenerationNotes(state: PresentationState): List<String> {
+        val hz = currentOutputHz()
+        return if (state.requested && state.state == 2) {
+            xendroid.compose.core.FrameGenerationReadout.running(lastGuestFps, generatedPerSecond,
+                if (state.engine == 1) state.multiplier else 2, hz)
+        } else {
+            listOfNotNull(
+                xendroid.compose.core.FrameGenerationReadout.preview("Win-FG", 2, lastGuestFps, hz),
+                lsfgCache.value?.let {
+                    xendroid.compose.core.FrameGenerationReadout.preview("LSFG Native", lsfgMultiplier.intValue, lastGuestFps, hz)
+                },
+            )
+        }
+    }
 
     private fun prepareGenerationCap(hz: Float, multiplier: Int = 2) {
         generationCap.prepare(session.fpsLimit(), hz, multiplier)?.let { capped ->

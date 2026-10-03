@@ -100,6 +100,8 @@ fun InGameMenu(
     phoneControllers: String?,
     /** While frame generation runs: the advisory budget verdict (Graphics page). */
     frameGenerationBudget: String? = null,
+    /** FG figures: what it would cost here, or base → submitted while it runs. */
+    frameGenerationNotes: List<String> = emptyList(),
     logSessions: List<SessionLogs.Session>,
     onLogChoice: (Int) -> Unit,
     onPage: (InGamePage) -> Unit,
@@ -183,6 +185,7 @@ fun InGameMenu(
                         if (state.page == InGamePage.GRAPHICS && state.developer) {
                             Text(presentation.label, style = MaterialTheme.typography.bodySmall)
                             frameGenerationBudget?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                            frameGenerationNotes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                             Text(stringResource(R.string.menu_fg_experimental), style = MaterialTheme.typography.bodySmall)
                         }
                         if (state.page == InGamePage.SYSTEM) {

@@ -766,7 +766,13 @@ julga por segundo orçamento de GPU (passada > 80% do intervalo entre saídas), 
 multiplicador > Hz, slots atrasados (> 1 em 5) e térmico SEVERE, com histerese de 3 s; mostra
 o veredito no menu e o grava na linha do tempo, **sem agir**. Falta: calibrar os limiares no
 aparelho (roteiro 15) e só então deixá-lo recuar/desligar, além de target-rate e credit
-fracionário do LSFG.
+fracionário do LSFG. Lote 14i (Impl. + Local; aparelho pendente, roteiro 50): na aba Gráficos
+(Desenvolvedor, build debug), antes de ligar, o que a FG faria aqui ("45 FPS × 2 = 90/s acima de
+60 Hz: ligar limita o jogo a 30 FPS, base 30 → 60 quadros/s enviados"; a regra é a do
+`GenerationCap`), para Win-FG 2× e, com cache, LSFG N×; ligada, "base → enviados (gerados)" por
+segundo, medidos com o menu fechado, e o aviso quando FPS × multiplicador passa do Hz. "Enviados"
+não é prova de exibição, e o texto diz isso. A FG continua experimental, desligada e atrás dos
+mesmos gates.
 
 **F05 — refresh/surface dinâmicos:** observar mudança real de modo externo/telefone,
 desanexar/reconectar sem reboot, renegociar FIFO/flags, revalidar cache/engine.

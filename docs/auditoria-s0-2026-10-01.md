@@ -643,3 +643,10 @@ itens 8, 15 e 37.
    (c) Ficha do jogo → "Limpar cache de shaders" mostra "x MB em n arquivos"; limpar, abrir o jogo: o
    rótulo de boot mostra pipelines sendo criados de novo (engasgos até terminar) e o tamanho volta a
    crescer; saves e ajustes continuam. Com o jogo aberto em segundo plano: "Feche o jogo aberto…".
+50. Lote 14i — FG, build debug, modo Desenvolvedor: num jogo a ~45 FPS numa tela de 60 Hz, abrir o
+   menu → Gráficos: a linha "Win-FG 2×: 45 FPS × 2 = 90/s is over the 60 Hz display; turning it on caps
+   the game at 30 FPS…" aparece; ligar a Win-FG: o limite vai a 30 e, com o menu fechado alguns
+   segundos e reaberto, "Base 30 FPS → 60 frames/s submitted (30 generated…)". Conferir os números com
+   o HUD (FPS do jogo) e com "Vulkan submitted" no HUD completo. Subir o limite de FPS para 60 com a FG
+   ligada: aparece "Over the display…" e a FG para sozinha ("guest cadence exceeds display Hz"). Com a
+   tela em 120 Hz o aviso não aparece a 45 FPS. LSFG idem com o multiplicador escolhido.
