@@ -474,7 +474,11 @@ reaparecer. Coleções do usuário (`data/GameCollections.kt`) na ficha e como f
 pacote do L08; a ficha mostra TU instalada, número de DLC e patches ligados, ao lado de título,
 discos, Title/Media ID, último resultado, linha do tempo, saves, diagnóstico, atalho e
 favorito. Lote 12p: o perfil usado por jogo ("Jogado por último como …", gravado no run e
-fora do relatório compartilhado). Falta: validação no aparelho (roteiros 20 e 21).
+fora do relatório compartilhado). Lote 14h: "Limpar cache de shaders" na ficha (tamanho e
+número de arquivos; só `shaders/shareable/<ID>.*` e `shaders/local/<ID>.*` sob a raiz de cache do
+core, respeitando `Storage|cache_root`; nunca as partições cache0/cache1 do jogo nem links;
+recusado com o jogo aberto, pelo mesmo lease do armazenamento). Falta: validação no aparelho
+(roteiros 20, 21 e 49).
 
 **Estado L05 (2026-10-02, v1 local, Impl. + Local):** capa por Title ID em `files/covers`
 (`data/CoverStore.kt`), fora do cache e do URI: cópia do ícone do próprio jogo feita na
@@ -616,7 +620,11 @@ própria por controle (pelo descritor), escolhida em Test controllers; o girosc�
 telefone já calibra em repouso. Falta no U08: o giroscópio do próprio controle como câmera — a
 convenção de eixos dos controles no Android muda com o driver (hid-playstation, hid-nintendo);
 medir no aparelho com Test controllers (mostra x/y/z) antes de mapear, para não entregar um
-mapeamento chutado. U09 v1 — estado do boot (lote 3), Cancel no aviso de carregamento e saída
+mapeamento chutado. Lote 14h (Impl. + Local; aparelho pendente, roteiro 49): giroscópio
+"segurar para mirar" (sempre / segurando LT / segurando LB, guardado; soltar centraliza o stick
+uma vez, sem soltar o que um dedo ou controle segura), e entrada sem buffer (sticks de controle
+e cada gesto de toque entregues na hora, não uma vez por quadro; Android 11+ para os sticks;
+chave A/B no menu do modo Desenvolvedor, ligada por padrão, anotada na linha do tempo). U09 v1 — estado do boot (lote 3), Cancel no aviso de carregamento e saída
 conforme a origem (lote 12e); falta só o aparelho (roteiro 39).
 
 Referências concretas [X1/X2], [B3], [D1/D2], [E2/E5]. O visual Blades/Metro pode

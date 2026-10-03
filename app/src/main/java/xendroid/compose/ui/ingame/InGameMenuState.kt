@@ -29,6 +29,10 @@ enum class InGameAction {
     MARK_SCENE,
     /** U01: the driver the game runs on, against the one selected (read-only). */
     DRIVER_INFO,
+    /** The gyroscope aims always, or only while LT or LB is held. */
+    GYRO_AIM,
+    /** Controller input as it arrives instead of batched to the next frame (an A/B switch). */
+    UNBUFFERED_INPUT,
 }
 
 /** Every option once, on the tab it belongs to (U01), most used first. */
@@ -52,7 +56,8 @@ val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
     InGamePage.CONTROLS to listOf(InGameAction.TOUCH_CONTROLS, InGameAction.ADAPTIVE_STICKS, InGameAction.TOUCH_CAMERA,
         InGameAction.EDIT_TOUCH_LAYOUT,
         InGameAction.PHONE_CONTROLLERS, InGameAction.CONTROLLER_RUMBLE,
-        InGameAction.GYRO_CAMERA, InGameAction.GYRO_SENSITIVITY, InGameAction.GYRO_CALIBRATE),
+        InGameAction.GYRO_CAMERA, InGameAction.GYRO_AIM, InGameAction.GYRO_SENSITIVITY, InGameAction.GYRO_CALIBRATE,
+        InGameAction.UNBUFFERED_INPUT),
     InGamePage.SESSION to listOf(InGameAction.RESUME, InGameAction.SHARE_LOGS, InGameAction.QUIT,
         InGameAction.MUTE, InGameAction.VOLUME_DOWN, InGameAction.VOLUME_UP, InGameAction.MARK_SCENE,
         InGameAction.BACKGROUND_POLICY),
@@ -65,7 +70,7 @@ val advancedActions: Set<InGameAction> = setOf(
     InGameAction.SAVE_GLOBAL_FPS, InGameAction.SUSTAINED_PERFORMANCE, InGameAction.PERFORMANCE_HINTS,
     InGameAction.HUD_HOST_SUBMISSIONS, InGameAction.HUD_CPU, InGameAction.HUD_GPU,
     InGameAction.HUD_RAM, InGameAction.HUD_BATTERY, InGameAction.HUD_SOC, InGameAction.HUD_POWER,
-    InGameAction.GYRO_CALIBRATE, InGameAction.BACKGROUND_POLICY,
+    InGameAction.GYRO_CALIBRATE, InGameAction.BACKGROUND_POLICY, InGameAction.UNBUFFERED_INPUT,
 )
 
 /** L02: hidden in Player mode (engine internals and experiments); build gates still apply. */
@@ -73,6 +78,7 @@ val developerActions: Set<InGameAction> = setOf(
     InGameAction.WINFG, InGameAction.WINFG_PRESET, InGameAction.LSFG, InGameAction.IMPORT_LSFG_DLL,
     InGameAction.CLEAR_LSFG_CACHE, InGameAction.LSFG_MULTIPLIER, InGameAction.PERFORMANCE_HINTS,
     InGameAction.HUD_HOST_SUBMISSIONS, InGameAction.BACKGROUND_POLICY, InGameAction.SUSTAINED_PERFORMANCE,
+    InGameAction.UNBUFFERED_INPUT,
 )
 
 /** Immutable navigation state shared by touch, Back, hardware buttons and hat axes. */

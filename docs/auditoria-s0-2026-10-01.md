@@ -633,3 +633,13 @@ itens 8, 15 e 37.
    trecho (sem prometer ganho: varia por fabricante). Conferir que nenhum serviço de jogo baixou a
    resolução ou travou o FPS (o HUD mostra o FPS do jogo; a imagem não fica borrada). Numa TV com
    ALLM via HDMI (tela externa), a TV entra no modo jogo sozinha.
+49. Lote 14h — entrada e cache: (a) giroscópio: menu Controles → câmera por giroscópio ligada, "Giroscópio
+   mira: segurando LT"; num jogo de tiro, inclinar o telefone não mexe a câmera até apertar LT (no
+   controle ou no toque); soltar LT para a câmera na hora; um stick direito segurado com o dedo não é
+   solto quando LT é solto. "Segurando LB" idem com LB; "sempre" como antes; a escolha volta no próximo
+   jogo. (b) Entrada sem buffer (Desenvolvedor → Controles → Mais opções): com um controle, comparar o
+   atraso stick→câmera ligada × desligada (vídeo em câmera lenta, 240 fps, ou o "Input latency" do
+   Android GPU Inspector); anotar CPU e FPS nos dois; a linha do tempo diz "input · unbuffered on/off".
+   (c) Ficha do jogo → "Limpar cache de shaders" mostra "x MB em n arquivos"; limpar, abrir o jogo: o
+   rótulo de boot mostra pipelines sendo criados de novo (engasgos até terminar) e o tamanho volta a
+   crescer; saves e ajustes continuam. Com o jogo aberto em segundo plano: "Feche o jogo aberto…".

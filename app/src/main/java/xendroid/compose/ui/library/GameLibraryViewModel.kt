@@ -157,6 +157,8 @@ class GameLibraryViewModel(
         val catalog: CatalogView? = null,
         /** L06: the gamertag [lastRun] started with as P1, while that profile still exists. */
         val lastProfile: String? = null,
+        /** The game's shader and pipeline cache: files and bytes; null when unreadable. */
+        val shaderCache: Pair<Int, Long>? = null,
     )
 
     /** C04: the kept catalog copy (null = never downloaded) and the game's results by setup. */
@@ -194,9 +196,12 @@ class GameLibraryViewModel(
                         runCatching { localProfiles() }.getOrDefault(emptyList())
                             .firstOrNull { it.xuid.equals(xuid, ignoreCase = true) }?.gamertag?.ifBlank { null }
                     }
+                    val shaderCache = runCatching {
+                        xendroid.compose.core.ShaderCaches.files(shaderCacheRoot(), title).let { it.size to it.sumOf(java.io.File::length) }
+                    }.onFailure { Log.w("GameLibrary", "Reading the shader cache failed", it) }.getOrNull()
                     GameDetails(game.identityKey, title, compatibilityStore.get(title), lastRun,
                         lastRun?.let { runs.events(it.runId) }, content?.first, content?.second,
-                        patches?.first, patches?.second, catalogView(title, gpu, catalogMessage), lastProfile)
+                        patches?.first, patches?.second, catalogView(title, gpu, catalogMessage), lastProfile, shaderCache)
                 }.onFailure { Log.w("GameLibrary", "Reading game details failed", it) }.getOrNull()
             }
             if (loaded != null && _details.value?.identityKey == game.identityKey) _details.value = loaded
@@ -242,6 +247,30 @@ class GameLibraryViewModel(
     }
 
     fun clearDetails() { _details.value = null }
+
+    /** The core's cache root, honoring Storage|cache_root as the core does at boot. */
+    private fun shaderCacheRoot(): java.io.File {
+        val configured = runCatching {
+            val handle = xendroid.compose.settings.ConfigStore(appContext).openLiveSnapshot()
+            try { handle.getString("Storage", "cache_root") } finally { handle.closeDiscard() }
+        }.getOrNull()
+        return xendroid.compose.core.ShaderCaches.cacheRoot(java.io.File(xendroid.compose.Utils.get_storage_root_path()), configured)
+    }
+
+    /** Removes the game's shader and pipeline caches; null while a game holds the storage
+     *  (a running game writes them), else what was removed. Reloads the sheet's details. */
+    suspend fun clearShaderCache(game: Game): xendroid.compose.core.ShaderCaches.Cleared? {
+        val title = validTitle(game) ?: return null
+        val cleared = withContext(Dispatchers.IO) {
+            try {
+                xendroid.compose.core.StorageAccess.acquire().use { xendroid.compose.core.ShaderCaches.clear(shaderCacheRoot(), title) }
+            } catch (e: xendroid.compose.archive.ContentBusyException) {
+                null
+            }
+        }
+        loadDetails(game)
+        return cleared
+    }
 
     /** Installed title updates (names) and DLC count, from the core's own content listing. The
      *  library already loaded the core; without it this answers nothing rather than loading it. */

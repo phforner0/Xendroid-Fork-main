@@ -1122,4 +1122,26 @@
     <string name="ge_hide_with_controller">Hide while a controller plays P1</string>
     <string name="ge_hide_with_controller_desc">Its first button or stick push hides them; they come back when it disconnects or from the menu. Touching the screen does not bring them back.</string>
     <string name="menu_metric_power">Power and battery time</string>
+    <string name="lib_shader_cache">Clear shader cache</string>
+    <string name="lib_shader_cache_none">Nothing cached for this game yet</string>
+    <string name="lib_shader_cache_title">Clear this game\'s shader cache?</string>
+    <string name="lib_shader_cache_text">Removes the shaders and pipelines built for this game (%1$s). The next start builds them again, with stutters until it is done. Saves, settings and the game\'s own data stay.</string>
+    <string name="lib_shader_cache_action">Clear</string>
+    <string name="lib_shader_cache_cleared">Shader cache cleared: %1$s</string>
+    <string name="lib_shader_cache_busy">Close the running game to clear its cache</string>
+    <plurals name="lib_shader_cache_files">
+        <item quantity="one">%1$s in %2$d file</item>
+        <item quantity="other">%1$s in %2$d files</item>
+    </plurals>
+    <plurals name="lib_shader_cache_failed">
+        <item quantity="one">%1$d file could not be removed</item>
+        <item quantity="other">%1$d files could not be removed</item>
+    </plurals>
+    <string name="menu_gyro_aim_title">Gyro aiming</string>
+    <string name="menu_gyro_aim_value">Gyro aims: %1$s</string>
+    <string name="menu_gyro_aim_always">always</string>
+    <string name="menu_gyro_aim_lt">while LT is held</string>
+    <string name="menu_gyro_aim_lb">while LB is held</string>
+    <string name="menu_unbuffered_title">Unbuffered input</string>
+    <string name="menu_unbuffered_value">Unbuffered input (lower latency): %1$s</string>
 </resources>

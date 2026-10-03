@@ -128,14 +128,21 @@ class EmulatorSession {
      *  (a controller press during the boot splash would crash). */
     fun keyEvent(keyCode: Int, pressed: Boolean, value: Int) {
         if (!booted) return
+        if (keyCode in p1Held.indices) p1Held[keyCode] = pressed
         core.key_event(keyCode, pressed, value)
     }
 
     /** Input of a controller holding player slot P2..P4 ([slot] 1..3); P1 is [keyEvent]. */
     fun keyEventSlot(slot: Int, keyCode: Int, pressed: Boolean, value: Int) {
         if (!booted) return
-        if (slot == 0) core.key_event(keyCode, pressed, value) else core.key_event_slot(slot, keyCode, pressed, value)
+        if (slot == 0) keyEvent(keyCode, pressed, value) else core.key_event_slot(slot, keyCode, pressed, value)
     }
+
+    /** P1's guest buttons as last sent, from any source (controller, touch, phone as P1). */
+    private val p1Held = BooleanArray(32)
+
+    /** Whether P1 holds the guest button [keyCode] (e.g. LT for the gyroscope's hold-to-aim). */
+    fun p1Holding(keyCode: Int): Boolean = keyCode in p1Held.indices && p1Held[keyCode]
 
     /** A controller took or left slot [slot] (1..3); the guest sees the pad connect or disconnect. */
     fun setSlotConnected(slot: Int, connected: Boolean, label: String) {

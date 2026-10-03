@@ -1157,4 +1157,28 @@
     <string name="ge_hide_with_controller">Esconder enquanto um controle joga como P1</string>
     <string name="ge_hide_with_controller_desc">O primeiro botão ou movimento do stick esconde os controles; eles voltam quando o controle desconecta ou pelo menu. Tocar na tela não os traz de volta.</string>
     <string name="menu_metric_power">Potência e tempo de bateria</string>
+    <string name="lib_shader_cache">Limpar cache de shaders</string>
+    <string name="lib_shader_cache_none">Nada em cache para este jogo ainda</string>
+    <string name="lib_shader_cache_title">Limpar o cache de shaders deste jogo?</string>
+    <string name="lib_shader_cache_text">Remove os shaders e pipelines montados para este jogo (%1$s). A próxima abertura monta tudo de novo, com engasgos até terminar. Saves, ajustes e os dados do próprio jogo ficam.</string>
+    <string name="lib_shader_cache_action">Limpar</string>
+    <string name="lib_shader_cache_cleared">Cache de shaders limpo: %1$s</string>
+    <string name="lib_shader_cache_busy">Feche o jogo aberto para limpar o cache</string>
+    <plurals name="lib_shader_cache_files">
+        <item quantity="one">%1$s em %2$d arquivo</item>
+        <item quantity="other">%1$s em %2$d arquivos</item>
+        <item quantity="many">%1$s em %2$d arquivos</item>
+    </plurals>
+    <plurals name="lib_shader_cache_failed">
+        <item quantity="one">%1$d arquivo não pôde ser removido</item>
+        <item quantity="other">%1$d arquivos não puderam ser removidos</item>
+        <item quantity="many">%1$d arquivos não puderam ser removidos</item>
+    </plurals>
+    <string name="menu_gyro_aim_title">Mira pelo giroscópio</string>
+    <string name="menu_gyro_aim_value">Giroscópio mira: %1$s</string>
+    <string name="menu_gyro_aim_always">sempre</string>
+    <string name="menu_gyro_aim_lt">segurando LT</string>
+    <string name="menu_gyro_aim_lb">segurando LB</string>
+    <string name="menu_unbuffered_title">Entrada sem buffer</string>
+    <string name="menu_unbuffered_value">Entrada sem buffer (menos atraso): %1$s</string>
 </resources>

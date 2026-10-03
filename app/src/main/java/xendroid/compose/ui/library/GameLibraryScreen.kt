@@ -859,6 +859,48 @@ fun GameLibraryScreen(
                 ListItem(headlineContent = { Text(stringResource(R.string.lib_sessions)) },
                     modifier = Modifier.clickable(enabled = perGameEnabled) { viewModel.requestDiagnostics(game) })
 
+                // The game's shader and pipeline caches, rebuilt on the next start (Eden 97a8470b).
+                if (shown?.titleId != null) {
+                    val cache = shown.shaderCache
+                    var cacheConfirm by remember(game.identityKey) { mutableStateOf(false) }
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.lib_shader_cache)) },
+                        supportingContent = cache?.let { (files, bytes) ->
+                            {
+                                Text(if (files == 0) stringResource(R.string.lib_shader_cache_none)
+                                    else pluralStringResource(R.plurals.lib_shader_cache_files, files,
+                                        android.text.format.Formatter.formatShortFileSize(context, bytes), files))
+                            }
+                        },
+                        modifier = Modifier.clickable(enabled = (cache?.first ?: 0) > 0) { cacheConfirm = true },
+                    )
+                    if (cacheConfirm && cache != null) AlertDialog(
+                        onDismissRequest = { cacheConfirm = false },
+                        title = { Text(stringResource(R.string.lib_shader_cache_title)) },
+                        text = { Text(stringResource(R.string.lib_shader_cache_text,
+                            android.text.format.Formatter.formatShortFileSize(context, cache.second))) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                cacheConfirm = false
+                                scope.launch {
+                                    val cleared = viewModel.clearShaderCache(game)
+                                    val message = when {
+                                        cleared == null -> context.getString(R.string.lib_shader_cache_busy)
+                                        cleared.failed > 0 -> context.resources.getQuantityString(
+                                            R.plurals.lib_shader_cache_failed, cleared.failed, cleared.failed)
+                                        else -> context.getString(R.string.lib_shader_cache_cleared,
+                                            android.text.format.Formatter.formatShortFileSize(context, cleared.bytes))
+                                    }
+                                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                }
+                            }) { Text(stringResource(R.string.lib_shader_cache_action)) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { cacheConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
+                        },
+                    )
+                }
+
                 if (game.format == GameFormat.ISO) {
                     ListItem(
                         headlineContent = { Text(stringResource(R.string.lib_compress)) },

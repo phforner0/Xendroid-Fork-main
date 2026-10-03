@@ -332,6 +332,8 @@ private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: 
         InGameAction.COLOR_FILTER -> stringResource(R.string.menu_color_filter)
         InGameAction.GYRO_CALIBRATE -> stringResource(R.string.menu_gyro_calibrate)
         InGameAction.GYRO_SENSITIVITY -> stringResource(R.string.menu_gyro_sensitivity)
+        InGameAction.GYRO_AIM -> stringResource(R.string.menu_gyro_aim_title)
+        InGameAction.UNBUFFERED_INPUT -> stringResource(R.string.menu_unbuffered_title)
         InGameAction.CONTROLLER_RUMBLE -> stringResource(R.string.menu_rumble)
         InGameAction.PHONE_CONTROLLERS -> stringResource(R.string.menu_phone_controllers)
         InGameAction.MORE_OPTIONS -> stringResource(R.string.menu_fewer_options)

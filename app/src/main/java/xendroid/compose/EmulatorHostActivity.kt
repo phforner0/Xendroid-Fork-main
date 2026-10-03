@@ -348,7 +348,24 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val requestedRefresh = mutableStateOf<Float?>(null)
     /** Right-stick directions currently held on the touch overlay. */
     private val touchStickHeld = BooleanArray(24)
+    /** When the gyroscope aims: always, or while P1 holds LT or LB (touch_options "gyro_aim"). */
+    private val gyroAim = mutableStateOf(xendroid.compose.gamepad.GyroAim.ALWAYS)
+    private var gyroAiming = false
+    /** Controller sticks (and each touch gesture) delivered as they arrive, not once a frame. */
+    private val unbufferedInput = mutableStateOf(true)
     private val gyroCamera by lazy { GyroCamera(applicationContext) { code, down, value ->
+        // Hold-to-aim: with the chosen button up the camera stays still; the stick the
+        // gyroscope was moving is let go once, never one a finger or a controller holds.
+        if (!gyroAim.value.active(session::p1Holding)) {
+            if (gyroAiming) {
+                gyroAiming = false
+                for (key in KC_RTHUMB_LEFT..KC_RTHUMB_DOWN) {
+                    if (!axisPressed[key] && !touchStickHeld[key]) session.keyEvent(key, false, 0)
+                }
+            }
+            return@GyroCamera
+        }
+        gyroAiming = true
         // A physical or touch right stick keeps priority over the optional camera sensor:
         // the sensor re-sends every sample, which would zero a held touch stick.
         if (!(KC_RTHUMB_LEFT..KC_RTHUMB_DOWN).any { axisPressed[it] || touchStickHeld[it] }) {
@@ -416,6 +433,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         menuState.value = menuState.value.copy(
             developer = xendroid.compose.settings.UiModeStore.read(this) == xendroid.compose.settings.UiMode.DEVELOPER)
         touchCamera.value = getSharedPreferences("touch_options", MODE_PRIVATE).getBoolean("touch_camera", false)
+        getSharedPreferences("touch_options", MODE_PRIVATE).let { prefs ->
+            gyroAim.value = xendroid.compose.gamepad.GyroAim.parse(prefs.getString("gyro_aim", null))
+            unbufferedInput.value = prefs.getBoolean("unbuffered_input", true)
+        }
         enterImmersiveMode()
         gameModeSignal.update(xendroid.compose.core.GamePhase.LOADING)
 
@@ -564,6 +585,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             }
             recordEvent("boot", "run started", flush = true)
             recordEvent("game mode", "system: ${gameModeSignal.systemMode()}")
+            recordEvent("input", "unbuffered " + if (unbufferedInput.value) "on" else "off")
             if (bootCancelled) {
                 // Cancelled while the run record was being written: cancelBoot had no run to end.
                 runId?.let { id -> runCatching { xendroid.compose.sessions.SessionRuns.store().ending(id, "cancelled while starting") } }
@@ -1327,6 +1349,14 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             InGameAction.BACKGROUND_POLICY to stringResource(R.string.menu_background_value, backgroundPolicy.value.name),
                                             InGameAction.GYRO_CAMERA to if (!gyroCamera.available) stringResource(R.string.menu_gyro_unavailable)
                                                 else stringResource(R.string.menu_gyro_camera_value, if (gyroEnabled.value) on else off),
+                                            InGameAction.GYRO_AIM to if (!gyroCamera.available) stringResource(R.string.menu_gyro_unavailable)
+                                                else stringResource(R.string.menu_gyro_aim_value, stringResource(when (gyroAim.value) {
+                                                    xendroid.compose.gamepad.GyroAim.ALWAYS -> R.string.menu_gyro_aim_always
+                                                    xendroid.compose.gamepad.GyroAim.WHILE_LT -> R.string.menu_gyro_aim_lt
+                                                    xendroid.compose.gamepad.GyroAim.WHILE_LB -> R.string.menu_gyro_aim_lb
+                                                })),
+                                            InGameAction.UNBUFFERED_INPUT to stringResource(R.string.menu_unbuffered_value,
+                                                if (unbufferedInput.value) on else off),
                                             InGameAction.GYRO_SENSITIVITY to stringResource(R.string.menu_gyro_sensitivity_value, listOf(
                                                 stringResource(R.string.menu_low), stringResource(R.string.menu_normal), stringResource(R.string.menu_high))[gyroSensitivity.intValue]),
                                             InGameAction.CONTROLLER_RUMBLE to stringResource(R.string.menu_rumble_value, rumbleNames.getValue(rumbleSettings.value.default),
@@ -2025,6 +2055,27 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     InputDevice.SOURCE_JOYSTICK
             )
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        applyUnbufferedInput()
+    }
+
+    /** Controller sticks as they arrive instead of batched to the next frame, up to a frame
+     *  less latency (Bannerlator 3b08d65e); Android 11+. Key presses are never batched. */
+    private fun applyUnbufferedInput() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.decorView.requestUnbufferedDispatch(if (unbufferedInput.value) InputDevice.SOURCE_CLASS_JOYSTICK else 0)
+        }
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // Each touch gesture unbatched too, for the on-screen controls.
+        if (unbufferedInput.value && event.actionMasked == MotionEvent.ACTION_DOWN) {
+            window.decorView.requestUnbufferedDispatch(event)
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK &&
             xendroid.compose.gamepad.TouchOverlayPresence.pushed(
@@ -2578,6 +2629,19 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             return
         }
         if (action == InGameAction.GYRO_CALIBRATE) { gyroCamera.calibrate(); return }
+        if (action == InGameAction.GYRO_AIM) {
+            if (!gyroCamera.available) return
+            gyroAim.value = gyroAim.value.next()
+            getSharedPreferences("touch_options", MODE_PRIVATE).edit().putString("gyro_aim", gyroAim.value.name).apply()
+            return
+        }
+        if (action == InGameAction.UNBUFFERED_INPUT) {
+            unbufferedInput.value = !unbufferedInput.value
+            getSharedPreferences("touch_options", MODE_PRIVATE).edit().putBoolean("unbuffered_input", unbufferedInput.value).apply()
+            applyUnbufferedInput()
+            recordEvent("input", "unbuffered " + if (unbufferedInput.value) "on" else "off")
+            return
+        }
         if (action == InGameAction.PHONE_CONTROLLERS) {
             // The native driver takes player slots only once the emulator runs a title.
             if (phoneControllers.host == null && activeTitleState.value == null) {
