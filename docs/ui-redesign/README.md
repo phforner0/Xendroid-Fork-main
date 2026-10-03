@@ -8,6 +8,12 @@ visual moderno e funcional; expor ajustes que o core já tem e a UI não mostra;
 usuário sobre as opções do emulador. Primeiro 2–3 direções em protótipo; depois, implementação tela
 por tela com prints antes/depois a cada lote.
 
+## Protótipo B + C (direção escolhida)
+
+A direção escolhida é **B como padrão (toque) e C como modo controle**. O protótipo do app
+inteiro nesse formato fica em [`bc/`](bc/README.md), com um lote de telas por vez e prints em
+`prints/bc/`. O `prototipo.html` abaixo continua como registro das três direções.
+
 ## Como abrir
 
 - `prototipo.html`: um arquivo só, sem build e sem dependências (HTML, CSS e JS nativos). Abra no

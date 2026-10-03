@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>XenDroid B+C</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="ch-bar" id="ch-bar">
+  <div class="ch-brand"><b>XenDroid B+C</b><span>toque (B) e controle (C) no mesmo app</span></div>
+  <select class="ch-sel" id="ch-screen" aria-label="Tela"></select>
+  <div class="ch-seg" role="group" aria-label="Modo">
+    <button type="button" data-cact="mode" data-v="auto">Automático</button>
+    <button type="button" data-cact="mode" data-v="b">Toque</button>
+    <button type="button" data-cact="mode" data-v="c">Controle</button>
+  </div>
+  <div class="ch-seg" role="group" aria-label="Aparelho">
+    <button type="button" data-cact="orient" data-v="land">Paisagem</button>
+    <button type="button" data-cact="orient" data-v="port">Retrato</button>
+    <button type="button" data-cact="full">Tela cheia</button>
+  </div>
+  <button type="button" class="ch-tg" data-cact="notes" aria-pressed="false"><i></i>Anotações</button>
+  <span class="ch-pad" id="ch-pad"></span>
+</header>
+
+<main class="stage" id="stage">
+  <div class="device-wrap" id="dwrap">
+    <div class="device" id="device">
+      <div class="screen" id="screen">
+        <div id="app" class="app"></div>
+        <div id="pins"></div>
+      </div>
+    </div>
+  </div>
+  <div class="full-exit" id="full-exit" role="group" aria-label="Protótipo">
+    <button type="button" data-cact="mode" data-v="b" aria-label="Modo toque">B</button>
+    <button type="button" data-cact="mode" data-v="c" aria-label="Modo controle">C</button>
+    <button type="button" data-cact="full" aria-label="Sair da tela cheia">✕</button>
+  </div>
+</main>
+
+<section class="ch-info" id="ch-info">
+  <article class="ch-card" id="ch-dir"></article>
+  <aside class="ch-card">
+    <h3>Anotações desta tela</h3>
+    <div class="legend">
+      <span class="k-existe"><i></i>Já existe no app</span>
+      <span class="k-novo"><i></i>Proposta nova</span>
+      <span class="k-exposto"><i></i>Ajuste do core exposto agora</span>
+    </div>
+    <div id="ch-notes"></div>
+  </aside>
+  <article class="ch-card ch-span"><h3>Telas por lote</h3><div class="lotes" id="ch-lotes"></div></article>
+  <article class="ch-card ch-span" id="ch-help">
+    <h3>Como usar</h3>
+    <div class="ch-keys"><span><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> mover</span><span><kbd>Enter</kbd> abrir ou mudar</span><span><kbd>Esc</kbd> voltar</span><span><kbd>Q</kbd><kbd>E</kbd> abas e seções (LB/RB)</span><span><kbd>F</kbd> favoritar (Y)</span><span><kbd>I</kbd> ficha (X)</span><span><kbd>M</kbd> menu (Start)</span><span><kbd>/</kbd> buscar</span></div>
+    <p style="margin-top:12px">B é o modo toque e C o modo controle. Em <b>Automático</b>, conectar um controle troca para o C e desconectar volta ao B; também dá para fixar um dos dois aqui ou em Configurações → App. O controle funciona pela Gamepad API abrindo <code>docs/ui-redesign/bc/index.html</code> direto no navegador; dentro do visor de artefatos o navegador pode bloqueá-lo. Capas, sessões, perfis, drivers e números são dados de exemplo.</p>
+  </article>
+</section>
+
+<script src="base.js"></script>
+<script src="data.js"></script>
+<script src="core.js"></script>
+<script src="ui.js"></script>
+<script src="screens/biblioteca.js"></script>
+<script src="screens/configuracoes.js"></script>
+<script>boot();</script>
+</body>
+</html>
