@@ -725,3 +725,9 @@ status, "Build da nuvem (fim do lote 14)").
    marcar nolrz além de sysmem, salvar e abrir um jogo: o log mostra "Set TU_DEBUG=sysmem,nolrz…". Marcar gmem:
    sysmem desmarca sozinho. Com o driver da Qualcomm, as flags não mudam nada (esperado). Logging → "Log
    filter" = "only the GPU": no próximo jogo, o log tem só linhas da GPU e as gerais.
+61. Lote 15j — áudio e calor: Ajustes → APU → ligar "Adaptive audio buffer"; num jogo com áudio que
+   falha em cenas pesadas, conferir no log "AAudio: buffer 5 bursts … after underruns" e menos falhas em
+   seguida; depois de 30 s calmos, "… after 30 s without one" até voltar ao configurado; anotar a latência
+   percebida. Vigia térmico: jogar algo pesado até esquentar (ou forçar clocks máximos): antes da queda de
+   desempenho aparece o aviso "perto do limite de calor", e a linha do tempo do run tem "thermal watch near
+   limit (headroom …)"; o aviso não se repete em menos de 5 min; nenhum ajuste muda sozinho.

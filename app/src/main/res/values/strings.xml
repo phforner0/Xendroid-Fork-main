@@ -1238,4 +1238,6 @@
     <string name="tu_none">none</string>
     <string name="tu_intro">Flags passed to the Turnip driver (TU_DEBUG) when the next game starts. Proprietary drivers ignore them.</string>
     <string name="tu_kept">Also kept, as they are: %1$s</string>
+    <string name="host_thermal_near">The phone is close to its heat limit and will slow down soon. A lower resolution or FPS limit, or turning off forced GPU clocks or frame generation, keeps it cooler.</string>
+    <string name="host_thermal_throttling">The phone has reached its heat limit and is slowing down. A lower resolution or FPS limit, or turning off forced GPU clocks or frame generation, keeps it cooler.</string>
 </resources>

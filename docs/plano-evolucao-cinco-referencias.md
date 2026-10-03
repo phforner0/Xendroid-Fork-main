@@ -543,6 +543,11 @@ FG através de um redimensionamento da superfície (imagens no tamanho da saída
 **Lote 15i (Impl. + Local; aparelho pendente, roteiro 60):** flags do Turnip (TU_DEBUG) escolhidas uma a uma
 com explicação, preservando as desconhecidas, e filtro de log por subsistema (`log_mask` do Xenia).
 
+**Lote 15j (Impl. + Local; aparelho pendente, roteiro 61):** buffer de áudio AAudio adaptativo com
+histerese (cresce no underrun, encolhe após 30 s calmos; política pura testada no host; desligado por
+padrão) e vigia térmico consultivo ancorado nos limites do próprio aparelho (headroom térmico do
+Android), que avisa e registra, sem agir — mantendo o F04/governador como consultivos.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

@@ -1277,4 +1277,6 @@
     <string name="tu_none">nenhuma</string>
     <string name="tu_intro">Flags passadas ao driver Turnip (TU_DEBUG) quando o próximo jogo iniciar. Drivers proprietários as ignoram.</string>
     <string name="tu_kept">Também mantidas como estão: %1$s</string>
+    <string name="host_thermal_near">O telefone está perto do limite de calor e vai reduzir o desempenho em breve. Resolução ou limite de FPS menores, ou desligar o clock máximo forçado da GPU ou a geração de quadros, o mantêm mais frio.</string>
+    <string name="host_thermal_throttling">O telefone chegou ao limite de calor e está reduzindo o desempenho. Resolução ou limite de FPS menores, ou desligar o clock máximo forçado da GPU ou a geração de quadros, o mantêm mais frio.</string>
 </resources>

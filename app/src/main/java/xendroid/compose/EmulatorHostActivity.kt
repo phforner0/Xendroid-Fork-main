@@ -169,6 +169,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var lastPresentCount = -1L
     private var stalledSeconds = 0
     private var lastThermalStatus = -1
+    /** 15j: warns before the phone throttles for heat (advisory: it never changes a setting). */
+    private val thermalWatch = xendroid.compose.core.ThermalWatch()
+    private var thermalNoticeAt = Long.MIN_VALUE
+    private var thermalTick = 0
     private var driverRecorded = false
     /** Seconds with >= 100 ms spent creating pipelines (ns counter, pipelines alongside). */
     private val compileBursts = xendroid.compose.sessions.BurstTracker(threshold = 100_000_000, quietSeconds = 2)
@@ -759,6 +763,25 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun stopEventSources() {
         runCatching { getSystemService(android.os.PowerManager::class.java)?.removeThermalStatusListener(thermalListener) }
         runCatching { getSystemService(android.hardware.input.InputManager::class.java)?.unregisterInputDeviceListener(inputDeviceListener) }
+    }
+
+    /** 15j: every other second, Android's thermal headroom (10 s ahead) against the device's own
+     *  limit; the timeline gets each change and the player one notice per rise, five minutes apart. */
+    private fun watchThermalHeadroom() {
+        if (thermalTick++ % 2 != 0) return
+        val headroom = if (Build.VERSION.SDK_INT >= 30) {
+            runCatching { getSystemService(android.os.PowerManager::class.java)?.getThermalHeadroom(10) }.getOrNull()
+        } else null
+        val level = thermalWatch.sample(headroom, lastThermalStatus) ?: return
+        recordEvent("thermal watch", level.name.lowercase().replace('_', ' ') +
+            (headroom?.takeIf { it.isFinite() }?.let { " (headroom %.2f)".format(java.util.Locale.ROOT, it) } ?: ""))
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (level != xendroid.compose.core.ThermalWatch.Level.OK && foregroundState.value &&
+            (thermalNoticeAt == Long.MIN_VALUE || now - thermalNoticeAt >= xendroid.compose.core.ThermalWatch.NOTICE_EVERY_MS)) {
+            thermalNoticeAt = now
+            Toast.makeText(this, getString(if (level == xendroid.compose.core.ThermalWatch.Level.THROTTLING)
+                R.string.host_thermal_throttling else R.string.host_thermal_near), Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun noteThermal(status: Int) {
@@ -1381,6 +1404,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         it.verdict != xendroid.compose.core.FrameGenerationGovernor.Verdict.OFF
                                     }?.let { "Budget (advisory, never acts): ${it.text}" }
                                     notePresentation(fgNow, runningNow, guestFrames ?: session.hostPresentSubmissionCount())
+                                    if (runningNow) watchThermalHeadroom()
                                     val compileStats = session.shaderCompileStats()
                                     if (bootStatus.value != null) {
                                         val elapsed = (android.os.SystemClock.elapsedRealtime() - createdAtMs) / 1000

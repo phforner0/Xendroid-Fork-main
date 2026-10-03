@@ -155,7 +155,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 |---|---|---|---|
 | Modo sustentado e ADPF | Bannerlator `cb19ec8e`; DroidDeck `06e67cd`, depois removidos em `e217cbe` | **Tem** (opções; ADPF reporta trabalho real) | Manter o sustentado desligado por padrão: o DroidDeck tirou porque "limita os clocks na maioria dos HALs" |
 | **Declarar o app como jogo** (`appCategory`/`isGame`, `game_mode_config` recusando limite de FPS e redução de resolução do sistema, `GameManager` em gameplay) | DroidDeck `06e67cd`; Bannerlator `35517de9` | **Não tem** | **Alta / P** (efeito depende do fabricante; medir) |
-| Watchdog térmico pelos pontos de corte do aparelho | Bannerlator `445d6655` | **Parcial**: estado térmico no run; governador de FG consultivo | Média / M |
+| Watchdog térmico pelos pontos de corte do aparelho | Bannerlator `445d6655` | **Impl. + Local no lote 15j** (consultivo: headroom térmico do Android com histerese, aviso e linha do tempo; nunca age; aparelho pendente, roteiro 61) | Média / M |
 | Afinidade e núcleos grandes | Bannerlator `3c4b8983`; Eden `1925726b` | **Não exposto** | Baixa / M (o Eden fixou nos núcleos 0–3; não copiar sem medir) |
 | GPU travada no clock máximo via KGSL | Bannerlator `0f693dd5` | **Não tem** | Baixa / M (térmico; só opt-in) |
 | SDK de desempenho da Samsung | Bannerlator `f50065d0` | **Não tem** | Baixa / M (SDK fechado) |
@@ -165,7 +165,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Feature | Fonte | XenDroid | Cabe? |
 |---|---|---|---|
 | Seguir troca de rota (fone, USB, BT, HDMI) | Bannerlator `88410253` | **Tem**: callback de erro do AAudio e thread que reconstrói o stream | — |
-| Buffer adaptativo com histerese de underrun | X360 Mobile v0.6.1/v0.6.2; presets do Bannerlator | **Parcial**: buffer configurável e blocos ocultados contados no run | Média / M |
+| Buffer adaptativo com histerese de underrun | X360 Mobile v0.6.1/v0.6.2; presets do Bannerlator | **Impl. + Local no lote 15j** (AAudio: +1 burst no underrun, −1 após 30 s calmos, até 3×; desligado por padrão; aparelho pendente, roteiro 61) | Média / M |
 | Volume do jogo e mudo | Eden `93318ef6` | **Tem** | — |
 
 ### 3.10 Biblioteca e app
