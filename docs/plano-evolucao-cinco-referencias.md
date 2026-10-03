@@ -521,6 +521,11 @@ saídas por quadro real e o caminho do quadro real não alimenta o motor quando 
 mudança de apresentação que só o aparelho valida. FG continua experimental, desligado e atrás dos
 mesmos gates.
 
+**Lote 15e (Impl. + Local; aparelho pendente, roteiro 56):** tela de carregamento com a arte do jogo
+(Bannerlator `e2acda52`) no lugar do rótulo de boot sobre preto — capa, nome, etapa com barra por fase e
+aviso de primeira vez lenta — e fim de sessão com "Tentar de novo"/"Compartilhar logs"/"Voltar"
+(DroidDeck `02f356f`), o relançamento feito pelo processo principal num `:emu` novo.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

@@ -116,6 +116,13 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         const val EXTRA_GAME_URI = "game_uri"
         const val EXTRA_DISC_LABELS = "disc_labels"
         const val EXTRA_DISC_PATHS = "disc_paths"
+        /** 15e: shown while the game starts; a path to one of this app's own cover files. */
+        const val EXTRA_GAME_NAME = "game_name"
+        const val EXTRA_GAME_ART = "game_art"
+        /** 15e: "Try again" asks the main process to start the game again in a new :emu. */
+        const val ACTION_RELAUNCH_GAME = "xendroid.intent.action.RELAUNCH_GAME"
+        /** The extras a relaunch carries over (the game, its discs, what the loading screen shows). */
+        val RELAUNCH_EXTRAS = listOf(EXTRA_GAME_URI, EXTRA_DISC_LABELS, EXTRA_DISC_PATHS, EXTRA_GAME_NAME, EXTRA_GAME_ART)
 
         private const val KC_DPAD_LEFT = 0
         private const val KC_DPAD_UP = 1
@@ -172,6 +179,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         xendroid.compose.ui.ingame.BootStatus(xendroid.compose.ui.ingame.BootStatus.Stage.EMULATOR))
     /** U09: Cancel was pressed on the label; the start sequence stops at its next step. */
     private var bootCancelled = false
+    /** 15e: the loading screen's picture and name (from the library, or the title's cover once known). */
+    private val loadingArt = mutableStateOf<java.io.File?>(null)
+    private var loadingName: String? = null
     /** What Android's GameManager hears: loading, playing, paused under the menu, or nothing. */
     private val gameModeSignal by lazy { xendroid.compose.core.GameModeSignal(applicationContext) }
     private val createdAtMs = android.os.SystemClock.elapsedRealtime()
@@ -463,6 +473,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         enterImmersiveMode()
         gameModeSignal.update(xendroid.compose.core.GamePhase.LOADING)
         watchFold()
+        loadingName = intent?.getStringExtra(EXTRA_GAME_NAME)?.take(120)
+        loadingArt.value = xendroid.compose.core.LaunchArt.fromExtra(intent?.getStringExtra(EXTRA_GAME_ART), listOf(filesDir, cacheDir))
 
         EmuProcessLink.bindToMainProcess(this)
 
@@ -830,17 +842,44 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         recordEvent("memory", "trim level $level", flush = level >= 10)
     }
 
-    /** [shown] in the dialog, in the shown language; [logged] (English) in the run's record. */
+    /** [shown] in the dialog, in the shown language; [logged] (English) in the run's record.
+     *  15e (DroidDeck `02f356f`): the dialog stays with Back, Try again and Share logs. */
     private fun showLaunchFailure(shown: String, logged: String = shown) {
         launchFailure = logged
         recordEvent("error", logged, flush = true)
         if (isFinishing || isDestroyed) return
-        android.app.AlertDialog.Builder(this)
+        val dialog = android.app.AlertDialog.Builder(this)
             .setTitle(getString(R.string.host_launch_failed))
             .setMessage(shown)
-            .setPositiveButton(android.R.string.ok) { _, _ -> leave() }
+            .setPositiveButton(R.string.common_back) { _, _ -> leave() }
+            .setNegativeButton(R.string.host_try_again) { _, _ -> tryAgain() }
+            .setNeutralButton(R.string.menu_share_logs, null)
             .setOnCancelListener { leave() }
             .show()
+        // Sharing keeps the dialog: Back or Try again come after.
+        dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener { shareSessionLogs(null) }
+    }
+
+    /** 15e: the core is single-shot per process, so the main process starts the game again in a
+     *  new :emu once this one is gone. */
+    private fun tryAgain() {
+        recordEvent("exit", "trying again", flush = true)
+        val source = intent
+        val relaunch = Intent(this, MainActivity::class.java).apply {
+            action = ACTION_RELAUNCH_GAME
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            RELAUNCH_EXTRAS.forEach { key ->
+                source?.getStringExtra(key)?.let { putExtra(key, it) }
+                source?.getStringArrayExtra(key)?.let { putExtra(key, it) }
+            }
+            // A game another app handed over keeps its read grant through the relaunch.
+            source?.getStringExtra(EXTRA_GAME_URI)?.takeIf { it.startsWith("content://") }?.let { uri ->
+                clipData = android.content.ClipData.newRawUri("game", android.net.Uri.parse(uri))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+        runCatching { startActivity(relaunch) }.onFailure { Log.w(TAG, "Starting the game again failed", it) }
+        leave()
     }
 
     private fun enterImmersiveMode() {
@@ -1122,9 +1161,19 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     split?.let { Modifier.atRect(it.game) } ?: Modifier.fillMaxSize()
                             )
 
-                            bootStatus.value?.let {
-                                xendroid.compose.ui.ingame.BootStatusLabel(it, Modifier.align(Alignment.BottomStart),
-                                    onCancel = if (menuState.value.open) null else ::cancelBoot)
+                            // 15e: the loading screen until the first guest frame, then a short fade.
+                            val loading = bootStatus.value
+                            var lastLoading by remember { mutableStateOf(loading) }
+                            if (loading != null) lastLoading = loading
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = loading != null,
+                                enter = androidx.compose.animation.EnterTransition.None,
+                                exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(400)),
+                            ) {
+                                lastLoading?.let { status ->
+                                    xendroid.compose.ui.ingame.GameLoadingScreen(status, loadingArt.value, loadingName,
+                                        onCancel = if (menuState.value.open || loading == null) null else ::cancelBoot)
+                                }
                             }
 
                             if (
@@ -1132,7 +1181,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 foregroundState.value &&
                                 cfg.globals.enabled &&
                                 padVisible &&
-                                !menuState.value.open
+                                !menuState.value.open &&
+                                bootStatus.value == null
                             ) {
                                 GamepadOverlay(
                                     controls =
@@ -1233,6 +1283,14 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     if (activeTitle != controlsTitleId) {
                                         controlsTitleId = activeTitle
                                         activeTitleState.value = activeTitle
+                                        if (bootStatus.value != null && loadingArt.value == null && activeTitle != null) {
+                                            loadingArt.value = withContext(Dispatchers.IO) {
+                                                runCatching {
+                                                    xendroid.compose.core.LaunchArt.forTitle(
+                                                        xendroid.compose.data.CoverStore(java.io.File(filesDir, "covers")), activeTitle)
+                                                }.getOrNull()
+                                            }
+                                        }
                                         val driver = session.activeDriverIdentity()
                                         recordEvent("title", activeTitle?.let { "$it running" } ?: "none active", flush = true)
                                         if (driver != null && !driverRecorded) {

@@ -177,8 +177,8 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Capas por Title ID e capa própria | X360 Mobile v0.6.0 | **Tem** (L05, local); fonte remota não | — |
 | Atalhos na tela inicial | X360 Mobile v0.6.3 | **Tem** | — |
 | Carrossel, XMB, tela "Big Picture" para controle | Eden `61ffb309`; Bannerlator `16c292d2`, `223b1b8c` | **Impl. + Local no lote 15a** (carrossel salvo ao lado da grade, controle e toque; aparelho pendente, roteiro 52) | Média / G |
-| Tela de carregamento com a arte do jogo | Bannerlator `e2acda52`, `da778368` | **Parcial**: rótulo de boot e Cancelar (U09) | Média / P |
-| Tela de fim de sessão com "tentar de novo" e "compartilhar logs" | DroidDeck `02f356f` | **Parcial**: diálogo de falha; relatório do run na ficha | Média / P |
+| Tela de carregamento com a arte do jogo | Bannerlator `e2acda52`, `da778368` | **Impl. + Local no lote 15e** (capa, nome, etapa com barra, aviso de primeira vez lenta; aparelho pendente, roteiro 56) | Média / P |
+| Tela de fim de sessão com "tentar de novo" e "compartilhar logs" | DroidDeck `02f356f` | **Impl. + Local no lote 15e** (falha ao iniciar: Voltar, Tentar de novo num `:emu` novo, Compartilhar logs; aparelho pendente, roteiro 56) | Média / P |
 | Mais idiomas; idioma escolhido dentro do app | aX360e (25), X360 Mobile (5), DroidDeck `c711c62`; Eden `cfbef5c4` | **Parcial**: en e pt-BR; idioma por app do Android | Média / M por idioma |
 | Temas e cor de destaque | Bannerlator `5d75439f` | **Parcial**: claro/escuro do sistema | Baixa / P |
 | Informações do sistema | Eden `b9655669` | **Tem** (Diagnóstico) | — |

@@ -76,6 +76,33 @@ class MainActivity : ComponentActivity() {
         return super.dispatchGenericMotionEvent(event)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        relaunchIfAsked(intent)
+    }
+
+    /** 15e: "Try again" from the game process: the same game, discs and loading picture, in a new
+     *  :emu once the old one is gone. Only this app's own game process asks. */
+    private fun relaunchIfAsked(request: Intent?) {
+        if (request?.action != EmulatorHostActivity.ACTION_RELAUNCH_GAME || referrer?.host != packageName) return
+        val game = request.getStringExtra(EXTRA_GAME_URI)?.takeIf { it.isNotBlank() } ?: return
+        val launch = Intent(ACTION_LAUNCH_GAME).apply {
+            setPackage(packageName)
+            EmulatorHostActivity.RELAUNCH_EXTRAS.forEach { key ->
+                request.getStringExtra(key)?.let { putExtra(key, it) }
+                request.getStringArrayExtra(key)?.let { putExtra(key, it) }
+            }
+            if (game.startsWith("content://")) {
+                clipData = android.content.ClipData.newRawUri("game", android.net.Uri.parse(game))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+        lifecycleScope.launch {
+            xendroid.compose.core.GameRelaunch.awaitEmuGone(applicationContext)
+            runCatching { startActivity(launch) }.onFailure { Log.w("MainActivity", "Starting the game again failed", it) }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -84,7 +111,10 @@ class MainActivity : ComponentActivity() {
         // collapses that task and the emulator is paused before it draws.
         // Resolved for the :emu process: a real path, or the URI itself (with the read
         // grant) - never this process's /proc/self/fd/<n>, which :emu cannot use.
-        val frontendGame = FrontendLaunch.resolveForHandOff(this, intent)
+        // 15e: a "Try again" from the game process carries the game too, but waits for the old
+        // :emu to end (relaunchIfAsked below), so it is not a hand-off.
+        val relaunch = intent?.action == EmulatorHostActivity.ACTION_RELAUNCH_GAME
+        val frontendGame = if (relaunch) null else FrontendLaunch.resolveForHandOff(this, intent)
         if (frontendGame != null) {
             startActivity(
                 Intent(ACTION_LAUNCH_GAME).apply {
@@ -115,6 +145,8 @@ class MainActivity : ComponentActivity() {
                 runCatching { seedTouchOverlayDefault(appContext, ConfigStore(appContext)) }
             }
         }
+
+        if (savedInstanceState == null) relaunchIfAsked(intent)
 
         val container = AppContainer(applicationContext)
 

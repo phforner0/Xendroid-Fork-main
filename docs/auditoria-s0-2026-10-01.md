@@ -697,3 +697,11 @@ status, "Build da nuvem (fim do lote 14)").
    Alvo "a tela" num aparelho de 144 Hz com jogo a 60: "3× com o jogo a 48". Desligar o LSFG: o limite
    volta ao que o jogador tinha. Anotar em cada caso, com "Compare runs" (C07), FPS mediano, ritmo
    (frame-time) e temperatura, e se há tremida visível. Escolher um multiplicador à mão: o alvo desliga.
+56. Lote 15e — carregamento e fim de sessão: abrir um jogo pela biblioteca: até o primeiro quadro aparece
+   a capa (desfocada ao fundo e nítida no centro), o nome, a etapa ("Iniciando o jogo…", "Preparando
+   os gráficos: N pipelines…") e a barra; num jogo que demora, após 15 s, o aviso dos shaders; Cancelar sai. Com o
+   primeiro quadro, a tela esmaece e o jogo aparece; os controles de toque surgem só aí. Abrir por um atalho
+   fixado: a capa aparece assim que o jogo é identificado. Forçar uma falha ao iniciar (ex.: armazenamento
+   indisponível): o diálogo mostra Voltar, Tentar de novo e Compartilhar logs; Compartilhar abre a folha de
+   compartilhamento sem fechar o diálogo; Tentar de novo fecha o jogo e o inicia de novo (conferir no log
+   que é um processo :emu novo e que o run anterior terminou com "trying again").

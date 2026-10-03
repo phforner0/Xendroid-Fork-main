@@ -53,6 +53,9 @@ const val ACTION_LAUNCH_GAME = "xendroid.intent.action.xendroid"
 const val EXTRA_GAME_URI = "game_uri"
 const val EXTRA_DISC_LABELS = "disc_labels"
 const val EXTRA_DISC_PATHS = "disc_paths"
+/** 15e: what the loading screen shows (the cover as one of this app's own files). */
+const val EXTRA_GAME_NAME = "game_name"
+const val EXTRA_GAME_ART = "game_art"
 
 /** Minimum time the pull-to-refresh indicator stays up, so a fast warm-cache rescan
  *  doesn't outrun its reveal animation and leave it visually stuck. */
@@ -585,6 +588,8 @@ class GameLibraryViewModel(
             val discs = discsOfTitle(game)
             putExtra(EXTRA_DISC_LABELS, discs.map { discLabelOf(it) }.toTypedArray())
             putExtra(EXTRA_DISC_PATHS, discs.map { it.launchUri }.toTypedArray())
+            putExtra(EXTRA_GAME_NAME, game.name)
+            coverFile(game)?.let { putExtra(EXTRA_GAME_ART, it.absolutePath) }
         }
 
     /** Every disc of [game]'s title, including the one being launched: after a swap

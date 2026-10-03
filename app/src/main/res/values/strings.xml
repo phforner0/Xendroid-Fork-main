@@ -1221,4 +1221,6 @@
     <string name="menu_lsfg_target_display">(the display shows at most %1$d)</string>
     <string name="menu_lsfg_target_below">(the game\'s limit keeps it at %1$d/s)</string>
     <string name="menu_lsfg_multiplier_target">LSFG multiplier · %1$d× from the target; press for one by hand (experimental)</string>
+    <string name="boot_still_working">Still starting. A game\'s first start takes longest: the shaders it needs are being built, and later starts reuse them.</string>
+    <string name="host_try_again">Try again</string>
 </resources>

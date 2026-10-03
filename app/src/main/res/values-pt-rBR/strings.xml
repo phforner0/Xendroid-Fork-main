@@ -1260,4 +1260,6 @@
     <string name="menu_lsfg_target_display">(a tela mostra no máximo %1$d)</string>
     <string name="menu_lsfg_target_below">(o limite do jogo deixa em %1$d/s)</string>
     <string name="menu_lsfg_multiplier_target">Multiplicador LSFG · %1$d× pelo alvo; toque para escolher à mão (experimental)</string>
+    <string name="boot_still_working">Ainda iniciando. A primeira vez de um jogo demora mais: os shaders que ele usa estão sendo montados, e as próximas vezes os reaproveitam.</string>
+    <string name="host_try_again">Tentar de novo</string>
 </resources>
