@@ -748,3 +748,9 @@ status, "Build da nuvem (fim do lote 14)").
    tela 1080p, 1440p e numa altura "quebrada" (ex.: 1220 px); o branco continua claro e as sombras
    ficam com linhas mais marcadas; cantos levemente mais escuros. Conferir em retrato e paisagem e
    na TV. Medir com "Compare runs" (C07) o custo: mesmo trecho, A = bilinear, B = CRT.
+65. Lote 15n — painel de desempenho: num jogo, ligar o HUD e em Sistema → "Detalhe do HUD" até
+   "Painel": todas as métricas ao vivo e, embaixo, ritmo (últimos 10 s e sessão), pipelines, áudio,
+   calor e os ajustes em vigor (driver, efeito de escala e resolução, geração de quadros, limite de FPS
+   e Hz, modo sustentado/ADPF, ajustes alterados). Num trecho com engasgos (primeira vez num lugar novo,
+   compilando shaders) aparece "engasgando" e os pipelines sobem; parado, o ritmo diz que não há quadros.
+   Conferir que cabe na tela (arrastar e redimensionar com pinça) e que o custo do HUD não muda o FPS.

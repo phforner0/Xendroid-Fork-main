@@ -67,7 +67,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Menu por abas com controles ao vivo | Bannerlator (drawer), DroidDeck `500f4c6`, Eden `29fad5a8` | **Tem** (U01, lotes 10a e 12b) | — |
 | Ajuda "?" por opção e glossário | Bannerlator `1933903c` (89 variáveis), `33e7d975` | **Parcial**: descrições nas Configurações; no menu em jogo só notas por aba | Alta / P–M |
 | Dizer por que uma opção está indisponível, em vez de falhar calada | Bannerlator `4cd5ea9c` | **Parcial**: driver (U03), estado do Win-FG, LSFG sem DLL | Alta / P |
-| Painel de desempenho único (CPU, GPU, temperaturas, ajustes ativos) | Bannerlator `83d0c1b9` | **Parcial**: HUD, página Sessão e comparação de runs (C07) | Média / M |
+| Painel de desempenho único (CPU, GPU, temperaturas, ajustes ativos) | Bannerlator `83d0c1b9` | **Impl. + Local no lote 15n** (terceiro nível do HUD: métricas ao vivo, ritmo dos últimos 10 s e da sessão, pipelines, áudio, calor e ajustes em vigor/alterados; aparelho pendente, roteiro 65) | Média / M |
 | Escala/upscaler no menu, aplicado ao vivo | DroidDeck `d413018` | **Tem** (Bilinear/CAS/FSR) | — |
 
 ### 3.2 HUD de desempenho

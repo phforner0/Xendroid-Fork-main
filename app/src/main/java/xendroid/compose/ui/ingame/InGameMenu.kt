@@ -102,6 +102,8 @@ fun InGameMenu(
     frameGenerationBudget: String? = null,
     /** FG figures: what it would cost here, or base → submitted while it runs. */
     frameGenerationNotes: List<String> = emptyList(),
+    /** 15n: the HUD shows the performance panel (its third level). */
+    hudPanel: Boolean = false,
     logSessions: List<SessionLogs.Session>,
     onLogChoice: (Int) -> Unit,
     onPage: (InGamePage) -> Unit,
@@ -210,7 +212,7 @@ fun InGameMenu(
                                     if (state.page in state.advanced) stringResource(R.string.menu_fewer_options)
                                     else stringResource(R.string.menu_more_options, state.advancedCount())
                                 } else {
-                                    extensionLabels[action] ?: action.label(fpsLimit, performanceHud, compactHud, touchControls, adaptiveSticks, stretch, hudMetrics, presentation, fgPreset, volume)
+                                    extensionLabels[action] ?: action.label(fpsLimit, performanceHud, compactHud, hudPanel, touchControls, adaptiveSticks, stretch, hudMetrics, presentation, fgPreset, volume)
                                 },
                                 selected = index == state.selected,
                                 enabled = (action != InGameAction.ADAPTIVE_STICKS || fpsConfig.titleId != null) &&
@@ -281,7 +283,7 @@ private fun InGamePage.label(): String = stringResource(
 private fun onOff(on: Boolean): String = stringResource(if (on) R.string.menu_on else R.string.menu_off)
 
 @Composable
-private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: Boolean, adaptive: Boolean, stretch: Boolean,
+private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, panel: Boolean, touch: Boolean, adaptive: Boolean, stretch: Boolean,
                              metrics: Set<HudMetric>, presentation: PresentationState, preset: Int, volume: Int): String {
     fun check(on: Boolean) = if (on) " ✓" else ""
     return when (this) {
@@ -308,8 +310,11 @@ private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: 
         InGameAction.IMPORT_LSFG_DLL -> stringResource(R.string.menu_import_lsfg)
         InGameAction.CLEAR_LSFG_CACHE -> stringResource(R.string.menu_clear_lsfg)
         InGameAction.PERFORMANCE_HUD -> stringResource(R.string.menu_performance_hud, onOff(hud))
-        InGameAction.HUD_STYLE -> stringResource(R.string.menu_hud_detail,
-            stringResource(if (compact) R.string.menu_hud_compact else R.string.menu_hud_full))
+        InGameAction.HUD_STYLE -> stringResource(R.string.menu_hud_detail, stringResource(when {
+            panel -> R.string.menu_hud_panel
+            compact -> R.string.menu_hud_compact
+            else -> R.string.menu_hud_full
+        }))
         InGameAction.HUD_HOST_SUBMISSIONS -> HudMetric.HOST_SUBMISSIONS.label(metrics)
         InGameAction.HUD_CPU -> HudMetric.CPU.label(metrics)
         InGameAction.HUD_GPU -> HudMetric.GPU.label(metrics)

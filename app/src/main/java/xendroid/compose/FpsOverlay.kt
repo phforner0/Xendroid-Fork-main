@@ -43,7 +43,10 @@ import xendroid.compose.core.BatteryReadout
 import xendroid.compose.core.BatteryTimeEstimate
 import xendroid.compose.core.EmulatorSession
 import xendroid.compose.core.presentSubmissionRate
+import xendroid.compose.core.HudDetail
 import xendroid.compose.core.HudMetric
+import xendroid.compose.core.PerformancePanel
+import xendroid.compose.ui.ingame.performancePanelText
 import xendroid.compose.core.HudLook
 import xendroid.compose.core.HudPlacement
 import xendroid.compose.core.HudPlacements
@@ -201,20 +204,26 @@ internal class HudPreferences(private val prefs: android.content.SharedPreferenc
 }
 
 /** [titleId]: the running game, whose own HUD place and size are used and kept (15g); [look]:
- *  box, outline or plain text. */
+ *  box, outline or plain text. [detail] (15n): FPS only, the [metrics] chosen in the menu, or
+ *  the performance panel, which shows every metric and then [panel]. */
 @Composable
 fun FpsOverlay(
     session: EmulatorSession,
     visible: Boolean,
-    compact: Boolean = false,
+    detail: HudDetail = HudDetail.FULL,
     metrics: Set<HudMetric> = HudMetric.entries.toSet(),
     modifier: Modifier = Modifier,
     pollHz: Int = 4,
     baseFontSizeSp: Float = 9f,
     titleId: String? = null,
     look: HudLook = HudLook.BOX,
+    panel: PerformancePanel.Snapshot? = null,
 ) {
     if (!visible) return
+    val compact = detail == HudDetail.COMPACT
+    @Suppress("NAME_SHADOWING")
+    val metrics = if (detail == HudDetail.PANEL) HudMetric.entries.toSet() else metrics
+    val panelText = if (detail == HudDetail.PANEL) panel?.let { performancePanelText(it) } else null
 
     val context = LocalContext.current
     val store = remember { HudPreferences.of(context) }
@@ -375,6 +384,10 @@ fun FpsOverlay(
                     if (HudMetric.POWER in metrics) powerLine?.let {
                         if (isNotEmpty() && !endsWith("\n")) append("\n")
                         append(it)
+                    }
+                    panelText?.let {
+                        if (!endsWith("\n")) append("\n")
+                        append("\n").append(it)
                     }
                 }
             },

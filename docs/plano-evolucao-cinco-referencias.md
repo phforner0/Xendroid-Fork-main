@@ -565,6 +565,11 @@ uma passada em qualquer proporção, linhas de varredura com período inteiro de
 faixas numa escala fracionária), sulco mais raso no claro e cantos mais escuros; sem curvatura nem
 máscara de fósforo. Testado em Vulkan por software; aparência e custo no aparelho pendentes.
 
+**Lote 15n (Impl. + Local; aparelho pendente, roteiro 65):** painel único de desempenho como
+terceiro nível do HUD: métricas ao vivo, ritmo dos últimos segundos e da sessão a partir do
+histograma de tempos de quadro do núcleo, fontes de travada (pipelines, áudio), calor e os ajustes em
+vigor, incluindo os alterados do padrão. Só leitura; nada é ajustado sozinho.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

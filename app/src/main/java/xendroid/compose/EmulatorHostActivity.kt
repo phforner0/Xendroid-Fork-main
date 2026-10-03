@@ -173,6 +173,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val thermalWatch = xendroid.compose.core.ThermalWatch()
     private var thermalNoticeAt = Long.MIN_VALUE
     private var thermalTick = 0
+    /** 15n: the last thermal headroom read (null where the device has none). */
+    private var lastHeadroom: Float? = null
     private var driverRecorded = false
     /** Seconds with >= 100 ms spent creating pipelines (ns counter, pipelines alongside). */
     private val compileBursts = xendroid.compose.sessions.BurstTracker(threshold = 100_000_000, quietSeconds = 2)
@@ -339,7 +341,13 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val fpsLimitState = mutableIntStateOf(60)
     private val showFpsOverlay = mutableStateOf(false)
     private val performanceOverlayEnabled = mutableStateOf(false)
-    private val compactPerformanceOverlay = mutableStateOf(false)
+    /** 15n: FPS only, the chosen rows, or the performance panel. */
+    private val hudDetail = mutableStateOf(xendroid.compose.core.HudDetail.FULL)
+    /** 15n: the last seconds of frame times, and what the panel shows (built only while it is shown). */
+    private val performancePanel = xendroid.compose.core.PerformancePanel()
+    private val panelSnapshot = mutableStateOf<xendroid.compose.core.PerformancePanel.Snapshot?>(null)
+    /** The settings this run booted with that differ from the defaults (14c), for the panel. */
+    @Volatile private var bootChangedSettings: List<String>? = null
     private val hudMetrics = mutableStateOf(HudMetric.entries.toSet())
     /** 15g: the HUD's look for the running game (or the last one set). */
     private val hudLook = mutableStateOf(xendroid.compose.core.HudLook.BOX)
@@ -556,8 +564,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     false
                 )
 
-            compactPerformanceOverlay.value = getSharedPreferences("fps_overlay", MODE_PRIVATE)
-                .getBoolean("performance_overlay_compact", false)
+            hudDetail.value = getSharedPreferences("fps_overlay", MODE_PRIVATE).let { prefs ->
+                xendroid.compose.core.HudDetail.parse(prefs.getString("performance_overlay_detail", null),
+                    prefs.getBoolean("performance_overlay_compact", false))
+            }
             val savedMetrics = getSharedPreferences("fps_overlay", MODE_PRIVATE).getStringSet("hud_metrics", null)
             if (savedMetrics != null) hudMetrics.value = HudMetric.entries.filter { it.name in savedMetrics }.toSet()
             hudLook.value = xendroid.compose.core.HudPlacements.read(HudPreferences.of(this@EmulatorHostActivity), null).look
@@ -782,6 +792,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         val headroom = if (Build.VERSION.SDK_INT >= 30) {
             runCatching { getSystemService(android.os.PowerManager::class.java)?.getThermalHeadroom(10) }.getOrNull()
         } else null
+        lastHeadroom = headroom?.takeIf { it.isFinite() && it >= 0f }
         val level = thermalWatch.sample(headroom, lastThermalStatus) ?: return
         recordEvent("thermal watch", level.name.lowercase().replace('_', ' ') +
             (headroom?.takeIf { it.isFinite() }?.let { " (headroom %.2f)".format(java.util.Locale.ROOT, it) } ?: ""))
@@ -792,6 +803,51 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             Toast.makeText(this, getString(if (level == xendroid.compose.core.ThermalWatch.Level.THROTTLING)
                 R.string.host_thermal_throttling else R.string.host_thermal_near), Toast.LENGTH_LONG).show()
         }
+    }
+
+    /** 15n: what the performance panel shows this second; settings values in the app's language. */
+    private fun buildPanelSnapshot(fg: PresentationState): xendroid.compose.core.PerformancePanel.Snapshot {
+        val run = runPerformance.snapshot()
+        val changed = bootChangedSettings
+        val (shown, total) = xendroid.compose.core.PerformancePanel.changedSettings(changed)
+        val effect = scalingEffect.intValue
+        val image = listOfNotNull(
+            if (effect < 0) getString(R.string.menu_scaling_inherited)
+            else listOf("Bilinear", "CAS", "FSR", "SGSR", "Lanczos", "CRT").getOrNull(effect),
+            xendroid.compose.core.PerformancePanel.resolutionScale(changed)?.let { getString(R.string.panel_resolution, it) },
+        ).joinToString(" · ")
+        val frameGeneration = when {
+            !fg.requested -> getString(R.string.menu_off)
+            fg.engine == 1 -> "LSFG ×${fg.multiplier}"
+            else -> "Win-FG"
+        }
+        val limit = fpsLimitState.intValue.let { if (it == 0) getString(R.string.menu_unlimited) else it.toString() } +
+            " · " + getString(R.string.panel_screen_hz, currentOutputHz().roundToInt().toString())
+        val mode = listOfNotNull(getString(R.string.panel_sustained).takeIf { sustainedMode.value },
+            performanceHintsLabel.value).joinToString(" · ")
+        val driver = runCatching { session.activeDriverIdentity()?.label }.getOrNull() ?: gpuLabel.value.ifEmpty { "?" }
+        return xendroid.compose.core.PerformancePanel.Snapshot(
+            recentSeconds = performancePanel.recentSeconds,
+            recent = performancePanel.recent(),
+            run = xendroid.compose.core.PerformancePanel.pacing(run.frameTimeHistogramMs),
+            fpsMedian = run.fpsPercentile(0.5),
+            fpsLow = run.fpsPercentile(0.05),
+            pipelines = run.pipelineCreations,
+            pipelineMs = run.pipelineCreationMs,
+            audioConcealed = run.audioConcealedBlocks,
+            audioBlocks = run.audioBlocks,
+            thermal = thermalWatch.level,
+            headroom = lastHeadroom,
+            settings = listOf(
+                xendroid.compose.core.PerformancePanel.Setting.DRIVER to driver,
+                xendroid.compose.core.PerformancePanel.Setting.SCALING to image,
+                xendroid.compose.core.PerformancePanel.Setting.FRAME_GENERATION to frameGeneration,
+                xendroid.compose.core.PerformancePanel.Setting.FPS_LIMIT to limit,
+                xendroid.compose.core.PerformancePanel.Setting.PERFORMANCE_MODE to mode,
+            ),
+            changed = shown,
+            changedTotal = total,
+        )
     }
 
     private fun noteThermal(status: Int) {
@@ -1351,6 +1407,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             val modules = runCatching { session.moduleHashes() }.getOrDefault(emptyList())
                                             val settings = runCatching { session.changedSettings() }
                                                 .onFailure { Log.w(TAG, "Reading the changed settings failed", it) }.getOrNull()
+                                            bootChangedSettings = settings
                                             if (activeRun != null) runCatching { xendroid.compose.sessions.SessionRuns.store().running(activeRun, activeTitle, driver, profile, modules, settings) }
                                                 .onFailure { Log.w(TAG, "Recording the running title failed", it) }
                                         }
@@ -1387,6 +1444,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         displayHz = currentOutputHz(),
                                     )
                                     runPerformance.frameTimes(frameTimes)
+                                    performancePanel.frameTimes(frameTimes)
                                     runPerformance.frameGeneration(session.frameGenerationGpuHistogram(), fgNow.lateSkips, fgNow.dropped, fgNow.syntheticSlots)
                                     // F04, advisory only: a verdict change goes to the timeline.
                                     fgGovernor.sample(xendroid.compose.core.FrameGenerationGovernor.Second(
@@ -1448,6 +1506,12 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             null -> {}
                                         }
                                     }
+                                    // 15n: the performance panel, built only while it is on screen.
+                                    panelSnapshot.value = if (performanceOverlayEnabled.value &&
+                                        hudDetail.value == xendroid.compose.core.HudDetail.PANEL) {
+                                        runCatching { buildPanelSnapshot(fgNow) }
+                                            .onFailure { Log.w(TAG, "Building the performance panel failed", it) }.getOrNull()
+                                    } else null
                                     // Bounds the play time of a run that later dies without finishing.
                                     val nowMs = android.os.SystemClock.elapsedRealtime()
                                     if (activeRun != null && nowMs - lastRunHeartbeatMs >= 30_000) {
@@ -1495,7 +1559,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     booted &&
                                         foregroundState.value && !menuState.value.open &&
                                         performanceOverlayEnabled.value,
-                                compact = compactPerformanceOverlay.value,
+                                detail = hudDetail.value,
+                                panel = panelSnapshot.value,
                                 metrics = hudMetrics.value,
                                 titleId = activeTitleState.value,
                                 look = hudLook.value,
@@ -1588,7 +1653,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         frameGenerationBudget = fgBudgetLabel.value,
                                         frameGenerationNotes = fgNotes.value,
                                         performanceHud = performanceOverlayEnabled.value,
-                                        compactHud = compactPerformanceOverlay.value,
+                                        compactHud = hudDetail.value == xendroid.compose.core.HudDetail.COMPACT,
+                                        hudPanel = hudDetail.value == xendroid.compose.core.HudDetail.PANEL,
                                         hudMetrics = hudMetrics.value,
                                         touchControls = showTouchOverlay.value == true && !overlayHiddenByController.value,
                                         adaptiveSticks = adaptiveSticks.value,
@@ -3109,10 +3175,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 hudLook.value = next
             }
             InGameAction.HUD_STYLE -> {
-                val compact = !compactPerformanceOverlay.value
-                compactPerformanceOverlay.value = compact
+                val detail = hudDetail.value.next()
+                hudDetail.value = detail
+                if (detail != xendroid.compose.core.HudDetail.PANEL) panelSnapshot.value = null
                 getSharedPreferences("fps_overlay", MODE_PRIVATE).edit()
-                    .putBoolean("performance_overlay_compact", compact).apply()
+                    .putString("performance_overlay_detail", detail.key).apply()
             }
             InGameAction.TOUCH_CONTROLS -> toggleTouchOverlay()
             InGameAction.ADAPTIVE_STICKS -> {
