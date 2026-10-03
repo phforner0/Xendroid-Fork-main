@@ -371,6 +371,10 @@ com comandos e resultados exatos.
    Telefones como controle mostra "Telefones como controle · Ligado (ative para desligar)" com
    "No outro telefone: Biblioteca → ⋮ → …, código …"; com o Wi-Fi desligado, "… · Desligado: nenhuma
    rede Wi-Fi, ponto de acesso ou Ethernet"; a linha da TV diz "TV · tela do telefone".
+   Lote 12s: com 1 jogo fora da biblioteca, o aviso diz "1 jogo que você jogou ou adicionou não está
+   mais na biblioteca" (en: "1 game … is no longer"); com 2, "2 jogos … não estão mais"; uma seção
+   de Configurações com um ajuste diz "1 ajuste" e as outras "N ajustes"; nenhum "(s)" sobrou nas
+   telas traduzidas.
 29. Lote 10 — navegação por controle (U04): na biblioteca, A abre o jogo e B volta; em
    Configurações → "Menus: A confirms…" → "Swap": agora B abre e A volta na hora. Abrir um jogo:
    no menu em jogo, B ativa e A fecha/cancela; dentro do jogo os botões continuam os de sempre.

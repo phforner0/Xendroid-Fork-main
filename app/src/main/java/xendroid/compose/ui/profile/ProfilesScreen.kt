@@ -1,5 +1,6 @@
 package xendroid.compose.ui.profile
 
+import androidx.compose.ui.res.pluralStringResource
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
 import android.net.Uri
@@ -188,7 +189,7 @@ private fun deleteSummaryText(entry: ProfileEntry, summary: ProfileContentSummar
     val games = summary.gameTitles
     val megabytes = "%.1f".format(summary.bytes / (1024.0 * 1024.0))
     val detail = if (games.isEmpty()) stringResource(R.string.pf_del_no_saves)
-    else stringResource(R.string.pf_del_saves, games.size, games.joinToString(", ") { it.titleId }, summary.files, megabytes)
+    else pluralStringResource(R.plurals.pf_del_saves, games.size, games.size, games.joinToString(", ") { it.titleId }, summary.files, megabytes)
     return listOfNotNull(stringResource(R.string.pf_del_name, name), detail,
         stringResource(R.string.pf_del_partial).takeIf { summary.truncated }, stringResource(R.string.pf_del_trash)).joinToString(" ")
 }

@@ -153,8 +153,6 @@
     <string name="lib_no_games">No games in this folder</string>
     <string name="lib_choose_another">Choose another</string>
     <string name="lib_scan_truncated">The scan stopped after 100,000 files, so this list is partial: a game folder seems to hold more than games. Manage folders</string>
-    <string name="lib_folders_unavailable">%1$d game folder(s) not available now (SD card or permission?): their games are hidden. Manage folders</string>
-    <string name="lib_games_gone">%1$d game(s) you played or added are no longer in the library. Review</string>
     <string name="lib_search">Search games or Title ID</string>
     <string name="lib_favorites">Favorites</string>
     <string name="lib_all_collections">All collections</string>
@@ -166,7 +164,6 @@
     <string name="lib_no_match">No games match your search</string>
     <string name="lib_clear_search">Clear search</string>
     <string name="lib_install_disc_title">Install disc</string>
-    <string name="lib_install_disc_text">This disc carries %1$d content package(s) the game installs before it will run. Install them now, or boot the disc anyway?</string>
     <string name="lib_install">Install</string>
     <string name="lib_boot_anyway">Boot anyway</string>
     <string name="lib_collections_failed">Could not change collections</string>
@@ -176,7 +173,6 @@
     <string name="lib_disc_of">Disc %1$d of %2$d</string>
     <string name="lib_title_id">Title ID: %1$s</string>
     <string name="lib_media_id">Media ID: %1$s</string>
-    <string name="lib_last_played">Last played %1$s · %2$s in %3$d session(s)</string>
     <string name="lib_play">Play</string>
     <string name="lib_signs_in_as">Signs in as %1$s</string>
     <string name="lib_unfavorite">Remove from favorites</string>
@@ -198,7 +194,6 @@
     <string name="lib_your_result">Your result on %1$s · build %2$s · %3$s</string>
     <string name="lib_rate_note">Rate it yourself: results are kept per build and driver, never guessed.</string>
     <string name="lib_timeline">Last run timeline</string>
-    <string name="lib_timeline_note">%1$d events: lifecycle, pauses, stalls, heat, controllers, errors</string>
     <string name="lib_share_report">Share last run report</string>
     <string name="lib_share_report_note">Review what it contains first; you choose where it goes</string>
     <string name="lib_per_game_settings">Per-game settings</string>
@@ -223,8 +218,6 @@
     <string name="lib_delete_iso">Delete .iso</string>
     <string name="lib_keep_it">Keep it</string>
     <string name="lib_scan_reading">Reading %1$s (%2$d of %3$d)</string>
-    <string name="lib_scan_checking">Checking %1$d of %2$d files</string>
-    <string name="lib_scan_looking">Looking through %1$d files…</string>
     <string name="lib_stop">Stop</string>
     <string name="lib_quit">Quit</string>
     <string name="lib_unsupported">Unsupported device</string>
@@ -236,7 +229,6 @@
     <string name="lib_catalog_empty">No results for this game.</string>
     <string name="lib_catalog_this">This build and GPU</string>
     <string name="lib_catalog_setup">Build %1$s · %2$s</string>
-    <string name="lib_catalog_more">%1$d other setup(s).</string>
     <string name="lib_catalog_note">Results of other builds, GPUs or drivers may not hold here.</string>
     <string name="lib_catalog_downloading">Downloading…</string>
     <string name="common_delete">Delete</string>
@@ -260,7 +252,6 @@
     <string name="folders_add">Add folder</string>
     <string name="missing_title">Games no longer in the library</string>
     <string name="missing_none">Every game you played is in the library.</string>
-    <string name="missing_played">Played %1$s in %2$d session(s) · Title ID %3$s</string>
     <string name="missing_note">Removing only hides a game here: its play time, compatibility notes, saves and cover stay, and it comes back when the file is found again. No file is touched.</string>
     <string name="missing_file_gone">File not found: moved, renamed or deleted</string>
     <string name="missing_folder_away">Its game folder is not available now</string>
@@ -271,7 +262,6 @@
     <string name="playas_note">Each profile keeps its own saves.</string>
     <string name="common_share">Share</string>
     <string name="report_note">Paths, accounts and addresses are removed; logs are not included (Diagnostics shares those). Nothing is sent until you pick where to share it.</string>
-    <string name="timeline_dropped">%1$d earlier events were not kept.</string>
     <string name="lib_catalog_updated">Catalog updated (publication %1$d).</string>
     <string name="lib_catalog_current">The catalog is up to date.</string>
     <string name="lib_catalog_refused">Catalog not taken: %1$s. The copy already here stays.</string>
@@ -417,15 +407,11 @@
     <string name="set_developer_note">Every engine setting. Player keeps only what players change.</string>
     <string name="set_to_developer">Switch to Developer</string>
     <string name="set_to_player">Switch to Player</string>
-    <string name="set_count">%1$d settings</string>
-    <string name="set_changed">%1$d changed</string>
     <string name="set_back_sections">Back to sections</string>
     <string name="set_search">Search settings</string>
     <string name="set_game_title">%1$s settings</string>
     <string name="set_game_note">Overrides apply to all copies of this game.</string>
-    <string name="set_overridden">%1$d overridden</string>
     <string name="bundle_bad_file">Could not use that file: %1$s</string>
-    <string name="bundle_exported">Exported %1$d parts</string>
     <string name="bundle_title">Back up or move settings</string>
     <string name="bundle_note">Emulator settings (global and per game), touch controls, favorites, collections and your compatibility notes, in one file. Saves, profiles, games and drivers are not included.</string>
     <string name="bundle_export">Export</string>
@@ -442,7 +428,6 @@
     <string name="upd_preview">Preview</string>
     <string name="upd_off">Off</string>
     <string name="prof_title">Recommended settings</string>
-    <string name="prof_applied">Applied “%1$s” on %2$s: %3$d setting(s) for this game.</string>
     <string name="prof_restore_previous">Restore previous settings</string>
     <string name="prof_not_here">Not offered on this phone:</string>
     <string name="prof_skipped">Skipped profile files: %1$s</string>
@@ -463,7 +448,6 @@
     <string name="prof_apply_note">Only this game changes, from its next start. Settings you chose for it stay, and you can restore the previous ones later.</string>
     <string name="prof_restore">Restore</string>
     <string name="prof_nothing">Nothing to change</string>
-    <string name="prof_apply_n">Apply %1$d change(s)</string>
     <string name="pf_create">Create profile</string>
     <string name="pf_none">No profiles yet. Tap + to create one.</string>
     <string name="pf_purge_title">Remove permanently?</string>
@@ -473,7 +457,6 @@
     <string name="pf_trash">Move to trash</string>
     <string name="pf_failed">Couldn\'t complete</string>
     <string name="pf_del_no_saves">It has no game saves stored on this device.</string>
-    <string name="pf_del_saves">This also removes the saved data of %1$d game(s): %2$s (%3$d files, %4$s MB including the profile).</string>
     <string name="pf_del_name">“%1$s” disappears from the profile list and from every game.</string>
     <string name="pf_del_partial">The folder is very large; the totals above are partial.</string>
     <string name="pf_del_trash">Everything stays in the trash on this device until you remove it permanently, and can be restored from this screen.</string>
@@ -538,7 +521,6 @@
     <string name="sv_title">Saves · %1$s</string>
     <string name="sv_intro">Backups preserve save headers and original profile XUIDs. Close the running game before backing up or restoring.</string>
     <string name="sv_include_profile">Include associated profile</string>
-    <string name="sv_profile_line">%1$d files · %2$d KB</string>
     <string name="sv_profile_available">profile available</string>
     <string name="sv_none">No saves found for this game.</string>
     <string name="sv_export">Export selected profiles</string>
@@ -554,8 +536,6 @@
     <string name="sv_provider_none">No verified backup filenames found for this title</string>
     <string name="sv_failed">Save operation failed</string>
     <string name="sv_restore_title">Restore %1$s?</string>
-    <string name="sv_restore_files">%1$d files · original XUIDs: %2$s</string>
-    <string name="sv_restore_conflicts">%1$d existing save/profile directories. Current saves will be backed up before replacement.</string>
     <string name="sv_replace_profiles">Replace existing profile data too</string>
     <string name="sv_publishing">Copying verified backup to the selected provider…</string>
     <string name="sv_published">Backup verified in the selected folder: %1$s</string>
@@ -584,7 +564,6 @@
     <string name="cm_restored">Restored “%1$s”.</string>
     <string name="cm_restore_failed">Couldn\'t restore it.</string>
     <string name="cm_deleting">Deleting…</string>
-    <string name="cm_emptied">Emptied the trash (%1$d item(s)).</string>
     <string name="cm_deleted">Deleted “%1$s” for good.</string>
     <string name="cm_delete_failed">Couldn\'t delete it.</string>
     <string name="cm_removing">Removing…</string>
@@ -604,7 +583,6 @@
     <string name="ci_already_in_folder">“%1$s” is already in your games folder. Pull down to refresh the library.</string>
     <string name="ci_installing_n">Installing %1$d of %2$d…</string>
     <string name="ci_installed_partial">Installed %1$d of %2$d.</string>
-    <string name="ci_installed_disc">Installed %1$d package(s) from the disc. Boot the play disc to use them.</string>
     <string name="ci_installed_any">Installed %1$s. It\'ll apply next time the console boots.</string>
     <string name="ci_copying">Copying to your library…</string>
     <string name="ci_copied">Added “%1$s” to your library. Pull down to refresh if you don\'t see it.</string>
@@ -679,7 +657,6 @@
     <string name="rumble_high">High</string>
     <string name="bm_intro">Play the same scene with one change (driver, frame generation, FPS limit, a setting), closing the game between runs, in the order A B B A. Mark a scene from the in-game menu (Session → Mark scene) to line runs up. FPS here are the game\'s own frames.</string>
     <string name="bm_none">No finished run with measurements yet.</string>
-    <string name="bm_runs">%1$s · %2$d run(s)</string>
     <string name="bm_off">off</string>
     <string name="bm_run_line">median %1$d FPS · 5th pct %2$d · 99%% of frames %3$s</string>
     <string name="bm_na">n/a</string>
@@ -688,11 +665,9 @@
     <string name="bm_limit">limit %1$s</string>
     <string name="bm_vblank_capped">vblank capped</string>
     <string name="bm_vblank_uncapped">vblank uncapped</string>
-    <string name="bm_markers">%1$d marker(s)</string>
     <string name="bm_order">Order: %1$s</string>
     <string name="bm_balanced">(balanced)</string>
     <string name="bm_changed">What changed: %1$s</string>
-    <string name="bm_side">%1$s: %2$d run(s), median %3$.1f FPS, 5th pct %4$.1f</string>
     <string name="bm_side_p99">99%% of frames &lt; %1$.0f ms</string>
     <string name="bm_pairs">B − A per pair: %1$s FPS (median)</string>
     <string name="pc_intro">On the phone running the game: open its menu (Back), Controls → Phone controllers. Type the address and the code it shows. Both phones must be on the same Wi-Fi or hotspot. This phone plays as P2, P3 or P4 with its touch pad. Experimental.</string>
@@ -752,7 +727,6 @@
     <string name="disc_none">No discs for this title were found in the games folder.</string>
     <string name="boot_emulator">Starting the emulator…</string>
     <string name="boot_game">Starting the game… %1$d s</string>
-    <string name="boot_graphics">Preparing graphics: %1$d pipelines created… %2$d s</string>
     <string name="boot_first_frame">Waiting for the first frame… %1$d s</string>
     <string name="cz_compressing">Compressing…</string>
     <string name="cz_replacing">Replacing…</string>
@@ -852,10 +826,6 @@
     <string name="lp_apply">Apply</string>
     <string name="lp_diff_nothing">Nothing changes</string>
     <string name="lp_diff_controls">Controls: %1$s</string>
-    <string name="lp_diff_moved">%1$d moved</string>
-    <string name="lp_diff_resized">%1$d resized</string>
-    <string name="lp_diff_shown">%1$d shown</string>
-    <string name="lp_diff_hidden">%1$d hidden</string>
     <string name="lp_refuse_too_large">The file is larger than 256 KB</string>
     <string name="lp_refuse_not_json">Not a layout file</string>
     <string name="lp_refuse_not_xendroid">Not a XenDroid touch layout</string>
@@ -941,7 +911,6 @@
     <string name="tv_none">TV · no presentation display connected</string>
     <string name="tv_unavailable">TV · display unavailable</string>
     <string name="tv_on">TV · %1$s · %2$s Hz</string>
-    <string name="tv_available">TV · %1$d external display(s) available</string>
     <string name="ct_plays_as">In a game started now: P%1$d</string>
     <string name="ct_no_slot">In a game started now: no free player (P1–P4 taken)</string>
     <string name="ge_camera_speed">Touch camera speed: %1$d%%</string>
@@ -954,4 +923,128 @@
     <string name="ud_read_only_now">Read-only while a game runs or data is being changed</string>
     <string name="ud_profile_data">Saves and data · profile %1$s</string>
     <string name="ud_console_data">DLC and title updates</string>
+    <plurals name="lib_folders_unavailable">
+        <item quantity="one">%1$d game folder is not available now (SD card or permission?): its games are hidden. Manage folders</item>
+        <item quantity="other">%1$d game folders are not available now (SD card or permission?): their games are hidden. Manage folders</item>
+    </plurals>
+    <plurals name="lib_games_gone">
+        <item quantity="one">%1$d game you played or added is no longer in the library. Review</item>
+        <item quantity="other">%1$d games you played or added are no longer in the library. Review</item>
+    </plurals>
+    <plurals name="lib_install_disc_text">
+        <item quantity="one">This disc carries %1$d content package the game installs before it will run. Install it now, or boot the disc anyway?</item>
+        <item quantity="other">This disc carries %1$d content packages the game installs before it will run. Install them now, or boot the disc anyway?</item>
+    </plurals>
+    <plurals name="lib_last_played">
+        <item quantity="one">Last played %1$s · %2$s in %3$d session</item>
+        <item quantity="other">Last played %1$s · %2$s in %3$d sessions</item>
+    </plurals>
+    <plurals name="lib_timeline_note">
+        <item quantity="one">%1$d event: lifecycle, pauses, stalls, heat, controllers, errors</item>
+        <item quantity="other">%1$d events: lifecycle, pauses, stalls, heat, controllers, errors</item>
+    </plurals>
+    <plurals name="lib_scan_checking">
+        <item quantity="one">Checking %1$d of %2$d file</item>
+        <item quantity="other">Checking %1$d of %2$d files</item>
+    </plurals>
+    <plurals name="lib_scan_looking">
+        <item quantity="one">Looking through %1$d file…</item>
+        <item quantity="other">Looking through %1$d files…</item>
+    </plurals>
+    <plurals name="lib_catalog_more">
+        <item quantity="one">%1$d other setup.</item>
+        <item quantity="other">%1$d other setups.</item>
+    </plurals>
+    <plurals name="missing_played">
+        <item quantity="one">Played %1$s in %2$d session · Title ID %3$s</item>
+        <item quantity="other">Played %1$s in %2$d sessions · Title ID %3$s</item>
+    </plurals>
+    <plurals name="timeline_dropped">
+        <item quantity="one">%1$d earlier event was not kept.</item>
+        <item quantity="other">%1$d earlier events were not kept.</item>
+    </plurals>
+    <plurals name="set_count">
+        <item quantity="one">%1$d setting</item>
+        <item quantity="other">%1$d settings</item>
+    </plurals>
+    <plurals name="set_changed">
+        <item quantity="one">%1$d changed</item>
+        <item quantity="other">%1$d changed</item>
+    </plurals>
+    <plurals name="set_overridden">
+        <item quantity="one">%1$d overridden</item>
+        <item quantity="other">%1$d overridden</item>
+    </plurals>
+    <plurals name="bundle_exported">
+        <item quantity="one">Exported %1$d part</item>
+        <item quantity="other">Exported %1$d parts</item>
+    </plurals>
+    <plurals name="prof_applied">
+        <item quantity="one">Applied “%1$s” on %2$s: %3$d setting for this game.</item>
+        <item quantity="other">Applied “%1$s” on %2$s: %3$d settings for this game.</item>
+    </plurals>
+    <plurals name="prof_apply_n">
+        <item quantity="one">Apply %1$d change</item>
+        <item quantity="other">Apply %1$d changes</item>
+    </plurals>
+    <plurals name="pf_del_saves">
+        <item quantity="one">This also removes the saved data of %1$d game: %2$s (%3$d files, %4$s MB including the profile).</item>
+        <item quantity="other">This also removes the saved data of %1$d games: %2$s (%3$d files, %4$s MB including the profile).</item>
+    </plurals>
+    <plurals name="sv_profile_line">
+        <item quantity="one">%1$d file · %2$d KB</item>
+        <item quantity="other">%1$d files · %2$d KB</item>
+    </plurals>
+    <plurals name="sv_restore_files">
+        <item quantity="one">%1$d file · original XUIDs: %2$s</item>
+        <item quantity="other">%1$d files · original XUIDs: %2$s</item>
+    </plurals>
+    <plurals name="sv_restore_conflicts">
+        <item quantity="one">%1$d existing save/profile directory. Current saves will be backed up before replacement.</item>
+        <item quantity="other">%1$d existing save/profile directories. Current saves will be backed up before replacement.</item>
+    </plurals>
+    <plurals name="cm_emptied">
+        <item quantity="one">Emptied the trash (%1$d item).</item>
+        <item quantity="other">Emptied the trash (%1$d items).</item>
+    </plurals>
+    <plurals name="ci_installed_disc">
+        <item quantity="one">Installed %1$d package from the disc. Boot the play disc to use it.</item>
+        <item quantity="other">Installed %1$d packages from the disc. Boot the play disc to use them.</item>
+    </plurals>
+    <plurals name="bm_runs">
+        <item quantity="one">%1$s · %2$d run</item>
+        <item quantity="other">%1$s · %2$d runs</item>
+    </plurals>
+    <plurals name="bm_side">
+        <item quantity="one">%1$s: %2$d run, median %3$.1f FPS, 5th pct %4$.1f</item>
+        <item quantity="other">%1$s: %2$d runs, median %3$.1f FPS, 5th pct %4$.1f</item>
+    </plurals>
+    <plurals name="bm_markers">
+        <item quantity="one">%1$d marker</item>
+        <item quantity="other">%1$d markers</item>
+    </plurals>
+    <plurals name="boot_graphics">
+        <item quantity="one">Preparing graphics: %1$d pipeline created… %2$d s</item>
+        <item quantity="other">Preparing graphics: %1$d pipelines created… %2$d s</item>
+    </plurals>
+    <plurals name="lp_diff_moved">
+        <item quantity="one">%1$d moved</item>
+        <item quantity="other">%1$d moved</item>
+    </plurals>
+    <plurals name="lp_diff_resized">
+        <item quantity="one">%1$d resized</item>
+        <item quantity="other">%1$d resized</item>
+    </plurals>
+    <plurals name="lp_diff_shown">
+        <item quantity="one">%1$d shown</item>
+        <item quantity="other">%1$d shown</item>
+    </plurals>
+    <plurals name="lp_diff_hidden">
+        <item quantity="one">%1$d hidden</item>
+        <item quantity="other">%1$d hidden</item>
+    </plurals>
+    <plurals name="tv_available">
+        <item quantity="one">TV · %1$d external display available</item>
+        <item quantity="other">TV · %1$d external displays available</item>
+    </plurals>
 </resources>

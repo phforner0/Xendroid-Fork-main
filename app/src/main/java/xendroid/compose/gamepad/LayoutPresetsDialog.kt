@@ -1,5 +1,6 @@
 package xendroid.compose.gamepad
 
+import androidx.compose.ui.res.pluralStringResource
 import android.content.Context
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
@@ -170,10 +171,10 @@ fun LayoutPresetsDialog(
 @Composable
 private fun diffText(diff: LayoutPresets.Diff): String {
     val parts = listOfNotNull(
-        diff.moved.takeIf { it > 0 }?.let { stringResource(R.string.lp_diff_moved, it) },
-        diff.resized.takeIf { it > 0 }?.let { stringResource(R.string.lp_diff_resized, it) },
-        diff.shown.takeIf { it > 0 }?.let { stringResource(R.string.lp_diff_shown, it) },
-        diff.hidden.takeIf { it > 0 }?.let { stringResource(R.string.lp_diff_hidden, it) },
+        diff.moved.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.lp_diff_moved, it, it) },
+        diff.resized.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.lp_diff_resized, it, it) },
+        diff.shown.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.lp_diff_shown, it, it) },
+        diff.hidden.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.lp_diff_hidden, it, it) },
     )
     return if (parts.isEmpty()) stringResource(R.string.lp_diff_nothing) else stringResource(R.string.lp_diff_controls, parts.joinToString(", "))
 }

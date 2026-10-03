@@ -1,5 +1,6 @@
 package xendroid.compose.ui.library
 
+import androidx.compose.ui.res.pluralStringResource
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
 import android.app.Activity
@@ -432,13 +433,13 @@ fun GameLibraryScreen(
                             if (s.unavailableRoots.isNotEmpty()) {
                                 TextButton(onClick = { viewModel.loadFolders(); foldersOpen = true },
                                     modifier = Modifier.padding(horizontal = 8.dp)) {
-                                    Text(stringResource(R.string.lib_folders_unavailable, s.unavailableRoots.size))
+                                    Text(pluralStringResource(R.plurals.lib_folders_unavailable, s.unavailableRoots.size, s.unavailableRoots.size))
                                 }
                             }
                             val gone = missing.count { it.reason != xendroid.compose.data.MissingTitles.Reason.FOLDER_AWAY }
                             if (gone > 0) {
                                 TextButton(onClick = { missingOpen = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                    Text(stringResource(R.string.lib_games_gone, gone))
+                                    Text(pluralStringResource(R.plurals.lib_games_gone, gone, gone))
                                 }
                             }
                             OutlinedTextField(
@@ -551,7 +552,7 @@ fun GameLibraryScreen(
             onDismissRequest = { pendingDiscInstall = null },
             title = { Text(stringResource(R.string.lib_install_disc_title)) },
             text = {
-                Text(stringResource(R.string.lib_install_disc_text, count))
+                Text(pluralStringResource(R.plurals.lib_install_disc_text, count, count))
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -676,7 +677,7 @@ fun GameLibraryScreen(
                                 game.titleId?.let { Text(stringResource(R.string.lib_title_id, it)) }
                                 game.mediaId?.let { Text(stringResource(R.string.lib_media_id, it)) }
                                 game.titleId?.uppercase()?.let { activity[it] }?.let { played ->
-                                    Text(stringResource(R.string.lib_last_played, java.text.DateFormat.getDateTimeInstance(
+                                    Text(pluralStringResource(R.plurals.lib_last_played, played.runs, java.text.DateFormat.getDateTimeInstance(
                                         java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
                                         .format(java.util.Date(played.lastPlayedAt)), formatPlayTime(played.playedMs), played.runs))
                                 }
@@ -764,7 +765,7 @@ fun GameLibraryScreen(
                     info.lastRunEvents?.takeIf { it.events.isNotEmpty() }?.let { log ->
                         ListItem(
                             headlineContent = { Text(stringResource(R.string.lib_timeline)) },
-                            supportingContent = { Text(stringResource(R.string.lib_timeline_note, log.events.size)) },
+                            supportingContent = { Text(pluralStringResource(R.plurals.lib_timeline_note, log.events.size, log.events.size)) },
                             modifier = Modifier.clickable { timelineOpen = true },
                         )
                     }
@@ -1091,8 +1092,8 @@ private fun ScanProgressRow(viewModel: GameLibraryViewModel) {
         Text(
             when {
                 p.reading != null -> stringResource(R.string.lib_scan_reading, p.reading, p.checked + 1, p.candidates)
-                p.candidates > 0 -> stringResource(R.string.lib_scan_checking, p.checked, p.candidates)
-                else -> stringResource(R.string.lib_scan_looking, p.entries)
+                p.candidates > 0 -> pluralStringResource(R.plurals.lib_scan_checking, p.candidates, p.checked, p.candidates)
+                else -> pluralStringResource(R.plurals.lib_scan_looking, p.entries, p.entries)
             },
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
@@ -1205,7 +1206,7 @@ private fun CatalogResultsItem(catalog: GameLibraryViewModel.CatalogView, onRefr
                         Text((if (setup.thisSetup) stringResource(R.string.lib_catalog_this) else stringResource(R.string.lib_catalog_setup, setup.build, setup.gpu)) +
                             (if (setup.driver.isNotEmpty()) " · ${setup.driver}" else "") + ": ${setup.summary} (${setup.latestDate})")
                     }
-                    if (catalog.results.size > 4) Text(stringResource(R.string.lib_catalog_more, catalog.results.size - 4))
+                    if (catalog.results.size > 4) Text(pluralStringResource(R.plurals.lib_catalog_more, catalog.results.size - 4, catalog.results.size - 4))
                     if (catalog.results.any { !it.thisSetup }) Text(stringResource(R.string.lib_catalog_note))
                 }
                 catalog.message?.let { Text(it) }

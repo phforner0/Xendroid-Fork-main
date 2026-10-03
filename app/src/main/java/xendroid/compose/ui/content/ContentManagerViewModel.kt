@@ -176,7 +176,7 @@ class ContentManagerViewModel(
             }
         }
         result.onSuccess { count ->
-            _state.value = ContentInstallState.Done(if (entry == null) appContext.getString(xendroid.compose.R.string.cm_emptied, count) else appContext.getString(xendroid.compose.R.string.cm_deleted, entry.displayName))
+            _state.value = ContentInstallState.Done(if (entry == null) appContext.resources.getQuantityString(xendroid.compose.R.plurals.cm_emptied, count, count) else appContext.getString(xendroid.compose.R.string.cm_deleted, entry.displayName))
             refresh()
         }.onFailure { _state.value = ContentInstallState.Failed(it.message ?: appContext.getString(xendroid.compose.R.string.cm_delete_failed)) }
     }

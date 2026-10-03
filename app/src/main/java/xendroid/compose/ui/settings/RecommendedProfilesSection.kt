@@ -1,5 +1,6 @@
 package xendroid.compose.ui.settings
 
+import androidx.compose.ui.res.pluralStringResource
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
@@ -39,7 +40,7 @@ fun RecommendedProfilesCard(
             Text(stringResource(R.string.prof_title), style = MaterialTheme.typography.titleSmall)
             state.applied?.let { applied ->
                 val date = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(applied.appliedAt))
-                Text(stringResource(R.string.prof_applied, applied.profileName, date, applied.written.size),
+                Text(pluralStringResource(R.plurals.prof_applied, applied.written.size, applied.profileName, date, applied.written.size),
                     style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = onRestore) { Text(stringResource(R.string.prof_restore_previous)) }
             }
@@ -114,7 +115,7 @@ fun ProfilePreviewDialog(preview: ProfilePreview, onConfirm: () -> Unit, onDismi
                 Text(when {
                     restore -> stringResource(R.string.prof_restore)
                     writes == 0 -> stringResource(R.string.prof_nothing)
-                    else -> stringResource(R.string.prof_apply_n, writes)
+                    else -> pluralStringResource(R.plurals.prof_apply_n, writes, writes)
                 })
             }
         },

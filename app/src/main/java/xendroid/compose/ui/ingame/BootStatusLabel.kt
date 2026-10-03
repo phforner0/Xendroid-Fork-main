@@ -1,5 +1,6 @@
 package xendroid.compose.ui.ingame
 
+import androidx.compose.ui.res.pluralStringResource
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
@@ -36,7 +37,7 @@ fun bootStatus(titleActive: Boolean, pipelinesCreated: Long, creatingNow: Long, 
 private fun bootStatusText(status: BootStatus): String = when (status.stage) {
     BootStatus.Stage.EMULATOR -> stringResource(R.string.boot_emulator)
     BootStatus.Stage.GAME -> stringResource(R.string.boot_game, status.seconds)
-    BootStatus.Stage.GRAPHICS -> stringResource(R.string.boot_graphics, status.pipelines, status.seconds)
+    BootStatus.Stage.GRAPHICS -> pluralStringResource(R.plurals.boot_graphics, status.pipelines.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), status.pipelines, status.seconds)
     BootStatus.Stage.FIRST_FRAME -> stringResource(R.string.boot_first_frame, status.seconds)
 }
 

@@ -70,7 +70,7 @@ class ExternalGameDisplay(
         statusChanged(activity.getString(xendroid.compose.R.string.tv_phone))
     }
     override fun onDisplayRemoved(id: Int) { if (activeDisplay?.displayId == id) toPhone() }
-    override fun onDisplayAdded(id: Int) { if (activeDisplay == null) statusChanged(activity.getString(xendroid.compose.R.string.tv_available, choices().size)) }
+    override fun onDisplayAdded(id: Int) { if (activeDisplay == null) statusChanged(choices().size.let { activity.resources.getQuantityString(xendroid.compose.R.plurals.tv_available, it, it) }) }
     override fun onDisplayChanged(id: Int) {
         if (activeDisplay?.displayId == id && activeDisplay?.isValid == false) toPhone()
     }

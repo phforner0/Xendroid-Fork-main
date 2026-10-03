@@ -1,5 +1,6 @@
 package xendroid.compose.ui.saves
 
+import androidx.compose.ui.res.pluralStringResource
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -59,7 +60,7 @@ fun SaveManagerScreen(vm: SaveManagerViewModel, gameName: String, onBack: () -> 
             }
             items(profiles, key = { it.xuid }) { profile ->
                 ListItem(headlineContent = { Text(profile.xuid) }, supportingContent = {
-                    Text(stringResource(R.string.sv_profile_line, profile.saveFiles, profile.bytes / 1024) + if (profile.hasProfile) " · " + stringResource(R.string.sv_profile_available) else "")
+                    Text(pluralStringResource(R.plurals.sv_profile_line, profile.saveFiles, profile.saveFiles, profile.bytes / 1024) + if (profile.hasProfile) " · " + stringResource(R.string.sv_profile_available) else "")
                 }, leadingContent = {
                     Checkbox(profile.xuid in selectedIds, onCheckedChange = { selected ->
                         selectedIds = if (selected) selectedIds + profile.xuid else selectedIds - profile.xuid
@@ -113,8 +114,8 @@ fun SaveManagerScreen(vm: SaveManagerViewModel, gameName: String, onBack: () -> 
         is SaveManagerViewModel.Operation.Review -> AlertDialog(onDismissRequest = vm::dismiss,
             title = { Text(stringResource(R.string.sv_restore_title, op.backup.manifest.titleId)) }, text = {
                 Column {
-                    Text(stringResource(R.string.sv_restore_files, op.backup.manifest.files.size, op.backup.manifest.xuids.joinToString()))
-                    Text(stringResource(R.string.sv_restore_conflicts, op.backup.conflicts.size))
+                    Text(pluralStringResource(R.plurals.sv_restore_files, op.backup.manifest.files.size, op.backup.manifest.files.size, op.backup.manifest.xuids.joinToString()))
+                    Text(pluralStringResource(R.plurals.sv_restore_conflicts, op.backup.conflicts.size, op.backup.conflicts.size))
                     Row {
                         Checkbox(overwriteProfiles, onCheckedChange = { overwriteProfiles = it })
                         Text(stringResource(R.string.sv_replace_profiles), Modifier.padding(top = 12.dp))

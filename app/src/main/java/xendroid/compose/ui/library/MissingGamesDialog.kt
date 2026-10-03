@@ -1,5 +1,6 @@
 package xendroid.compose.ui.library
 
+import androidx.compose.ui.res.pluralStringResource
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
@@ -62,7 +63,7 @@ fun MissingGamesDialog(
                             Text(title.lastPath, style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                             activity[title.titleId]?.let { played ->
-                                Text(stringResource(R.string.missing_played, formatPlayTime(played.playedMs), played.runs, title.titleId),
+                                Text(pluralStringResource(R.plurals.missing_played, played.runs, formatPlayTime(played.playedMs), played.runs, title.titleId),
                                     style = MaterialTheme.typography.bodySmall)
                             }
                         }

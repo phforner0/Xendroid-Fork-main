@@ -67,7 +67,7 @@ fun DataBundleSection(beforeImport: () -> Unit, afterImport: () -> Unit) {
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) run {
             val parts = DataBundleIo.export(context, uri)
-            Toast.makeText(context, context.getString(R.string.bundle_exported, parts), Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.resources.getQuantityString(R.plurals.bundle_exported, parts, parts), Toast.LENGTH_LONG).show()
         }
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->

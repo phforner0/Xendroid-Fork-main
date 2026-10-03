@@ -560,7 +560,8 @@ recomendados); lote 12j: Perfis, Saves e Conteúdo (telas e mensagens); lote 12k
 controles, comparação (moldura), companion (motivos estruturados), diagnóstico, sobre, teclas, pausa,
 disco, faixa de início, compressão, avisos do host e atualizador; lote 12l: editor de toque e
 layouts (recusas estruturadas); lote 12m: veredito e avisos da comparação, eventos de conexão do
-teste de controles, linhas de telefones como controle e TV no menu (938 textos por língua). Fica em
+teste de controles, linhas de telefones como controle e TV no menu; lote 12s: 31 textos com
+contagem viram plurais (919 textos e 31 plurais por língua). Fica em
 inglês, de propósito: itens só do modo Desenvolvedor (ADPF, FG/LSFG, governador, cvars), números do
 HUD, bloco técnico do último run e logs. Falta: revisão do texto, RTL e texto grande no aparelho
 (roteiro 28).

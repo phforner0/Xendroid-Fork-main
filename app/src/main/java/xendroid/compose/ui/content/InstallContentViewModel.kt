@@ -170,7 +170,7 @@ class InstallContentViewModel(
         }
         runCatching { scratch.deleteRecursively() }
         _state.value = ContentInstallState.Done(
-            appContext.getString(xendroid.compose.R.string.ci_installed_disc, installed))
+            appContext.resources.getQuantityString(xendroid.compose.R.plurals.ci_installed_disc, installed, installed))
     }
 
     /** Full games are copied into the library's first folder (L03: there can be several). */

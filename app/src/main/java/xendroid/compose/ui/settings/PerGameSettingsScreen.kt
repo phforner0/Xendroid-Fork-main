@@ -1,5 +1,6 @@
 package xendroid.compose.ui.settings
 
+import androidx.compose.ui.res.pluralStringResource
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
@@ -144,8 +145,8 @@ private fun PerGameIndex(
                     headlineContent = { Text(categoryTitle(cat)) },
                     supportingContent = {
                         Text(buildString {
-                            append(stringResource(R.string.set_count, cat.settings.size))
-                            if (overridden > 0) append("  ·  " + stringResource(R.string.set_overridden, overridden))
+                            append(pluralStringResource(R.plurals.set_count, cat.settings.size, cat.settings.size))
+                            if (overridden > 0) append("  ·  " + pluralStringResource(R.plurals.set_overridden, overridden, overridden))
                         })
                     },
                     trailingContent = {

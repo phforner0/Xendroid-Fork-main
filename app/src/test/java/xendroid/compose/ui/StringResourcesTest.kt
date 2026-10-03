@@ -23,6 +23,20 @@ class StringResourcesTest {
         }
     }
 
+    /** Plural name to its items by quantity ("one", "other"…). */
+    private fun plurals(dir: String): Map<String, Map<String, String>> {
+        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(File(res, "$dir/strings.xml"))
+        val nodes = doc.getElementsByTagName("plurals")
+        return (0 until nodes.length).associate { i ->
+            val node = nodes.item(i) as Element
+            val items = node.getElementsByTagName("item")
+            node.getAttribute("name") to (0 until items.length).associate { j ->
+                val item = items.item(j) as Element
+                item.getAttribute("quantity") to item.textContent
+            }
+        }
+    }
+
     private val placeholder = Regex("%(\\d+\\$)?[-#+ 0,(]*\\d*(\\.\\d+)?[sdfxXc%]")
 
     private fun placeholders(text: String) = placeholder.findAll(text).map { it.value }.sorted().toList()
@@ -69,6 +83,33 @@ class StringResourcesTest {
         for (dir in listOf("values", "values-pt-rBR")) {
             for ((name, value) in strings(dir)) {
                 assertTrue("$dir/$name has a raw line break (write \\n)", !value.first.contains('\n'))
+            }
+        }
+    }
+
+    /** U02: a count's word agrees with it in both languages ("1 game", "2 games"); every form
+     *  has the same placeholders, so whatever form Android picks formats the same arguments. */
+    @Test fun pluralsHaveTheFormsEachLanguageNeeds() {
+        val english = plurals("values")
+        val portuguese = plurals("values-pt-rBR")
+        assertTrue("there are plurals", english.isNotEmpty())
+        assertEquals(english.keys, portuguese.keys)
+        for ((name, forms) in english) {
+            val pt = portuguese.getValue(name)
+            assertTrue("$name: en needs one and other", forms.keys.containsAll(listOf("one", "other")))
+            assertTrue("$name: pt-BR needs one and other", pt.keys.containsAll(listOf("one", "other")))
+            val expected = placeholders(forms.getValue("other"))
+            for ((dir, items) in listOf("values" to forms, "values-pt-rBR" to pt)) {
+                for ((quantity, text) in items) {
+                    val where = "$dir/$name[$quantity]"
+                    assertTrue("$where is empty", text.isNotBlank())
+                    assertEquals("$where: placeholders", expected, placeholders(text))
+                    if (expected.size > 1) assertTrue("$where: use %1\$s, %2\$s…", expected.all { it.contains('$') })
+                    assertTrue("$where has a stray %", !text.replace(placeholder, "").contains('%'))
+                    assertTrue("$where has an unescaped apostrophe", !Regex("(?<!\\\\)'").containsMatchIn(text))
+                    assertTrue("$where starts or ends with a space", text == text.trim())
+                    assertTrue("$where has a raw line break", !text.contains('\n'))
+                }
             }
         }
     }

@@ -1,5 +1,6 @@
 package xendroid.compose.ui.library
 
+import androidx.compose.ui.res.pluralStringResource
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +25,7 @@ fun RunTimelineDialog(log: RunEventLog, onDismiss: () -> Unit) {
         title = { Text(stringResource(R.string.lib_timeline)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (log.dropped > 0) Text(stringResource(R.string.timeline_dropped, log.dropped), style = MaterialTheme.typography.bodySmall)
+                if (log.dropped > 0) Text(pluralStringResource(R.plurals.timeline_dropped, log.dropped, log.dropped), style = MaterialTheme.typography.bodySmall)
                 log.events.forEach { Text(describeEvent(it), style = MaterialTheme.typography.bodySmall) }
                 Text(stringResource(R.string.timeline_note),
                     style = MaterialTheme.typography.bodySmall)

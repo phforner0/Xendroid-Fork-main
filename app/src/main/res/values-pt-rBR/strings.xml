@@ -153,8 +153,6 @@
     <string name="lib_no_games">Nenhum jogo nesta pasta</string>
     <string name="lib_choose_another">Escolher outra</string>
     <string name="lib_scan_truncated">A busca parou depois de 100.000 arquivos, então a lista está incompleta: uma pasta de jogos parece ter mais do que jogos. Gerenciar pastas</string>
-    <string name="lib_folders_unavailable">%1$d pasta(s) de jogos indisponível(is) agora (cartão SD ou permissão?): os jogos delas ficam ocultos. Gerenciar pastas</string>
-    <string name="lib_games_gone">%1$d jogo(s) que você jogou ou adicionou não está(ão) mais na biblioteca. Revisar</string>
     <string name="lib_search">Buscar jogos ou Title ID</string>
     <string name="lib_favorites">Favoritos</string>
     <string name="lib_all_collections">Todas as coleções</string>
@@ -166,7 +164,6 @@
     <string name="lib_no_match">Nenhum jogo corresponde à busca</string>
     <string name="lib_clear_search">Limpar busca</string>
     <string name="lib_install_disc_title">Instalar disco</string>
-    <string name="lib_install_disc_text">Este disco traz %1$d pacote(s) de conteúdo que o jogo instala antes de rodar. Instalar agora ou abrir o disco assim mesmo?</string>
     <string name="lib_install">Instalar</string>
     <string name="lib_boot_anyway">Abrir assim mesmo</string>
     <string name="lib_collections_failed">Não deu para mudar as coleções</string>
@@ -176,7 +173,6 @@
     <string name="lib_disc_of">Disco %1$d de %2$d</string>
     <string name="lib_title_id">Title ID: %1$s</string>
     <string name="lib_media_id">Media ID: %1$s</string>
-    <string name="lib_last_played">Jogado por último em %1$s · %2$s em %3$d sessão(ões)</string>
     <string name="lib_play">Jogar</string>
     <string name="lib_signs_in_as">Entra como %1$s</string>
     <string name="lib_unfavorite">Remover dos favoritos</string>
@@ -198,7 +194,6 @@
     <string name="lib_your_result">Seu resultado em %1$s · build %2$s · %3$s</string>
     <string name="lib_rate_note">Avalie você mesmo: os resultados ficam por build e driver, nunca são adivinhados.</string>
     <string name="lib_timeline">Linha do tempo da última execução</string>
-    <string name="lib_timeline_note">%1$d eventos: ciclo de vida, pausas, travadas, calor, controles, erros</string>
     <string name="lib_share_report">Compartilhar relatório da última execução</string>
     <string name="lib_share_report_note">Revise o conteúdo antes; você escolhe para onde vai</string>
     <string name="lib_per_game_settings">Ajustes deste jogo</string>
@@ -223,8 +218,6 @@
     <string name="lib_delete_iso">Apagar .iso</string>
     <string name="lib_keep_it">Manter</string>
     <string name="lib_scan_reading">Lendo %1$s (%2$d de %3$d)</string>
-    <string name="lib_scan_checking">Conferindo %1$d de %2$d arquivos</string>
-    <string name="lib_scan_looking">Percorrendo %1$d arquivos…</string>
     <string name="lib_stop">Parar</string>
     <string name="lib_quit">Sair</string>
     <string name="lib_unsupported">Aparelho não suportado</string>
@@ -236,7 +229,6 @@
     <string name="lib_catalog_empty">Nenhum resultado para este jogo.</string>
     <string name="lib_catalog_this">Esta build e GPU</string>
     <string name="lib_catalog_setup">Build %1$s · %2$s</string>
-    <string name="lib_catalog_more">%1$d outra(s) configuração(ões).</string>
     <string name="lib_catalog_note">Resultados de outras builds, GPUs ou drivers podem não valer aqui.</string>
     <string name="lib_catalog_downloading">Baixando…</string>
     <string name="common_delete">Apagar</string>
@@ -260,7 +252,6 @@
     <string name="folders_add">Adicionar pasta</string>
     <string name="missing_title">Jogos que saíram da biblioteca</string>
     <string name="missing_none">Todo jogo que você jogou está na biblioteca.</string>
-    <string name="missing_played">Jogado %1$s em %2$d sessão(ões) · Title ID %3$s</string>
     <string name="missing_note">Remover só oculta o jogo aqui: tempo de jogo, notas de compatibilidade, saves e capa ficam, e ele volta quando o arquivo for encontrado de novo. Nenhum arquivo é mexido.</string>
     <string name="missing_file_gone">Arquivo não encontrado: movido, renomeado ou apagado</string>
     <string name="missing_folder_away">A pasta de jogos dele está indisponível agora</string>
@@ -271,7 +262,6 @@
     <string name="playas_note">Cada perfil mantém os próprios saves.</string>
     <string name="common_share">Compartilhar</string>
     <string name="report_note">Caminhos, contas e endereços são removidos; logs não vão junto (o Diagnóstico compartilha esses). Nada é enviado até você escolher onde compartilhar.</string>
-    <string name="timeline_dropped">%1$d evento(s) anterior(es) não foram guardados.</string>
     <string name="lib_catalog_updated">Catálogo atualizado (publicação %1$d).</string>
     <string name="lib_catalog_current">O catálogo está em dia.</string>
     <string name="lib_catalog_refused">Catálogo recusado: %1$s. A cópia que já está aqui continua.</string>
@@ -417,15 +407,11 @@
     <string name="set_developer_note">Todos os ajustes do motor. Jogador mantém só o que os jogadores mudam.</string>
     <string name="set_to_developer">Mudar para Desenvolvedor</string>
     <string name="set_to_player">Mudar para Jogador</string>
-    <string name="set_count">%1$d ajustes</string>
-    <string name="set_changed">%1$d alterado(s)</string>
     <string name="set_back_sections">Voltar às seções</string>
     <string name="set_search">Buscar ajustes</string>
     <string name="set_game_title">Ajustes de %1$s</string>
     <string name="set_game_note">Os ajustes valem para todas as cópias deste jogo.</string>
-    <string name="set_overridden">%1$d próprio(s) do jogo</string>
     <string name="bundle_bad_file">Não deu para usar esse arquivo: %1$s</string>
-    <string name="bundle_exported">%1$d partes exportadas</string>
     <string name="bundle_title">Fazer backup ou levar os ajustes</string>
     <string name="bundle_note">Ajustes do emulador (globais e por jogo), controles de toque, favoritos, coleções e suas notas de compatibilidade, num arquivo só. Saves, perfis, jogos e drivers não entram.</string>
     <string name="bundle_export">Exportar</string>
@@ -442,7 +428,6 @@
     <string name="upd_preview">Prévia</string>
     <string name="upd_off">Desligado</string>
     <string name="prof_title">Ajustes recomendados</string>
-    <string name="prof_applied">“%1$s” aplicado em %2$s: %3$d ajuste(s) para este jogo.</string>
     <string name="prof_restore_previous">Restaurar os ajustes anteriores</string>
     <string name="prof_not_here">Não oferecido neste telefone:</string>
     <string name="prof_skipped">Arquivos de perfil recusados: %1$s</string>
@@ -463,7 +448,6 @@
     <string name="prof_apply_note">Só este jogo muda, a partir da próxima abertura. Os ajustes que você escolheu para ele ficam, e dá para restaurar os anteriores depois.</string>
     <string name="prof_restore">Restaurar</string>
     <string name="prof_nothing">Nada para mudar</string>
-    <string name="prof_apply_n">Aplicar %1$d mudança(s)</string>
     <string name="pf_create">Criar perfil</string>
     <string name="pf_none">Nenhum perfil ainda. Toque em + para criar um.</string>
     <string name="pf_purge_title">Remover de vez?</string>
@@ -473,7 +457,6 @@
     <string name="pf_trash">Mandar para a lixeira</string>
     <string name="pf_failed">Não deu para concluir</string>
     <string name="pf_del_no_saves">Ele não tem saves de jogo neste aparelho.</string>
-    <string name="pf_del_saves">Isso também tira os dados salvos de %1$d jogo(s): %2$s (%3$d arquivos, %4$s MB contando o perfil).</string>
     <string name="pf_del_name">“%1$s” some da lista de perfis e de todos os jogos.</string>
     <string name="pf_del_partial">A pasta é muito grande; os totais acima são parciais.</string>
     <string name="pf_del_trash">Tudo fica na lixeira deste aparelho até você remover de vez, e pode ser restaurado nesta tela.</string>
@@ -538,7 +521,6 @@
     <string name="sv_title">Saves · %1$s</string>
     <string name="sv_intro">Os backups guardam os cabeçalhos dos saves e os XUIDs originais dos perfis. Feche o jogo antes de fazer backup ou restaurar.</string>
     <string name="sv_include_profile">Incluir o perfil associado</string>
-    <string name="sv_profile_line">%1$d arquivos · %2$d KB</string>
     <string name="sv_profile_available">perfil disponível</string>
     <string name="sv_none">Nenhum save encontrado para este jogo.</string>
     <string name="sv_export">Exportar os perfis escolhidos</string>
@@ -554,8 +536,6 @@
     <string name="sv_provider_none">Nenhum backup verificado com o nome deste título</string>
     <string name="sv_failed">A operação de save falhou</string>
     <string name="sv_restore_title">Restaurar %1$s?</string>
-    <string name="sv_restore_files">%1$d arquivos · XUIDs originais: %2$s</string>
-    <string name="sv_restore_conflicts">%1$d pasta(s) de save/perfil já existente(s). Os saves atuais recebem backup antes de serem substituídos.</string>
     <string name="sv_replace_profiles">Substituir também os dados de perfil existentes</string>
     <string name="sv_publishing">Copiando o backup verificado para a pasta escolhida…</string>
     <string name="sv_published">Backup verificado na pasta escolhida: %1$s</string>
@@ -584,7 +564,6 @@
     <string name="cm_restored">“%1$s” restaurado.</string>
     <string name="cm_restore_failed">Não deu para restaurar.</string>
     <string name="cm_deleting">Apagando…</string>
-    <string name="cm_emptied">Lixeira esvaziada (%1$d item(ns)).</string>
     <string name="cm_deleted">“%1$s” apagado de vez.</string>
     <string name="cm_delete_failed">Não deu para apagar.</string>
     <string name="cm_removing">Removendo…</string>
@@ -604,7 +583,6 @@
     <string name="ci_already_in_folder">“%1$s” já está na sua pasta de jogos. Puxe para baixo para atualizar a biblioteca.</string>
     <string name="ci_installing_n">Instalando %1$d de %2$d…</string>
     <string name="ci_installed_partial">%1$d de %2$d instalados.</string>
-    <string name="ci_installed_disc">%1$d pacote(s) do disco instalado(s). Abra o disco de jogo para usá-los.</string>
     <string name="ci_installed_any">%1$s instalado. Vale na próxima vez que o console abrir.</string>
     <string name="ci_copying">Copiando para a sua biblioteca…</string>
     <string name="ci_copied">“%1$s” foi para a sua biblioteca. Puxe para baixo para atualizar se não aparecer.</string>
@@ -679,7 +657,6 @@
     <string name="rumble_high">Alta</string>
     <string name="bm_intro">Jogue a mesma cena com uma única mudança (driver, geração de quadros, limite de FPS, uma configuração), fechando o jogo entre as execuções, na ordem A B B A. Marque uma cena pelo menu do jogo (Sessão → Marcar cena para comparar) para alinhar as execuções. O FPS aqui conta só os quadros do próprio jogo.</string>
     <string name="bm_none">Ainda não há execução terminada com medições.</string>
-    <string name="bm_runs">%1$s · %2$d execução(ões)</string>
     <string name="bm_off">desligado</string>
     <string name="bm_run_line">mediana %1$d FPS · 5º pct %2$d · 99%% dos quadros %3$s</string>
     <string name="bm_na">n/d</string>
@@ -688,11 +665,9 @@
     <string name="bm_limit">limite %1$s</string>
     <string name="bm_vblank_capped">vblank limitado</string>
     <string name="bm_vblank_uncapped">vblank sem limite</string>
-    <string name="bm_markers">%1$d marcador(es)</string>
     <string name="bm_order">Ordem: %1$s</string>
     <string name="bm_balanced">(equilibrada)</string>
     <string name="bm_changed">O que mudou: %1$s</string>
-    <string name="bm_side">%1$s: %2$d execução(ões), mediana %3$.1f FPS, 5º pct %4$.1f</string>
     <string name="bm_side_p99">99%% dos quadros &lt; %1$.0f ms</string>
     <string name="bm_pairs">B − A por par: %1$s FPS (mediana)</string>
     <string name="pc_intro">No telefone que roda o jogo: abra o menu dele (Voltar), Controles → Telefones como controle. Digite o endereço e o código que ele mostra. Os dois telefones precisam estar no mesmo Wi-Fi ou ponto de acesso. Este telefone joga como P2, P3 ou P4 com o controle de toque. Experimental.</string>
@@ -752,7 +727,6 @@
     <string name="disc_none">Nenhum disco deste título foi encontrado na pasta de jogos.</string>
     <string name="boot_emulator">Iniciando o emulador…</string>
     <string name="boot_game">Iniciando o jogo… %1$d s</string>
-    <string name="boot_graphics">Preparando os gráficos: %1$d pipelines criados… %2$d s</string>
     <string name="boot_first_frame">Esperando o primeiro quadro… %1$d s</string>
     <string name="cz_compressing">Comprimindo…</string>
     <string name="cz_replacing">Substituindo…</string>
@@ -852,10 +826,6 @@
     <string name="lp_apply">Aplicar</string>
     <string name="lp_diff_nothing">Nada muda</string>
     <string name="lp_diff_controls">Controles: %1$s</string>
-    <string name="lp_diff_moved">%1$d movido(s)</string>
-    <string name="lp_diff_resized">%1$d com outro tamanho</string>
-    <string name="lp_diff_shown">%1$d mostrado(s)</string>
-    <string name="lp_diff_hidden">%1$d escondido(s)</string>
     <string name="lp_refuse_too_large">O arquivo tem mais de 256 KB</string>
     <string name="lp_refuse_not_json">Não é um arquivo de layout</string>
     <string name="lp_refuse_not_xendroid">Não é um layout de toque do XenDroid</string>
@@ -941,7 +911,6 @@
     <string name="tv_none">TV · nenhuma tela de apresentação conectada</string>
     <string name="tv_unavailable">TV · tela indisponível</string>
     <string name="tv_on">TV · %1$s · %2$s Hz</string>
-    <string name="tv_available">TV · %1$d tela(s) externa(s) disponível(is)</string>
     <string name="ct_plays_as">Num jogo aberto agora: P%1$d</string>
     <string name="ct_no_slot">Num jogo aberto agora: sem jogador livre (P1–P4 ocupados)</string>
     <string name="ge_camera_speed">Velocidade da câmera por toque: %1$d%%</string>
@@ -954,4 +923,159 @@
     <string name="ud_read_only_now">Somente leitura enquanto um jogo roda ou dados estão sendo alterados</string>
     <string name="ud_profile_data">Saves e dados · perfil %1$s</string>
     <string name="ud_console_data">DLC e atualizações de título</string>
+    <plurals name="lib_folders_unavailable">
+        <item quantity="one">%1$d pasta de jogos indisponível agora (cartão SD ou permissão?): os jogos dela ficam ocultos. Gerenciar pastas</item>
+        <item quantity="other">%1$d pastas de jogos indisponíveis agora (cartão SD ou permissão?): os jogos delas ficam ocultos. Gerenciar pastas</item>
+        <item quantity="many">%1$d pastas de jogos indisponíveis agora (cartão SD ou permissão?): os jogos delas ficam ocultos. Gerenciar pastas</item>
+    </plurals>
+    <plurals name="lib_games_gone">
+        <item quantity="one">%1$d jogo que você jogou ou adicionou não está mais na biblioteca. Revisar</item>
+        <item quantity="other">%1$d jogos que você jogou ou adicionou não estão mais na biblioteca. Revisar</item>
+        <item quantity="many">%1$d jogos que você jogou ou adicionou não estão mais na biblioteca. Revisar</item>
+    </plurals>
+    <plurals name="lib_install_disc_text">
+        <item quantity="one">Este disco traz %1$d pacote de conteúdo que o jogo instala antes de rodar. Instalar agora ou abrir o disco assim mesmo?</item>
+        <item quantity="other">Este disco traz %1$d pacotes de conteúdo que o jogo instala antes de rodar. Instalar agora ou abrir o disco assim mesmo?</item>
+        <item quantity="many">Este disco traz %1$d pacotes de conteúdo que o jogo instala antes de rodar. Instalar agora ou abrir o disco assim mesmo?</item>
+    </plurals>
+    <plurals name="lib_last_played">
+        <item quantity="one">Jogado por último em %1$s · %2$s em %3$d sessão</item>
+        <item quantity="other">Jogado por último em %1$s · %2$s em %3$d sessões</item>
+        <item quantity="many">Jogado por último em %1$s · %2$s em %3$d sessões</item>
+    </plurals>
+    <plurals name="lib_timeline_note">
+        <item quantity="one">%1$d evento: ciclo de vida, pausas, travadas, calor, controles, erros</item>
+        <item quantity="other">%1$d eventos: ciclo de vida, pausas, travadas, calor, controles, erros</item>
+        <item quantity="many">%1$d eventos: ciclo de vida, pausas, travadas, calor, controles, erros</item>
+    </plurals>
+    <plurals name="lib_scan_checking">
+        <item quantity="one">Conferindo %1$d de %2$d arquivo</item>
+        <item quantity="other">Conferindo %1$d de %2$d arquivos</item>
+        <item quantity="many">Conferindo %1$d de %2$d arquivos</item>
+    </plurals>
+    <plurals name="lib_scan_looking">
+        <item quantity="one">Percorrendo %1$d arquivo…</item>
+        <item quantity="other">Percorrendo %1$d arquivos…</item>
+        <item quantity="many">Percorrendo %1$d arquivos…</item>
+    </plurals>
+    <plurals name="lib_catalog_more">
+        <item quantity="one">%1$d outra configuração.</item>
+        <item quantity="other">%1$d outras configurações.</item>
+        <item quantity="many">%1$d outras configurações.</item>
+    </plurals>
+    <plurals name="missing_played">
+        <item quantity="one">Jogado %1$s em %2$d sessão · Title ID %3$s</item>
+        <item quantity="other">Jogado %1$s em %2$d sessões · Title ID %3$s</item>
+        <item quantity="many">Jogado %1$s em %2$d sessões · Title ID %3$s</item>
+    </plurals>
+    <plurals name="timeline_dropped">
+        <item quantity="one">%1$d evento anterior não foi guardado.</item>
+        <item quantity="other">%1$d eventos anteriores não foram guardados.</item>
+        <item quantity="many">%1$d eventos anteriores não foram guardados.</item>
+    </plurals>
+    <plurals name="set_count">
+        <item quantity="one">%1$d ajuste</item>
+        <item quantity="other">%1$d ajustes</item>
+        <item quantity="many">%1$d ajustes</item>
+    </plurals>
+    <plurals name="set_changed">
+        <item quantity="one">%1$d alterado</item>
+        <item quantity="other">%1$d alterados</item>
+        <item quantity="many">%1$d alterados</item>
+    </plurals>
+    <plurals name="set_overridden">
+        <item quantity="one">%1$d próprio do jogo</item>
+        <item quantity="other">%1$d próprios do jogo</item>
+        <item quantity="many">%1$d próprios do jogo</item>
+    </plurals>
+    <plurals name="bundle_exported">
+        <item quantity="one">%1$d parte exportada</item>
+        <item quantity="other">%1$d partes exportadas</item>
+        <item quantity="many">%1$d partes exportadas</item>
+    </plurals>
+    <plurals name="prof_applied">
+        <item quantity="one">“%1$s” aplicado em %2$s: %3$d ajuste para este jogo.</item>
+        <item quantity="other">“%1$s” aplicado em %2$s: %3$d ajustes para este jogo.</item>
+        <item quantity="many">“%1$s” aplicado em %2$s: %3$d ajustes para este jogo.</item>
+    </plurals>
+    <plurals name="prof_apply_n">
+        <item quantity="one">Aplicar %1$d mudança</item>
+        <item quantity="other">Aplicar %1$d mudanças</item>
+        <item quantity="many">Aplicar %1$d mudanças</item>
+    </plurals>
+    <plurals name="pf_del_saves">
+        <item quantity="one">Isso também tira os dados salvos de %1$d jogo: %2$s (%3$d arquivos, %4$s MB contando o perfil).</item>
+        <item quantity="other">Isso também tira os dados salvos de %1$d jogos: %2$s (%3$d arquivos, %4$s MB contando o perfil).</item>
+        <item quantity="many">Isso também tira os dados salvos de %1$d jogos: %2$s (%3$d arquivos, %4$s MB contando o perfil).</item>
+    </plurals>
+    <plurals name="sv_profile_line">
+        <item quantity="one">%1$d arquivo · %2$d KB</item>
+        <item quantity="other">%1$d arquivos · %2$d KB</item>
+        <item quantity="many">%1$d arquivos · %2$d KB</item>
+    </plurals>
+    <plurals name="sv_restore_files">
+        <item quantity="one">%1$d arquivo · XUIDs originais: %2$s</item>
+        <item quantity="other">%1$d arquivos · XUIDs originais: %2$s</item>
+        <item quantity="many">%1$d arquivos · XUIDs originais: %2$s</item>
+    </plurals>
+    <plurals name="sv_restore_conflicts">
+        <item quantity="one">%1$d pasta de save/perfil já existente. Os saves atuais recebem backup antes de serem substituídos.</item>
+        <item quantity="other">%1$d pastas de save/perfil já existentes. Os saves atuais recebem backup antes de serem substituídos.</item>
+        <item quantity="many">%1$d pastas de save/perfil já existentes. Os saves atuais recebem backup antes de serem substituídos.</item>
+    </plurals>
+    <plurals name="cm_emptied">
+        <item quantity="one">Lixeira esvaziada (%1$d item).</item>
+        <item quantity="other">Lixeira esvaziada (%1$d itens).</item>
+        <item quantity="many">Lixeira esvaziada (%1$d itens).</item>
+    </plurals>
+    <plurals name="ci_installed_disc">
+        <item quantity="one">%1$d pacote do disco instalado. Abra o disco de jogo para usá-lo.</item>
+        <item quantity="other">%1$d pacotes do disco instalados. Abra o disco de jogo para usá-los.</item>
+        <item quantity="many">%1$d pacotes do disco instalados. Abra o disco de jogo para usá-los.</item>
+    </plurals>
+    <plurals name="bm_runs">
+        <item quantity="one">%1$s · %2$d execução</item>
+        <item quantity="other">%1$s · %2$d execuções</item>
+        <item quantity="many">%1$s · %2$d execuções</item>
+    </plurals>
+    <plurals name="bm_side">
+        <item quantity="one">%1$s: %2$d execução, mediana %3$.1f FPS, 5º pct %4$.1f</item>
+        <item quantity="other">%1$s: %2$d execuções, mediana %3$.1f FPS, 5º pct %4$.1f</item>
+        <item quantity="many">%1$s: %2$d execuções, mediana %3$.1f FPS, 5º pct %4$.1f</item>
+    </plurals>
+    <plurals name="bm_markers">
+        <item quantity="one">%1$d marcador</item>
+        <item quantity="other">%1$d marcadores</item>
+        <item quantity="many">%1$d marcadores</item>
+    </plurals>
+    <plurals name="boot_graphics">
+        <item quantity="one">Preparando os gráficos: %1$d pipeline criado… %2$d s</item>
+        <item quantity="other">Preparando os gráficos: %1$d pipelines criados… %2$d s</item>
+        <item quantity="many">Preparando os gráficos: %1$d pipelines criados… %2$d s</item>
+    </plurals>
+    <plurals name="lp_diff_moved">
+        <item quantity="one">%1$d movido</item>
+        <item quantity="other">%1$d movidos</item>
+        <item quantity="many">%1$d movidos</item>
+    </plurals>
+    <plurals name="lp_diff_resized">
+        <item quantity="one">%1$d com outro tamanho</item>
+        <item quantity="other">%1$d com outro tamanho</item>
+        <item quantity="many">%1$d com outro tamanho</item>
+    </plurals>
+    <plurals name="lp_diff_shown">
+        <item quantity="one">%1$d mostrado</item>
+        <item quantity="other">%1$d mostrados</item>
+        <item quantity="many">%1$d mostrados</item>
+    </plurals>
+    <plurals name="lp_diff_hidden">
+        <item quantity="one">%1$d escondido</item>
+        <item quantity="other">%1$d escondidos</item>
+        <item quantity="many">%1$d escondidos</item>
+    </plurals>
+    <plurals name="tv_available">
+        <item quantity="one">TV · %1$d tela externa disponível</item>
+        <item quantity="other">TV · %1$d telas externas disponíveis</item>
+        <item quantity="many">TV · %1$d telas externas disponíveis</item>
+    </plurals>
 </resources>

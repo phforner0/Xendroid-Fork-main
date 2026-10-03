@@ -1,5 +1,6 @@
 package xendroid.compose.ui.benchmark
 
+import androidx.compose.ui.res.pluralStringResource
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.clickable
@@ -95,7 +96,7 @@ fun BenchmarkScreen(onBack: () -> Unit) {
                 items(byTitle.entries.sortedByDescending { e -> e.value.maxOf { it.run.startedAt } }.toList(), key = { it.key }) { (id, runs) ->
                     ListItem(
                         headlineContent = { Text(MissingTitles.nameFromPath(runs.first().run.gamePath, id)) },
-                        supportingContent = { Text(stringResource(R.string.bm_runs, id, runs.size)) },
+                        supportingContent = { Text(pluralStringResource(R.plurals.bm_runs, runs.size, id, runs.size)) },
                         modifier = Modifier.clickable { title = id; labels.clear() },
                     )
                 }
@@ -135,7 +136,7 @@ private fun RunRow(candidate: Candidate, label: Char?, onLabel: (Char?) -> Unit)
                 },
                 b.refreshCap?.let { stringResource(if (it) R.string.bm_vblank_capped else R.string.bm_vblank_uncapped) },
                 b.displayHz.takeIf { it.isNotEmpty() }?.let { it.joinToString("/") + " Hz" },
-                b.markers.takeIf { it > 0 }?.let { stringResource(R.string.bm_markers, it) },
+                b.markers.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.bm_markers, it, it) },
             ).joinToString(" · "))
         },
         trailingContent = {
@@ -159,7 +160,7 @@ private fun ResultCard(result: Benchmark.Result) {
             result.notes.forEach { Text("• " + warningText(it), style = MaterialTheme.typography.bodySmall) }
             listOf("A" to result.a, "B" to result.b).forEach { (name, side) ->
                 side?.let {
-                    Text(stringResource(R.string.bm_side, name, it.runs, it.medianFps, it.lowFps) +
+                    Text(pluralStringResource(R.plurals.bm_side, it.runs, name, it.runs, it.medianFps, it.lowFps) +
                         (it.frameTimeP99Ms?.let { p -> ", " + stringResource(R.string.bm_side_p99, p) } ?: ""),
                         style = MaterialTheme.typography.bodySmall)
                 }
