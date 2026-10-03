@@ -151,6 +151,14 @@ native tree — ~8–9 min cold. The APK lands in
 ./gradlew --no-daemon --console=plain :app:connectedUitestAndroidTest
 # One class or one test:
 ./gradlew :app:connectedUitestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=xendroid.compose.roadmap.Item24UserDataProviderTest
+# Groups B and C (docs/auditoria-s0-2026-10-01.md, 4.0) need the phone's games folder, only
+# read and never in git; without it those tests are skipped. No spaces in values given here.
+./gradlew :app:connectedUitestAndroidTest -Pandroid.testInstrumentationRunnerArguments.gameDir=/sdcard/Games
+# Without Gradle next to the phone: install the two APKs and start the runner. They stay
+# installed; `adb uninstall xendroid.compose.uitest.test`, then `xendroid.compose.uitest`.
+adb install -r -t app/build/outputs/apk/uitest/app-uitest.apk
+adb install -r -t app/build/outputs/apk/androidTest/uitest/app-uitest-androidTest.apk
+adb shell am instrument -w -e gameDir /sdcard/Games xendroid.compose.uitest.test/androidx.test.runner.AndroidJUnitRunner
 # JNI bindings: every Java `native` against the RegisterNatives tables, exported
 # Java_* symbols and the C++ parameter types (no build needed; also in CI Checks).
 python3 tools/check-jni.py

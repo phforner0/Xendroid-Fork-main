@@ -924,10 +924,13 @@ localmente, não no aparelho. Ordem seguinte:
 
 1. **Validação no aparelho** do roteiro da auditoria (seção 4 de
    [auditoria-s0-2026-10-01.md](auditoria-s0-2026-10-01.md)) e execução dos testes
-   instrumentados — é o gate que falta para fechar S0. Desde 2026-10-03 boa parte do roteiro
-   é teste instrumentado no pacote próprio `xendroid.compose.uitest` (seção 4.0 da auditoria;
-   `./gradlew :app:connectedUitestAndroidTest`), escrito e compilado na nuvem e ainda não
-   rodado: rodar no telefone é o que transforma esses itens em "Validado no aparelho".
+   instrumentados — é o gate que falta para fechar S0. Desde 2026-10-03 os grupos A (sem
+   jogo), B (arquivo de jogo, sem boot) e C (o jogo roda) do roteiro são testes instrumentados
+   no pacote próprio `xendroid.compose.uitest` (seção 4.0 da auditoria;
+   `./gradlew :app:connectedUitestAndroidTest`, com `gameDir` para B e C), escritos e
+   compilados na nuvem e ainda não rodados: rodar no telefone é o que transforma esses itens
+   em "Validado no aparelho". O grupo D (frontends reais, dois telefones, controle Bluetooth,
+   partes visuais…) continua manual.
 2. **A13**: integrar `origin/main` (desempenho) antes de commitar. O ensaio com
    `git merge-tree` mesclou sem conflitos (o nome do cache por `ir3_debug` do upstream
    passa a ser o arquivo principal do `pipeline_cache_file::Store`).

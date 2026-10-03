@@ -152,6 +152,11 @@ desinstala o pacote de teste no fim. Com o telefone conectado por adb (WSL ou po
   -Pandroid.testInstrumentationRunnerArguments.class=xendroid.compose.roadmap.Item24UserDataProviderTest
 ```
 
+Sem o Gradle ao lado do telefone: instalar os dois APKs (`app-uitest.apk` e
+`app-uitest-androidTest.apk`) e rodar `adb shell am instrument -w -e gameDir <pasta>
+xendroid.compose.uitest.test/androidx.test.runner.AndroidJUnitRunner` (comandos no `BUILD.md`);
+por esse caminho os dois pacotes ficam instalados até um `adb uninstall`.
+
 Relatório: `app/build/reports/androidTests/connected/uitest/index.html`. **Estado: escritos e
 compilados na nuvem; ainda não rodados** (sem telefone). Um item automatizado só passa a "Validado no
 aparelho" depois de rodar verde no telefone; uma falha lá é defeito do app ou do teste, a investigar.
