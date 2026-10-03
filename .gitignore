@@ -157,6 +157,7 @@ emulator-core/src/main/cpp/xenia/recent.toml
 /emulator-core/src/main/cpp/xenia/third_party/zlib-ng/zlib_name_mangling-ng.h
 /emulator-core/src/main/cpp/xenia/third_party/zlib-ng/zlib-ng-config.cmake
 /emulator-core/src/main/cpp/xenia/third_party/zlib-ng/zlib-ng-config-version.cmake
+/emulator-core/src/main/cpp/xenia/third_party/zlib-ng/zlib-ng.pc
 /emulator-core/src/main/cpp/xenia/third_party/snappy/CMakeFiles/
 # Ignore snappy's in-source CMake build outputs, but KEEP the upstream source
 # templates (config.h.in / SnappyConfig.cmake.in) -- they are required build
