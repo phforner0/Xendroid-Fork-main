@@ -201,6 +201,18 @@ class SessionRunStoreTest {
         assertEquals(driver, store.heartbeat(run.runId, driver = driver.copy(uuid = "f".repeat(32)))!!.driver)
     }
 
+    @Test fun aNativeCrashKeepsItsTombstoneBacktrace() {
+        val store = store()
+        val run = store.begin("library", "/f.iso", "v", pid = 7)
+        store.running(run.runId, "4D5309C9")
+        val crash = NativeBacktrace(thread = "GPU Commands (tid 4321)", signal = "SIGSEGV (SEGV_MAPERR) at 0x0000000000000010",
+            frames = listOf("#00 pc 00000000001a2b3c  libe.so (_ZN2xe3gpu3FooEv+40)"))
+        val ended = store.reconcile { ProcessFate(alive = false, crashed = true, reason = "native crash", backtrace = crash) }.single()
+        assertEquals(RunState.FAILED, ended.state)
+        assertEquals(crash, ended.nativeBacktrace)
+        assertEquals(crash, store.lastRun("4D5309C9")!!.nativeBacktrace)     // written with the final state
+    }
+
     @Test fun theBootsChangedSettingsAreKeptOnceAndBounded() {
         val store = store()
         val run = store.begin("library", "/f.iso", "v", pid = 3)

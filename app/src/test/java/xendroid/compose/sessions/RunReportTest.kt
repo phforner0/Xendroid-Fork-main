@@ -52,6 +52,20 @@ class RunReportTest {
         assertTrue(lines.none { it.startsWith("Settings") })               // an older run: not recorded
     }
 
+    @Test fun aNativeCrashShowsItsBacktraceWithTheFreeTextRedacted() {
+        val crash = NativeBacktrace(thread = "GPU Commands (tid 4321)", signal = "SIGABRT (SI_TKILL)",
+            abortMessage = "could not open /storage/emulated/0/Games/save.bin",
+            frames = listOf("#00 pc 000000000004f5c8  libc.so (abort+168)", "#01 pc 00000000001a2b3c  libe.so (_ZN2xe3FooEv+40)"))
+        val report = RunReports.build(run.copy(nativeBacktrace = crash), events, notes, device, now = 99)
+        assertEquals("could not open [storage-path]", report.run.nativeBacktrace!!.abortMessage)
+        val lines = RunReports.preview(report)
+        val head = lines.indexOf("Native crash: GPU Commands (tid 4321) · SIGABRT (SI_TKILL)")
+        assertTrue(head > 0)
+        assertEquals("  abort: could not open [storage-path]", lines[head + 1])
+        assertEquals("  #00 pc 000000000004f5c8  libc.so (abort+168)", lines[head + 2])
+        assertTrue(RunReports.preview(RunReports.build(run, events, notes, device, 99)).none { it.startsWith("Native crash") })
+    }
+
     @Test fun theBootsChangedSettingsAreListedAndRedacted() {
         val settings = listOf("GPU|framerate_limit = 30 (default 60) · this game",
             "Network|api_address = \"10.0.0.7:36000\" (default \"127.0.0.1:36000\")",

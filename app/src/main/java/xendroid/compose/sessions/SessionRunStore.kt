@@ -47,13 +47,17 @@ data class SessionRun(
      *  ("GPU|framerate_limit = 30 (default 60) · this game"); null when not recorded (older
      *  runs, a title that never started), empty when everything was at its default. */
     val changedSettings: List<String>? = null,
+    /** The crashing thread's backtrace from the platform's tombstone, for a native crash
+     *  (API 31+), filled in when the run is reconciled after its process died. */
+    val nativeBacktrace: NativeBacktrace? = null,
 ) {
     /** Time the title was actually running; null until it started. */
     val playedMs: Long? get() = runningAt?.let { start -> ((endedAt ?: lastSeenAt) - start).coerceAtLeast(0) }
 }
 
 /** What the frontend knows about a process that did not finalize its run. */
-data class ProcessFate(val alive: Boolean, val crashed: Boolean = false, val reason: String? = null)
+data class ProcessFate(val alive: Boolean, val crashed: Boolean = false, val reason: String? = null,
+                       val backtrace: NativeBacktrace? = null)
 
 data class TitleActivity(val titleId: String, val lastPlayedAt: Long, val playedMs: Long, val runs: Int)
 
@@ -221,7 +225,8 @@ class SessionRunStore(
             // A native crash's own line (xe_crash_record.h) already says what it is.
             val reason = fatal?.let { if (it.startsWith(NATIVE_CRASH)) it else "fatal error: $it" } ?: run.endReason ?: process.reason
                 ?: "process ended without finishing the run"
-            run.copy(state = state, endedAt = run.lastSeenAt, endReason = reason).also(::write)
+            run.copy(state = state, endedAt = run.lastSeenAt, endReason = reason,
+                nativeBacktrace = process.backtrace ?: run.nativeBacktrace).also(::write)
         }
     }
 

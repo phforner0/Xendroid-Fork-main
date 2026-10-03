@@ -58,6 +58,10 @@ object RunReports {
                 profileXuid = null,
                 endReason = run.endReason?.let(LogRedactor::redact),
                 changedSettings = run.changedSettings?.map(LogRedactor::redact),
+                nativeBacktrace = run.nativeBacktrace?.let { crash ->
+                    crash.copy(thread = crash.thread?.let(LogRedactor::redact), cause = crash.cause?.let(LogRedactor::redact),
+                        abortMessage = crash.abortMessage?.let(LogRedactor::redact))
+                },
             ),
             events = events?.copy(events = events.events.map { it.copy(detail = LogRedactor.redact(it.detail)) }),
             compatibility = compatibility.map { it.copy(note = LogRedactor.redact(it.note)) },
@@ -72,6 +76,11 @@ object RunReports {
         add("App: ${report.device.app}")
         add("Game: Title ID ${run.titleId ?: "unknown"} · ${run.gamePath} · started from ${run.launchSource}")
         add("Run: ${describeRun(run)}")
+        run.nativeBacktrace?.let { crash ->
+            add("Native crash: ${describeNativeCrash(crash)}")
+            crash.abortMessage?.let { add("  abort: $it") }
+            crash.frames.forEach { add("  $it") }
+        }
         run.driver?.let { add("Driver: ${it.label}") }
         run.performance?.let { perf ->
             add("Performance: ${perf.sampledSeconds} s sampled" +

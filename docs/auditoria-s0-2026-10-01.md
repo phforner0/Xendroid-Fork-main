@@ -610,3 +610,10 @@ itens 8, 15 e 37.
    até o controle desconectar. Com dois controles, trocar P1↔P2 no menu: os controles voltam quando o
    que os escondeu vira P2. No editor de toque (Gerais), "Esconder enquanto um controle joga como P1"
    desligado: nada some. A linha do tempo do run registra "touch controls · hidden/shown".
+46. Lote 14e — backtrace do tombstone (Android 12+): provocar um crash nativo real num jogo (ou o
+   `kill -SEGV` do item 42 no build debug), voltar à biblioteca. A ficha mostra "Native crash: <thread>
+   (tid N) · SIGSEGV (…) at 0x…" e "Top frame: #00 pc …"; "Share last run report" lista os frames da
+   thread que caiu, sem caminho de instalação (só `libe.so`, `libc.so`…) e sem as outras threads.
+   Conferir com `adb shell cat /data/tombstones/tombstone_NN` (ou `adb bugreport`): mesmos pcs
+   relativos e BuildId no topo. Nomes C++ aparecem "mangled" (`_ZN2xe…`; `c++filt` lê). No Android
+   11 a linha não aparece (não há tombstone no `ApplicationExitInfo`).

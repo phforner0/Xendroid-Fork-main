@@ -745,6 +745,10 @@ fun GameLibraryScreen(
                                 info.lastProfile?.let { Text(stringResource(R.string.lib_last_profile, it)) }
                                 info.lastRun?.let { run ->
                                     Text("Last run: ${describeRun(run)}")
+                                    run.nativeBacktrace?.let { crash ->
+                                        Text("Native crash: ${xendroid.compose.sessions.describeNativeCrash(crash)}")
+                                        crash.frames.firstOrNull()?.let { Text("Top frame: $it") }
+                                    }
                                     run.performance?.let { perf ->
                                         val median = perf.fpsPercentile(0.5)
                                         val low = perf.fpsPercentile(0.05)

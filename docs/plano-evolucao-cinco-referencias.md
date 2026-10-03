@@ -345,8 +345,13 @@ Testes JVM cobrem finalização concorrente, reconciliação e poda.
   reconciliação. Lote 12n: uma falha nativa que nenhum tratador do core resolve deixa no
   `.fatal` a linha "native crash: SIGSEGV (…) at …, thread '…', pc libe.so+0x…", gravada de
   dentro do tratador (async-signal-safe, sem sobrescrever o erro fatal do core) e usada como
-  motivo do run. Falta: um anel de eventos nativos para despejar junto (hoje só o anel do host)
-  e a validação no aparelho (roteiro 42).
+  motivo do run. Lote 14e (Impl. + Local; aparelho pendente, roteiro 46): na reconciliação de um
+  run morto por crash nativo (API 31+), o tombstone em protobuf do `ApplicationExitInfo` é lido
+  (até 8 MiB, leitor de wire format próprio, sem dependência) e o run guarda a thread que caiu, o
+  sinal, a causa do Android, a mensagem de abort e até 32 frames (`#00 pc …  libe.so (função+off)
+  (BuildId: …)`, só o nome do arquivo); aparece na ficha ("Native crash" + frame do topo) e no
+  relatório (texto livre pelo redator). Falta: um anel de eventos nativos para despejar junto
+  (hoje só o anel do host) e a validação no aparelho (roteiros 42 e 46).
 - **C06 v1 (lote 4):** "Share last run report" na ficha do jogo — prévia do conteúdo,
   ZIP com JSON + linha do tempo, redação de caminhos/contas/endereços, caminho do jogo
   reduzido ao formato, sem logs; sai só pela folha de compartilhamento escolhida pelo

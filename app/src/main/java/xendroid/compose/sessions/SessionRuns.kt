@@ -71,6 +71,10 @@ object SessionRuns {
             ApplicationExitInfo.REASON_SIGNALED -> false to "killed (signal ${info.status})"
             else -> false to "process ended (reason ${info.reason})"
         }
-        return ProcessFate(alive = false, crashed = crashed, reason = reason)
+        // From API 31 a native crash comes with its tombstone; only the crashing thread is kept.
+        val backtrace = if (Build.VERSION.SDK_INT >= 31 && info.reason == ApplicationExitInfo.REASON_CRASH_NATIVE) {
+            runCatching { info.traceInputStream?.use { Tombstones.parse(Tombstones.read(it)) } }.getOrNull()
+        } else null
+        return ProcessFate(alive = false, crashed = crashed, reason = reason, backtrace = backtrace)
     }
 }
