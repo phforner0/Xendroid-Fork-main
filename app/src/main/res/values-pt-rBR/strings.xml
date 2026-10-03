@@ -324,7 +324,7 @@
     <string name="set_scale_y">Escala de resolução, altura (real)</string>
     <string name="set_scale_y_desc">A escala de resolução real: desenha o jogo neste múltiplo da altura nativa. Só passos inteiros, e não fica abaixo de 1x. Custa tempo de GPU e memória</string>
     <string name="set_scaling">Escala e nitidez</string>
-    <string name="set_scaling_desc">Filtro de ampliação da imagem final, do bilinear simples à nitidez AMD CAS ou à ampliação FSR</string>
+    <string name="set_scaling_desc">Filtro de ampliação da imagem final, do bilinear simples à nitidez AMD CAS, à ampliação FSR ou ao SGSR da Qualcomm (experimental)</string>
     <string name="set_antialiasing">Antisserrilhado</string>
     <string name="set_antialiasing_desc">Aplica o antisserrilhado FXAA de pós-processamento para suavizar bordas; recomendado com CAS ou FSR ativos</string>
     <string name="set_letterbox">Barras pretas (letterbox)</string>
@@ -1181,4 +1181,6 @@
     <string name="menu_gyro_aim_lb">segurando LB</string>
     <string name="menu_unbuffered_title">Entrada sem buffer</string>
     <string name="menu_unbuffered_value">Entrada sem buffer (menos atraso): %1$s</string>
+    <string name="set_dither">Reduzir faixas de cor</string>
+    <string name="set_dither_desc">Acrescenta um ruído fino à imagem final para os degradês (céu, neblina, menus) não mostrarem degraus em telas de 8 bits. Vale na próxima abertura do jogo; deixe desligado em telas de 10 bits de verdade.</string>
 </resources>

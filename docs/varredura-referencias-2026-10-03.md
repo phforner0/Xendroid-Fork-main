@@ -104,8 +104,8 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Modos Ajustar/Preencher/Esticar/Inteiro | Bannerlator `886b7708` | **Tem** | — |
 | **Filtragem anisotrópica por jogo** | Bannerlator `035d7165`; aX360e expõe `anisotropic_override` | **Não tem** (o cvar existe no Xenia, mas não está no esquema) | **Alta / P** |
 | Margem de TV (overscan) | Bannerlator (barras de área segura) | **Não tem** | Média / P. Atenção: o `present_safe_area_x/y` do Xenia (exposto pelo aX360e) é outra coisa, quanto da imagem pode ser cortado para evitar faixas; esse entrou no lote 14b |
-| Debanding | Bannerlator `e836265d` | **Não tem** | Alta / P |
-| SGSR / SGSR HQ | Bannerlator `7e71cb8f` | **Não tem** | Média / M (licença e custo a medir) |
+| Debanding | Bannerlator `e836265d` | **Tem** (revisto no lote 14j): o "debanding" do Bannerlator é um dither terminal antes dos 8 bits, o mesmo que o `postprocess_dither` do Xenia (ruído azul), que não fazia nada até o lote 14b e agora também está no modo Jogador ("Reduzir faixas de cor") | — |
+| SGSR / SGSR HQ | Bannerlator `7e71cb8f` | **Impl. + Local no lote 14j** (SGSR 1, BSD-3-Clause com aviso no APK; testado em Vulkan por software; custo no aparelho a medir); SGSR HQ (direção de borda) não | Média / M |
 | NIS, Lanczos, Spline, cúbico, MMPX, área | Bannerlator `6ff165f7`; Eden `f33a771d`, `b66adfe0`, `dbeae7ad`, `2946cdbd` | **Não tem** | Média / M (escolher um ou dois) |
 | Efeitos (CRT, cor, fake-HDR), presets de um toque, shaders de pós-processamento | Bannerlator `a05106c5`; Eden `ed566919` | **Parcial**: filtro de cor (Desligado/Cinza/Contraste/Quente) | Média / M |
 | ReShade (.fx) com catálogo | Bannerlator `edf46af9` | **Não tem** | Baixa / G |

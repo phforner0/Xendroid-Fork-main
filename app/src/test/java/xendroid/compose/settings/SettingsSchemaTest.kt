@@ -134,6 +134,15 @@ class SettingsSchemaTest {
         assertTrue(s.key in SettingsSchema.playerKeys)
     }
 
+    /** 14j: the core's effects by their cvar names (emulator_window.cc), and the dither that
+     *  reduces banding reachable without Developer mode. */
+    @Test fun scaling_offers_the_core_effects_and_players_can_reduce_banding() {
+        val s = SettingsSchema.byKey["Display|postprocess_scaling_and_sharpening"] as Setting.ListChoice
+        assertEquals(listOf("bilinear", "cas", "fsr", "sgsr"), s.options.map { it.value })
+        assertTrue("Display|postprocess_dither" in SettingsSchema.playerKeys)
+        assertEquals(false, (SettingsSchema.byKey["Display|postprocess_dither"] as Setting.Bool).default)
+    }
+
     /** L02: Player mode shows exactly the curated keys, all real settings, none twice. */
     @Test fun player_mode_shows_only_the_curated_settings() {
         val player = SettingsSchema.categoriesFor(UiMode.PLAYER)

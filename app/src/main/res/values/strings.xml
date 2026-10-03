@@ -324,7 +324,7 @@
     <string name="set_scale_y">Resolution scale, height (real)</string>
     <string name="set_scale_y_desc">The real resolution scale: renders the game at this multiple of its native height. Whole steps only, and it cannot go below 1x. Costs GPU time and memory</string>
     <string name="set_scaling">Scaling &amp; sharpening</string>
-    <string name="set_scaling_desc">Upscaling filter for the final image, from plain bilinear to AMD CAS sharpening or FSR upscaling</string>
+    <string name="set_scaling_desc">Upscaling filter for the final image, from plain bilinear to AMD CAS sharpening, FSR upscaling or Qualcomm SGSR (experimental)</string>
     <string name="set_antialiasing">Antialiasing</string>
     <string name="set_antialiasing_desc">Apply FXAA post-process anti-aliasing to smooth edges; recommended when CAS or FSR is active</string>
     <string name="set_letterbox">Present letterbox</string>
@@ -1144,4 +1144,6 @@
     <string name="menu_gyro_aim_lb">while LB is held</string>
     <string name="menu_unbuffered_title">Unbuffered input</string>
     <string name="menu_unbuffered_value">Unbuffered input (lower latency): %1$s</string>
+    <string name="set_dither">Reduce color banding</string>
+    <string name="set_dither_desc">Adds a fine noise to the final image so gradients (skies, fog, menus) show no steps on 8-bit screens. Applies on the next game start; off on true 10-bit displays.</string>
 </resources>

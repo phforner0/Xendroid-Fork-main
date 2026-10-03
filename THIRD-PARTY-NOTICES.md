@@ -11,6 +11,7 @@ as the original notices. This does not relicense unrelated upstream BSD/MIT file
 | Win-FG | The412Banner/win-fg `fbc69ed6c5bf16b824d0a29bd8b171675101f9dd` | `third_party/winfg/LICENSE` (MIT), FidelityFX notice and THIRD-PARTY.md |
 | LSFG host chain | The412Banner/Bannerlator `15d4f73c079824d54c468f079361ce56d88a7c2e` | `third_party/lsfg/LICENSE` and original GPL-3.0-or-later SPDX headers; Eden/WinNative/lsfg-vk credits preserved |
 | DXBC translator subset | Same Bannerlator revision, derived from DXVK | `third_party/lsfg-dxbc/LICENSE.md` (zlib-style license) |
+| Snapdragon Game Super Resolution 1 | SnapdragonStudios/snapdragon-gsr `d926f074bcb9d714e179f1ce0fcb9ee2eeb5074e` (`sgsr/v1/include/glsl/sgsr1_shader_mobile.frag`) | `third_party/sgsr/LICENSE` (BSD-3-Clause); ported to XESL as `xenia/src/xenia/ui/shaders/guest_output_sgsr.xesli` with the notice kept |
 
 Paths above are relative to `emulator-core/src/main/cpp` unless fully qualified.
 XenDroid-specific modifications are recorded in each `XENDROID_INTEGRATION.md`.

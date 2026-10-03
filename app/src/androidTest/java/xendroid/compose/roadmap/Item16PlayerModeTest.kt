@@ -96,7 +96,7 @@ class Item16PlayerModeTest {
 
         val essentials = Device.string(R.string.set_cat_essentials)
         compose.onNodeWithText(essentials).assertIsDisplayed()
-        compose.onNodeWithText(Device.plural(R.plurals.set_count, 22, 22), substring = true).assertIsDisplayed()
+        compose.onNodeWithText(Device.plural(R.plurals.set_count, 23, 23), substring = true).assertIsDisplayed()
         compose.onAllNodesWithText("GPU").assertCountEquals(0)
         compose.onAllNodesWithText("Vulkan").assertCountEquals(0)
 

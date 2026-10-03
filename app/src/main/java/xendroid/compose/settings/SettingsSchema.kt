@@ -132,7 +132,8 @@ object SettingsSchema {
             // The core's default (false): with no value saved, this is what applies.
             b("Display", "postprocess_dither", "Postprocess dither", false),
             l("Display", "postprocess_scaling_and_sharpening", "Scaling & sharpening", "",
-                "bilinear" to "bilinear", "cas" to "cas", "fsr" to "fsr"),  // "" => bilinear (no selection)
+                "bilinear" to "bilinear", "cas" to "cas", "fsr" to "fsr",
+                "sgsr" to "sgsr (experimental)"),  // "" => bilinear (no selection)
             l("Display", "postprocess_ffx_cas_additional_sharpness", "CAS: extra sharpness", "0.0",
                 "0.0" to "0.0", "0.25" to "0.25", "0.5" to "0.5", "0.75" to "0.75", "1.0" to "1.0"),
             l("Display", "postprocess_ffx_fsr_sharpness_reduction", "FSR: sharpness reduction", "0.2",
@@ -286,6 +287,7 @@ object SettingsSchema {
         "GPU|framerate_limit", "GPU|guest_display_refresh_cap",
         "GPU|draw_resolution_scale_x", "GPU|draw_resolution_scale_y",
         "Display|postprocess_scaling_and_sharpening", "Display|postprocess_antialiasing", "Display|present_letterbox",
+        "Display|postprocess_dither",
         "GPU|anisotropic_override",
         "Console|widescreen", "Console|internal_display_resolution",
         "Vulkan|vulkan_lib_path",

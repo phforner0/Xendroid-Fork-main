@@ -24,6 +24,16 @@ for run in "2 0 3 4 2 64" "2 2 3 4 2 256" "2 8 3 4 2 256" "0 8 3 4 2 256"; do
     "$build/winfg-motion-test" $run | grep "Motion half-way"
 done
 "${GLSLANG:-glslangValidator}" -V --target-env vulkan1.0 "$cpp/xenia/src/xenia/ui/vulkan/shaders/xendroid_color_filter.comp" -o "$build/color.spv"
+# SGSR (14j): the presenter's own guest output shaders (rectangle VS, SGSR and bilinear PS),
+# compiled from their XESL sources as the Android build does, drawn against each other.
+spirv="$build/sgsr-spirv"
+mkdir -p "$spirv"
+for shader in guest_output_triangle_strip_rect.vs guest_output_bilinear.ps guest_output_sgsr.ps; do
+    python3 "$cpp/xenia/tools/build/compile_shader_spirv.py" "$cpp/xenia/src/xenia/ui/shaders/$shader.slang" \
+        "$spirv/${shader//./_}.h" > /dev/null
+done
+"${cxx[@]}" "${common[@]}" -I "$spirv" "$test/sgsr_software_test.cc" "$vk_library" -o "$build/sgsr-test"
+"$build/sgsr-test"
 "${cxx[@]}" "${common[@]}" -DTEST_COLOR "$test/winfg_software_test.cc" "$vk_library" -o "$build/color-test"
 for mode in 1 2 3; do "$build/color-test" "$build/color.spv" "$mode"; done
 dxbc="$cpp/third_party/lsfg-dxbc"

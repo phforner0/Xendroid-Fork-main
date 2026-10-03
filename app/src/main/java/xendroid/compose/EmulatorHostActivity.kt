@@ -1361,7 +1361,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             InGameAction.PERFORMANCE_HINTS to performanceHintsLabel.value,
                                             InGameAction.EXTERNAL_DISPLAY to (externalDisplayLabel.value ?: stringResource(R.string.tv_phone)),
                                             InGameAction.SCALING_EFFECT to stringResource(R.string.menu_scaling_value,
-                                                listOf(stringResource(R.string.menu_scaling_inherited), "Bilinear", "CAS", "FSR")[scalingEffect.intValue + 1]),
+                                                listOf(stringResource(R.string.menu_scaling_inherited), "Bilinear", "CAS", "FSR", "SGSR")[scalingEffect.intValue + 1]),
                                             InGameAction.REFRESH_RATE to stringResource(R.string.menu_refresh_rate_value,
                                                 requestedRefresh.value?.toString() ?: stringResource(R.string.menu_auto),
                                                 (if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else windowManager.defaultDisplay.refreshRate).toString()),
@@ -2653,7 +2653,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (action == InGameAction.PERFORMANCE_HINTS) { performanceHints.requested = !performanceHints.requested; return }
         if (action == InGameAction.EXTERNAL_DISPLAY) { externalDisplay?.cycle(); return }
         if (action == InGameAction.SCALING_EFFECT) {
-            scalingEffect.intValue = if (scalingEffect.intValue >= 2) -1 else scalingEffect.intValue + 1
+            scalingEffect.intValue = if (scalingEffect.intValue >= 3) -1 else scalingEffect.intValue + 1
             session.setScalingEffect(scalingEffect.intValue)
             return
         }

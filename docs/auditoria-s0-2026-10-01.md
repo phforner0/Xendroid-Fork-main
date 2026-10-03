@@ -650,3 +650,11 @@ itens 8, 15 e 37.
    o HUD (FPS do jogo) e com "Vulkan submitted" no HUD completo. Subir o limite de FPS para 60 com a FG
    ligada: aparece "Over the display…" e a FG para sozinha ("guest cadence exceeds display Hz"). Com a
    tela em 120 Hz o aviso não aparece a 45 FPS. LSFG idem com o multiplicador escolhido.
+51. Lote 14j — SGSR e faixas de cor: num jogo em 720p numa tela 1080p+, Configurações → "Escala e
+   nitidez" em "sgsr (experimental)" (ou menu em jogo → Gráficos → Escala: SGSR, vale na hora):
+   bordas de texto e de modelos mais nítidas que no bilinear, sem halo nem brilho além dos pixels
+   vizinhos; áreas lisas iguais. Medir o custo com "Compare runs" (C07): mesmo trecho, A=FSR,
+   B=SGSR (e bilinear), anotar FPS mediano, tempo de quadro e temperatura; anotar se a GPU vira
+   gargalo. "Reduzir faixas de cor" (modo Jogador) num céu/neblina com degraus visíveis: os degraus
+   somem na próxima abertura do jogo, sem ruído perceptível a 30 cm. Em Sobre → Licenças, o link
+   "BSD-3-Clause" do SGSR abre o texto da licença.

@@ -650,7 +650,7 @@ std::unique_lock<std::mutex> Presenter::ConsumeGuestOutput(
     std::unique_lock<std::mutex> config_lock(guest_output_paint_config_mutex_);
     *paint_config_out = guest_output_paint_config_;
     const int effect = RuntimePresentation().scaling_effect.load(std::memory_order_relaxed);
-    if (effect >= 0 && effect <= 2) paint_config_out->SetEffect(GuestOutputPaintConfig::Effect(effect));
+    if (effect >= 0 && effect <= 3) paint_config_out->SetEffect(GuestOutputPaintConfig::Effect(effect));
   }
 
   // Lock the mutex to make sure the image that will be acquired now is owned
@@ -892,8 +892,18 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
   uint32_t output_width_clamped = std::min(output_width, max_rt_width);
   uint32_t output_height_clamped = std::min(output_height, max_rt_height);
 
-  if (config.GetEffect() == GuestOutputPaintConfig::Effect::kCas ||
-      config.GetEffect() == GuestOutputPaintConfig::Effect::kFsr) {
+  if (config.GetEffect() == GuestOutputPaintConfig::Effect::kSgsr) {
+    // Snapdragon Game Super Resolution 1 upsamples in one pass at any ratio;
+    // with nothing to upsample, the bilinear pass below is all that is needed.
+    if (properties.frontbuffer_width < output_width_clamped ||
+        properties.frontbuffer_height < output_height_clamped) {
+      assert_true(flow.effect_count < flow.effects.size());
+      flow.effect_output_sizes[flow.effect_count] =
+          std::make_pair(output_width_clamped, output_height_clamped);
+      flow.effects[flow.effect_count++] = GuestOutputPaintEffect::kSgsr;
+    }
+  } else if (config.GetEffect() == GuestOutputPaintConfig::Effect::kCas ||
+             config.GetEffect() == GuestOutputPaintConfig::Effect::kFsr) {
     // FidelityFX Super Resolution and Contrast Adaptive Sharpening only work
     // good for up to 2x2 upscaling due to the way they fetch texels.
     // CAS is primarily a sharpening filter, not an upscaling one (its upscaling
@@ -1010,6 +1020,9 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
         break;
       case GuestOutputPaintEffect::kFsrRcas:
         last_effect = GuestOutputPaintEffect::kFsrRcasDither;
+        break;
+      case GuestOutputPaintEffect::kSgsr:
+        last_effect = GuestOutputPaintEffect::kSgsrDither;
         break;
       default:
         break;

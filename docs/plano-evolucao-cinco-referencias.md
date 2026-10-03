@@ -834,7 +834,12 @@ aparelho. 3×/4× mostram capacidade de multiplicar, não ganho da simulação.
   invalidação de modo/driver/cadência, foco e áudio Android; controle no telefone.
 - **P03 áudio:** volume/mute existentes; métricas e buffering adaptativo com histerese,
   route/device change, XMA cross-buffer/reuse e clock drift. DirectAudio/Wine não é backend Xenia.
-- **P04 color/postprocess:** SDR modes atuais com espaço de cor definido, pure frame
+- **P04 color/postprocess:** lote 14j (Impl. + Local; aparelho pendente, roteiro 51): SGSR 1
+  (Qualcomm, BSD-3-Clause, aviso no APK) como efeito de escala do presenter ("sgsr" no ajuste de
+  escala e no menu em jogo; uma passada até o tamanho de saída, variante com dither), testado com
+  os shaders reais em Vulkan por software contra o bilinear; o custo no Adreno ainda não foi
+  medido (A/B do C07 contra FSR). Debanding = o dither do Xenia (ruído azul antes dos 8 bits), que
+  vale desde o 14b e agora está no modo Jogador. SDR modes atuais com espaço de cor definido, pure frame
   layer separado de overlay, A/B de custo; HDR opt-in exige cadeia/surface/painel
   compatíveis e teste de cor/transferência, não só flag HDR na UI.
 - **P05 economia/background:** manual/auto/never com invariantes de surface/audio/input,

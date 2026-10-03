@@ -473,6 +473,8 @@ const char* EmulatorWindow::GetCvarValueForGuestOutputPaintEffect(
       return "cas";
     case ui::Presenter::GuestOutputPaintConfig::Effect::kFsr:
       return "fsr";
+    case ui::Presenter::GuestOutputPaintConfig::Effect::kSgsr:
+      return "sgsr";
     default:
       return "";
   }
@@ -488,6 +490,10 @@ EmulatorWindow::GetGuestOutputPaintEffectForCvarValue(
   if (cvar_value == GetCvarValueForGuestOutputPaintEffect(
                         ui::Presenter::GuestOutputPaintConfig::Effect::kFsr)) {
     return ui::Presenter::GuestOutputPaintConfig::Effect::kFsr;
+  }
+  if (cvar_value == GetCvarValueForGuestOutputPaintEffect(
+                        ui::Presenter::GuestOutputPaintConfig::Effect::kSgsr)) {
+    return ui::Presenter::GuestOutputPaintConfig::Effect::kSgsr;
   }
   return ui::Presenter::GuestOutputPaintConfig::Effect::kBilinear;
 }

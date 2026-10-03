@@ -82,6 +82,8 @@ namespace shaders {
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_cas_sharpen_dither_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_cas_sharpen_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_fsr_easu_ps.h"
+#include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_sgsr_dither_ps.h"
+#include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_sgsr_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_fsr_rcas_dither_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_fsr_rcas_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_triangle_strip_rect_vs.h"
@@ -2033,6 +2035,7 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
             CasResampleConstants cas_resample;
             FsrEasuConstants fsr_easu;
             FsrRcasConstants fsr_rcas;
+            SgsrConstants sgsr;
           } effect_constants;
           switch (guest_output_paint_pipeline_layout_index) {
             case kGuestOutputPaintPipelineLayoutIndexBilinear: {
@@ -2057,6 +2060,10 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
               effect_constants_size = sizeof(effect_constants.fsr_rcas);
               effect_constants.fsr_rcas.Initialize(guest_output_flow, i,
                                                    guest_output_paint_config);
+            } break;
+            case kGuestOutputPaintPipelineLayoutIndexSgsr: {
+              effect_constants_size = sizeof(effect_constants.sgsr);
+              effect_constants.sgsr.Initialize(guest_output_flow, i);
             } break;
             default:
               break;
@@ -2449,6 +2456,9 @@ bool VulkanPresenter::InitializeSurfaceIndependent() {
         guest_output_paint_push_constant_range_ffx.size =
             sizeof(FsrRcasConstants);
         break;
+      case kGuestOutputPaintPipelineLayoutIndexSgsr:
+        guest_output_paint_push_constant_range_ffx.size = sizeof(SgsrConstants);
+        break;
       default:
         assert_unhandled_case(GuestOutputPaintPipelineLayoutIndex(i));
         continue;
@@ -2536,6 +2546,16 @@ bool VulkanPresenter::InitializeSurfaceIndependent() {
             sizeof(shaders::guest_output_ffx_fsr_rcas_dither_ps);
         shader_module_create_info.pCode =
             shaders::guest_output_ffx_fsr_rcas_dither_ps;
+        break;
+      case GuestOutputPaintEffect::kSgsr:
+        shader_module_create_info.codeSize =
+            sizeof(shaders::guest_output_sgsr_ps);
+        shader_module_create_info.pCode = shaders::guest_output_sgsr_ps;
+        break;
+      case GuestOutputPaintEffect::kSgsrDither:
+        shader_module_create_info.codeSize =
+            sizeof(shaders::guest_output_sgsr_dither_ps);
+        shader_module_create_info.pCode = shaders::guest_output_sgsr_dither_ps;
         break;
       default:
         // Not supported by this implementation.
