@@ -1299,4 +1299,5 @@
     <string name="drv_suggested">Suggested for Adreno %1$d</string>
     <string name="drv_suggested_note">Chosen from the file names, newest first; not a guarantee.</string>
     <string name="drv_from">From %1$s</string>
+    <string name="menu_color_vivid">Vivid (fake HDR)</string>
 </resources>

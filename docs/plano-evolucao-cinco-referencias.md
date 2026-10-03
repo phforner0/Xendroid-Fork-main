@@ -579,6 +579,10 @@ quando a tecla já é de outro botão e o atalho A/B-X/Y para o padrão Nintendo
 para a GPU Adreno pelos nomes dos builds (modelo, família, genérico; nunca outra família), com os
 downloads conferidos como antes.
 
+**Lote 15q (Impl. + Local; aparelho pendente, roteiro 68):** modo "Vívido (falso HDR)" no filtro
+de cor (saturação +25 % e curva em S suave), testado em Vulkan por software. Presets de um toque e
+shaders do usuário continuam fora.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

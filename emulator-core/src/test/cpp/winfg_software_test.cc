@@ -359,6 +359,7 @@ int main(int argc, char** argv) {
   if (filter_mode == 1) expected[0] = expected[1] = expected[2] = 118;
   if (filter_mode == 2) { expected[0] = 56; expected[1] = 128; expected[2] = 199; }
   if (filter_mode == 3) { expected[0] = 67; expected[1] = 128; expected[2] = 176; }
+  if (filter_mode == 4) { expected[0] = 42; expected[1] = 131; expected[2] = 217; }  // 15q: vivid
 #endif
   for (int i = 0; i < int(kSize * kSize); ++i) {
     if (std::abs(int(pixels[i * 4]) - expected[0]) > 2 || std::abs(int(pixels[i * 4 + 1]) - expected[1]) > 2 ||

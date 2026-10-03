@@ -1594,7 +1594,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         extensionLabels = mapOf(
                                             InGameAction.COLOR_FILTER to if (presentationState.value.colorError != 0) stringResource(R.string.menu_color_filter_unavailable) else
                                                 stringResource(R.string.menu_color_filter_value, listOf(off, stringResource(R.string.menu_color_grayscale),
-                                                    stringResource(R.string.menu_color_contrast), stringResource(R.string.menu_color_warm))[presentationState.value.colorFilter.coerceIn(0, 3)]),
+                                                    stringResource(R.string.menu_color_contrast), stringResource(R.string.menu_color_warm),
+                                                    stringResource(R.string.menu_color_vivid))[presentationState.value.colorFilter.coerceIn(0, 4)]),
                                             InGameAction.LSFG_MULTIPLIER to if (lsfgTarget.intValue != xendroid.compose.core.FrameGenerationTarget.OFF)
                                                 stringResource(R.string.menu_lsfg_multiplier_target, lsfgMultiplier.intValue)
                                                 else stringResource(R.string.menu_lsfg_multiplier_value, lsfgMultiplier.intValue),
@@ -2925,7 +2926,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (!BuildConfig.DEBUG && action in listOf(InGameAction.WINFG, InGameAction.WINFG_PRESET,
                 InGameAction.LSFG, InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET)) return
         if (action == InGameAction.COLOR_FILTER) {
-            session.setColorFilter((session.presentationState().colorFilter + 1) % 4)
+            session.setColorFilter((session.presentationState().colorFilter + 1) % 5)
             presentationState.value = session.presentationState()
             return
         }

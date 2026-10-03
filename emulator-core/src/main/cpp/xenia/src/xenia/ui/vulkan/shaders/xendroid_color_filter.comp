@@ -12,5 +12,12 @@ void main() {
     if (options.mode == 1) color = vec3(dot(color, vec3(0.2126, 0.7152, 0.0722)));
     if (options.mode == 2) color = (color - 0.5) * 1.12 + 0.5;
     if (options.mode == 3) color *= vec3(1.04, 1.0, 0.92);
+    // 15q: vivid ("fake HDR"): 25% more saturation around the luma, then a gentle S-curve
+    // (a third of a smoothstep); black, white and mid gray stay where they are.
+    if (options.mode == 4) {
+        float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        color = clamp(luma + (color - luma) * 1.25, 0.0, 1.0);
+        color = mix(color, color * color * (3.0 - 2.0 * color), 0.35);
+    }
     imageStore(destination_image, pixel, vec4(clamp(color, 0.0, 1.0), source.a));
 }

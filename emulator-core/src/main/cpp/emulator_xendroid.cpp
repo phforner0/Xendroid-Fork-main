@@ -1182,7 +1182,7 @@ static void j_set_scaling_effect(JNIEnv* env, jobject thiz, jint effect) {
 }
 static void j_set_color_filter(JNIEnv* env, jobject thiz, jint mode) {
     auto& runtime = xe::ui::RuntimePresentation();
-    runtime.color_filter_error = 0; runtime.color_filter = std::clamp(int(mode), 0, 3);
+    runtime.color_filter_error = 0; runtime.color_filter = std::clamp(int(mode), 0, 4);
 }
 static jstring j_active_gpu_label(JNIEnv* env, jobject thiz) {
     auto& runtime = xe::ui::RuntimePresentation();

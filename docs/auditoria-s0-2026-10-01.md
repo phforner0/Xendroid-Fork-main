@@ -765,3 +765,7 @@ status, "Build da nuvem (fim do lote 14)").
    que não existe dá aviso sem travar o resto. O item "Sugerido para Adreno N" aparece no topo e é da
    família certa (num 7xx nunca um build A8XX); baixar e usar o sugerido inicia o jogo com ele (U03 diz
    qual driver carregou).
+68. Lote 15q — filtro "Vívido": num jogo de cores lavadas, menu em jogo → Gráficos → Mais opções →
+   filtro de cor até "Vívido (falso HDR)": cores mais fortes sem estourar o branco nem esmagar o preto;
+   pele e céu sem faixas. Comparar o FPS com o filtro desligado (o passe compute é o mesmo dos outros
+   modos).

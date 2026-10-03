@@ -37,7 +37,7 @@ done
 "${cxx[@]}" "${common[@]}" -I "$spirv" "$test/sgsr_software_test.cc" "$vk_library" -o "$build/sgsr-test"
 "$build/sgsr-test"
 "${cxx[@]}" "${common[@]}" -DTEST_COLOR "$test/winfg_software_test.cc" "$vk_library" -o "$build/color-test"
-for mode in 1 2 3; do "$build/color-test" "$build/color.spv" "$mode"; done
+for mode in 1 2 3 4; do "$build/color-test" "$build/color.spv" "$mode"; done
 dxbc="$cpp/third_party/lsfg-dxbc"
 dxbc_includes=(-I "$dxbc/include/dxbc" -I "$dxbc/include/spirv" -I "$dxbc/include/util" -I "$dxbc/include/dxvk")
 dxbc_sources=("$dxbc"/src/dxbc/*.cpp "$dxbc"/src/spirv/*.cpp "$dxbc"/src/util/*.cpp)
