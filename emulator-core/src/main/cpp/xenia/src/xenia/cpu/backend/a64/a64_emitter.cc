@@ -39,6 +39,16 @@ DEFINE_bool(
     "materialize and a store on every loop back-edge; diagnostic only.",
     "CPU");
 
+DEFINE_bool(
+    a64_guest_memory_tso, false,
+    "Order guest memory accesses like a TSO machine (x86): a load-load "
+    "barrier after every guest load and a store-store one before every guest "
+    "store, so no load passes a load and no store passes a load or a store. "
+    "ARM reorders all of those, which a guest race the console's or an x86 "
+    "host's ordering hides can need. Slow; diagnostic only. Takes effect for "
+    "code translated afterwards.",
+    "CPU");
+
 namespace xe {
 namespace cpu {
 namespace backend {
@@ -268,6 +278,18 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, size_t stack_size,
       }
       const hir::Instr* new_tail = instr;
       bool selected = false;
+      const hir::Opcode opcode = instr->GetOpcodeNum();
+      const bool tso_load =
+          cvars::a64_guest_memory_tso &&
+          (opcode == hir::OPCODE_LOAD || opcode == hir::OPCODE_LOAD_OFFSET ||
+           opcode == hir::OPCODE_LVL || opcode == hir::OPCODE_LVR ||
+           opcode == hir::OPCODE_RESERVED_LOAD);
+      if (cvars::a64_guest_memory_tso &&
+          (opcode == hir::OPCODE_STORE || opcode == hir::OPCODE_STORE_OFFSET ||
+           opcode == hir::OPCODE_STVL || opcode == hir::OPCODE_STVR ||
+           opcode == hir::OPCODE_MEMSET)) {
+        dmb(ISHST);
+      }
       try {
         selected = SelectSequence(this, instr, &new_tail);
       } catch (const Xbyak_aarch64::Error& e) {
@@ -289,6 +311,9 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, size_t stack_size,
         XELOGE("A64: Unable to process HIR opcode {}",
                hir::GetOpcodeName(instr->GetOpcodeInfo()));
         return false;
+      }
+      if (tso_load) {
+        dmb(ISHLD);
       }
       instr = new_tail;
     }

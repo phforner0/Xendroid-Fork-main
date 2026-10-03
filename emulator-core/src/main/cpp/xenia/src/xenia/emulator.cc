@@ -82,6 +82,7 @@
 #include "xenia/cpu/backend/x64/x64_backend.h"
 #elif XE_ARCH_ARM64
 #include "xenia/cpu/backend/a64/a64_backend.h"
+#include "xenia/cpu/backend/a64/a64_tracers.h"
 #endif  // XE_ARCH
 
 DEFINE_double(time_scalar, 1.0,
@@ -2158,6 +2159,9 @@ bool Emulator::ExceptionCallback(Exception* ex) {
       current_thread->thread_id(), current_thread->handle()));
   crash_msg.append(fmt::format("PC:  0x{:08X}  {}\n", guest_pc,
                                mod_off(guest_pc)));
+  // The start of the guest function the PC is in, for dump_functions_at.
+  crash_msg.append(
+      fmt::format("Function: 0x{:08X}\n", guest_function->address()));
   crash_msg.append(fmt::format("LR:  0x{:08X}  {}\n", guest_lr,
                                mod_off(guest_lr)));
   crash_msg.append(
@@ -2228,6 +2232,10 @@ bool Emulator::ExceptionCallback(Exception* ex) {
                     context->v[i].u32[2], context->v[i].u32[3]));
   }
   XELOGE("{}", crash_msg);
+#if XE_ARCH_ARM64
+  // The calls leading up to the crash, kept by log_guest_calls_ring.
+  xe::cpu::backend::a64::LogGuestCallRing();
+#endif  // XE_ARCH_ARM64
 
   std::string crash_dlg = fmt::format(
       "The guest has crashed.\n\n"

@@ -33,6 +33,13 @@ DEFINE_bool(
     "fiber switches, forced preemptions, and how long offloaded blocking calls "
     "queue behind the single I/O worker.",
     "Kernel");
+DEFINE_uint32(
+    guest_scheduler_dispatch_cpus, 6,
+    "Dispatch threads the cooperative scheduler runs guest threads on, 1-6: "
+    "guest CPU n runs on thread n modulo this. Fewer serialize the guest "
+    "threads of different CPUs - a diagnostic for races that need truly "
+    "parallel threads.",
+    "Kernel");
 
 namespace xe {
 namespace kernel {
@@ -182,7 +189,10 @@ int GuestScheduler::DispatchCpuOf(uint8_t guest_cpu) const {
   // Wrap rather than fold to 0: an out-of-range guest CPU is already unusual,
   // and folding every one of them onto CPU 0 stacks them on the dispatch
   // thread the main thread already uses.
-  return guest_cpu % kMaxCpus;
+  const int dispatch_cpus = int(std::min(
+      std::max(cvars::guest_scheduler_dispatch_cpus, uint32_t(1)),
+      uint32_t(kMaxCpus)));
+  return guest_cpu % dispatch_cpus;
 }
 
 int GuestScheduler::CpuOf(XThread* thread) const {
