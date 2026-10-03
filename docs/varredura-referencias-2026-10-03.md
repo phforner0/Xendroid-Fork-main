@@ -143,8 +143,8 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Giroscópio só enquanto um gatilho é segurado; modo orientação | Bannerlator `7cf04b57`, `c575091c` | **Parcial**: câmera por giroscópio com sensibilidade e calibração | Alta / P |
 | Entrada sem buffer (`requestUnbufferedDispatch`) | Bannerlator `3b08d65e` | **Não tem** | Alta / P (medir latência no aparelho) |
 | Remapear tocando no botão desenhado; modelo "qualquer controle"; copiar mapeamento | Bannerlator `4344ef49`, `4811d46c` | **Parcial**: tela de mapeamento global | Média / M |
-| Editor de toque: grupos, zona morta por elemento, ajuste à grade | Bannerlator `9dd238bb`, `a20fca5a`; Eden `76be55bc` | **Parcial**: posição, escala 0,5–3×, visibilidade, layouts por jogo, edição pela biblioteca (U06) | Média / M |
-| Deslizar o dedo de um botão para outro | Bannerlator `72db7f4d` | **Não tem** | Média / M |
+| Editor de toque: grupos, zona morta por elemento, ajuste à grade | Bannerlator `9dd238bb`, `a20fca5a`; Eden `76be55bc` | **Parcial**: posição, escala 0,5–3×, visibilidade, layouts por jogo, edição pela biblioteca (U06), ajuste à grade e, no lote 15f, zona morta por elemento (direcional e analógicos); grupos não | Média / M |
+| Deslizar o dedo de um botão para outro | Bannerlator `72db7f4d` | **Impl. + Local no lote 15f** (botões e direcional; analógico opcional; desligado por padrão; aparelho pendente, roteiro 57) | Média / M |
 | Sticks adaptativos e câmera por toque | DroidDeck `9530e7b`, `659ff48`; X360 Mobile v0.6.2 | **Tem** (sticks adaptativos, U07) | — |
 | Soltar o que está pressionado quando o toque é cancelado ou um diálogo assume | DroidDeck `c66e4ba`; X360 Mobile v0.6.2 | A conferir | Alta / P |
 | Troca A/B | Eden `978ba3ed` | **Tem** (U04) | — |

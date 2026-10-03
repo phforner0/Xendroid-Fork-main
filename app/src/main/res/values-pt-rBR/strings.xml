@@ -1262,4 +1262,8 @@
     <string name="menu_lsfg_multiplier_target">Multiplicador LSFG · %1$d× pelo alvo; toque para escolher à mão (experimental)</string>
     <string name="boot_still_working">Ainda iniciando. A primeira vez de um jogo demora mais: os shaders que ele usa estão sendo montados, e as próximas vezes os reaproveitam.</string>
     <string name="host_try_again">Tentar de novo</string>
+    <string name="ge_dead_zone">Zona morta</string>
+    <string name="ge_slide_buttons">Deslizar entre os botões e o direcional</string>
+    <string name="ge_slide_sticks">Deslizar até um analógico para pegá-lo</string>
+    <string name="ge_slide_desc">Sem levantar o dedo: um botão solta quando o dedo sai dele e o próximo em que ele entra é apertado; o direcional só passa para outro controle sob o dedo. A zona morta de um analógico (selecione-o) é dele, somada à do jogo.</string>
 </resources>

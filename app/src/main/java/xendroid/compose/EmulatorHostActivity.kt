@@ -1191,6 +1191,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     touchCamera = touchCamera.value,
                                     cameraSensitivity = cfg.globals.cameraSensitivity,
                                     cameraAreaStart = cfg.globals.cameraAreaStart,
+                                    slideButtons = cfg.globals.slideButtons,
+                                    slideSticks = cfg.globals.slideSticks,
 
                                     opacity =
                                         alpha,

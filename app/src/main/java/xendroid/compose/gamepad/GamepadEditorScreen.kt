@@ -215,6 +215,16 @@ fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit, inGam
                     }
                 }
             },
+            // 15f: the selected d-pad's or stick's own dead zone.
+            selectedDeadZone = selected?.let { id -> base.firstOrNull { it.id == id }?.deadZoneOrNull },
+            deadZoneRange = when (base.firstOrNull { it.id == selected }) {
+                is OnScreenControl.Dpad -> OnScreenControl.Dpad.DEAD_ZONES
+                is OnScreenControl.AnalogStick -> OnScreenControl.AnalogStick.DEAD_ZONES
+                else -> null
+            },
+            onDeadZoneSelected = { dz ->
+                selected?.let { id -> mutateControls { list -> list.map { if (it.id == id) it.withLayout(deadZone = dz) else it } } }
+            },
             onReset = {
                 working = working.withLayout(editScope, landscape,
                     defaultLayout(landscape).toDto().preserving(working.layoutFor(editScope, landscape)))
@@ -262,6 +272,9 @@ private fun EditorChrome(
     hasSelection: Boolean,
     selectedScale: Float?,
     onScaleSelected: (Float) -> Unit,
+    selectedDeadZone: Float?,
+    deadZoneRange: ClosedFloatingPointRange<Float>?,
+    onDeadZoneSelected: (Float) -> Unit,
     onReset: () -> Unit,
     onLayouts: () -> Unit,
     /** Null when no game is running (only the shared layout can be edited). */
@@ -327,6 +340,14 @@ private fun EditorChrome(
                         modifier = Modifier.padding(start = 8.dp))
                 }
             }
+            if (selectedDeadZone != null && deadZoneRange != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.ge_dead_zone), modifier = Modifier.padding(end = 8.dp))
+                    Slider(value = selectedDeadZone.coerceIn(deadZoneRange), valueRange = deadZoneRange,
+                        onValueChange = onDeadZoneSelected, modifier = Modifier.weight(1f))
+                    Text("${(selectedDeadZone * 100).roundToInt()}%", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
             if (showGlobals) GlobalsEditor(globals, onMutateGlobals)
             Row(verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End,
@@ -386,6 +407,16 @@ private fun GlobalsEditor(
             }
         }
         Text(stringResource(R.string.ge_split_desc), style = MaterialTheme.typography.bodySmall)
+        // 15f: sliding between the controls without lifting the finger.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.ge_slide_buttons), modifier = Modifier.weight(1f).padding(end = 8.dp))
+            Switch(checked = globals.slideButtons, onCheckedChange = { v -> mutate { it.copy(slideButtons = v) } })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.ge_slide_sticks), modifier = Modifier.weight(1f).padding(end = 8.dp))
+            Switch(checked = globals.slideSticks, onCheckedChange = { v -> mutate { it.copy(slideSticks = v) } })
+        }
+        Text(stringResource(R.string.ge_slide_desc), style = MaterialTheme.typography.bodySmall)
         // U07: the touch camera (turned on in the in-game menu): how fast it turns and how much
         // of the right side of the screen it takes.
         Text(stringResource(R.string.ge_camera_speed, (globals.cameraSensitivity * 100).roundToInt()))

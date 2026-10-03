@@ -40,20 +40,44 @@ sealed interface OnScreenControl {
         override val xFraction: Float, override val yFraction: Float,
         override val scale: Float = 1f, override val visible: Boolean = true,
         override val baseSizeDp: Float = 144f,
-    ) : OnScreenControl          // emits codes 0..3 with 8-sector radial logic
+        /** 15f: the neutral middle, as a fraction of the pad's half-width (the third of the 3x3 grid). */
+        val deadZone: Float = DEFAULT_DEAD_ZONE,
+    ) : OnScreenControl {        // emits codes 0..3 with the 3x3 grid
+        companion object {
+            const val DEFAULT_DEAD_ZONE = 1f / 3f
+            val DEAD_ZONES = 0.15f..0.6f
+        }
+    }
 
     data class AnalogStick(
         override val id: ControlId, val isLeft: Boolean,
         override val xFraction: Float, override val yFraction: Float,
         override val scale: Float = 1f, override val visible: Boolean = true,
         override val baseSizeDp: Float = 132f,
-    ) : OnScreenControl          // emits 16..19 (left) or 20..23 (right)
+        /** 15f: travel that moves nothing, as a fraction of the ring; 0 = none (the game's own applies). */
+        val deadZone: Float = 0f,
+    ) : OnScreenControl {        // emits 16..19 (left) or 20..23 (right)
+        companion object {
+            val DEAD_ZONES = 0f..0.5f
+        }
+    }
 }
+
+/** 15f: a d-pad's or stick's dead zone; null for a button, which has none. */
+val OnScreenControl.deadZoneOrNull: Float?
+    get() = when (this) {
+        is OnScreenControl.Dpad -> deadZone
+        is OnScreenControl.AnalogStick -> deadZone
+        is OnScreenControl.Button -> null
+    }
 
 fun OnScreenControl.withLayout(
     x: Float = xFraction, y: Float = yFraction, s: Float = scale, vis: Boolean = visible,
+    deadZone: Float? = null,
 ): OnScreenControl = when (this) {
     is OnScreenControl.Button -> copy(xFraction = x, yFraction = y, scale = s, visible = vis)
-    is OnScreenControl.Dpad -> copy(xFraction = x, yFraction = y, scale = s, visible = vis)
-    is OnScreenControl.AnalogStick -> copy(xFraction = x, yFraction = y, scale = s, visible = vis)
+    is OnScreenControl.Dpad -> copy(xFraction = x, yFraction = y, scale = s, visible = vis,
+        deadZone = deadZone?.coerceIn(OnScreenControl.Dpad.DEAD_ZONES) ?: this.deadZone)
+    is OnScreenControl.AnalogStick -> copy(xFraction = x, yFraction = y, scale = s, visible = vis,
+        deadZone = deadZone?.coerceIn(OnScreenControl.AnalogStick.DEAD_ZONES) ?: this.deadZone)
 }

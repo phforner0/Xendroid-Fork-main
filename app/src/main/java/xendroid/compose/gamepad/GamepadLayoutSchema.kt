@@ -11,6 +11,8 @@ data class ControlLayoutDto(
     val id: String,            // ControlId.name
     val x: Float, val y: Float,
     val scale: Float = 1f, val visible: Boolean = true,
+    /** 15f: a d-pad's or stick's own dead zone; null = its default. */
+    val deadZone: Float? = null,
     /** U06: fields of another build this one does not read, kept so saving never drops them. */
     val extra: JsonObject = JsonObject(emptyMap()),
 )
@@ -73,6 +75,10 @@ data class GamepadGlobalsDto(
     val hideWithController: Boolean = true,
     /** 15c: a [SplitScreenMode] key: the game in the upper part and the controls clear of it. */
     val splitScreen: String = SplitScreenMode.OFF.key,
+    /** 15f: a finger slides from button to button (and onto or off the d-pad) without lifting. */
+    val slideButtons: Boolean = false,
+    /** 15f: a free finger sliding onto a stick takes it. */
+    val slideSticks: Boolean = false,
 )
 
 /** A game's own layout (U06); an orientation it has none for uses the shared one. */
@@ -137,8 +143,15 @@ fun GamepadConfigDto.withoutOwnLayout(titleId: String?, landscape: Boolean): Gam
 fun OrientationLayoutDto.applyTo(base: List<OnScreenControl>): List<OnScreenControl> {
     val byId = controls.associateBy { it.id }
     return base.map { c ->
-        byId[c.id.name]?.let { c.withLayout(it.x, it.y, it.scale.coerceIn(0.5f, 3f), it.visible) } ?: c
+        byId[c.id.name]?.let { c.withLayout(it.x, it.y, it.scale.coerceIn(0.5f, 3f), it.visible, it.deadZone?.takeIf(Float::isFinite)) } ?: c
     }
 }
 fun List<OnScreenControl>.toDto() =
-    OrientationLayoutDto(map { ControlLayoutDto(it.id.name, it.xFraction, it.yFraction, it.scale, it.visible) })
+    OrientationLayoutDto(map { ControlLayoutDto(it.id.name, it.xFraction, it.yFraction, it.scale, it.visible, it.ownDeadZone()) })
+
+/** 15f: written only when it differs from the control's default, so layouts stay as they were. */
+private fun OnScreenControl.ownDeadZone(): Float? = when (this) {
+    is OnScreenControl.Dpad -> deadZone.takeIf { it != OnScreenControl.Dpad.DEFAULT_DEAD_ZONE }
+    is OnScreenControl.AnalogStick -> deadZone.takeIf { it != 0f }
+    is OnScreenControl.Button -> null
+}

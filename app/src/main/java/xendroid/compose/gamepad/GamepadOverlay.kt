@@ -75,6 +75,8 @@ fun GamepadOverlay(
     touchCamera: Boolean = false,         // U07 opt-in: free right side of the screen = right stick by finger speed
     cameraSensitivity: Float = 1f,        // U07: 0.5–2, from the layout's globals
     cameraAreaStart: Float = TouchCamera.DEFAULT_AREA_START,  // U07: where the area starts (fraction of the width)
+    slideButtons: Boolean = false,        // 15f: slide from button to button / onto the d-pad
+    slideSticks: Boolean = false,         // 15f: a free finger sliding onto a stick takes it
     gridStepsX: Int = 0,                  // editor: snap-grid cell count per axis (0 = no grid).
     gridStepsY: Int = 0,                  // x/y differ so the cells are square on a non-1:1 screen.
     selectedId: ControlId? = null,
@@ -106,6 +108,7 @@ fun GamepadOverlay(
         TouchCamera(fullSpeedPxPerMs = TouchCamera.fullSpeed(with(density) { 1.2.dp.toPx() }, cameraSensitivity))
     }
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
+    val slide = remember(slideButtons, slideSticks) { TouchSlide(slideButtons, slideSticks) }
     // Latest controls WITHOUT restarting the pointerInput: in edit mode every drag frame
     // produces a new `controls` list; if it keyed the pointerInput, the gesture would cancel
     // mid-drag (the button moves one frame then stutters/stops). Read this inside instead.
@@ -131,7 +134,7 @@ fun GamepadOverlay(
             // Keyed only on editMode+sizePx (stable during a gesture). controls is read live
             // via controlsState so a drag (which mutates controls every frame) never restarts
             // the gesture. selectedId is not needed here (only the draw uses it).
-            .pointerInput(editMode, sizePx, adaptiveSticks, touchCamera, camera, cameraAreaStart) {
+            .pointerInput(editMode, sizePx, adaptiveSticks, touchCamera, camera, cameraAreaStart, slide) {
                 if (editMode) {
                     editPointerLoop(
                         controlsState, sizePx, density,
@@ -217,13 +220,46 @@ fun GamepadOverlay(
                                             ch.consume()
                                         }
                                     }
-                                    ch.pressed -> {            // MOVE on a claimed pointer
-                                        val id = claims[pid] ?: continue
-                                        pointerPos[pid] = ch.position
-                                        controlsState.value.firstOrNull { it.id == id }?.let {
-                                            dispatchMove(emitter, it, ch.position, sizePx, density, dpadState, stickOrigins[id])
+                                    ch.pressed -> {            // MOVE
+                                        val layout = controlsState.value
+                                        val id = claims[pid]
+                                        if (id == null) {
+                                            // 15f: a free finger sliding onto a control presses it.
+                                            if (!slide.any) continue
+                                            val target = TouchSlide.target(layout, ch.position, sizePx, density, slide,
+                                                leaving = null, held = claims.values) ?: continue
+                                            claims[pid] = target.id
+                                            pointerPos[pid] = ch.position
+                                            dispatchDown(emitter, target, ch.position, sizePx, density, dpadState, stickOrigins[target.id])
                                             ch.consume()
+                                            continue
                                         }
+                                        pointerPos[pid] = ch.position
+                                        val current = layout.firstOrNull { it.id == id } ?: continue
+                                        if ((slide.releasesOnExit(current) || slide.handsOver(current)) &&
+                                            TouchSlide.hasLeft(current, ch.position, sizePx, density)) {
+                                            // 15f: off a button (or off the d-pad onto another control):
+                                            // let go of it, and press what the finger is on now.
+                                            val target = TouchSlide.target(layout, ch.position, sizePx, density, slide,
+                                                leaving = id, held = claims.filterKeys { it != pid }.values)
+                                            if (target != null || slide.releasesOnExit(current)) {
+                                                claims.remove(pid)
+                                                if (claims.none { it.value == id }) {
+                                                    stickOrigins.remove(id)
+                                                    dispatchUp(emitter, current, dpadState)
+                                                }
+                                                if (target != null) {
+                                                    claims[pid] = target.id
+                                                    dispatchDown(emitter, target, ch.position, sizePx, density, dpadState, stickOrigins[target.id])
+                                                } else {
+                                                    pointerPos.remove(pid)
+                                                }
+                                                ch.consume()
+                                                continue
+                                            }
+                                        }
+                                        dispatchMove(emitter, current, ch.position, sizePx, density, dpadState, stickOrigins[id])
+                                        ch.consume()
                                     }
                                 }
                             }
@@ -403,7 +439,7 @@ private fun updateDpad(
     val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
     val nx = (pos.x - center.x) / radius
     val ny = (pos.y - center.y) / radius
-    val now = emitter.dpadSectors(nx, ny)
+    val now = emitter.dpadSectors(nx, ny, c.deadZone)
     emitter.applyDpad(dpadState[c.id] ?: emptySet(), now)
     dpadState[c.id] = now
 }
@@ -419,9 +455,11 @@ private fun updateStick(
     val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
     val dxN = (pos.x - center.x) / radius
     val dyN = (pos.y - center.y) / radius
-    // No source dead-zone (PPSSPP/legacy have none -- the emulator owns thumbstick
-    // dead-zone; a second one here double-dead-zones). Release happens only on touch-up.
-    emitter.stick(c.isLeft, dxN, dyN)        // emitter circular-clamps
+    // No source dead-zone by default (PPSSPP/legacy have none -- the emulator owns thumbstick
+    // dead-zone; a second one here double-dead-zones). 15f: a stick may have one of its own,
+    // which the player sets in the editor. Release happens only on touch-up.
+    val (x, y) = TouchSlide.stickDeadZone(dxN, dyN, c.deadZone)
+    emitter.stick(c.isLeft, x, y)            // emitter circular-clamps
 }
 
 // ---- Drawing ----

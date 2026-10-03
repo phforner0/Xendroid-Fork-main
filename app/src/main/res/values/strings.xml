@@ -1223,4 +1223,8 @@
     <string name="menu_lsfg_multiplier_target">LSFG multiplier · %1$d× from the target; press for one by hand (experimental)</string>
     <string name="boot_still_working">Still starting. A game\'s first start takes longest: the shaders it needs are being built, and later starts reuse them.</string>
     <string name="host_try_again">Try again</string>
+    <string name="ge_dead_zone">Dead zone</string>
+    <string name="ge_slide_buttons">Slide between buttons and the d-pad</string>
+    <string name="ge_slide_sticks">Slide onto a stick to take it</string>
+    <string name="ge_slide_desc">Without lifting the finger: a button lets go when the finger slides off it and the next one it slides onto is pressed; the d-pad hands over only to another control under the finger. A stick\'s dead zone (select it) is its own, on top of the game\'s.</string>
 </resources>

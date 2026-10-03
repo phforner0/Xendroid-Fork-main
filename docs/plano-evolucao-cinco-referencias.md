@@ -526,6 +526,11 @@ mesmos gates.
 aviso de primeira vez lenta — e fim de sessão com "Tentar de novo"/"Compartilhar logs"/"Voltar"
 (DroidDeck `02f356f`), o relançamento feito pelo processo principal num `:emu` novo.
 
+**Lote 15f (Impl. + Local, desligado por padrão; aparelho pendente, roteiro 57):** controles de toque
+deslizáveis (Bannerlator `72db7f4d`: botão solta ao sair e o próximo aperta; direcional só passa adiante;
+analógico por deslize opcional) e zona morta por elemento (Bannerlator `a20fca5a`: centro neutro do
+direcional, zona morta própria do analógico), regras puras em `gamepad/TouchSlide.kt`.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

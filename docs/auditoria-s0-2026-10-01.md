@@ -705,3 +705,9 @@ status, "Build da nuvem (fim do lote 14)").
    indisponível): o diálogo mostra Voltar, Tentar de novo e Compartilhar logs; Compartilhar abre a folha de
    compartilhamento sem fechar o diálogo; Tentar de novo fecha o jogo e o inicia de novo (conferir no log
    que é um processo :emu novo e que o run anterior terminou com "trying again").
+57. Lote 15f — toque: editor de controles → Ajustes gerais → ligar "Deslizar entre os botões e o
+   direcional". Em jogo, apertar A e deslizar até B sem levantar: A solta e B aperta (conferir no testador de
+   controle, U05, ou num menu do jogo); deslizar do direcional até um botão: passa ao botão; o polegar que
+   escapa um pouco do direcional continua nele. Com "Deslizar até um analógico", um dedo livre que entra no
+   analógico o move. Desligado: tudo como antes. Selecionar o direcional e mudar a "Zona morta" para 50%:
+   toques perto do centro não apertam direção; um analógico com 20%: pequenos toques não movem a câmera.
