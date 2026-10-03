@@ -300,6 +300,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var externalDisplay: ExternalGameDisplay? = null
     /** Null until the TV output reports (it starts on the phone). */
     private val externalDisplayLabel = mutableStateOf<String?>(null)
+    /** 15h: the TV margin (overscan), percent of the screen per side. */
+    private val tvMargin = androidx.compose.runtime.mutableFloatStateOf(0f)
     /** The game is drawn on another display (the TV); the handset keeps only the controls. */
     private val gameOnExternalDisplay = mutableStateOf(false)
     /** 15c: a horizontal fold half open (tabletop), as (top, bottom) in window pixels. */
@@ -1041,6 +1043,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             externalDisplayLabel.value = it
             gameOnExternalDisplay.value = externalDisplay?.activeDisplay != null
         })
+        tvMargin.floatValue = getSharedPreferences(DISPLAY_SETTINGS_PREFS, MODE_PRIVATE).getFloat("tv_margin_percent", 0f)
+            .coerceIn(0f, xendroid.compose.core.TvMargin.MAX)
+        externalDisplay?.setMargin(tvMargin.floatValue)
 
         val compose =
             ComposeView(this).apply {
@@ -1497,6 +1502,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             InGameAction.LSFG_TARGET to stringResource(R.string.menu_lsfg_target_value, lsfgTargetText()),
                                             InGameAction.PERFORMANCE_HINTS to performanceHintsLabel.value,
                                             InGameAction.EXTERNAL_DISPLAY to (externalDisplayLabel.value ?: stringResource(R.string.tv_phone)),
+                                            InGameAction.TV_MARGIN to stringResource(R.string.menu_tv_margin,
+                                                java.text.NumberFormat.getNumberInstance().format(tvMargin.floatValue.toDouble())),
                                             InGameAction.SCALING_EFFECT to stringResource(R.string.menu_scaling_value,
                                                 listOf(stringResource(R.string.menu_scaling_inherited), "Bilinear", "CAS", "FSR", "SGSR")[scalingEffect.intValue + 1]),
                                             InGameAction.REFRESH_RATE to stringResource(R.string.menu_refresh_rate_value,
@@ -2824,6 +2831,12 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
         if (action == InGameAction.PERFORMANCE_HINTS) { performanceHints.requested = !performanceHints.requested; return }
         if (action == InGameAction.EXTERNAL_DISPLAY) { externalDisplay?.cycle(); return }
+        if (action == InGameAction.TV_MARGIN) {
+            tvMargin.floatValue = xendroid.compose.core.TvMargin.next(tvMargin.floatValue)
+            getSharedPreferences(DISPLAY_SETTINGS_PREFS, MODE_PRIVATE).edit().putFloat("tv_margin_percent", tvMargin.floatValue).apply()
+            externalDisplay?.setMargin(tvMargin.floatValue)
+            return
+        }
         if (action == InGameAction.SCALING_EFFECT) {
             scalingEffect.intValue = if (scalingEffect.intValue >= 3) -1 else scalingEffect.intValue + 1
             session.setScalingEffect(scalingEffect.intValue)

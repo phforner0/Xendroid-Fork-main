@@ -1272,4 +1272,6 @@
     <string name="menu_hud_look_box">caixa</string>
     <string name="menu_hud_look_outline">texto com contorno</string>
     <string name="menu_hud_look_plain">texto simples</string>
+    <string name="menu_tv_margin_title">Margem da TV</string>
+    <string name="menu_tv_margin">Margem da TV: %1$s%% de cada lado (só numa TV que corta as bordas)</string>
 </resources>

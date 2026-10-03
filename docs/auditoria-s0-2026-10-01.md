@@ -716,3 +716,8 @@ status, "Build da nuvem (fim do lote 14)").
    Arrastar e pinçar o HUD no jogo A, sair, abrir o jogo B (sem lugar próprio): começa onde ficou em A;
    mudar em B, voltar a A: A continua no seu lugar. "Aparência do HUD": caixa → contorno → texto simples;
    conferir a leitura do contorno sobre cenas claras e escuras.
+59. Lote 15h — TV: com o jogo numa TV (saída externa) que corta as bordas, menu em jogo → Gráficos →
+   "Margem da TV" até as bordas da imagem (HUD do jogo, legendas) ficarem visíveis; a imagem encolhe e fica
+   centrada com bordas pretas. Voltar para o aparelho: tela cheia como antes. Reconectar a TV: a margem
+   escolhida continua. Com FG ligado, girar o aparelho ou ligar a tela dividida (15c) e conferir que a imagem
+   não estica e o FG segue (linhas "surface" e "presentation" no log do run).

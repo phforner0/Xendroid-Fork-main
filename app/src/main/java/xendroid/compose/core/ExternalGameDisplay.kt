@@ -22,6 +22,15 @@ class ExternalGameDisplay(
 ) : DisplayManager.DisplayListener, AutoCloseable {
     private val manager = activity.getSystemService(DisplayManager::class.java)
     private var presentation: Presentation? = null
+    /** 15h: the TV margin (overscan) in percent per side; the frame holding the TV's surface. */
+    private var marginPercent = 0f
+    private var frame: OverscanFrame? = null
+
+    /** 15h: insets the picture on the TV by [percent] of the screen per side (now and for the next TV). */
+    fun setMargin(percent: Float) {
+        marginPercent = percent
+        frame?.percent = percent
+    }
     private var output: SurfaceView = primary
     private var closing = false
     private var detached = false
@@ -42,12 +51,19 @@ class ExternalGameDisplay(
             statusChanged(activity.getString(xendroid.compose.R.string.tv_unavailable)); return
         }
         val surface = SurfaceView(next.context)
+        val holder = OverscanFrame(next.context).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            addView(surface, android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+            percent = marginPercent
+        }
         detach()
         detached = true
         val old = presentation
         presentation = null
         output = surface
-        next.setContentView(surface)
+        next.setContentView(holder)
+        frame = holder
         next.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
         // The TV's low-latency game mode (ALLM over HDMI), where the display supports it.
         if (android.os.Build.VERSION.SDK_INT >= 30) next.window?.setPreferMinimalPostProcessing(true)
@@ -62,7 +78,7 @@ class ExternalGameDisplay(
         if (output === primary && presentation == null && !detached) return
         detach()
         val old = presentation
-        presentation = null; output = primary
+        presentation = null; output = primary; frame = null
         old?.dismiss()
         if (primary.holder.surface.isValid) {
             callback.surfaceCreated(primary.holder)
@@ -79,5 +95,25 @@ class ExternalGameDisplay(
     override fun close() {
         closing = true; manager.unregisterDisplayListener(this)
         presentation?.dismiss(); presentation = null
+    }
+}
+
+/** 15h: the TV's surface inside a black frame inset by [percent] of the screen per side. */
+private class OverscanFrame(context: android.content.Context) : android.widget.FrameLayout(context) {
+    var percent: Float = 0f
+        set(value) {
+            field = value
+            inset(width, height)
+        }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        inset(w, h)
+    }
+
+    private fun inset(w: Int, h: Int) {
+        val (x, y) = TvMargin.padding(w, h, percent)
+        // Posted: padding changed inside a layout pass would be ignored until the next one.
+        if (paddingLeft != x || paddingTop != y) post { setPadding(x, y, x, y) }
     }
 }

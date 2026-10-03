@@ -1233,4 +1233,6 @@
     <string name="menu_hud_look_box">box</string>
     <string name="menu_hud_look_outline">outlined text</string>
     <string name="menu_hud_look_plain">plain text</string>
+    <string name="menu_tv_margin_title">TV margin</string>
+    <string name="menu_tv_margin">TV margin: %1$s%% per side (only on a TV that cuts the edges)</string>
 </resources>

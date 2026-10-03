@@ -333,6 +333,7 @@ private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, touch: 
         InGameAction.BACKGROUND_POLICY -> stringResource(R.string.menu_background)
         InGameAction.GYRO_CAMERA -> stringResource(R.string.menu_gyro_camera)
         InGameAction.EXTERNAL_DISPLAY -> stringResource(R.string.menu_external_display)
+        InGameAction.TV_MARGIN -> stringResource(R.string.menu_tv_margin_title)
         InGameAction.SCALING_EFFECT -> stringResource(R.string.menu_scaling)
         InGameAction.PERFORMANCE_HINTS -> stringResource(R.string.menu_hints)
         InGameAction.COLOR_FILTER -> stringResource(R.string.menu_color_filter)

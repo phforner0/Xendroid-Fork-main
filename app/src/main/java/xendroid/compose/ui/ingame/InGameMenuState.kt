@@ -41,13 +41,15 @@ enum class InGameAction {
     HUD_GPU_MEMORY,
     /** 15g: the HUD's look: a box, an outline around the letters, or plain text. */
     HUD_LOOK,
+    /** 15h: a margin around the picture on a TV that cuts the edges (overscan). */
+    TV_MARGIN,
 }
 
 /** Every option once, on the tab it belongs to (U01), most used first. */
 val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
     InGamePage.GRAPHICS to listOf(
         InGameAction.DISPLAY_FIT, InGameAction.DISPLAY_FILL, InGameAction.DISPLAY_STRETCH, InGameAction.DISPLAY_INTEGER,
-        InGameAction.SCALING_EFFECT, InGameAction.EXTERNAL_DISPLAY,
+        InGameAction.SCALING_EFFECT, InGameAction.EXTERNAL_DISPLAY, InGameAction.TV_MARGIN,
         InGameAction.WINFG, InGameAction.WINFG_PRESET, InGameAction.LSFG, InGameAction.DRIVER_INFO,
         InGameAction.STRETCH, InGameAction.COLOR_FILTER,
         InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET, InGameAction.IMPORT_LSFG_DLL, InGameAction.CLEAR_LSFG_CACHE,

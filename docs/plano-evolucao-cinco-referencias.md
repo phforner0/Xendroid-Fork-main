@@ -535,6 +535,11 @@ direcional, zona morta própria do analógico), regras puras em `gamepad/TouchSl
 (DroidDeck `0cc3fe6`, total de todos os apps, assim rotulado) e lugar/tamanho/aparência (caixa, contorno,
 texto) guardados por jogo, com o último lugar como padrão (Bannerlator, HUD "Fusion").
 
+**Lote 15h (Impl. + Local; aparelho pendente, roteiro 59):** margem de TV para aparelhos que cortam as
+bordas (moldura com 0–10% de cada lado só na saída externa). Conferidos e já cobertos por desenho: o
+fallback de vsync (Imediato → Mailbox → FIFO relaxado → FIFO, cada um só se disponível; Eden `abb616c3`) e o
+FG através de um redimensionamento da superfície (imagens no tamanho da saída do jogo; DroidDeck `565987e`).
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF
