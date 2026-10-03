@@ -197,6 +197,41 @@ para o logcat (`XendroidRoadmap`).
 | 23 | `Item23ContentTrashTest` (`dlcPackage`) | instalar pelo fluxo real, "Mover para a lixeira" (some da aba, na lixeira com tamanho e data), "Restaurar", reinstalado → "Restaurar" recusa com "…está instalado de novo…", "Apagar" de vez; com o lease ocupado (jogo aberto) "Feche o jogo em execução antes." e nada se move | o jogo ver ou não o pacote (grupo C), matar o app no meio |
 | 33 | `Item33PlayAsTest` | com A como P1 e B como P2: tocar no jogo pergunta "Jogar como" com os dois e B "· P2"; escolher B avisa que vai para P1; Cancelar não inicia nada; a ficha diz "Entra como A" | o jogo abrir com o perfil, "Não perguntar de novo", P2 logado no jogo (grupo C) |
 
+**Grupo C (o jogo roda de verdade).** O teste inicia o jogo no processo `:emu` do pacote `.uitest` com o
+mesmo pedido da biblioteca e o conduz como um jogador pelo UiAutomator (Back abre o menu, "Sair do
+jogo" e a confirmação, Home, teclas de controle); o que aconteceu é lido do registro do run que o
+processo do jogo escreve (o mesmo da ficha). O jogo é `-e game <arquivo>` ou o primeiro de `-e gameDir`
+(só lido). O primeiro boot no pacote de teste compila os pipelines (minutos). Argumentos extras:
+`playSeconds` (item 9, padrão 120), `longRuns=true` e `runSeconds` (item 34, quatro boots). Evite
+espaços no caminho passado ao Gradle (o `am instrument` corta no espaço); com espaços no nome do
+jogo, use `gameDir`.
+
+```bash
+./gradlew :app:connectedUitestAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.gameDir=/sdcard/Games
+```
+
+| Item | Teste | Cobre | Continua manual |
+|---|---|---|---|
+| 2 | `Item02LeaseTest` | um job de save/conteúdo curto segurando o armazenamento é esperado e o jogo inicia; um longo dá o diálogo "Outra operação de save, perfil ou conteúdo…" e nenhum run começa | o backup automático real disputando o início; o toast "Aguardando…" (toast não é legível pelo teste) |
+| 5 | `Item05BackgroundTest` | fonte 1,3× e tamanho de tela +10% com o jogo em segundo plano: na volta é o mesmo processo do jogo e o run segue; os valores do telefone voltam | — |
+| 9 e 12 | `Item09RunRecordTest` | jogado (`playSeconds`), Home e volta, Sair pelo menu: "ended normally after", FPS em janelas de 1 s, frame time, áudio, driver, linha do tempo com fundo/frente, Surface e saída, a linha "Last run" na ficha; o relatório e o ZIP compartilhado têm o Title ID e nunca o caminho, o nome do arquivo ou o perfil | se os números fazem sentido para o jogo; avaliar o jogo; "device lost" |
+| 10 | `Item10InterruptedRunTest` | SIGKILL no processo do jogo (o que o force-stop faz com ele): o run vira "interrupted", o último sinal de vida é o heartbeat de até 30 s antes e a linha do tempo termina no último evento gravado (o que o heartbeat salvou, como o primeiro quadro, está lá); distâncias anotadas | — |
+| 11 | `Item11BootLabelTest` | sem caches: um rótulo antes do primeiro quadro ("Iniciando o jogo…", "Preparando os gráficos: N pipelines…", "Esperando o primeiro quadro…") que some com a imagem, o run com o tempo do primeiro quadro e pipelines criados; com cache: os mesmos números anotados ao lado (primeiro quadro, quantidade e tempo de pipelines) | olhar o rótulo; comparar frio × com cache (o contador do core conta acerto de cache como criação, só mais rápida); as rajadas na linha do tempo |
+| 15 | `Item15FrameGenerationTest` | fumaça (build debug; FG continua desligado por padrão): Win-FG 2× ligado pelo menu, a linha de estado anotada (o tempo de GPU não fica parado), a linha de FG do run anotada | qualidade da imagem, LSFG com a DLL do usuário, veredito × engasgo, Forza como controle negativo |
+| 25 | `Item25PatchVersionTest` | antes de rodar a versão é desconhecida; um run grava os hashes do jogo; o arquivo do catálogo da versão vira "Para a versão que você jogou por último" e o `xe.log` mostra "Patcher: Applying patch for" | APK novo mantendo um patch ligado e o aviso "Atualizado para os patches…" (duas versões do app) |
+| 27 (+16, +28) | `Item27InGameMenuTest` | abas Gráficos · Sistema · Controles · Sessão, linha do driver, RB/LB, D-pad até "Mais opções (N)", A abre e fica aberto ao trocar de aba; em Jogador, 2 avançados em Gráficos, nenhum em Sessão e nada de Win-FG; com o app em pt-BR, abas e "Sair do jogo?" em português | tela 4:3 ou dividida, a fala do TalkBack, o Esc do teclado |
+| 34 | `Item34CompareRunsTest` (`longRuns`) | 4 runs ABBA (B com Win-FG 2×), cada um com marcador de cena; comparados como na tela "Comparar execuções": ordem equilibrada, B − A por par e veredito anotados | a mesma cena à mão, esfriar a bateria entre runs, variações de driver e de limite |
+| 37 | `Item37VblankResyncTest` | Home por 10 s e volta: "Guest vblank resynced after a stall" no `xe.log`; FPS anotado | comparar a mesma cena com outra build |
+| 39 | `Item39ExitByOriginTest` | da biblioteca, "Sair" volta à biblioteca; de fora do app (`am start` com o que o ES-DE/Daijishō mandam: componente, ação e `game_uri`), "Cancelar" no carregamento, depois que o run começou, volta para a tela inicial e o run, externo, diz "cancelled while starting" | frontend real (ES-DE/Daijishō) com a biblioteca aberta atrás; Recentes; "Cancelar" no primeiro segundo (antes de o run existir): fecha sem run e sem iniciar o jogo |
+| 42 | `Item42NativeCrashTest` | SIGSEGV no processo do jogo: run FAILED com "native crash: SIGSEGV (code 0) at 0x…, thread '…', pc …" | crash real dentro do `libe.so` × tombstone; erro fatal do core |
+
+**Grupo D (continua manual):** 1 (editar config durante o boot), 6 (frontends reais), 7 (cache Vulkan
+entre drivers Turnip), 8 (FG forçado a parar), 14 (dois telefones), 30 (controle Bluetooth), 31
+(câmera por toque com o dedo), 32 (teclado do jogo com controle), 36 (catálogo remoto, só com
+publicador), 40 (aparelho sem Adreno), 41 (dois controles com vibração) e as partes visuais dos
+itens 8, 15 e 37.
+
 1. Config: editar uma opção global na biblioteca enquanto um jogo **sem** config por
    jogo inicia; conferir no `xe.log` "SaveConfig skipped" e que a edição persiste.
 2. Lease: iniciar um jogo logo após voltar à biblioteca com backup automático ativo;

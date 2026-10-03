@@ -162,6 +162,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     /** Shown over the black screen until the first guest frame (U09); null afterwards. */
     private val bootStatus = mutableStateOf<xendroid.compose.ui.ingame.BootStatus?>(
         xendroid.compose.ui.ingame.BootStatus(xendroid.compose.ui.ingame.BootStatus.Stage.EMULATOR))
+    /** U09: Cancel was pressed on the label; the start sequence stops at its next step. */
+    private var bootCancelled = false
     private val createdAtMs = android.os.SystemClock.elapsedRealtime()
     /** Connected controllers by device id, described by vendor/product only. */
     private val controllers = mutableMapOf<Int, String>()
@@ -537,6 +539,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 return@launch
             }
             recordEvent("storage", "ready")
+            // U09: Cancel can come during any wait above; a start cancelled this early leaves
+            // no run and boots nothing (the activity is already finishing).
+            if (bootCancelled) return@launch
 
             // Runs left open by a :emu that died (crash, kill) are closed first, then this
             // run starts. Frontend-only launches never start the main process to do it.
@@ -548,6 +553,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 }.onFailure { Log.w(TAG, "Session run record unavailable", it) }.getOrNull()
             }
             recordEvent("boot", "run started", flush = true)
+            if (bootCancelled) {
+                // Cancelled while the run record was being written: cancelBoot had no run to end.
+                runId?.let { id -> runCatching { xendroid.compose.sessions.SessionRuns.store().ending(id, "cancelled while starting") } }
+                return@launch
+            }
             // A fatal core error (GPU device lost...) aborts without UI: its message goes
             // beside the run record so the next reconcile can name the cause.
             runId?.let { id ->
@@ -565,6 +575,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 )
             }
 
+            if (bootCancelled) return@launch
             installSurfaceView()
         }
     }
@@ -624,6 +635,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** U09: the player gave up waiting for the game to start. */
     private fun cancelBoot() {
+        bootCancelled = true
         runId?.let { id -> runCatching { xendroid.compose.sessions.SessionRuns.store().ending(id, "cancelled while starting") } }
         recordEvent("exit", "cancelled while starting", flush = true)
         leave()
