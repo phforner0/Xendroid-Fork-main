@@ -25,6 +25,16 @@ data class TrashedContent(
 class TrashFullException(val usedBytes: Long, val quotaBytes: Long, val itemBytes: Long) :
     IllegalStateException("The trash is full")
 
+/** Why a trashed package cannot go back now: [why] for the screen to say in its language (U02),
+ *  the message in English for logs and tests; [name] is the package's. */
+class RestoreRefusedException(val why: Why, val name: String = "") : IllegalStateException(why.english.format(name)) {
+    enum class Why(val english: String) {
+        GONE("This item is no longer in the trash"),
+        INSTALLED_AGAIN("\"%s\" is installed again; remove that one first or delete this one for good"),
+        HEADER_IN_USE("Another package uses the same header; remove it first"),
+    }
+}
+
 /**
  * L12: removing an installed DLC or title update moves it into a trash beside the content
  * tree (content/.xendroid-trash/content, never a name the emulator lists), where it can be
@@ -105,14 +115,14 @@ class ContentTrash(
     fun usedBytes(): Long = list().sumOf { it.bytes }
 
     /** Why [id] cannot be restored now, or null when it can. Nothing is changed. */
-    fun restoreConflict(id: String): String? {
-        val entry = readManifest(entryDir(id)) ?: return "This item is no longer in the trash"
+    fun restoreConflict(id: String): RestoreRefusedException? {
+        val entry = readManifest(entryDir(id)) ?: return RestoreRefusedException(RestoreRefusedException.Why.GONE)
         val (data, header) = locate(entry.titleId, entry.contentType, entry.pkgDir)
         return when {
             Files.exists(data.toPath(), LinkOption.NOFOLLOW_LINKS) ->
-                "\"${entry.displayName}\" is installed again; remove that one first or delete this one for good"
+                RestoreRefusedException(RestoreRefusedException.Why.INSTALLED_AGAIN, entry.displayName)
             Files.exists(header.toPath(), LinkOption.NOFOLLOW_LINKS) && File(entryDir(id), HEADER).exists() ->
-                "Another package uses the same header; remove it first"
+                RestoreRefusedException(RestoreRefusedException.Why.HEADER_IN_USE, entry.displayName)
             else -> null
         }
     }
@@ -120,8 +130,8 @@ class ContentTrash(
     /** Puts [id] back where it was installed; never merges into or replaces an installed one. */
     fun restore(@Suppress("UNUSED_PARAMETER") lease: ContentLease, id: String): TrashedContent {
         val source = entryDir(id)
-        val entry = readManifest(source) ?: throw IllegalArgumentException("This item is no longer in the trash")
-        restoreConflict(id)?.let { throw IllegalStateException(it) }
+        val entry = readManifest(source) ?: throw RestoreRefusedException(RestoreRefusedException.Why.GONE)
+        restoreConflict(id)?.let { throw it }
         val restoring = entryDir(id, RESTORING)
         move(source, restoring)
         finishRestore(restoring, entry)

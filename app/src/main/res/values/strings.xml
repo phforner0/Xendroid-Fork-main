@@ -1102,4 +1102,13 @@
     <string name="prof_global_value">%1$s (global)</string>
     <string name="set_config_failed">Could not read or save the configuration. The existing file was kept. Fix invalid TOML or storage access, then retry.</string>
     <string name="set_game_config_failed">Could not read or save this game\'s configuration. The existing file was kept. Fix invalid TOML or storage access, then retry.</string>
+    <string name="cm_restore_gone">This item is no longer in the trash</string>
+    <string name="cm_restore_installed_again">\"%1$s\" is installed again; remove that one first or delete this one for good</string>
+    <string name="cm_restore_header_in_use">Another package uses the same header; remove it first</string>
+    <string name="pf_restore_exists_again">A profile with this XUID exists again; delete or rename it first</string>
+    <string name="col_why_no_name">Give the collection a name</string>
+    <string name="col_why_duplicate">There is already a collection called \"%1$s\"</string>
+    <string name="col_why_too_many">At most %1$d collections</string>
+    <string name="col_why_full">\"%1$s\" is full (%2$d games)</string>
+    <string name="col_why_invalid">Invalid game</string>
 </resources>

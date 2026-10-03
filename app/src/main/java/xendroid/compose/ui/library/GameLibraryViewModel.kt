@@ -607,11 +607,17 @@ class GameLibraryViewModel(
     private fun decodeCover(image: Uri): ByteArray {
         val bytes = appContext.contentResolver.openInputStream(image)?.use {
             ArchiveFiles.readBounded(it, CoverPolicy.MAX_INPUT_BYTES)
-        } ?: error("Cannot read the selected image")
+        } ?: error(appContext.getString(xendroid.compose.R.string.pf_image_unreadable))
         // ImageDecoder applies the EXIF orientation; the size is checked before any pixel is decoded.
         val bitmap = try {
             ImageDecoder.decodeBitmap(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) { decoder, info, _ ->
-                val (width, height) = CoverPolicy.scaledSize(info.size.width, info.size.height)
+                val size = info.size
+                val (width, height) = runCatching { CoverPolicy.scaledSize(size.width, size.height) }.getOrElse {
+                    // U02: said in the shown language, like the avatar's.
+                    throw IllegalArgumentException(if (size.width > 0 && size.height > 0)
+                        appContext.getString(xendroid.compose.R.string.pf_image_too_large, size.width, size.height, CoverPolicy.MAX_SIDE)
+                        else appContext.getString(xendroid.compose.R.string.lib_not_an_image), it)
+                }
                 decoder.setTargetSize(width, height)
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             }

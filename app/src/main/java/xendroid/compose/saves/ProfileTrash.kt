@@ -23,6 +23,10 @@ data class ProfileContentSummary(val xuid: String, val titles: List<TitleUsage>,
 
 data class TrashedProfile(val id: String, val xuid: String, val deletedAt: Long)
 
+/** Restoring would replace a profile with the same XUID made since; the screen says it in its
+ *  language (U02), the message stays English for logs and tests. */
+class ProfileExistsAgainException : IllegalArgumentException("A profile with this XUID exists again; delete or rename it first")
+
 /**
  * Deleting a profile moves its whole content/<XUID> tree into a trash folder on the
  * same filesystem with one atomic rename: nothing is lost if the process dies, and the
@@ -90,9 +94,7 @@ class ProfileTrash(private val contentRoot: File, private val clock: () -> Long 
         val source = ArchiveFiles.resolve(trashRoot, trashId)
         require(source.isDirectory) { "Trash entry not found" }
         val target = ArchiveFiles.resolve(contentRoot, id)
-        require(!Files.exists(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-            "A profile with this XUID exists again; delete or rename it first"
-        }
+        if (Files.exists(target.toPath(), LinkOption.NOFOLLOW_LINKS)) throw ProfileExistsAgainException()
         Files.move(source.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
         return id
     }

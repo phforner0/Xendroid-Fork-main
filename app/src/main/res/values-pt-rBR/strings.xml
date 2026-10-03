@@ -1137,4 +1137,13 @@
     <string name="prof_global_value">%1$s (global)</string>
     <string name="set_config_failed">Não deu para ler ou salvar a configuração. O arquivo atual foi mantido. Corrija o TOML inválido ou o acesso ao armazenamento e tente de novo.</string>
     <string name="set_game_config_failed">Não deu para ler ou salvar a configuração deste jogo. O arquivo atual foi mantido. Corrija o TOML inválido ou o acesso ao armazenamento e tente de novo.</string>
+    <string name="cm_restore_gone">Este item não está mais na lixeira</string>
+    <string name="cm_restore_installed_again">\"%1$s\" está instalado de novo; remova esse antes ou apague este de vez</string>
+    <string name="cm_restore_header_in_use">Outro pacote usa o mesmo cabeçalho; remova-o antes</string>
+    <string name="pf_restore_exists_again">Já existe de novo um perfil com este XUID; apague ou renomeie esse antes</string>
+    <string name="col_why_no_name">Dê um nome à coleção</string>
+    <string name="col_why_duplicate">Já existe uma coleção chamada \"%1$s\"</string>
+    <string name="col_why_too_many">No máximo %1$d coleções</string>
+    <string name="col_why_full">\"%1$s\" está cheia (%2$d jogos)</string>
+    <string name="col_why_invalid">Jogo inválido</string>
 </resources>

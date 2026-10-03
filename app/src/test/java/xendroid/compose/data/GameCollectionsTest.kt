@@ -14,8 +14,9 @@ class GameCollectionsTest {
         assertEquals(GameCollections.MAX_NAME, GameCollections.cleanName("x".repeat(100))!!.length)
         val one = GameCollections.create(emptyList(), " RPGs ", first = halo)
         assertEquals(listOf(GameCollection("RPGs", listOf(halo))), one)
-        assertEquals("There is already a collection called \"rpgs\"",
-            assertThrows(IllegalArgumentException::class.java) { GameCollections.create(one, "rpgs") }.message)
+        val duplicate = assertThrows(CollectionRefusedException::class.java) { GameCollections.create(one, "rpgs") }
+        assertEquals("There is already a collection called \"rpgs\"", duplicate.message)
+        assertEquals(CollectionRefusedException.Why.DUPLICATE to "rpgs", duplicate.why to duplicate.name)
         assertThrows(IllegalArgumentException::class.java) { GameCollections.create(one, " ") }
         val full = (1..GameCollections.MAX_COLLECTIONS).fold(emptyList<GameCollection>()) { acc, i -> GameCollections.create(acc, "C$i") }
         assertThrows(IllegalArgumentException::class.java) { GameCollections.create(full, "One more") }

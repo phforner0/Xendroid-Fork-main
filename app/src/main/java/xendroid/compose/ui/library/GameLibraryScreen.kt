@@ -402,8 +402,13 @@ fun GameLibraryScreen(
                     EmptyMessage(s.message, stringResource(R.string.common_retry), onAction = { viewModel.refresh() })
                 is LibraryUiState.Loaded ->
                     if (s.games.isEmpty())
-                        EmptyMessage(stringResource(R.string.lib_no_games), stringResource(R.string.lib_choose_another),
-                            onAction = startRealPathMode)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            // A folder away or games gone explain an empty list too (only folder on an SD card that is out).
+                            LibraryNotices(s, missing, onFolders = { viewModel.loadFolders(); foldersOpen = true },
+                                onMissing = { missingOpen = true })
+                            EmptyMessage(stringResource(R.string.lib_no_games), stringResource(R.string.lib_choose_another),
+                                onAction = startRealPathMode)
+                        }
                     else {
                         val shownCollection = collectionFilter?.let { xendroid.compose.data.GameCollections.find(collections, it) }
                         val visibleGames = remember(s.games, searchQuery, favoritesOnly, favorites, sort, activity, shownCollection) {
@@ -430,18 +435,8 @@ fun GameLibraryScreen(
                                     Text(stringResource(R.string.lib_scan_truncated))
                                 }
                             }
-                            if (s.unavailableRoots.isNotEmpty()) {
-                                TextButton(onClick = { viewModel.loadFolders(); foldersOpen = true },
-                                    modifier = Modifier.padding(horizontal = 8.dp)) {
-                                    Text(pluralStringResource(R.plurals.lib_folders_unavailable, s.unavailableRoots.size, s.unavailableRoots.size))
-                                }
-                            }
-                            val gone = missing.count { it.reason != xendroid.compose.data.MissingTitles.Reason.FOLDER_AWAY }
-                            if (gone > 0) {
-                                TextButton(onClick = { missingOpen = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                    Text(pluralStringResource(R.plurals.lib_games_gone, gone, gone))
-                                }
-                            }
+                            LibraryNotices(s, missing, onFolders = { viewModel.loadFolders(); foldersOpen = true },
+                                onMissing = { missingOpen = true })
                             OutlinedTextField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },
@@ -578,7 +573,19 @@ fun GameLibraryScreen(
         var ratingOpen by remember(game.identityKey) { mutableStateOf(false) }
         var collectionsOpen by remember(game.identityKey) { mutableStateOf(false) }
         if (collectionsOpen) {
-            val failed: (Throwable) -> Unit = { Toast.makeText(context, it.message ?: context.getString(R.string.lib_collections_failed), Toast.LENGTH_LONG).show() }
+            val failed: (Throwable) -> Unit = {
+                val refused = it as? xendroid.compose.data.CollectionRefusedException
+                Toast.makeText(context, when (refused?.why) {
+                    xendroid.compose.data.CollectionRefusedException.Why.NO_NAME -> context.getString(R.string.col_why_no_name)
+                    xendroid.compose.data.CollectionRefusedException.Why.DUPLICATE -> context.getString(R.string.col_why_duplicate, refused.name)
+                    xendroid.compose.data.CollectionRefusedException.Why.TOO_MANY ->
+                        context.getString(R.string.col_why_too_many, xendroid.compose.data.GameCollections.MAX_COLLECTIONS)
+                    xendroid.compose.data.CollectionRefusedException.Why.FULL ->
+                        context.getString(R.string.col_why_full, refused.name, xendroid.compose.data.GameCollections.MAX_MEMBERS)
+                    xendroid.compose.data.CollectionRefusedException.Why.INVALID_GAME -> context.getString(R.string.col_why_invalid)
+                    null -> it.message ?: context.getString(R.string.lib_collections_failed)
+                }, Toast.LENGTH_LONG).show()
+            }
             CollectionsDialog(
                 gameName = game.name,
                 gameKey = game.identityKey,
@@ -1101,6 +1108,27 @@ private fun ScanProgressRow(viewModel: GameLibraryViewModel) {
             modifier = Modifier.weight(1f, fill = false),
         )
         TextButton(onClick = viewModel::stopScan) { Text(stringResource(R.string.lib_stop)) }
+    }
+}
+
+/** Game folders not available now (L03) and games no longer in the library (L06). */
+@Composable
+private fun LibraryNotices(
+    s: LibraryUiState.Loaded,
+    missing: List<xendroid.compose.data.MissingTitle>,
+    onFolders: () -> Unit,
+    onMissing: () -> Unit,
+) {
+    if (s.unavailableRoots.isNotEmpty()) {
+        TextButton(onClick = onFolders, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text(pluralStringResource(R.plurals.lib_folders_unavailable, s.unavailableRoots.size, s.unavailableRoots.size))
+        }
+    }
+    val gone = missing.count { it.reason != xendroid.compose.data.MissingTitles.Reason.FOLDER_AWAY }
+    if (gone > 0) {
+        TextButton(onClick = onMissing, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text(pluralStringResource(R.plurals.lib_games_gone, gone, gone))
+        }
     }
 }
 

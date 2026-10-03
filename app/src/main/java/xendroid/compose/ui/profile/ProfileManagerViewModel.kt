@@ -246,6 +246,8 @@ class ProfileManagerViewModel(
 
     private fun reason(action: String, e: Throwable): String = when (e) {
         is ContentBusyException -> appContext.getString(R.string.pf_reason_busy, action)
+        is xendroid.compose.saves.ProfileExistsAgainException ->
+            appContext.getString(R.string.pf_reason, action, appContext.getString(R.string.pf_restore_exists_again))
         else -> appContext.getString(R.string.pf_reason, action, e.message ?: e.javaClass.simpleName)
     }
 

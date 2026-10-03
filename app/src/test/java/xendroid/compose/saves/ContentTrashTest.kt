@@ -59,7 +59,10 @@ class ContentTrashTest {
         install(tu, "TU5")
         val entry = leased { trash().moveToTrash(it, title, tu, "TU5", "Title Update 5") }
         install(tu, "TU5", bytes = 999)                                   // installed again meanwhile
-        assertTrue(trash().restoreConflict(entry.id)!!.contains("installed again"))
+        val conflict = trash().restoreConflict(entry.id)!!
+        assertEquals(RestoreRefusedException.Why.INSTALLED_AGAIN, conflict.why)
+        assertEquals("Title Update 5", conflict.name)
+        assertEquals("\"Title Update 5\" is installed again; remove that one first or delete this one for good", conflict.message)
         assertThrows(IllegalStateException::class.java) { leased { trash().restore(it, entry.id) } }
         assertEquals(999, File(data(tu, "TU5"), "content.bin").length().toInt())   // untouched
         assertEquals(listOf(entry.id), trash().list().map { it.id })              // still in the trash

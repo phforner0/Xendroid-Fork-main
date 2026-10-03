@@ -158,7 +158,16 @@ class ContentManagerViewModel(
         result.onSuccess {
             _state.value = ContentInstallState.Done(appContext.getString(xendroid.compose.R.string.cm_restored, entry.displayName))
             refresh()
-        }.onFailure { _state.value = ContentInstallState.Failed(it.message ?: appContext.getString(xendroid.compose.R.string.cm_restore_failed)) }
+        }.onFailure { e ->
+            _state.value = ContentInstallState.Failed(when ((e as? xendroid.compose.saves.RestoreRefusedException)?.why) {
+                xendroid.compose.saves.RestoreRefusedException.Why.GONE -> appContext.getString(xendroid.compose.R.string.cm_restore_gone)
+                xendroid.compose.saves.RestoreRefusedException.Why.INSTALLED_AGAIN ->
+                    appContext.getString(xendroid.compose.R.string.cm_restore_installed_again, (e as xendroid.compose.saves.RestoreRefusedException).name)
+                xendroid.compose.saves.RestoreRefusedException.Why.HEADER_IN_USE -> appContext.getString(xendroid.compose.R.string.cm_restore_header_in_use)
+                null -> if (e is xendroid.compose.archive.ContentBusyException) appContext.getString(xendroid.compose.R.string.cm_close_game)
+                    else e.message ?: appContext.getString(xendroid.compose.R.string.cm_restore_failed)
+            })
+        }
     }
 
     fun requestPurge(entry: TrashedContent) { _deleteState.value = DeleteState.ConfirmPurge(entry) }

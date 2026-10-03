@@ -9,6 +9,18 @@ import kotlinx.serialization.json.Json
 data class GameCollection(val name: String, val members: List<String> = emptyList())
 
 /** Pure rules for collections; the list itself lives in DataStore as [encode]d JSON. */
+/** Why a collection change is refused: [why] for the screen to say in its language (U02), the
+ *  message in English for logs and tests; [name] is the collection's. */
+class CollectionRefusedException(val why: Why, val name: String = "") : IllegalArgumentException(why.english.format(name)) {
+    enum class Why(val english: String) {
+        NO_NAME("Give the collection a name"),
+        DUPLICATE("There is already a collection called \"%s\""),
+        TOO_MANY("At most ${GameCollections.MAX_COLLECTIONS} collections"),
+        FULL("\"%s\" is full (${GameCollections.MAX_MEMBERS} games)"),
+        INVALID_GAME("Invalid game"),
+    }
+}
+
 object GameCollections {
     const val MAX_COLLECTIONS = 50
     const val MAX_NAME = 40
@@ -38,9 +50,9 @@ object GameCollections {
 
     /** A new collection, optionally starting with [first]. Names are unique ignoring case. */
     fun create(collections: List<GameCollection>, name: String, first: String? = null): List<GameCollection> {
-        val clean = requireNotNull(cleanName(name)) { "Give the collection a name" }
-        require(find(collections, clean) == null) { "There is already a collection called \"$clean\"" }
-        require(collections.size < MAX_COLLECTIONS) { "At most $MAX_COLLECTIONS collections" }
+        val clean = cleanName(name) ?: throw CollectionRefusedException(CollectionRefusedException.Why.NO_NAME)
+        if (find(collections, clean) != null) throw CollectionRefusedException(CollectionRefusedException.Why.DUPLICATE, clean)
+        if (collections.size >= MAX_COLLECTIONS) throw CollectionRefusedException(CollectionRefusedException.Why.TOO_MANY)
         return collections + GameCollection(clean, listOfNotNull(first?.takeIf { it.length <= MAX_KEY }))
     }
 
@@ -49,10 +61,10 @@ object GameCollections {
         collections.filterNot { it.name.equals(name, ignoreCase = true) }
 
     fun rename(collections: List<GameCollection>, from: String, to: String): List<GameCollection> {
-        val clean = requireNotNull(cleanName(to)) { "Give the collection a name" }
+        val clean = cleanName(to) ?: throw CollectionRefusedException(CollectionRefusedException.Why.NO_NAME)
         val other = find(collections, clean)
-        require(other == null || other.name.equals(from, ignoreCase = true)) {
-            "There is already a collection called \"$clean\""
+        if (other != null && !other.name.equals(from, ignoreCase = true)) {
+            throw CollectionRefusedException(CollectionRefusedException.Why.DUPLICATE, clean)
         }
         return collections.map { if (it.name.equals(from, ignoreCase = true)) it.copy(name = clean) else it }
     }
@@ -63,8 +75,8 @@ object GameCollections {
             if (!collection.name.equals(name, ignoreCase = true)) return@map collection
             when {
                 member && key !in collection.members -> {
-                    require(collection.members.size < MAX_MEMBERS) { "\"${collection.name}\" is full ($MAX_MEMBERS games)" }
-                    require(key.length <= MAX_KEY) { "Invalid game" }
+                    if (collection.members.size >= MAX_MEMBERS) throw CollectionRefusedException(CollectionRefusedException.Why.FULL, collection.name)
+                    if (key.length > MAX_KEY) throw CollectionRefusedException(CollectionRefusedException.Why.INVALID_GAME)
                     collection.copy(members = collection.members + key)
                 }
                 !member -> collection.copy(members = collection.members - key)
