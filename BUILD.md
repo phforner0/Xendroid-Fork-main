@@ -144,7 +144,13 @@ native tree — ~8–9 min cold. The APK lands in
 
 ```bash
 ./gradlew --no-daemon --console=plain :app:testDebugUnitTest :app:lintDebug
-./gradlew --no-daemon --console=plain :app:assembleDebug :app:assembleDebugAndroidTest
+./gradlew --no-daemon --console=plain :app:assembleDebug :app:assembleUitestAndroidTest
+# Instrumented tests (device roadmap, app/src/androidTest) on a connected phone. They build
+# and install their own package, xendroid.compose.uitest (build type `uitest`), and never
+# touch the games, saves or settings of the .debug app; Gradle uninstalls it afterwards.
+./gradlew --no-daemon --console=plain :app:connectedUitestAndroidTest
+# One class or one test:
+./gradlew :app:connectedUitestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=xendroid.compose.roadmap.Item24UserDataProviderTest
 # JNI bindings: every Java `native` against the RegisterNatives tables, exported
 # Java_* symbols and the C++ parameter types (no build needed; also in CI Checks).
 python3 tools/check-jni.py

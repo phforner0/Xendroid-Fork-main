@@ -106,8 +106,9 @@ tools/native_syntax_check.sh --changed
 # Vulkan). Sem compilador do host, XENDROID_NDK gera executáveis estáticos:
 XENDROID_NDK=$ANDROID_SDK/ndk/29.0.14206865 bash tools/test-native-logic.sh
 
-# APK dos testes instrumentados e análise de APIs Android:
-./gradlew --no-daemon --console=plain :app:assembleDebugAndroidTest :app:lintDebug
+# APK dos testes instrumentados (pacote próprio xendroid.compose.uitest) e análise de APIs
+# Android; rodar os testes exige o telefone: :app:connectedUitestAndroidTest
+./gradlew --no-daemon --console=plain :app:assembleUitestAndroidTest :app:lintDebug
 
 # Síntese/readback em um host com C++20, loader Vulkan e ICD por software:
 bash tools/test-presentation-host.sh

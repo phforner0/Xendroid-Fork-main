@@ -129,12 +129,25 @@ android {
         }
     }
 
+    // Instrumented tests (app/src/androidTest) build and run against the uitest build type:
+    // its own package, so installing and running them never touches the games, saves or
+    // settings of the .debug app on the phone. `./gradlew :app:connectedUitestAndroidTest`.
+    testBuildType 'uitest'
+
     buildTypes {
         // Own application id so a debug build installs alongside a release one.
         // The java namespace stays xendroid.compose, so JNI FindClass is unaffected.
         debug {
             applicationIdSuffix '.debug'
             versionNameSuffix '-debug'
+        }
+        // A debug build under xendroid.compose.uitest, only for the instrumented tests: data,
+        // providers (authorities follow the application id) and permissions are its own.
+        uitest {
+            initWith debug
+            applicationIdSuffix '.uitest'
+            versionNameSuffix '-uitest'
+            matchingFallbacks = ['debug']
         }
 release {
     // -PxendroidReleaseIdSuffix=.fork.opt installs a test build alongside the
@@ -178,4 +191,16 @@ dependencies {
     testImplementation libs.kotlinx.coroutines.test
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:rules:1.6.1'
+    androidTestImplementation 'androidx.test:core-ktx:1.6.1'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+    // 3.6+: older Espresso (pulled by the Compose test library) breaks on Android 14+.
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+    // Answers the system file pickers (export/import) with a test file, no picker UI.
+    androidTestImplementation 'androidx.test.espresso:espresso-intents:3.6.1'
+    androidTestImplementation platform(libs.compose.bom)
+    androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+    androidTestImplementation libs.kotlinx.coroutines.test
+    // The empty activity Compose tests host their content in; only in the test build type.
+    uitestImplementation 'androidx.compose.ui:ui-test-manifest'
 }
