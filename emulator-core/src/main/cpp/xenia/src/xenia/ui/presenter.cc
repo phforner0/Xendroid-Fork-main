@@ -650,7 +650,7 @@ std::unique_lock<std::mutex> Presenter::ConsumeGuestOutput(
     std::unique_lock<std::mutex> config_lock(guest_output_paint_config_mutex_);
     *paint_config_out = guest_output_paint_config_;
     const int effect = RuntimePresentation().scaling_effect.load(std::memory_order_relaxed);
-    if (effect >= 0 && effect <= 4) paint_config_out->SetEffect(GuestOutputPaintConfig::Effect(effect));
+    if (effect >= 0 && effect <= 5) paint_config_out->SetEffect(GuestOutputPaintConfig::Effect(effect));
   }
 
   // Lock the mutex to make sure the image that will be acquired now is owned
@@ -892,8 +892,15 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
   uint32_t output_width_clamped = std::min(output_width, max_rt_width);
   uint32_t output_height_clamped = std::min(output_height, max_rt_height);
 
-  if (config.GetEffect() == GuestOutputPaintConfig::Effect::kSgsr ||
-      config.GetEffect() == GuestOutputPaintConfig::Effect::kLanczos) {
+  if (config.GetEffect() == GuestOutputPaintConfig::Effect::kCrt) {
+    // The CRT look is drawn at the screen's size whatever the ratio (the
+    // scanlines are in screen pixels), so it is always its own pass.
+    assert_true(flow.effect_count < flow.effects.size());
+    flow.effect_output_sizes[flow.effect_count] =
+        std::make_pair(output_width_clamped, output_height_clamped);
+    flow.effects[flow.effect_count++] = GuestOutputPaintEffect::kCrt;
+  } else if (config.GetEffect() == GuestOutputPaintConfig::Effect::kSgsr ||
+             config.GetEffect() == GuestOutputPaintConfig::Effect::kLanczos) {
     // Snapdragon Game Super Resolution 1 and Lanczos-2 upsample in one pass at
     // any ratio; with nothing to upsample, the bilinear pass below is all that
     // is needed.
@@ -1031,6 +1038,9 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
         break;
       case GuestOutputPaintEffect::kLanczos:
         last_effect = GuestOutputPaintEffect::kLanczosDither;
+        break;
+      case GuestOutputPaintEffect::kCrt:
+        last_effect = GuestOutputPaintEffect::kCrtDither;
         break;
       default:
         break;

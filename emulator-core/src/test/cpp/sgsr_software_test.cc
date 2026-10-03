@@ -4,6 +4,9 @@
 // on software Vulkan with the presenter's push constant layout, a 32x32 image upscaled to
 // 64x64 and 48x48. Each must keep flat areas as they are, never overshoot the texels around
 // an edge, and make an edge steeper than bilinear filtering does.
+// The CRT look (15m) is drawn the same way at screen heights from 64 to 1440: scanlines a
+// whole number of pixels apart that repeat exactly, shallower over bright content, darker
+// corners, and never brighter than the picture.
 
 #include <vulkan/vulkan.h>
 
@@ -15,6 +18,7 @@
 #include <vector>
 
 #include "guest_output_bilinear_ps.h"
+#include "guest_output_crt_ps.h"
 #include "guest_output_lanczos_ps.h"
 #include "guest_output_sgsr_ps.h"
 #include "guest_output_triangle_strip_rect_vs.h"
@@ -54,10 +58,14 @@ struct SgsrConstants {
   float edge_sharpness;
 };
 
-// Lanczos-2 shares SGSR's layout and constants (presenter.h); the sharpness is unused.
-enum class Filter { kBilinear, kSgsr, kLanczos };
+// Lanczos-2 and the CRT look share SGSR's layout and constants (presenter.h); the sharpness
+// is unused.
+enum class Filter { kBilinear, kSgsr, kLanczos, kCrt };
 const char* Name(Filter filter) {
-  return filter == Filter::kSgsr ? "SGSR" : filter == Filter::kLanczos ? "Lanczos" : "bilinear";
+  return filter == Filter::kSgsr      ? "SGSR"
+         : filter == Filter::kLanczos ? "Lanczos"
+         : filter == Filter::kCrt     ? "CRT"
+                                      : "bilinear";
 }
 
 constexpr uint32_t kInput = 32;
@@ -224,6 +232,7 @@ std::vector<uint8_t> Paint(const Vulkan& vk, const Image& source, uint32_t width
   VkShaderModule vs = Module(vk, guest_output_triangle_strip_rect_vs, sizeof(guest_output_triangle_strip_rect_vs));
   VkShaderModule ps = filter == Filter::kSgsr    ? Module(vk, guest_output_sgsr_ps, sizeof(guest_output_sgsr_ps))
                      : filter == Filter::kLanczos ? Module(vk, guest_output_lanczos_ps, sizeof(guest_output_lanczos_ps))
+                     : filter == Filter::kCrt     ? Module(vk, guest_output_crt_ps, sizeof(guest_output_crt_ps))
                                                   : Module(vk, guest_output_bilinear_ps, sizeof(guest_output_bilinear_ps));
   VkPipelineShaderStageCreateInfo stages[2]{};
   stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -469,10 +478,46 @@ int main() {
     expect(steeper_rows > int(size / 2), "most rows come out steeper than with bilinear filtering");
   }
 
+  // The CRT look: about 360 lines, each a whole number of screen pixels tall (2 rows at a
+  // height of 64, 3 at 900 and 1080, 4 at 1440).
+  for (uint32_t height : {64u, 900u, 1080u, 1440u}) {
+    const uint32_t width = 64;
+    const uint32_t period = std::max(2u, uint32_t(std::floor(double(height) / 360.0 + 0.5)));
+    const std::vector<uint8_t> crt = Paint(vk, source, width, height, Filter::kCrt);
+    const std::vector<uint8_t> bilinear = Paint(vk, source, width, height, Filter::kBilinear);
+    auto at = [&](const std::vector<uint8_t>& image, uint32_t x, uint32_t y) { return int(image[y * width + x]); };
+    const uint32_t dark_x = width / 4, bright_x = width * 3 / 4;
+    bool never_brighter = true;
+    for (size_t i = 0; i < crt.size(); ++i) never_brighter = never_brighter && crt[i] <= bilinear[i] + 1;
+    // In the middle third: each line's first row is darker than the next, and every row
+    // matches the one a period below (the pattern cannot drift against the screen's rows).
+    bool gaps = true, repeats = true;
+    for (uint32_t y = height / 3; y + period < height * 2 / 3; ++y) {
+      for (uint32_t x : {dark_x, bright_x}) {
+        if (y % period == 0) gaps = gaps && at(crt, x, y) < at(crt, x, y + 1);
+        repeats = repeats && std::abs(at(crt, x, y) - at(crt, x, y + period)) <= 2;
+      }
+    }
+    // How deep a gap is next to its line's brightest row, over dark and over bright content.
+    const uint32_t gap = height / 2 / period * period, peak = gap + period / 2;
+    const double dark_depth = 1.0 - double(at(crt, dark_x, gap)) / at(crt, dark_x, peak);
+    const double bright_depth = 1.0 - double(at(crt, bright_x, gap)) / at(crt, bright_x, peak);
+    std::printf("  CRT %ux%u: a line every %u rows; rows %u-%u dark side %d %d, bright side %d %d; "
+                "gap depth dark %.2f, bright %.2f; top-right corner %d vs %d mid-height\n",
+                width, height, period, gap, peak, at(crt, dark_x, gap), at(crt, dark_x, peak), at(crt, bright_x, gap),
+                at(crt, bright_x, peak), dark_depth, bright_depth, at(crt, width - 1, 0), at(crt, width - 1, gap));
+    expect(never_brighter, "the CRT look never brightens the picture");
+    expect(gaps, "each scanline starts with its darkest row");
+    expect(repeats, "the scanlines repeat exactly every whole number of rows");
+    expect(dark_depth > 0.2, "the gaps are clearly visible over dark content");
+    expect(bright_depth > 0.05 && bright_depth < dark_depth, "the gaps are shallower over bright content");
+    expect(at(crt, width - 1, 0) + 8 < at(crt, width - 1, gap), "the corners are darker than the edges' middle");
+  }
+
   if (failures) {
     std::fprintf(stderr, "sgsr_software_test: %d failure(s)\n", failures);
     return 1;
   }
-  std::printf("SGSR and Lanczos: passed\n");
+  std::printf("SGSR, Lanczos and CRT: passed\n");
   return 0;
 }

@@ -134,7 +134,8 @@ object SettingsSchema {
             l("Display", "postprocess_scaling_and_sharpening", "Scaling & sharpening", "",
                 "bilinear" to "bilinear", "cas" to "cas", "fsr" to "fsr",
                 "sgsr" to "sgsr (experimental)",
-                "lanczos" to "lanczos (sharp, no halos)"),  // "" => bilinear (no selection)
+                "lanczos" to "lanczos (sharp, no halos)",
+                "crt" to "crt (scanlines)"),  // "" => bilinear (no selection)
             l("Display", "postprocess_ffx_cas_additional_sharpness", "CAS: extra sharpness", "0.0",
                 "0.0" to "0.0", "0.25" to "0.25", "0.5" to "0.5", "0.75" to "0.75", "1.0" to "1.0"),
             l("Display", "postprocess_ffx_fsr_sharpness_reduction", "FSR: sharpness reduction", "0.2",

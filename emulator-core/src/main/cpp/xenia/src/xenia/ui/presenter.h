@@ -207,6 +207,9 @@ class Presenter {
       // XenDroid (15k): Lanczos-2 - one upsampling pass clamped to the nearest
       // texels (shaders/guest_output_lanczos.xesli), bilinear otherwise.
       kLanczos,
+      // XenDroid (15m): a CRT look - one pass at any ratio, bilinear picture
+      // with scanlines and darker corners (shaders/guest_output_crt.xesli).
+      kCrt,
     };
 
     // This value is used as a lerp factor.
@@ -414,6 +417,8 @@ class Presenter {
     kSgsrDither,
     kLanczos,
     kLanczosDither,
+    kCrt,
+    kCrtDither,
 
     kCount,
   };
@@ -430,6 +435,7 @@ class Presenter {
       case GuestOutputPaintEffect::kFsrRcasDither:
       case GuestOutputPaintEffect::kSgsrDither:
       case GuestOutputPaintEffect::kLanczosDither:
+      case GuestOutputPaintEffect::kCrtDither:
         return false;
       default:
         // The result of any other effect can be stretched with bilinear

@@ -1539,7 +1539,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             InGameAction.TV_MARGIN to stringResource(R.string.menu_tv_margin,
                                                 java.text.NumberFormat.getNumberInstance().format(tvMargin.floatValue.toDouble())),
                                             InGameAction.SCALING_EFFECT to stringResource(R.string.menu_scaling_value,
-                                                listOf(stringResource(R.string.menu_scaling_inherited), "Bilinear", "CAS", "FSR", "SGSR", "Lanczos")[scalingEffect.intValue + 1]),
+                                                listOf(stringResource(R.string.menu_scaling_inherited), "Bilinear", "CAS", "FSR", "SGSR", "Lanczos", "CRT")[scalingEffect.intValue + 1]),
                                             InGameAction.REFRESH_RATE to stringResource(R.string.menu_refresh_rate_value,
                                                 requestedRefresh.value?.toString() ?: stringResource(R.string.menu_auto),
                                                 (if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else windowManager.defaultDisplay.refreshRate).toString()),
@@ -2872,7 +2872,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             return
         }
         if (action == InGameAction.SCALING_EFFECT) {
-            scalingEffect.intValue = if (scalingEffect.intValue >= 4) -1 else scalingEffect.intValue + 1
+            scalingEffect.intValue = if (scalingEffect.intValue >= 5) -1 else scalingEffect.intValue + 1
             session.setScalingEffect(scalingEffect.intValue)
             return
         }

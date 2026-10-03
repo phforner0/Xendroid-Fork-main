@@ -138,7 +138,7 @@ class SettingsSchemaTest {
      *  reduces banding reachable without Developer mode. */
     @Test fun scaling_offers_the_core_effects_and_players_can_reduce_banding() {
         val s = SettingsSchema.byKey["Display|postprocess_scaling_and_sharpening"] as Setting.ListChoice
-        assertEquals(listOf("bilinear", "cas", "fsr", "sgsr", "lanczos"), s.options.map { it.value })
+        assertEquals(listOf("bilinear", "cas", "fsr", "sgsr", "lanczos", "crt"), s.options.map { it.value })
         assertTrue("Display|postprocess_dither" in SettingsSchema.playerKeys)
         assertEquals(false, (SettingsSchema.byKey["Display|postprocess_dither"] as Setting.Bool).default)
     }

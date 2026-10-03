@@ -107,7 +107,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Debanding | Bannerlator `e836265d` | **Tem** (revisto no lote 14j): o "debanding" do Bannerlator é um dither terminal antes dos 8 bits, o mesmo que o `postprocess_dither` do Xenia (ruído azul), que não fazia nada até o lote 14b e agora também está no modo Jogador ("Reduzir faixas de cor") | — |
 | SGSR / SGSR HQ | Bannerlator `7e71cb8f` | **Impl. + Local no lote 14j** (SGSR 1, BSD-3-Clause com aviso no APK; testado em Vulkan por software; custo no aparelho a medir); SGSR HQ (direção de borda) não | Média / M |
 | NIS, Lanczos, Spline, cúbico, MMPX, área | Bannerlator `6ff165f7`; Eden `f33a771d`, `b66adfe0`, `dbeae7ad`, `2946cdbd` | **Impl. + Local no lote 15k**: Lanczos-2 (sem halos; testado em Vulkan por software; custo no aparelho pendente, roteiro 62); os demais não | Média / M (escolher um ou dois) |
-| Efeitos (CRT, cor, fake-HDR), presets de um toque, shaders de pós-processamento | Bannerlator `a05106c5`; Eden `ed566919` | **Parcial**: filtro de cor (Desligado/Cinza/Contraste/Quente) | Média / M |
+| Efeitos (CRT, cor, fake-HDR), presets de um toque, shaders de pós-processamento | Bannerlator `a05106c5`; Eden `ed566919` | **Parcial**: filtro de cor (Desligado/Cinza/Contraste/Quente) e, no lote 15m, **visual de CRT** como efeito de escala (Impl. + Local: linhas de varredura com período inteiro de pixels da tela, cantos mais escuros; aparelho pendente, roteiro 64); fake-HDR, presets de um toque e shaders do usuário não | Média / M |
 | ReShade (.fx) com catálogo | Bannerlator `edf46af9` | **Não tem** | Baixa / G |
 
 ### 3.5 Tela, Hz e TV

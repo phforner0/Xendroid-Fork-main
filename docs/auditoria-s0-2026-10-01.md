@@ -743,3 +743,8 @@ status, "Build da nuvem (fim do lote 14)").
    toque e HUD como antes. Idioma do app: trocar para Português (Brasil) num aparelho em inglês e voltar
    para "Idioma do aparelho", no Android 13+ (confere também em Ajustes → Apps → XenDroid → Idioma) e num
    Android 12 ou anterior (a tela é recriada; o menu em jogo segue o idioma ao abrir um jogo).
+64. Lote 15m — visual de CRT: num jogo, Ajustes → Escala → "crt (scanlines)" (ou no menu em jogo,
+   Gráficos → efeito de escala até "CRT"): linhas de varredura regulares, sem faixas nem ondulação, em
+   tela 1080p, 1440p e numa altura "quebrada" (ex.: 1220 px); o branco continua claro e as sombras
+   ficam com linhas mais marcadas; cantos levemente mais escuros. Conferir em retrato e paisagem e
+   na TV. Medir com "Compare runs" (C07) o custo: mesmo trecho, A = bilinear, B = CRT.

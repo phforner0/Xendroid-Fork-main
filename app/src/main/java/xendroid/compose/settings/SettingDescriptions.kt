@@ -94,7 +94,7 @@ object SettingDescriptions {
         "occlusion_query" to "How visibility queries (lens flares, culling, auto-exposure) are answered: faked, async, or exact",
         "postprocess_antialiasing" to "Apply FXAA post-process anti-aliasing to smooth edges; recommended when CAS or FSR is active",
         "postprocess_dither" to "Dither the final image down to 8-bit color for smoother gradients; disable on true 10-bit displays",
-        "postprocess_scaling_and_sharpening" to "Upscaling filter for the final image, from plain bilinear to AMD CAS sharpening, FSR upscaling, Qualcomm SGSR (experimental) or Lanczos (sharp edges without halos); the cost of SGSR and Lanczos on a phone is not measured yet",
+        "postprocess_scaling_and_sharpening" to "Upscaling filter for the final image, from plain bilinear to AMD CAS sharpening, FSR upscaling, Qualcomm SGSR (experimental), Lanczos (sharp edges without halos) or a CRT look (scanlines and darker corners); the cost of SGSR, Lanczos and CRT on a phone is not measured yet",
         "present_letterbox" to "Keep the game's aspect ratio by adding black bars instead of stretching to fill the screen",
         "present_render_pass_clear" to "Clear the whole screen via the render pass instead of separate clears of the letterbox bars",
         "protect_on_release" to "Locks freed memory so any later access faults, catching use-after-free bugs",

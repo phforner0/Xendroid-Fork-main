@@ -312,6 +312,9 @@ class VulkanPresenter final : public Presenter {
       // unused), so it shares SGSR's layout.
       case GuestOutputPaintEffect::kLanczos:
       case GuestOutputPaintEffect::kLanczosDither:
+      // So does the CRT look (the input size and the output size).
+      case GuestOutputPaintEffect::kCrt:
+      case GuestOutputPaintEffect::kCrtDither:
         return kGuestOutputPaintPipelineLayoutIndexSgsr;
       default:
         assert_unhandled_case(effect);

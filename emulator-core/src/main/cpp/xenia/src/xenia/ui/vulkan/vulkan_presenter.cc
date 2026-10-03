@@ -86,6 +86,8 @@ namespace shaders {
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_sgsr_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_lanczos_dither_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_lanczos_ps.h"
+#include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_crt_dither_ps.h"
+#include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_crt_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_fsr_rcas_dither_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_fsr_rcas_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_triangle_strip_rect_vs.h"
@@ -2569,6 +2571,16 @@ bool VulkanPresenter::InitializeSurfaceIndependent() {
             sizeof(shaders::guest_output_lanczos_dither_ps);
         shader_module_create_info.pCode =
             shaders::guest_output_lanczos_dither_ps;
+        break;
+      case GuestOutputPaintEffect::kCrt:
+        shader_module_create_info.codeSize =
+            sizeof(shaders::guest_output_crt_ps);
+        shader_module_create_info.pCode = shaders::guest_output_crt_ps;
+        break;
+      case GuestOutputPaintEffect::kCrtDither:
+        shader_module_create_info.codeSize =
+            sizeof(shaders::guest_output_crt_dither_ps);
+        shader_module_create_info.pCode = shaders::guest_output_crt_dither_ps;
         break;
       default:
         // Not supported by this implementation.
