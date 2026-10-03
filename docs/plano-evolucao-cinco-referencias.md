@@ -6,6 +6,10 @@ comparados ao código e ao [status atual do XenDroid](experiencia-em-jogo-status
 **Atualização 2026-10-01 (auditoria S0):** estado real por item na seção 6.1, base
 atualizada na seção 4, próxima fatia na seção 14; achados com evidência em
 [auditoria-s0-2026-10-01.md](auditoria-s0-2026-10-01.md).
+**Atualização 2026-10-03 (varredura completa):** o histórico inteiro de commits e changelogs do
+Bannerlator, DroidDeck, aX360e ("X360E"), X360 Mobile e Eden (nightly) comparado feature a
+feature com o XenDroid em [varredura-referencias-2026-10-03.md](varredura-referencias-2026-10-03.md),
+com as próximas fatias sugeridas na seção 5 de lá.
 
 Este documento é o backlog consolidado para as próximas implementações e iterações.
 O [plano inicial](plano-experiencia-em-jogo.md) preserva decisões anteriores;
@@ -930,7 +934,10 @@ localmente, não no aparelho. Ordem seguinte:
    `./gradlew :app:connectedUitestAndroidTest`, com `gameDir` para B e C), escritos e
    compilados na nuvem e ainda não rodados: rodar no telefone é o que transforma esses itens
    em "Validado no aparelho". O grupo D (frontends reais, dois telefones, controle Bluetooth,
-   partes visuais…) continua manual.
+   partes visuais…) continua manual. Sem aparelho, os candidatos vêm da
+   [varredura de 2026-10-03](varredura-referencias-2026-10-03.md), seção 5 (APC sem slot
+   global no core, cvars por jogo como filtragem anisotrópica e área segura, ajustes alterados
+   no log, controles de toque que somem ao usar um controle físico, backtrace do tombstone).
 2. **A13**: integrar `origin/main` (desempenho) antes de commitar. O ensaio com
    `git merge-tree` mesclou sem conflitos (o nome do cache por `ir3_debug` do upstream
    passa a ser o arquivo principal do `pipeline_cache_file::Store`).
