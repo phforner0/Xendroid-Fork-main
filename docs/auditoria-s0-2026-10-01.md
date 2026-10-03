@@ -721,3 +721,7 @@ status, "Build da nuvem (fim do lote 14)").
    centrada com bordas pretas. Voltar para o aparelho: tela cheia como antes. Reconectar a TV: a margem
    escolhida continua. Com FG ligado, girar o aparelho ou ligar a tela dividida (15c) e conferir que a imagem
    não estica e o FG segue (linhas "surface" e "presentation" no log do run).
+60. Lote 15i — Turnip e log (modo Desenvolvedor, driver Turnip): Ajustes → Vulkan → "Turnip debug mode":
+   marcar nolrz além de sysmem, salvar e abrir um jogo: o log mostra "Set TU_DEBUG=sysmem,nolrz…". Marcar gmem:
+   sysmem desmarca sozinho. Com o driver da Qualcomm, as flags não mudam nada (esperado). Logging → "Log
+   filter" = "only the GPU": no próximo jogo, o log tem só linhas da GPU e as gerais.

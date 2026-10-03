@@ -15,10 +15,10 @@ class SettingsSchemaTest {
 
     // 102 Bool + 14 IntRange + 26 ListChoice + 2 Action = 144. Display|host_present_from_non_ui_thread
     // is intentionally absent (forced true natively; not a valid user choice).
-    @Test fun total_entry_count_is_144() {
-        assertEquals(144, all.size)
+    @Test fun total_entry_count_is_145() {
+        assertEquals(145, all.size)
         assertEquals(
-            144,
+            145,
             all.count { it is Setting.Bool } + all.count { it is Setting.IntRange } +
                 all.count { it is Setting.ListChoice } + all.count { it is Setting.Action },
         )
@@ -27,7 +27,7 @@ class SettingsSchemaTest {
     @Test fun counts_by_type_match_verified_inventory() {
         assertEquals(102, all.count { it is Setting.Bool })
         assertEquals(14, all.count { it is Setting.IntRange })
-        assertEquals(26, all.count { it is Setting.ListChoice })
+        assertEquals(27, all.count { it is Setting.ListChoice })   // + Logging|log_mask (15i)
         assertEquals(2, all.count { it is Setting.Action })
     }
 

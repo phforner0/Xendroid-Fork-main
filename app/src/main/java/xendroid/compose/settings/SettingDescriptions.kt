@@ -79,6 +79,7 @@ object SettingDescriptions {
         "log_guest_driven_gpu_register_written_values" to "Log every GPU register write made by the guest (debug builds only)",
         "log_high_frequency_kernel_calls" to "Logs even very frequent kernel calls; extremely verbose and slows things down",
         "log_level" to "Maximum log verbosity: 0 errors, 1 warnings, 2 info, 3 debug",
+        "log_mask" to "Which subsystems write to the log: everything, only one (GPU, audio, kernel or CPU), or all but one. Lines with no subsystem always stay; takes effect at the next start",
         "log_ringbuffer_kickoff_initiator_bts" to "Log a pseudo-stacktrace of the guest thread that kicked off the ringbuffer (debug builds only)",
         "log_sessions_keep" to "How many past sessions' log zips to keep in the logs folder before old ones are rotated out",
         "log_string_format_kernel_calls" to "Logs guest calls to kernel string formatters like sprintf",

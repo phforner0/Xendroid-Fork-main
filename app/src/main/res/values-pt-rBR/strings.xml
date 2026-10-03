@@ -1274,4 +1274,7 @@
     <string name="menu_hud_look_plain">texto simples</string>
     <string name="menu_tv_margin_title">Margem da TV</string>
     <string name="menu_tv_margin">Margem da TV: %1$s%% de cada lado (só numa TV que corta as bordas)</string>
+    <string name="tu_none">nenhuma</string>
+    <string name="tu_intro">Flags passadas ao driver Turnip (TU_DEBUG) quando o próximo jogo iniciar. Drivers proprietários as ignoram.</string>
+    <string name="tu_kept">Também mantidas como estão: %1$s</string>
 </resources>

@@ -243,6 +243,11 @@ object SettingsSchema {
             b("Logging", "log_string_format_kernel_calls", "Log string-format kernel calls", false),
             l("Logging", "log_level", "Log level", "2",
                 "0" to "error", "1" to "warning", "2" to "info", "3" to "debug"),
+            // 15i: Xenia's log_mask turns categories off (kernel 1, audio 2, CPU 4, GPU 8); lines
+            // with no category always stay. "Only X" keeps one subsystem's lines.
+            l("Logging", "log_mask", "Log filter", "0",
+                "0" to "everything", "7" to "only the GPU", "13" to "only audio", "14" to "only the kernel",
+                "11" to "only the CPU", "1" to "all but the kernel", "8" to "all but the GPU"),
             b("Logging", "flush_log", "Flush log", true),
             i("Logging", "log_sessions_keep", "Shelved log sessions to keep", 4, 1, 16),
             Action("Logging", "dump_session_logs", "Export session logs to Downloads", "", desc("dump_session_logs")),

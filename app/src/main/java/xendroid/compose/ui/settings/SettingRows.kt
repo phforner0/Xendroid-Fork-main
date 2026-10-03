@@ -47,7 +47,7 @@ fun SettingRow(host: SettingsHost, s: Setting, modified: Boolean, raw: String? =
         when (s) {
     is Setting.Bool       -> BoolRow(host, s, modified)
     is Setting.IntRange   -> IntRow(host, s, modified)
-    is Setting.ListChoice -> ListRow(host, s, modified)
+    is Setting.ListChoice -> if (s.key == "Vulkan|turnip_debug") TurnipFlagsRow(host, s, modified) else ListRow(host, s, modified)
     is Setting.Action     ->
         if (s.name == "dump_session_logs") ExportLogsRow(s)
         else DriverActionRow(host, s, modified, raw)
@@ -87,6 +87,64 @@ private fun RowValue(value: String) {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(start = 12.dp)
+    )
+}
+
+/** 15i: TU_DEBUG flag by flag, each with what it does ([TurnipFlags]); saved as the list it always was. */
+@Composable
+private fun TurnipFlagsRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean) {
+    var open by remember { mutableStateOf(false) }
+    val raw = host.currentListValue(s)
+    Row(
+        Modifier.fillMaxWidth().clickable { open = true }.padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f)) { RowTitle(settingTitle(s), modified, desc = settingDesc(s)) }
+        RowValue(raw.ifEmpty { stringResource(R.string.tu_none) })
+    }
+    if (!open) return
+    var draft by remember(raw) { mutableStateOf(raw) }
+    val chosen = xendroid.compose.settings.TurnipFlags.parse(draft)
+    AlertDialog(
+        onDismissRequest = { open = false },
+        title = { Text(settingTitle(s)) },
+        text = {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                item {
+                    Text(stringResource(R.string.tu_intro), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                items(xendroid.compose.settings.TurnipFlags.KNOWN, key = { it.name }) { flag ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .selectable(selected = flag.name in chosen,
+                                onClick = { draft = xendroid.compose.settings.TurnipFlags.toggle(draft, flag.name) })
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Checkbox(checked = flag.name in chosen, onCheckedChange = null)
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(flag.name, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                            Text(flag.help, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                val kept = xendroid.compose.settings.TurnipFlags.unknown(draft)
+                if (kept.isNotEmpty()) {
+                    item { Text(stringResource(R.string.tu_kept, kept.joinToString(", ")), style = MaterialTheme.typography.bodySmall) }
+                }
+                item {
+                    Text("TU_DEBUG=" + draft.ifEmpty { "—" }, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { host.onListChanged(s, draft); open = false }) { Text(stringResource(R.string.common_save)) }
+        },
+        dismissButton = { TextButton(onClick = { open = false }) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 

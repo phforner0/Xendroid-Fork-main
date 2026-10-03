@@ -1235,4 +1235,7 @@
     <string name="menu_hud_look_plain">plain text</string>
     <string name="menu_tv_margin_title">TV margin</string>
     <string name="menu_tv_margin">TV margin: %1$s%% per side (only on a TV that cuts the edges)</string>
+    <string name="tu_none">none</string>
+    <string name="tu_intro">Flags passed to the Turnip driver (TU_DEBUG) when the next game starts. Proprietary drivers ignore them.</string>
+    <string name="tu_kept">Also kept, as they are: %1$s</string>
 </resources>
