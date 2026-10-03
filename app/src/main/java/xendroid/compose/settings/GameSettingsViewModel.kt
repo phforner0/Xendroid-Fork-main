@@ -12,7 +12,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import xendroid.compose.community.CommunityConfigs
+import xendroid.compose.community.CommunityException
+import xendroid.compose.community.CommunityService
+import xendroid.compose.community.OwnUpload
 import xendroid.compose.compatibility.AppliedProfile
+import xendroid.compose.compatibility.CompatStatus
 import xendroid.compose.compatibility.DeviceFacts
 import xendroid.compose.compatibility.LoadedProfile
 import xendroid.compose.compatibility.SettingsProfileStore
@@ -28,6 +33,8 @@ class GameSettingsViewModel(
     private val repo: GameSettingsRepository,
     private val profiles: SettingsProfileStore? = null,
     private val facts: () -> DeviceFacts? = { null },
+    /** 15b: null unless the build names a community server. */
+    private val community: CommunityService? = null,
 ) : ViewModel(), SettingsHost {
 
     val categories: List<SettingsCategory> = SettingsSchema.categories
@@ -47,8 +54,6 @@ class GameSettingsViewModel(
     // need a finite, independent final flush rather than launching on a cancelled scope.
     private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    init { load() }
-
     /** Off-main load (ensureLoaded() can sleep + System.loadLibrary on delay-load devices). */
     private fun load() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -59,6 +64,7 @@ class GameSettingsViewModel(
                 _ready.value = true
                 _error.value = null
                 loadProfiles()
+                loadCommunity()
             }.onFailure { _ready.value = false; fail(it) }
         }
     }
@@ -147,6 +153,13 @@ class GameSettingsViewModel(
             override val english: String get() =
                 "This game's settings changed since the preview, so nothing was written. Review it again."
         }
+        /** 15b: this game's settings went to the community server. */
+        data class Shared(val name: String) : ProfileMessage {
+            override val english: String get() = "Shared “$name”. Only this phone can delete it: it keeps the delete token."
+        }
+        data object Deleted : ProfileMessage {
+            override val english: String get() = "Deleted from the community server."
+        }
     }
 
     private val _profileMessage = MutableStateFlow<ProfileMessage?>(null)
@@ -228,6 +241,122 @@ class GameSettingsViewModel(
             }
         }
     }
+
+    // ---- 15b: community configs (only when the build names a server) ----
+
+    /** The game's community list as last searched; [busy]: a call is under way; [error]: the
+     *  last call's failure, until the next call. */
+    data class CommunityState(
+        val server: String,
+        val busy: Boolean = false,
+        val fetchedAt: Long? = null,
+        val entries: List<CommunityConfigs.Entry> = emptyList(),
+        val hidden: Int = 0,
+        val skipped: List<String> = emptyList(),
+        val myVotes: Map<String, Int> = emptyMap(),
+        val mine: Map<String, OwnUpload> = emptyMap(),
+        val error: CommunityException? = null,
+    )
+
+    private val _community = MutableStateFlow(community?.let { CommunityState(it.server) })
+    val communityState: StateFlow<CommunityState?> = _community.asStateFlow()
+
+    /** The share dialog's start: this game's own settings and the phone, read when it opens. */
+    data class ShareStart(val overrides: Map<String, String>, val facts: DeviceFacts?)
+
+    private val _share = MutableStateFlow<ShareStart?>(null)
+    val shareStart: StateFlow<ShareStart?> = _share.asStateFlow()
+
+    /** The list kept from the last search; opening the screen asks the server nothing. */
+    private fun loadCommunity() {
+        val service = community ?: return
+        runCatching { show(service.cached(repo.titleId, facts())) }
+            .onFailure { Log.w("GameSettingsViewModel", "Reading the community list failed", it) }
+    }
+
+    private fun show(view: CommunityService.View) {
+        _community.value = _community.value?.copy(fetchedAt = view.fetchedAt, entries = view.listing.entries,
+            hidden = view.listing.hidden, skipped = view.listing.skipped, myVotes = view.myVotes, mine = view.mine)
+    }
+
+    /** One call at a time, off the main thread; its failure is shown on the card. */
+    private fun communityCall(block: (CommunityService) -> Unit) {
+        val service = community ?: return
+        val state = _community.value ?: return
+        if (state.busy) return
+        _community.value = state.copy(busy = true, error = null)
+        saveScope.launch {
+            try {
+                block(service)
+            } catch (e: CommunityException) {
+                _community.value = _community.value?.copy(error = e)
+            } catch (e: Exception) {
+                Log.w("GameSettingsViewModel", "Community call failed", e)
+                _community.value = _community.value?.copy(error = CommunityException(CommunityException.Kind.NETWORK, cause = e))
+            } finally {
+                _community.value = _community.value?.copy(busy = false)
+            }
+        }
+    }
+
+    /** Asks the server for this game's list (sends its Title ID). */
+    fun searchCommunity() = communityCall { show(it.refresh(repo.titleId, facts())) }
+
+    /** [vote] 1 helped, -1 did not; the same vote again takes it back. */
+    fun voteCommunity(configId: String, vote: Int) = communityCall { service ->
+        val sent = if (_community.value?.myVotes?.get(configId) == vote) 0 else vote
+        val votes = service.vote(configId, sent)
+        _community.value = _community.value?.let { state ->
+            state.copy(
+                entries = state.entries.map { e ->
+                    if (e.config.id != configId) e else e.copy(config = e.config.copy(votesUp = votes.up, votesDown = votes.down))
+                },
+                myVotes = if (sent == 0) state.myVotes - configId else state.myVotes + (configId to sent),
+            )
+        }
+    }
+
+    /** Deletes a config this phone shared, then lists again (the kept list if that fails). */
+    fun deleteShared(configId: String) = communityCall { service ->
+        service.delete(configId)
+        _profileMessage.value = ProfileMessage.Deleted
+        relist(service)
+    }
+
+    private fun relist(service: CommunityService) {
+        runCatching { show(service.refresh(repo.titleId, facts())) }
+            .onFailure { show(service.cached(repo.titleId, facts())) }
+    }
+
+    fun prepareShare() {
+        if (community == null) return
+        saveScope.launch {
+            runCatching { _share.value = ShareStart(repo.overrideValues(), facts()) }.onFailure { fail(it) }
+        }
+    }
+
+    fun dismissShare() { _share.value = null }
+
+    /** What sharing would send with these answers; pure, so the dialog checks it as it is typed. */
+    fun draftShare(name: String, note: String, result: CompatStatus?): CommunityConfigs.Draft? {
+        val start = _share.value ?: return null
+        return community?.draft(repo.titleId, name, note, result, start.overrides, start.facts)
+    }
+
+    /** Sends exactly what the dialog listed. */
+    fun share(name: String, note: String, result: CompatStatus?) {
+        val upload = draftShare(name, note, result)?.upload ?: return
+        _share.value = null
+        communityCall { service ->
+            service.share(upload)
+            _profileMessage.value = ProfileMessage.Shared(upload.name)
+            relist(service)
+        }
+    }
+
+    // Last in the class: the load runs on another thread and reads the state flows above, which
+    // must be initialized before it starts.
+    init { load() }
 
     /** Re-read after a pause; the override set is already in memory so this is cheap. */
     fun onResume() = load()

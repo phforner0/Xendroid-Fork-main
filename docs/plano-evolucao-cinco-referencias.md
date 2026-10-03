@@ -494,6 +494,17 @@ grade, arte do jogo em foco ao fundo, capa e tempo de jogo no alto, barra de cap
 esquerda e a coluna de ações (Jogar, Detalhes, Favoritar) embaixo dela; controle e toque pelo
 modelo puro `CarouselNav`. Mesmos filtros, busca e ordem da grade.
 
+**Lote 15b (Impl. + Local; desligado por padrão; aparelho pendente, roteiro 53):** ajustes
+compartilhados pela comunidade (Bannerlator `09a319ff`/`8b0eea95`), sem mudar a regra do C05 de que
+nada chega sozinho: só num build que nomeia um servidor HTTPS e só quando o jogador busca, vota,
+compartilha ou apaga. Cada ajuste vira um perfil C05 de origem `COMMUNITY` (não revisado) e passa
+pela mesma lista permitida, prévia, preservação do ajuste do jogador e "Restaurar anterior";
+ranking pelo aparelho mais parecido, depois votos e data. Envio com consentimento e lista exata
+do que sai; voto sem identificador ligável entre ajustes; token de exclusão só no aparelho.
+Servidor de referência (Python + SQLite) com testes próprios, contrato verificado contra o app e
+um teste ponta a ponta cliente↔servidor. Protocolo e privacidade: `docs/community-configs.md`.
+Não há servidor público: oferecer o recurso exige alguém hospedar e moderar um.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

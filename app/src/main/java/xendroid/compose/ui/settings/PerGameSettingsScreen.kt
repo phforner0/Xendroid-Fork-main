@@ -46,6 +46,8 @@ fun PerGameSettingsScreen(
     val profiles by vm.profilesState.collectAsStateWithLifecycle()
     val preview by vm.profilePreview.collectAsStateWithLifecycle()
     val profileMessage by vm.profileMessage.collectAsStateWithLifecycle()
+    val community by vm.communityState.collectAsStateWithLifecycle()
+    val shareStart by vm.shareStart.collectAsStateWithLifecycle()
 
     // Durable flush on pause; re-open on resume. Dispose flush = backstop. (Mirrors SettingsScreen.)
     val owner = LocalLifecycleOwner.current
@@ -75,6 +77,10 @@ fun PerGameSettingsScreen(
         )
     }
     preview?.let { ProfilePreviewDialog(it, onConfirm = vm::confirmPreview, onDismiss = vm::dismissPreview) }
+    val communityNow = community
+    if (shareStart != null && communityNow != null) {
+        CommunityShareDialog(communityNow.server, draftOf = vm::draftShare, onShare = vm::share, onDismiss = vm::dismissShare)
+    }
     profileMessage?.let { message ->
         AlertDialog(
             onDismissRequest = vm::clearProfileMessage,
@@ -90,8 +96,21 @@ fun PerGameSettingsScreen(
             overriddenCountOf = { cat -> cat.settings.count { overrides.containsKey(it.key) } },
             onOpen = { selected = it },
             onBack = { vm.flush(); onBack() },
-            header = if (profiles.isEmpty) null else {
-                { RecommendedProfilesCard(profiles, vm::previewProfile, vm::previewRestore, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            header = if (profiles.isEmpty && communityNow == null) null else {
+                {
+                    Column {
+                        if (!profiles.isEmpty) {
+                            RecommendedProfilesCard(profiles, vm::previewProfile, vm::previewRestore,
+                                Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                        }
+                        // 15b: shown in builds that name a community server; it asks nothing until searched.
+                        communityNow?.let { state ->
+                            CommunityConfigsCard(state, canApply = profiles.applied == null, onSearch = vm::searchCommunity,
+                                onPreview = vm::previewProfile, onVote = vm::voteCommunity, onDelete = vm::deleteShared,
+                                onShare = vm::prepareShare, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                        }
+                    }
+                }
             },
         )
     } else {
@@ -203,4 +222,6 @@ private fun profileMessageText(message: GameSettingsViewModel.ProfileMessage): S
     is GameSettingsViewModel.ProfileMessage.Restored -> stringResource(
         if (message.changedSince) R.string.prof_msg_restored_kept else R.string.prof_msg_restored, message.name)
     GameSettingsViewModel.ProfileMessage.Stale -> stringResource(R.string.prof_msg_stale)
+    is GameSettingsViewModel.ProfileMessage.Shared -> stringResource(R.string.comm_msg_shared, message.name)
+    GameSettingsViewModel.ProfileMessage.Deleted -> stringResource(R.string.comm_msg_deleted)
 }

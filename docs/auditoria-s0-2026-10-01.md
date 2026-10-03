@@ -669,3 +669,14 @@ status, "Build da nuvem (fim do lote 14)").
    Com o toque: tocar numa capa foca, tocar de novo abre o jogo. Filtros, busca e ordem iguais aos da
    grade. Fechar e abrir o app: continua no carrossel, no último jogo focado. Conferir em retrato e
    paisagem e com uma biblioteca grande (100+ jogos) se a rolagem fica fluida.
+53. Lote 15b — ajustes da comunidade (só com um servidor): gerar o APK com
+   `-PxendroidCommunityUrl=https://<servidor>` apontando para o servidor de referência
+   (`tools/community-server/server.py` atrás de um proxy TLS). Nas configurações de um jogo, o cartão
+   "Ajustes da comunidade" aparece e não contata nada até tocar "Buscar" (conferir no log do servidor).
+   Definir 2–3 ajustes do jogo (ex.: limite de FPS 30, widescreen) e "Compartilhar": o diálogo lista
+   exatamente esses ajustes, o aparelho e o build, e diz o que não vai (ex.: caminho do driver); enviar.
+   Em outro aparelho (ou o mesmo), "Buscar": o ajuste aparece como "Mesmo modelo"/"Mesmo chip"/"Mesma
+   GPU" conforme o caso; "Pré-visualizar" mostra a prévia do C05; aplicar, abrir o jogo e confirmar o
+   efeito; "Restaurar anterior" desfaz. Votar "Ajudou" e "Não ajudou" (tocar de novo retira); apagar o
+   próprio ajuste e conferir que some da lista. Sem rede: "Buscar" mostra o erro de conexão e a lista
+   anterior continua. Com um build sem a URL, o cartão não aparece.

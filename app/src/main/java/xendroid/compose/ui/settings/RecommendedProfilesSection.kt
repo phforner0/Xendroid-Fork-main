@@ -72,6 +72,7 @@ private fun ProfileBlock(loaded: LoadedProfile, facts: DeviceFacts?, enabled: Bo
         Text(when (loaded.source) {
             ProfileSource.BUNDLED -> stringResource(R.string.prof_from_app)
             ProfileSource.LOCAL -> stringResource(R.string.prof_from_file, loaded.origin)
+            ProfileSource.COMMUNITY -> stringResource(R.string.prof_from_community, loaded.origin)
         }, style = MaterialTheme.typography.bodySmall, color = muted)
         Text(profile.reason, style = MaterialTheme.typography.bodySmall)
         profile.evidence.firstOrNull()?.let { test ->
@@ -133,7 +134,7 @@ fun ProfilePreviewDialog(preview: ProfilePreview, onConfirm: () -> Unit, onDismi
 
 /** U02: a setting's value as the preview shows it, in the shown language. */
 @Composable
-private fun valueText(s: Setting, raw: String): String = when (s) {
+internal fun valueText(s: Setting, raw: String): String = when (s) {
     is Setting.Bool -> stringResource(if (ConfigValueShape.parseBool(raw, s.default)) R.string.prof_on else R.string.prof_off)
     is Setting.ListChoice -> s.options.firstOrNull { it.value == raw }?.let { optionLabel(s, it.value, it.label) }
         ?: raw.ifEmpty { stringResource(R.string.prof_default) }

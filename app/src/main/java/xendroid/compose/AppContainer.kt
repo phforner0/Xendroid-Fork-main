@@ -89,6 +89,21 @@ class AppContainer(context: Context) {
             model = android.os.Build.MODEL.orEmpty(),
             androidSdk = android.os.Build.VERSION.SDK_INT,
             appVersionCode = BuildConfig.VERSION_CODE,
+            soc = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                android.os.Build.SOC_MODEL.takeIf { it.isNotBlank() && it != android.os.Build.UNKNOWN }
+            } else null,
+        )
+    }
+
+    // 15b: community configs, only in a build that names a server (-PxendroidCommunityUrl, https).
+    private val communityService: xendroid.compose.community.CommunityService? by lazy {
+        val url = xendroid.compose.community.CommunityConfigs.baseUrl(BuildConfig.COMMUNITY_URL) ?: return@lazy null
+        xendroid.compose.community.CommunityService(
+            client = xendroid.compose.community.CommunityClient(url),
+            store = xendroid.compose.community.CommunityStore(java.io.File(Application.get_internal_data_dir(), "community")),
+            server = java.net.URI(url).host,
+            appVersionCode = BuildConfig.VERSION_CODE,
+            appBuild = BuildConfig.VERSION_NAME,
         )
     }
 
@@ -108,9 +123,8 @@ class AppContainer(context: Context) {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 require(modelClass == GameSettingsViewModel::class.java) { "Unknown ViewModel ${modelClass.name}" }
-                return GameSettingsViewModel(GameSettingsRepository(configStore, titleId), settingsProfiles) {
-                    deviceFacts(titleId)
-                } as T
+                return GameSettingsViewModel(GameSettingsRepository(configStore, titleId), settingsProfiles,
+                    facts = { deviceFacts(titleId) }, community = communityService) as T
             }
         }
 

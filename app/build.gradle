@@ -86,6 +86,9 @@ android {
         // https URL and its P-256 public keys as "keyId:<base64 X.509>,..." (see the status doc).
         buildConfigField 'String', 'CATALOG_URL', "\"${project.findProperty('xendroidCatalogUrl') ?: ''}\""
         buildConfigField 'String', 'CATALOG_KEYS', "\"${project.findProperty('xendroidCatalogKeys') ?: ''}\""
+        // 15b: community configs. Off ("") until someone runs a server (tools/community-server,
+        // docs/community-configs.md); an https base URL turns the per-game "Community settings" on.
+        buildConfigField 'String', 'COMMUNITY_URL', "\"${project.findProperty('xendroidCommunityUrl') ?: ''}\""
     }
 
     sourceSets {

@@ -42,8 +42,9 @@ data class SettingsProfile(
 @Serializable
 data class SettingsProfileFile(val format: String, val version: Int, val profiles: List<SettingsProfile> = emptyList())
 
-/** Where a profile came from. Never a network feed: shipped in the app, or a file on the phone. */
-enum class ProfileSource { BUNDLED, LOCAL }
+/** Where a profile came from: shipped in the app, a file on the phone, or (15b, only when the
+ *  build names a community server and the player searched it) shared by another player. */
+enum class ProfileSource { BUNDLED, LOCAL, COMMUNITY }
 
 data class LoadedProfile(val profile: SettingsProfile, val source: ProfileSource, val origin: String)
 
@@ -56,6 +57,8 @@ data class DeviceFacts(
     val model: String,
     val androidSdk: Int,
     val appVersionCode: Int,
+    /** The chip (Build.SOC_MODEL, Android 12+), for ranking community configs (15b). */
+    val soc: String? = null,
 )
 
 /** Kept when a profile is applied: what it wrote and what each key held before, so
@@ -225,7 +228,8 @@ object SettingsProfiles {
         if (source == ProfileSource.BUNDLED && p.evidence.isEmpty()) add("a profile shipped with the app needs the test it was verified with")
     }
 
-    private fun valueProblem(key: String, value: String): String? {
+    /** Why [key] = [value] may not be in a profile; null = it may (15b shares by the same rule). */
+    fun valueProblem(key: String, value: String): String? {
         val s = SettingsSchema.byKey[key]
         if (key !in ALLOWED_KEYS || s == null || s is Setting.Action) return "$key is not a setting profiles may change"
         if (value in DENIED_VALUES[key].orEmpty()) return "$key = $value is not allowed"

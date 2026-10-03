@@ -176,7 +176,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 | Recentes e tempo de jogo | Eden `6bdf4794` | **Tem** ("Jogados recentemente", tempo por título) | — |
 | Capas por Title ID e capa própria | X360 Mobile v0.6.0 | **Tem** (L05, local); fonte remota não | — |
 | Atalhos na tela inicial | X360 Mobile v0.6.3 | **Tem** | — |
-| Carrossel, XMB, tela "Big Picture" para controle | Eden `61ffb309`; Bannerlator `16c292d2`, `223b1b8c` | **Não tem** | Média / G |
+| Carrossel, XMB, tela "Big Picture" para controle | Eden `61ffb309`; Bannerlator `16c292d2`, `223b1b8c` | **Impl. + Local no lote 15a** (carrossel salvo ao lado da grade, controle e toque; aparelho pendente, roteiro 52) | Média / G |
 | Tela de carregamento com a arte do jogo | Bannerlator `e2acda52`, `da778368` | **Parcial**: rótulo de boot e Cancelar (U09) | Média / P |
 | Tela de fim de sessão com "tentar de novo" e "compartilhar logs" | DroidDeck `02f356f` | **Parcial**: diálogo de falha; relatório do run na ficha | Média / P |
 | Mais idiomas; idioma escolhido dentro do app | aX360e (25), X360 Mobile (5), DroidDeck `c711c62`; Eden `cfbef5c4` | **Parcial**: en e pt-BR; idioma por app do Android | Média / M por idioma |
@@ -230,7 +230,7 @@ de controles, DocumentsProvider e ajustes por jogo. A exceção são os **25 idi
 |---|---|---|---|
 | Ajustes por jogo, presets, importar/exportar | todos | **Tem** (L08, C05, U06) | — |
 | **Expor mais cvars do Xenia** | aX360e `8025979` (204 cvars) | **Parcial**: 135 chaves | **Alta / P–M**: começar por `anisotropic_override`, `present_safe_area_x/y`, zonas mortas dos sticks, `async_shader_compilation` (com aviso) e os `occlusion_query_*` (compatibilidade) |
-| Configs da comunidade (buscar, "combina com meu aparelho", votos, aplicar só o que muda, enviar) | Bannerlator `09a319ff`, `8b0eea95` | **Parcial**: catálogo somente leitura (C04, desligado) e perfis recomendados (C05) | Média / G (exige servidor) |
+| Configs da comunidade (buscar, "combina com meu aparelho", votos, aplicar só o que muda, enviar) | Bannerlator `09a319ff`, `8b0eea95` | **Impl. + Local no lote 15b**, desligado por padrão: cliente (buscar, ranking pelo aparelho, votos, aplicar pelo C05, enviar com consentimento, apagar) e servidor de referência com testes; falta alguém hospedar um servidor e o uso no aparelho (roteiro 53) | Média / G (exige servidor) |
 
 ### 3.16 Não se aplica
 
