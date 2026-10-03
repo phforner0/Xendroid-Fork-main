@@ -85,6 +85,8 @@ private fun GamepadEditorContent(controller: GamepadController, onDone: () -> Un
     var landscape by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf<ControlId?>(null) }
     var snap by remember { mutableStateOf(true) }
+    // 15r: move and resize the selected control's group (face buttons, trigger + bumper…) together.
+    var grouped by remember { mutableStateOf(false) }
     var showGlobals by remember { mutableStateOf(false) }
     var chromeCollapsed by remember { mutableStateOf(false) }
     var layoutsOpen by remember { mutableStateOf(false) }
@@ -181,7 +183,8 @@ private fun GamepadEditorContent(controller: GamepadController, onDone: () -> Un
                 val ny = (cur.y + dy).coerceIn(0.02f, 0.98f)
                 dragRaw = id to Offset(nx, ny)
                 mutateControls { list ->
-                    list.map { if (it.id == id) it.withLayout(x = nx, y = ny) else it }
+                    if (grouped) ControlGroups.move(list, id, nx, ny)
+                    else list.map { if (it.id == id) it.withLayout(x = nx, y = ny) else it }
                 }
             },
             onDragEnd = { id ->
@@ -195,12 +198,15 @@ private fun GamepadEditorContent(controller: GamepadController, onDone: () -> Un
                     val nx = snapFrac(raw.x, stepsX).coerceIn(1f / stepsX, (stepsX - 1f) / stepsX)
                     val ny = snapFrac(raw.y, stepsY).coerceIn(1f / stepsY, (stepsY - 1f) / stepsY)
                     mutateControls { list ->
-                        list.map { if (it.id == id) it.withLayout(x = nx, y = ny) else it }
+                        // 15r: the group follows the dragged control onto the grid, keeping its shape.
+                        if (grouped) ControlGroups.move(list, id, nx, ny)
+                        else list.map { if (it.id == id) it.withLayout(x = nx, y = ny) else it }
                     }
                 }
             },
             onScale = { id, f -> mutateControls { list ->
-                list.map { if (it.id == id) it.withLayout(s = (it.scale * f).coerceIn(0.5f, 3f)) else it } } },
+                if (grouped) list.firstOrNull { it.id == id }?.let { ControlGroups.resize(list, id, it.scale * f) } ?: list
+                else list.map { if (it.id == id) it.withLayout(s = (it.scale * f).coerceIn(0.5f, 3f)) else it } } },
         )
 
         // Floating, translucent, COLLAPSIBLE toolbar. No opaque top bar -> the top of the
@@ -212,13 +218,15 @@ private fun GamepadEditorContent(controller: GamepadController, onDone: () -> Un
             onToggleCollapse = { chromeCollapsed = !chromeCollapsed },
             landscape = landscape, onSetLandscape = { landscape = it },
             snap = snap, onToggleSnap = { snap = !snap },
+            grouped = grouped, onToggleGrouped = { grouped = !grouped },
             hasSelection = selected != null,
             // Resize the selected control via an absolute-scale slider (pinch still works too).
             selectedScale = selected?.let { id -> base.firstOrNull { it.id == id }?.scale },
             onScaleSelected = { s ->
                 selected?.let { id ->
                     mutateControls { list ->
-                        list.map { if (it.id == id) it.withLayout(s = s.coerceIn(0.5f, 3f)) else it }
+                        if (grouped) ControlGroups.resize(list, id, s)
+                        else list.map { if (it.id == id) it.withLayout(s = s.coerceIn(0.5f, 3f)) else it }
                     }
                 }
             },
@@ -276,6 +284,8 @@ private fun EditorChrome(
     onSetLandscape: (Boolean) -> Unit,
     snap: Boolean,
     onToggleSnap: () -> Unit,
+    grouped: Boolean,
+    onToggleGrouped: () -> Unit,
     hasSelection: Boolean,
     selectedScale: Float?,
     onScaleSelected: (Float) -> Unit,
@@ -328,6 +338,7 @@ private fun EditorChrome(
                 FilterChip(selected = !landscape, onClick = { onSetLandscape(false) },
                     label = { Text(stringResource(R.string.ge_portrait)) })
                 FilterChip(selected = snap, onClick = onToggleSnap, label = { Text(stringResource(R.string.ge_snap)) })
+                FilterChip(selected = grouped, onClick = onToggleGrouped, label = { Text(stringResource(R.string.ge_group)) })
                 if (perGame != null) {
                     FilterChip(selected = perGame, onClick = onTogglePerGame, label = { Text(stringResource(R.string.ge_this_game)) })
                 }

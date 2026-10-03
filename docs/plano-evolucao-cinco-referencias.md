@@ -583,6 +583,10 @@ downloads conferidos como antes.
 de cor (saturação +25 % e curva em S suave), testado em Vulkan por software. Presets de um toque e
 shaders do usuário continuam fora.
 
+**Lote 15r (Impl. + Local; aparelho pendente, roteiro 69):** grupos no editor de toque (ABXY,
+gatilho + bumper, Back + Start, analógico + clique) que se movem e redimensionam juntos mantendo a
+forma. O governador probe/backoff segue fora por desenho (F04 consultivo; só com A/B no aparelho).
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

@@ -769,3 +769,7 @@ status, "Build da nuvem (fim do lote 14)").
    filtro de cor até "Vívido (falso HDR)": cores mais fortes sem estourar o branco nem esmagar o preto;
    pele e céu sem faixas. Comparar o FPS com o filtro desligado (o passe compute é o mesmo dos outros
    modos).
+69. Lote 15r — grupos no editor de toque: no editor, ligar "Grupo" e arrastar o A: X, Y e B vão
+   juntos e param na borda sem se desarrumar; com "Alinhar à grade", soltar encaixa o grupo; pinça no
+   A com "Grupo" aumenta os quatro e o espaço entre eles. LB leva o LT junto; o analógico leva o L3.
+   Desligar "Grupo" e arrastar: só o controle tocado se move. Salvar e conferir no jogo.
