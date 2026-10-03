@@ -33,7 +33,7 @@ class Item15FrameGenerationTest {
             session.awaitFirstFrame()
             session.openMenu()
             session.page(R.string.menu_tab_graphics)
-            session.find(session.text(R.string.menu_winfg, session.text(R.string.menu_off))).click()
+            session.findInMenu(session.text(R.string.menu_winfg, session.text(R.string.menu_off))).click()
             SystemClock.sleep(5_000)
             val first = session.device.wait(Until.findObject(By.textStartsWith("Win-FG:")), 10_000)?.text
             SystemClock.sleep(3_000)

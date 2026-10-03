@@ -4,6 +4,8 @@ import android.content.Intent
 import android.os.SystemClock
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
@@ -67,6 +69,23 @@ class GameSession(val game: File) : AutoCloseable {
         device.wait(Until.findObject(By.text(text)), timeoutMs) ?: throw AssertionError("\"$text\" not on screen")
 
     fun has(text: String, timeoutMs: Long = 10_000): Boolean = device.wait(Until.hasObject(By.text(text)), timeoutMs) == true
+
+    /**
+     * An option of the open in-game menu, scrolled into view first when needed: the menu shows
+     * what fits the screen, and on a phone in landscape the lower options of a tab are below
+     * it (the first run on a phone missed Win-FG and the driver line there). The options are
+     * the tallest scrollable list (the tabs scroll sideways above them).
+     */
+    fun findInMenu(selector: BySelector, timeoutMs: Long = 15_000): UiObject2 {
+        device.wait(Until.findObject(selector), 2_000)?.let { return it }
+        val list = device.wait(Until.findObjects(By.scrollable(true)), timeoutMs)
+            ?.maxByOrNull { it.visibleBounds.height() } ?: throw AssertionError("no scrollable menu for $selector")
+        list.scrollUntil(Direction.DOWN, Until.findObject(selector))?.let { return it }
+        list.scrollUntil(Direction.UP, Until.findObject(selector))?.let { return it }
+        throw AssertionError("$selector not in the menu")
+    }
+
+    fun findInMenu(text: String): UiObject2 = findInMenu(By.text(text))
 
     /** Back opens the in-game menu (its footer has Continue and Exit game). */
     fun openMenu() {

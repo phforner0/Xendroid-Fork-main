@@ -592,6 +592,13 @@ itens maiores da varredura e os demais de média prioridade viáveis sem aparelh
 Implementado + Testado localmente (15a–15r); nada foi validado no aparelho nem aprovado para release.
 O que falta é o roteiro de aparelho da auditoria (itens 52–69), com o APK desta build.
 
+**Primeira rodada do roteiro automatizado no telefone (build `d272712f`):** 43 de 58 testes verdes,
+o que passa a parte automatizada de 17 itens do roteiro a "Validado no aparelho" (2, 3, 5, 9/12, 11,
+13, 18, 19, 21, 25, 33, 35, 37, 38, 39, 42 e as transações de configuração). As 11 falhas eram um
+defeito do app (Configurações com "Essenciais" fora da tela depois do 15l) e dez dos testes (detector
+de texto cortado, menu sem rolagem, PNG incompleto, corrida no `pidof`, botão repetido, busca sem
+`queryArgs`, lista preguiçosa); todos corrigidos, à espera de nova rodada.
+
 **Estado L03 (2026-10-02, v1, Impl. + Local para caminho real):** várias pastas de jogos
 (migração da pasta única, aninhadas varridas uma vez, indisponível não derruba as outras e
 mantém o cache, remover não apaga nada; instalação de jogo completo na primeira). Falta SAF

@@ -74,6 +74,14 @@ class MainActivity : ComponentActivity() {
         if (backupSyncJob?.isActive != true) backupSyncJob = lifecycleScope.launch {
             BackupSync.publishAutomatic(applicationContext)
         }
+        // A game process that died while this one lived (killed, crashed) left its run open:
+        // close it whenever the library comes back, not only when the app process starts.
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                xendroid.compose.sessions.SessionRuns.store()
+                    .reconcile(xendroid.compose.sessions.SessionRuns.fates(applicationContext))
+            }.onFailure { Log.w("MainActivity", "Closing the runs of ended game processes failed", it) }
+        }
     }
 
     /** Compose's standard click/back keys for controller-driven frontend screens.

@@ -1,5 +1,8 @@
 package xendroid.compose.roadmap
 
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -125,7 +128,11 @@ class Item26UserPatchesTest {
         }
         compose.onNodeWithText(Device.string(R.string.pt_conflict_line, conflict.first, conflict.second, "0x%08X".format(address)),
             substring = true).assertExists()
-        compose.onNodeWithText(Device.string(R.string.pt_added_by_you, mine.variantLabel)).assertExists()
+        // The user's file comes after the catalog's patches: scrolled to (a lazy list has nothing
+        // composed below the screen, which the first run on a phone hit).
+        val addedByYou = Device.string(R.string.pt_added_by_you, mine.variantLabel)
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText(addedByYou))
+        compose.onNodeWithText(addedByYou).assertExists()
         vm.toggle(mine, mine.entries[0], false)
         loaded("no conflict") { it.conflicts.isEmpty() }
 

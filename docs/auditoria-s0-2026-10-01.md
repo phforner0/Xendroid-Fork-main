@@ -157,10 +157,34 @@ Sem o Gradle ao lado do telefone: instalar os dois APKs (`app-uitest.apk` e
 xendroid.compose.uitest.test/androidx.test.runner.AndroidJUnitRunner` (comandos no `BUILD.md`);
 por esse caminho os dois pacotes ficam instalados até um `adb uninstall`.
 
-Relatório: `app/build/reports/androidTests/connected/uitest/index.html`. **Estado: escritos e
-compilados na nuvem; ainda não rodados** (sem telefone). Um item automatizado só passa a "Validado no
-aparelho" depois de rodar verde no telefone; uma falha lá é defeito do app ou do teste, a investigar.
-O que cada teste não alcança continua na lista abaixo, como antes.
+Relatório: `app/build/reports/androidTests/connected/uitest/index.html`. Um item automatizado só passa
+a "Validado no aparelho" depois de rodar verde no telefone; uma falha lá é defeito do app ou do teste,
+a investigar. O que cada teste não alcança continua na lista abaixo, como antes.
+
+**Primeira rodada no telefone (2026-10-03, build `d272712f`, `am instrument` com `gameDir`):** 58
+testes, **43 passaram**, 11 falharam e 4 ficaram ignorados por falta de argumento (`scratchDir`,
+`scanWholeStorage`, `dlcPackage`, `longRuns`). **Validado no aparelho (a parte automatizada):** itens
+2, 3, 5, 9 e 12, 11, 13, 18, 19, 21, 25, 33, 35, 37, 38, 39 e 42, as transações de configuração, e os
+testes verdes dos itens 4 (foto de câmera vira avatar; prévia, lixeira, restaurar), 16 (ajustes do
+jogo seguem o modo; menu em jogo do Jogador), 22 (lista na hora, "Parar", varreduras quentes), 24
+(raiz, "Jogos por título", somente leitura com jogo aberto) e 28 (o "☰" como botão; rodapé com a
+maior fonte). As 11 falhas, por causa:
+- **Do app (corrigido):** item 16 — com as linhas de tamanho e idioma do lote 15l no alto, "Essenciais"
+  ficava fora da tela; agora o modo fica no topo, depois as seções, e as linhas do app vêm no fim.
+- **Dos testes (corrigidos):** item 28 (3) — o detector de "texto cortado" usava `hasVisualOverflow`
+  do resultado que o Compose refaz na largura inteira do contêiner, e marcava todo texto mais curto que
+  ela; agora conta reticências, linhas acima do `maxLines` e altura recortada. Itens 15 e 27 — o Win-FG
+  e a linha do driver estão abaixo da dobra da aba Gráficos num celular em paisagem; o teste rola o
+  menu até eles. Item 4 — o PNG gigante do teste tinha só o cabeçalho, que o Android 15 nem mede (o app
+  dizia, com razão, "não é imagem"); agora tem IDAT e IEND. Item 10 — o `pidof` some antes de o
+  Android listar o processo como morto; o teste reconcilia até o run fechar (e o app passou a
+  reconciliar sempre que a biblioteca volta, não só quando o processo do app começa). Item 17 — a
+  biblioteca vazia atrás do assistente tem o mesmo botão "Escolher pasta de jogos"; o teste usa o do
+  diálogo. Item 24 — a busca de documentos exige os argumentos em `Bundle` desde o Android 10 (o app de
+  Arquivos já manda assim); o teste usava a forma antiga. Item 26 — o arquivo do usuário vem depois
+  dos patches do catálogo numa lista preguiçosa; o teste rola até ele.
+
+Os testes que falharam voltam a rodar com o APK de teste novo; até lá, esses itens seguem pendentes.
 
 | Item | Teste | Cobre | Continua manual |
 |---|---|---|---|

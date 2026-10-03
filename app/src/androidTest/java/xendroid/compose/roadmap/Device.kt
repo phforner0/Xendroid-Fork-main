@@ -127,11 +127,23 @@ object AppLanguage {
     }
 }
 
-/** Texts drawn cut right now (ellipsized or clipped): each should fit or wrap. */
+/**
+ * Texts drawn cut right now: each should fit or wrap. Cut means ellipsized, past its maxLines or
+ * clipped in height. Not `hasVisualOverflow`: for a plain Text, the layout the semantics action
+ * hands back is laid out again at the container's whole width (Compose's "slow" layout result),
+ * so every text narrower than its container read as overflowing in width (the first run on a
+ * phone flagged "+", "GPU" and every tab name). Line count and height are the same in both
+ * layouts, so these checks hold.
+ */
 fun SemanticsNodeInteractionsProvider.cutTexts(): List<String> =
     onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult), useUnmergedTree = true)
         .fetchSemanticsNodes().mapNotNull { node ->
             val layouts = ArrayList<TextLayoutResult>()
             node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
-            layouts.firstOrNull()?.takeIf { it.hasVisualOverflow }?.layoutInput?.text?.text
+            layouts.firstOrNull()?.takeIf { it.isCut() }?.layoutInput?.text?.text
         }
+
+/** Ellipsized, past its maxLines, or taller than the space it was given (by more than a pixel). */
+fun TextLayoutResult.isCut(): Boolean =
+    multiParagraph.didExceedMaxLines || size.height + 1f < multiParagraph.height ||
+        (0 until lineCount).any { isLineEllipsized(it) }

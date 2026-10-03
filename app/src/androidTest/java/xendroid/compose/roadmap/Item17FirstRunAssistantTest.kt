@@ -2,6 +2,9 @@ package xendroid.compose.roadmap
 
 import android.os.Build
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -82,6 +85,9 @@ class Item17FirstRunAssistantTest {
         try { h.getString(section, name) } finally { h.closeDiscard() }
     }
 
+    /** A text inside the assistant's dialog (the library behind it may show the same words). */
+    private fun inAssistant(text: String) = compose.onNode(hasText(text) and hasAnyAncestor(isDialog()))
+
     @Test fun checksProposesSavesAndRunsOnce() {
         Device.grantAllFilesAccess()
         val welcome = Device.string(R.string.fr_welcome)
@@ -95,7 +101,8 @@ class Item17FirstRunAssistantTest {
             compose.onNodeWithText("!").assertExists()
 
             // The folder button opens the folder browser; the phone's back returns to the assistant.
-            compose.onNodeWithText(Device.string(R.string.fr_choose_folder)).performScrollTo().performClick()
+            // The empty library behind the assistant has the same button: the assistant's is in its dialog.
+            inAssistant(Device.string(R.string.fr_choose_folder)).performScrollTo().performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText(welcome).fetchSemanticsNodes().isEmpty() }
             UiDevice.getInstance(Device.instrumentation).pressBack()
             waitFor(welcome)
@@ -105,20 +112,20 @@ class Item17FirstRunAssistantTest {
             val from = listOf(Device.string(R.string.fr_language, proposed.languageLabel!!),
                 Device.string(R.string.fr_region, proposed.countryLabel!!)).joinToString(" · ")
             compose.onNodeWithText(Device.string(R.string.fr_from_phone, from)).assertExists()
-            compose.onNodeWithText(Device.string(R.string.fr_use_locale)).performScrollTo().performClick()
+            inAssistant(Device.string(R.string.fr_use_locale)).performScrollTo().performClick()
             waitFor(Device.string(R.string.fr_locale_saved))
             assertEquals(proposed.languageValue, live("Console", "user_language"))
             assertEquals(proposed.countryValue, live("Console", "user_country"))
 
             // Profiles opens, and back comes to the assistant again.
-            compose.onNodeWithText(Device.string(R.string.fr_open_profiles)).performScrollTo().performClick()
+            inAssistant(Device.string(R.string.fr_open_profiles)).performScrollTo().performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText(welcome).fetchSemanticsNodes().isEmpty() }
             waitFor(Device.string(R.string.lib_menu_profiles))
             UiDevice.getInstance(Device.instrumentation).pressBack()
             waitFor(welcome)
 
             // Done without choosing a mode: Player.
-            compose.onNodeWithText(Device.string(R.string.common_done)).performScrollTo().performClick()
+            inAssistant(Device.string(R.string.common_done)).performScrollTo().performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText(welcome).fetchSemanticsNodes().isEmpty() }
             assertEquals(UiMode.PLAYER, UiModeStore.read(context))
             assertTrue(FirstRunStore.done(context))

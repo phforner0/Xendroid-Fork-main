@@ -135,12 +135,21 @@ class Item04ProfilesTest {
     }
 
     /** A PNG that declares [width]×[height] (a valid header and nothing else). */
+    /**
+     * A PNG that says it is [width]×[height]: the header, an IDAT and the end. The first run on a
+     * phone (Android 15) showed that a file with the header alone is not even measured there,
+     * so the app rightly called it "not a supported image"; a real huge PNG has its IDAT. The
+     * IDAT holds an empty zlib stream: measuring never reads pixels.
+     */
     private fun pngHeader(width: Int, height: Int): ByteArray {
-        val ihdr = ByteBuffer.allocate(17).put("IHDR".toByteArray()).putInt(width).putInt(height)
-            .put(8).put(2).put(0).put(0).put(0).array()
-        val crc = CRC32().apply { update(ihdr) }.value.toInt()
-        return ByteBuffer.allocate(8 + 4 + 17 + 4)
-            .put(byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A))
-            .putInt(13).put(ihdr).putInt(crc).array()
+        fun chunk(type: String, data: ByteArray): ByteArray {
+            val body = type.toByteArray() + data
+            val crc = CRC32().apply { update(body) }.value.toInt()
+            return ByteBuffer.allocate(4 + body.size + 4).putInt(data.size).put(body).putInt(crc).array()
+        }
+        val ihdr = ByteBuffer.allocate(13).putInt(width).putInt(height).put(8).put(2).put(0).put(0).put(0).array()
+        val emptyZlib = byteArrayOf(0x78, 0x9C.toByte(), 0x03, 0x00, 0x00, 0x00, 0x00, 0x01)
+        return byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A) +
+            chunk("IHDR", ihdr) + chunk("IDAT", emptyZlib) + chunk("IEND", ByteArray(0))
     }
 }

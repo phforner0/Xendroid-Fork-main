@@ -132,7 +132,10 @@ class Item24UserDataProviderTest {
         assertFalse(File(patches, "roadmap-renamed.toml").exists())
         // Search finds by name and never reaches hidden folders.
         dir("cache/roadmap-copy-hidden")
-        val found = rows(resolver.query(DocumentsContract.buildSearchDocumentsUri(authority, "root", "roadmap-copy"), null, null, null, null))
+        // As the Files app asks since Android 10: the words in queryArgs (a search with none is
+        // refused by Android itself before it reaches the provider, as the first run on a phone showed).
+        val search = android.os.Bundle().apply { putString(DocumentsContract.QUERY_ARG_DISPLAY_NAME, "roadmap-copy") }
+        val found = rows(resolver.query(DocumentsContract.buildSearchDocumentsUri(authority, "root", "roadmap-copy"), null, search, null))
         assertTrue(found.toString(), found.any { it.name == "roadmap-copy.patch.toml" })
         assertFalse(found.toString(), found.any { it.name == "roadmap-copy-hidden" })
     }

@@ -31,7 +31,12 @@ class Item10InterruptedRunTest {
             session.signal("KILL")
             id
         }
-        SessionRuns.store().reconcile(SessionRuns.fates(Device.context))
+        // The process is gone from the kernel (pidof) a moment before Android lists it as gone
+        // (the first run on a phone read it as still running): look again until it is final.
+        Device.waitUntil("the killed run to be reconciled", 20_000) {
+            SessionRuns.store().reconcile(SessionRuns.fates(Device.context))
+            SessionRuns.store().runs().single { it.runId == runId }.state.final
+        }
         val run = SessionRuns.store().runs().single { it.runId == runId }
         assertEquals(RunState.INTERRUPTED, run.state)
         assertTrue(describeRun(run), describeRun(run).startsWith("interrupted after"))

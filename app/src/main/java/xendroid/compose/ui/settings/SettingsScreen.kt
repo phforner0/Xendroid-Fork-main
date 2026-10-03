@@ -76,12 +76,16 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
             modifiedCountOf = { cat -> cat.settings.count { values[it.key]?.modified == true } },
             onOpen = { selected = it },
             onBack = { vm.flush(); onBack() },
-            dataBundle = {
+            header = {
                 UiModeRow(mode) { next ->
                     UiModeStore.write(context, next)
                     mode = next
                 }
-                HorizontalDivider()
+            },
+            // The app's own rows come after the game settings, so a phone shows the sections
+            // (Player's Essentials) without scrolling past them (the first run on a phone caught
+            // Essentials pushed off the screen once the size and language rows came in).
+            footer = {
                 MenuButtonsRow()
                 HorizontalDivider()
                 UiScaleRows()
@@ -149,7 +153,8 @@ private fun SettingsIndex(
     modifiedCountOf: (SettingsCategory) -> Int,
     onOpen: (SettingsCategory) -> Unit,
     onBack: () -> Unit,
-    dataBundle: @Composable () -> Unit = {},
+    header: @Composable () -> Unit = {},
+    footer: @Composable () -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -164,8 +169,8 @@ private fun SettingsIndex(
         }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
-            item(key = "data-bundle") {
-                dataBundle()
+            item(key = "mode") {
+                header()
                 HorizontalDivider()
             }
             items(categories, key = { it.title }) { cat ->
@@ -185,6 +190,7 @@ private fun SettingsIndex(
                 )
                 HorizontalDivider()
             }
+            item(key = "app") { footer() }
         }
     }
 }

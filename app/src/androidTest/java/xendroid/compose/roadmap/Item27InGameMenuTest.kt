@@ -51,7 +51,8 @@ class Item27InGameMenuTest {
         inGame(game) { s ->
             listOf(R.string.menu_tab_graphics, R.string.menu_tab_system, R.string.menu_tab_controls, R.string.menu_tab_session)
                 .forEach { s.find(s.text(it)) }
-            assertTrue("no driver line", s.device.hasObject(By.textStartsWith(startOf(R.string.menu_driver, "X"))))
+            // Low in the Graphics tab: scrolled into view (it throws when the line is not there).
+            s.findInMenu(By.textStartsWith(startOf(R.string.menu_driver, "X")))
 
             // A controller: RB to System (the frame limit block), LB back to Graphics.
             s.device.pressKeyCode(KeyEvent.KEYCODE_BUTTON_R1)
@@ -81,7 +82,7 @@ class Item27InGameMenuTest {
         // Player (item 16): two advanced options in Graphics, none in Session, no frame generation.
         UiModeStore.write(context, UiMode.PLAYER)
         inGame(game) { s ->
-            s.find(s.text(R.string.menu_more_options, 2))
+            s.findInMenu(s.text(R.string.menu_more_options, 2))
             assertFalse(s.device.hasObject(By.textStartsWith("Win-FG")))
             s.page(R.string.menu_tab_session)
             assertFalse(s.device.wait(Until.hasObject(By.textStartsWith(startOf(R.string.menu_more_options, 7))), 3_000) == true)
