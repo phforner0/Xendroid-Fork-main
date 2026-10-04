@@ -97,6 +97,8 @@ class GameSettingsViewModel(
     override fun onListChanged(s: Setting.ListChoice, v: String) = change(s) { repo.setListValue(s, v) }
     override fun currentDriverPath(s: Setting.Action) = repo.driverPathOf(s)
     override fun onDriverPathChanged(s: Setting.Action, v: String) = change(s) { repo.setDriverPath(s, v) }
+    override fun currentText(s: Setting.Text) = repo.textOf(s)
+    override fun onTextChanged(s: Setting.Text, value: String) = change(s) { repo.setText(s, value) }
 
     private fun fail(cause: Throwable) {
         Log.w("GameSettingsViewModel", "Config edit failed; keeping previous file", cause)

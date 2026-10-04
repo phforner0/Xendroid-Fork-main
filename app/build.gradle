@@ -138,6 +138,20 @@ android {
     // settings of the .debug app on the phone. `./gradlew :app:connectedUitestAndroidTest`.
     testBuildType 'uitest'
 
+    testOptions {
+        unitTests {
+            // The screen tests (src/testUitest) render Compose on the JVM with Robolectric.
+            includeAndroidResources = true
+            all {
+                // `-Pscreenshots=<dir>` writes the prints of the screen tests there (docs/ui-redesign/
+                // prints/app); without it they still render every screen, as smoke tests.
+                def shots = project.findProperty('screenshots')
+                if (shots) systemProperty 'xendroid.screenshots', file(shots).absolutePath
+                maxHeapSize = '3g'
+            }
+        }
+    }
+
     buildTypes {
         // Own application id so a debug build installs alongside a release one.
         // The java namespace stays xendroid.compose, so JNI FindClass is unaffected.
@@ -195,6 +209,14 @@ dependencies {
     implementation libs.androidx.datastore.preferences
     testImplementation libs.junit
     testImplementation libs.kotlinx.coroutines.test
+    // Screen tests on the JVM (`./gradlew :app:testUitestUnitTest`): only in the uitest variant,
+    // whose manifest has the empty activity Compose tests host their content in.
+    testUitestImplementation 'org.robolectric:robolectric:4.14.1'
+    testUitestImplementation 'io.github.takahirom.roborazzi:roborazzi:1.46.1'
+    testUitestImplementation 'io.github.takahirom.roborazzi:roborazzi-compose:1.46.1'
+    testUitestImplementation 'androidx.test.ext:junit:1.2.1'
+    testUitestImplementation platform(libs.compose.bom)
+    testUitestImplementation 'androidx.compose.ui:ui-test-junit4'
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test:rules:1.6.1'

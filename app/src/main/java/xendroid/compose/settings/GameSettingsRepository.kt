@@ -85,6 +85,8 @@ class GameSettingsRepository(private val store: ConfigStore, val titleId: String
     @Synchronized
     fun driverPathOf(s: Setting.Action): String = overrides[s.key] ?: inheritedRaw(s)
     @Synchronized
+    fun textOf(s: Setting.Text): String = overrides[s.key] ?: inheritedRaw(s)
+    @Synchronized
     fun inheritedLabel(s: Setting): String = labelFor(s, inheritedRaw(s))
 
     // ---- writes: mutate the in-memory map only; persisted on flush ----
@@ -100,6 +102,7 @@ class GameSettingsRepository(private val store: ConfigStore, val titleId: String
     }
     fun setListValue(s: Setting.ListChoice, value: String) = set(s, value)
     fun setDriverPath(s: Setting.Action, value: String) = set(s, value)
+    fun setText(s: Setting.Text, value: String) = set(s, value)
 
     /** Turn override ON: seed from the current inherited value. OFF: drop the key. */
     @Synchronized
@@ -169,6 +172,7 @@ class GameSettingsRepository(private val store: ConfigStore, val titleId: String
         is Setting.IntRange   -> s.default.toString()
         is Setting.ListChoice -> s.default
         is Setting.Action     -> s.default
+        is Setting.Text       -> s.default
     }
 
     private fun labelFor(s: Setting, raw: String): String = when (s) {

@@ -10,6 +10,19 @@ import android.annotation.SuppressLint
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import xendroid.compose.ui.design.InputModePref
+import xendroid.compose.ui.design.InputModeStore
+import xendroid.compose.ui.design.LocalInputMode
+import xendroid.compose.ui.design.LocalXdToast
+import xendroid.compose.ui.design.XdToastHost
+import xendroid.compose.ui.design.XdToastState
+import xendroid.compose.ui.design.rememberControllerConnected
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -55,8 +68,11 @@ class MainActivity : ComponentActivity() {
     // 15l: the UI scale chosen in Settings, followed as it changes (the listener is held here
     // because SharedPreferences keeps only a weak reference to it).
     private var uiScale by mutableStateOf(UiScale.DEFAULT)
+    // Redesign: touch (B) or controller (C) mode, kept in the same preferences file as the scale.
+    private var inputPref by mutableStateOf(InputModePref.AUTO)
     private val uiScaleListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, _ ->
         uiScale = UiScaleStore.read(prefs)
+        inputPref = InputModeStore.read(prefs)
     }
 
     /** 15l: before Android 13 the language chosen in the app is applied here. */
@@ -181,6 +197,7 @@ class MainActivity : ComponentActivity() {
 
         AppLanguageStore.moveToSystem(this)
         uiScale = UiScaleStore.read(this)
+        inputPref = InputModeStore.read(this)
         UiScaleStore.prefs(this).registerOnSharedPreferenceChangeListener(uiScaleListener)
 
         val container = AppContainer(applicationContext)
@@ -188,9 +205,16 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
        setContent {
-            xendroidTheme(scale = uiScale) {
+            // Controller mode follows a controller connecting and disconnecting (Automatic).
+            val mode = inputPref.resolve(rememberControllerConnected())
+            val toast = remember { XdToastState() }
+            CompositionLocalProvider(LocalInputMode provides mode, LocalXdToast provides toast) {
+            xendroidTheme(scale = uiScale, mode = mode) {
 
-                AppNavHost(container)
+                Box(Modifier.fillMaxSize()) {
+                    AppNavHost(container)
+                    XdToastHost(toast, Modifier.align(Alignment.BottomCenter))
+                }
 
                 LaunchedEffect(Unit) {
                     if (frontendGame != null) return@LaunchedEffect
@@ -238,6 +262,7 @@ class MainActivity : ComponentActivity() {
 
                     is UpdateResult.Cooldown, null -> {}
                 }
+            }
             }
         }
     }

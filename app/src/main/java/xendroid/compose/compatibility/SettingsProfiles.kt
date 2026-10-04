@@ -231,7 +231,7 @@ object SettingsProfiles {
     /** Why [key] = [value] may not be in a profile; null = it may (15b shares by the same rule). */
     fun valueProblem(key: String, value: String): String? {
         val s = SettingsSchema.byKey[key]
-        if (key !in ALLOWED_KEYS || s == null || s is Setting.Action) return "$key is not a setting profiles may change"
+        if (key !in ALLOWED_KEYS || s == null || s is Setting.Action || s is Setting.Text) return "$key is not a setting profiles may change"
         if (value in DENIED_VALUES[key].orEmpty()) return "$key = $value is not allowed"
         return when (s) {
             is Setting.Bool -> if (value == "true" || value == "false") null else "$key must be true or false"
@@ -239,7 +239,7 @@ object SettingsProfiles {
                 else "$key must be a whole number from ${s.min} to ${s.max}"
             is Setting.ListChoice -> if (s.options.any { it.value == value }) null
                 else "$key must be one of ${s.options.joinToString { it.value }}"
-            is Setting.Action -> "$key is not a setting profiles may change"
+            is Setting.Action, is Setting.Text -> "$key is not a setting profiles may change"
         }
     }
 
@@ -332,6 +332,7 @@ object SettingsProfiles {
         is Setting.IntRange -> ConfigValueShape.parseInt(raw, s.default).toString()
         is Setting.ListChoice -> s.options.firstOrNull { it.value == raw }?.label ?: raw.ifEmpty { "default" }
         is Setting.Action -> raw
+        is Setting.Text -> raw
     }
 
     private fun same(s: Setting, a: String, b: String): Boolean = canonical(s, a) == canonical(s, b)
@@ -347,5 +348,6 @@ object SettingsProfiles {
         is Setting.IntRange -> ConfigValueShape.int(s.default)
         is Setting.ListChoice -> s.default
         is Setting.Action -> s.default
+        is Setting.Text -> s.default
     }
 }

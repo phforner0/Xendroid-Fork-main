@@ -20,4 +20,6 @@ interface SettingsHost {
     fun onListChanged(s: Setting.ListChoice, value: String)
     fun currentDriverPath(s: Setting.Action): String
     fun onDriverPathChanged(s: Setting.Action, value: String)
+    fun currentText(s: Setting.Text): String = s.default
+    fun onTextChanged(s: Setting.Text, value: String) {}
 }

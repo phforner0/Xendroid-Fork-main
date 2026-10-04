@@ -13,22 +13,54 @@ class SettingsSchemaTest {
 
     private val all = SettingsSchema.allSettings
 
-    // 102 Bool + 14 IntRange + 26 ListChoice + 2 Action = 144. Display|host_present_from_non_ui_thread
-    // is intentionally absent (forced true natively; not a valid user choice).
-    @Test fun total_entry_count_is_146() {
-        assertEquals(146, all.size)
+    // 146 before the redesign, plus the 29 cvars of the core it shows now (docs/ui-redesign/README.md).
+    // Display|host_present_from_non_ui_thread is intentionally absent (forced true natively).
+    @Test fun total_entry_count_is_175() {
+        assertEquals(175, all.size)
         assertEquals(
-            146,
+            175,
             all.count { it is Setting.Bool } + all.count { it is Setting.IntRange } +
-                all.count { it is Setting.ListChoice } + all.count { it is Setting.Action },
+                all.count { it is Setting.ListChoice } + all.count { it is Setting.Action } + all.count { it is Setting.Text },
         )
     }
 
     @Test fun counts_by_type_match_verified_inventory() {
-        assertEquals(103, all.count { it is Setting.Bool })        // + APU|apu_aaudio_adaptive_buffer (15j)
-        assertEquals(14, all.count { it is Setting.IntRange })
-        assertEquals(27, all.count { it is Setting.ListChoice })   // + Logging|log_mask (15i)
+        assertEquals(121, all.count { it is Setting.Bool })        // 103 + 18 new
+        assertEquals(20, all.count { it is Setting.IntRange })     // 14 + 6 new
+        assertEquals(30, all.count { it is Setting.ListChoice })   // 27 + 3 new
         assertEquals(2, all.count { it is Setting.Action })
+        assertEquals(2, all.count { it is Setting.Text })          // launch_module, cl
+    }
+
+    /** The cvars the redesign shows, with the section, type and default the core defines them with. */
+    @Test fun new_cvars_match_the_core_definitions() {
+        fun b(key: String, def: Boolean) = assertEquals(key, def, (SettingsSchema.byKey[key] as Setting.Bool).default)
+        fun i(key: String, def: Int, min: Int, max: Int) = (SettingsSchema.byKey[key] as Setting.IntRange).let {
+            assertEquals(key, def, it.default); assertEquals(key, min, it.min); assertEquals(key, max, it.max)
+        }
+        i("Video|internal_display_resolution_x", 1280, 1, 1920)
+        i("Video|internal_display_resolution_y", 720, 1, 1080)
+        i("Display|postprocess_ffx_fsr_max_upsampling_passes", 1, 1, 4)
+        i("Vulkan|adrenotools_turbo_reassert_seconds", 5, 0, 30)
+        i("APU|volume", 100, 0, 100)
+        i("Kernel|stack_size_multiplier_hack", 1, 1, 8)
+        listOf("GPU|async_shader_vs_interpreter", "GPU|async_shader_skip_draws", "GPU|pipeline_storage_precreate",
+            "Kernel|precise_guest_delays", "APU|apu_performance_hint", "HID|vibration", "HID|guide_button",
+            "GPU|readback_resolve_sync", "GPU|precise_interpolation", "Vulkan|vulkan_allow_reverse_z",
+            "Vulkan|vulkan_dynamic_rendering", "Vulkan|vulkan_avoid_geometry_shaders", "Vulkan|vulkan_depth_unorm24",
+            "General|guest_crash_is_fatal").forEach { b(it, true) }
+        listOf("GPU|depth_bias_shader_offset", "GPU|memexport_enable", "UI|achievement_notification_position_by_game",
+            "Storage|mount_memory_unit").forEach { b(it, false) }
+        assertEquals("0", (SettingsSchema.byKey["GPU|draw_resolution_scale_threshold"] as Setting.ListChoice).default)
+        assertEquals("-1", (SettingsSchema.byKey["Kernel|console_type"] as Setting.ListChoice).default)
+        val gamma = SettingsSchema.byKey["Kernel|kernel_display_gamma_power"] as Setting.ListChoice
+        assertEquals("2.22222233", gamma.default)
+        gamma.options.forEach { assertEquals("one '.' keeps it a TOML double: ${it.value}", 1, it.value.count { c -> c == '.' }) }
+        assertEquals("", (SettingsSchema.byKey["General|launch_module"] as Setting.Text).default)
+        assertEquals("", (SettingsSchema.byKey["Kernel|cl"] as Setting.Text).default)
+        // The two values the lists did not offer: the custom display mode and the custom gamma.
+        assertTrue((SettingsSchema.byKey["Console|internal_display_resolution"] as Setting.ListChoice).options.any { it.value == "17" })
+        assertTrue((SettingsSchema.byKey["Kernel|kernel_display_gamma_type"] as Setting.ListChoice).options.any { it.value == "3" })
     }
 
     /** These keys are looked up by string with a hard cast, so a section move that changes

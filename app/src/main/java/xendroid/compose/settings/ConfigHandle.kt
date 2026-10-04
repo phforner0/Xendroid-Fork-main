@@ -66,6 +66,7 @@ class ConfigHandle private constructor(
         is Setting.IntRange -> putInt(s.section, s.name, ConfigValueShape.parseInt(raw, s.default))
         is Setting.ListChoice -> putString(s.section, s.name, raw)
         is Setting.Action -> putString(s.section, s.name, raw)
+        is Setting.Text -> putString(s.section, s.name, raw)
     }
 
     private fun save(section: String, name: String, value: String) {

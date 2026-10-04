@@ -14,20 +14,24 @@ import org.w3c.dom.Element
 class StringResourcesTest {
     private val res = listOf(File("src/main/res"), File("app/src/main/res")).first { it.isDirectory }
 
-    private fun strings(dir: String): Map<String, Pair<String, Boolean>> {
-        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(File(res, "$dir/strings.xml"))
+    /** Every strings*.xml of [dir]: the redesign keeps its texts in strings_xd.xml. */
+    private fun files(dir: String): List<File> =
+        File(res, dir).listFiles { f -> f.name.startsWith("strings") && f.name.endsWith(".xml") }.orEmpty().sortedBy { it.name }
+
+    private fun strings(dir: String): Map<String, Pair<String, Boolean>> = files(dir).flatMap { file ->
+        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file)
         val nodes = doc.getElementsByTagName("string")
-        return (0 until nodes.length).associate { i ->
+        (0 until nodes.length).map { i ->
             val node = nodes.item(i) as Element
             node.getAttribute("name") to (node.textContent to (node.getAttribute("formatted") != "false"))
         }
-    }
+    }.toMap()
 
     /** Plural name to its items by quantity ("one", "other"…). */
-    private fun plurals(dir: String): Map<String, Map<String, String>> {
-        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(File(res, "$dir/strings.xml"))
+    private fun plurals(dir: String): Map<String, Map<String, String>> = files(dir).flatMap { file ->
+        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file)
         val nodes = doc.getElementsByTagName("plurals")
-        return (0 until nodes.length).associate { i ->
+        (0 until nodes.length).map { i ->
             val node = nodes.item(i) as Element
             val items = node.getElementsByTagName("item")
             node.getAttribute("name") to (0 until items.length).associate { j ->
@@ -35,7 +39,7 @@ class StringResourcesTest {
                 item.getAttribute("quantity") to item.textContent
             }
         }
-    }
+    }.toMap()
 
     private val placeholder = Regex("%(\\d+\\$)?[-#+ 0,(]*\\d*(\\.\\d+)?[sdfxXc%]")
 

@@ -27,6 +27,8 @@ LICENSES = {
     "assets/engine-licenses/winfg-MIT.txt",
     "assets/engine-licenses/winfg-third-party.txt",
     "assets/engine-licenses/xendroid-notices.txt",
+    "assets/font-licenses/Barlow-OFL.txt",
+    "assets/font-licenses/JetBrainsMono-OFL.txt",
 }
 FORBIDDEN_SUFFIXES = (".dll", ".cache", ".iso", ".xex", ".zar", ".xcp", ".gpd")
 FORBIDDEN_FRAGMENTS = ("lossless",)

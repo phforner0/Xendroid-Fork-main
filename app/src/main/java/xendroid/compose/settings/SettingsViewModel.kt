@@ -76,6 +76,8 @@ class SettingsViewModel(private val repo: SettingsRepository) : ViewModel(), Set
     override fun currentListValue(s: Setting.ListChoice) =
         ConfigValueShape.listOption(s.options.map { it.value }, raw(s)) ?: s.default
     override fun currentDriverPath(s: Setting.Action) = raw(s) ?: ""
+    override fun currentText(s: Setting.Text) = raw(s) ?: s.default
+    override fun onTextChanged(s: Setting.Text, value: String) = change(s) { repo.setRawString(s, value) }
 
     /** Synchronous durable write; I/O-free when nothing was edited. */
     fun flush() {

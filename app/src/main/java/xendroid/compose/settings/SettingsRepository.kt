@@ -82,6 +82,7 @@ class SettingsRepository(private val store: ConfigStore) {
         is Setting.IntRange  -> s.default.toString()
         is Setting.ListChoice -> s.default
         is Setting.Action    -> s.default
+        is Setting.Text      -> s.default
     }
 
     // ---- Typed reads with schema-default fallback (null-safe vs un-open()ed handle) ----

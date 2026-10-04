@@ -51,6 +51,7 @@ fun SettingRow(host: SettingsHost, s: Setting, modified: Boolean, raw: String? =
     is Setting.Action     ->
         if (s.name == "dump_session_logs") ExportLogsRow(s)
         else DriverActionRow(host, s, modified, raw)
+    is Setting.Text       -> TextRow(host, s, modified)
         }
     }
 }
@@ -896,6 +897,9 @@ private fun InheritedPreview(host: SettingsHost, s: Setting) {
             )
         }
 
+        is Setting.Text ->
+            InheritedTextRow(settingTitle(s), host.currentText(s).ifEmpty { s.placeholder }, settingDesc(s), grey)
+
         is Setting.Action ->
             InheritedTextRow(
                 settingTitle(s),
@@ -936,6 +940,21 @@ private fun InheritedTextRow(
             value,
             color = grey,
             style = MaterialTheme.typography.bodySmall
+        )
+    }
+}
+
+@Composable
+private fun TextRow(host: SettingsHost, s: Setting.Text, modified: Boolean) {
+    var text by remember(s.key) { mutableStateOf(host.currentText(s)) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        RowTitle(settingTitle(s), modified, desc = settingDesc(s))
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it; host.onTextChanged(s, it) },
+            singleLine = true,
+            placeholder = { Text(s.placeholder) },
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }
