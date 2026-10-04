@@ -226,7 +226,7 @@ fun InGameMenu(
                     }
                     if (state.page == InGamePage.SYSTEM) {
                         Text(stringResource(R.string.menu_frame_limit_title), style = XdText.label, color = c.fg)
-                        MenuNote(stringResource(R.string.menu_live_limit, fpsText(fpsLimit)) + " " +
+                        MenuNote(stringResource(R.string.menu_live_limit, fpsText(fpsLimit)) + "\n" +
                             when {
                                 fpsConfig.saving -> stringResource(R.string.menu_saving_config)
                                 fpsConfig.loading -> stringResource(R.string.menu_reading_config)

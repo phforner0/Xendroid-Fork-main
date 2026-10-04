@@ -214,11 +214,15 @@ fun GameLibraryScreen(
         }
         val cachedArt = remember(coverRevision, loaded.games) { HashMap<String, CoverArt>() }
         val art: (Game) -> CoverArt = { game -> cachedArt.getOrPut(game.stableId) { artOf(game) } }
-        val lastSession: (Game) -> String? = { game ->
+        // The last run's FPS once its details are read; a run without frames says so in the panel.
+        val lastFps: (Game) -> String? = { game ->
             details?.takeIf { it.identityKey == game.identityKey }?.lastRun?.performance?.let { perf ->
                 val median = perf.fpsPercentile(0.5); val low = perf.fpsPercentile(0.05)
                 if (median != null && low != null) context.getString(R.string.xd_lib_fps_line, median, low) else null
             }
+        }
+        val lastSession: (Game) -> String? = { game ->
+            lastFps(game) ?: details?.takeIf { it.identityKey == game.identityKey }?.lastRun?.let { context.getString(R.string.xd_lib_no_frames) }
         }
         val patchesOf: (Game) -> String? = { game ->
             details?.takeIf { it.identityKey == game.identityKey }?.let { d ->
@@ -231,7 +235,7 @@ fun GameLibraryScreen(
             val focused = shown.firstOrNull { it.stableId == selectedId } ?: shown.firstOrNull()
             LaunchedEffect(focused?.identityKey) { focused?.let { viewModel.loadDetails(it) } }
             LibraryController(
-                data, tab, { tabKey = it.key }, focused?.stableId, { selectedId = it }, art, lastSession, patchesOf,
+                data, tab, { tabKey = it.key }, focused?.stableId, { selectedId = it }, art, lastFps, patchesOf,
                 onPlay = actions::play, onOpen = { onOpenGame(it, null) }, onFavorite = actions::toggleFavorite,
                 gamertag = activeProfile, preparing = actions.preparing,
             )

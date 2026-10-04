@@ -284,7 +284,7 @@ fun LibraryDetailPanel(
             val played = data.played(game)
             XdKv(listOf(
                 stringResource(R.string.xd_lib_play_time) to (playTime(played) ?: "—"),
-                stringResource(R.string.xd_lib_last_session) to (lastSession ?: if (played != null) stringResource(R.string.xd_lib_no_frames) else "—"),
+                stringResource(R.string.xd_lib_last_session) to (lastSession ?: "—"),
                 stringResource(R.string.lib_patches) to (patches ?: "—"),
                 stringResource(R.string.xd_lib_signs_in) to (signsInAs ?: "—"),
             ))

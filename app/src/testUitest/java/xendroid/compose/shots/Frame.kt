@@ -11,6 +11,9 @@ import xendroid.compose.ui.theme.xendroidTheme
 
 /** Composes [content] as the app does: theme in [mode], toasts, and waits for images to load. */
 fun ComposeContentTestRule.app(mode: InputMode = InputMode.TOUCH, content: @Composable () -> Unit) {
+    // As on a phone: used by touch the screen is in touch mode, so nothing (a sheet's first field)
+    // takes focus by itself; driven by a controller it is not.
+    androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(mode == InputMode.TOUCH)
     setContent {
         CompositionLocalProvider(LocalInputMode provides mode, LocalXdToast provides XdToastState()) {
             xendroidTheme(mode = mode) { content() }

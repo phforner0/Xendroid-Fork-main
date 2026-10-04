@@ -127,7 +127,7 @@ fun GameLoadingScreen(
                 }
                 val scroll = rememberScrollState()
                 if (portrait) {
-                    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 26.dp, vertical = 70.dp),
+                    Column(Modifier.align(Alignment.Center).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 26.dp, vertical = 70.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         cover(150.dp)
                         Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp), content = body)

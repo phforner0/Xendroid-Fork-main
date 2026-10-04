@@ -38,6 +38,12 @@ object Fixture {
     /** Drains the main looper while background work (IO) lands. */
     fun settle(rounds: Int = 20) = repeat(rounds) { ShadowLooper.idleMainLooper(); Thread.sleep(15) }
 
+    /** Settles until [done] (background work landed), at most [rounds] times. */
+    fun settleUntil(rounds: Int = 300, done: () -> Boolean) {
+        var n = 0
+        while (!done() && n++ < rounds) settle(1)
+    }
+
     @Suppress("UNCHECKED_CAST")
     fun <T> flow(vm: Any, field: String): MutableStateFlow<T> =
         vm.javaClass.getDeclaredField(field).apply { isAccessible = true }.get(vm) as MutableStateFlow<T>

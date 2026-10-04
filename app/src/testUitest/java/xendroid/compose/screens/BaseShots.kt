@@ -46,7 +46,9 @@ class BaseShots {
         }
         if (pick != null) {
             compose.onAllNodesWithContentDescription(pick, useUnmergedTree = true).onFirst().performClick()
-            Fixture.settle(30)
+            // The pick recomposes first; only then does the panel ask for the game's details.
+            compose.waitForIdle()
+            Fixture.settleUntil { vm.details.value?.lastRun != null }
         }
         Fixture.settle()
         compose.waitForIdle()

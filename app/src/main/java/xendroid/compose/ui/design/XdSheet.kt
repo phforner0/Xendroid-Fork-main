@@ -8,6 +8,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +42,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
@@ -96,6 +98,9 @@ fun XdSheet(
                     .background(c.solid(c.sheet))
                     .border(1.dp, Color.White.copy(alpha = 0.06f), shape)
                     .clickable(remember = MutableInteractionSource(), indication = null) {}
+                    // Used by touch, nothing takes the focus as the sheet opens (a text field would
+                    // pop the keyboard up); with a controller the first control does.
+                    .then(if (c.controller) Modifier else Modifier.noInitialFocus())
                     .then(if (landscape) Modifier else Modifier.navigationBarsPadding())
                     .imePadding()
                     .verticalScroll(rememberScrollState())
@@ -121,6 +126,11 @@ fun XdSheet(
 
 private fun Modifier.clickable(remember: MutableInteractionSource, indication: Nothing?, onClick: () -> Unit): Modifier =
     this.clickable(interactionSource = remember, indication = indication, onClick = onClick)
+
+/** Focus moves into this group only when asked for (a tap); the window's first focus stays out. */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+private fun Modifier.noInitialFocus(): Modifier =
+    this.focusProperties { enter = { androidx.compose.ui.focus.FocusRequester.Cancel } }.focusGroup()
 
 /** A choice inside a sheet: title, explanation, control at the end (the prototype's .opt). */
 @Composable
