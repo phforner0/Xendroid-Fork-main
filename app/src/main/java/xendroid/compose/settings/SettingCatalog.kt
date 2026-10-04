@@ -97,7 +97,6 @@ object SettingCatalog {
         ),
         SettingGroup.AUDIO to listOf(
             e("APU|volume", E, live = true, isNew = true),
-            e("APU|mute", E),
             e("APU|apu_aaudio_buffer_bursts", A),
             e("APU|apu_aaudio_adaptive_buffer", A),
             e("APU|apu", X),
@@ -128,7 +127,6 @@ object SettingCatalog {
             e("Vulkan|vulkan_allow_reverse_z", X, isNew = true),
             e("Kernel|stack_size_multiplier_hack", X, isNew = true),
             e("CPU|collapse_memory_delay_spins", X),
-            e("GPU|readback_memexport", X),
             e("GPU|depth_float24_round", X),
             e("GPU|depth_transfer_not_equal_test", X),
             e("GPU|half_pixel_offset", X),

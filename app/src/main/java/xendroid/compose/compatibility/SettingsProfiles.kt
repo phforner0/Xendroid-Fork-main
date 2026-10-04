@@ -103,7 +103,7 @@ object SettingsProfiles {
     val ALLOWED_KEYS: Set<String> = setOf(
         "GPU|framerate_limit", "GPU|guest_display_refresh_cap",
         "GPU|draw_resolution_scale_x", "GPU|draw_resolution_scale_y", "GPU|draw_resolution_scaled_texture_offsets",
-        "GPU|readback_resolve", "GPU|readback_memexport", "GPU|occlusion_query", "GPU|vulkan_mid_frame_submission_draws",
+        "GPU|readback_resolve", "GPU|occlusion_query", "GPU|vulkan_mid_frame_submission_draws",
         "GPU|render_target_path", "GPU|half_pixel_offset", "GPU|native_2x_msaa",
         "GPU|resolve_resolution_scale_fill_half_pixel_offset", "GPU|snorm16_render_target_full_range",
         "GPU|texture_gradient_exp_bias", "GPU|texture_integer_num_format",

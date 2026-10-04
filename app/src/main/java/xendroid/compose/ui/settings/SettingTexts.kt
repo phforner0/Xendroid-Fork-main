@@ -35,7 +35,6 @@ private val TITLES: Map<String, Int> = mapOf(
     "UI|show_achievement_notification" to R.string.set_achievements,
     "Console|user_language" to R.string.set_language,
     "Console|user_country" to R.string.set_country,
-    "APU|mute" to R.string.set_mute,
     "General|apply_patches" to R.string.set_apply_patches,
     "Logging|dump_session_logs" to R.string.set_export_logs,
     // Redesign: the settings the new screens show translated, the new cvars among them.
@@ -121,7 +120,6 @@ private val DESCRIPTIONS: Map<String, Int> = mapOf(
     "UI|show_achievement_notification" to R.string.set_achievements_desc,
     "Console|user_language" to R.string.set_language_desc,
     "Console|user_country" to R.string.set_country_desc,
-    "APU|mute" to R.string.set_mute_desc,
     "General|apply_patches" to R.string.set_apply_patches_desc,
     "Logging|dump_session_logs" to R.string.set_export_logs_desc,
     "Video|internal_display_resolution_x" to R.string.st_d_video_internal_display_resolution_x,

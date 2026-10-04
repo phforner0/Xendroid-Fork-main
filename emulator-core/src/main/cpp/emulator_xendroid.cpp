@@ -107,7 +107,7 @@ static jstring j_simple_device_info(JNIEnv* env, jobject thiz)
 
         std::optional<VkInstance> inst=vk_create_instance("compose-gpu_info");
         if(!inst) {
-            return "获取gpu信息失败";
+            return "GPU: no Vulkan instance\n";
         }
 
         clean.funcs.push_back([=](){
@@ -117,10 +117,10 @@ static jstring j_simple_device_info(JNIEnv* env, jobject thiz)
         if(int count=vk_get_physical_device_count(*inst);count!=1) {
 
             if(count<1){
-                return "获取gpu信息失败";
+                return "GPU: no Vulkan device\n";
             }
             if(count>1){
-                return "多个gpu!";
+                return "GPU: more than one Vulkan device\n";
             }
         }
         if(auto pdev=vk_get_physical_device(*inst);pdev) {
@@ -141,12 +141,16 @@ static jstring j_simple_device_info(JNIEnv* env, jobject thiz)
             return "GPU [" + gpu_name +"(Vulkan: "+gpu_vk_ver+ ")]:\n" + gpu_ext;
 
         }
-        return "获取gpu信息失败";
+        return "GPU: the Vulkan device could not be read\n";
     };
 
     auto get_cpu_info=[]()->std::string {
 
         std::vector<core_info_t> core_info=cpu_get_core_info();
+        // cpu_get_simple_info and the features below read the first core.
+        if(core_info.empty()) {
+            return "CPU: /proc/cpuinfo could not be read\n";
+        }
         std::string cpu_name=cpu_get_simple_info(core_info);
         std::string cpu_features=[&](){
             std::ostringstream oss;

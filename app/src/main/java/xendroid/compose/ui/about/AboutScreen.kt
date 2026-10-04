@@ -1,6 +1,16 @@
 package xendroid.compose.ui.about
 
 import android.webkit.WebView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -45,6 +55,7 @@ import xendroid.compose.ui.design.XdTwoColumns
  * credits and the open-source licenses; and the way to app updates, Diagnostics and the setup
  * assistant.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AboutScreen(
     onBack: () -> Unit,
@@ -56,8 +67,11 @@ fun AboutScreen(
     val toast = LocalXdToast.current
     val c = Xd.colors
     var showLicenses by rememberSaveable { mutableStateOf(false) }
-    val device = remember { DeviceInfo.rows(context) }
-    XdSingleScreen(title = stringResource(R.string.lib_menu_about), subtitle = "XenDroid v${BuildConfig.VERSION_CODE}", onBack = onBack,
+    var showReport by rememberSaveable { mutableStateOf(false) }
+    // Off the main thread: the core's report creates a Vulkan instance to ask.
+    val device by produceState<List<Pair<Int, String>>?>(null) { value = withContext(Dispatchers.IO) { DeviceInfo.rows(context) } }
+    val report by produceState<CoreReport?>(null, device) { value = withContext(Dispatchers.IO) { DeviceInfo.coreReport() } }
+    XdSingleScreen(title = stringResource(R.string.lib_menu_about), subtitle = "XenDroid · ${versionLine()}", onBack = onBack,
         headIcon = XdIcons.info) {
         BoxWithConstraints {
             val wide = maxWidth > 640.dp
@@ -67,19 +81,22 @@ fun AboutScreen(
                         XdLogo(56.dp)
                         Column(Modifier.weight(1f)) {
                             Text("XenDroid", style = XdText.h1, color = c.fg)
-                            Text(stringResource(R.string.ab_version, "v${BuildConfig.VERSION_CODE} · ${BuildConfig.VERSION_NAME.take(9)}"),
-                                style = XdText.small, color = c.fg3)
+                            Text(stringResource(R.string.ab_version, versionLine()), style = XdText.small, color = c.fg3)
                             Text(stringResource(R.string.xd_fr_tagline), style = XdText.bodySm, color = c.fg2)
                         }
                     }
                 }
                 XdTwoColumns(wide, left = {
                     XdCard(Modifier.fillMaxWidth(), title = stringResource(R.string.ab_device), icon = XdIcons.phone) {
-                        XdKv(device.map { (label, value) -> stringResource(label) to value })
-                        XdButton(stringResource(R.string.xd_ab_copy_all), {
-                            DeviceInfo.copy(context)
-                            toast.show(context.getString(R.string.xd_ab_copied))
-                        }, size = XdButtonSize.SM, icon = XdIcons.copy)
+                        XdKv(device.orEmpty().map { (label, value) -> stringResource(label) to value })
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            XdButton(stringResource(R.string.xd_ab_copy_all), {
+                                DeviceInfo.copy(context)
+                                toast.show(context.getString(R.string.xd_ab_copied))
+                            }, size = XdButtonSize.SM, icon = XdIcons.copy, enabled = device != null)
+                            if (report != null) XdButton(stringResource(R.string.xd_ab_full_report), { showReport = true },
+                                kind = XdButtonKind.GHOST, size = XdButtonSize.SM, icon = XdIcons.chip)
+                        }
                     }
                 }, right = {
                     // Whole rows open their screen; a controller's A on the row does it.
@@ -99,11 +116,52 @@ fun AboutScreen(
         }
     }
 
+    report?.takeIf { showReport }?.let { r ->
+        XdSheet(onDismiss = { showReport = false }, title = stringResource(R.string.xd_ab_full_report), wide = true,
+            subtitle = stringResource(R.string.xd_ab_report_note), actions = {
+                XdButton(stringResource(R.string.xd_copy), {
+                    DeviceInfo.coreReportText()?.let { text ->
+                        context.getSystemService(android.content.ClipboardManager::class.java)
+                            ?.setPrimaryClip(android.content.ClipData.newPlainText("XenDroid", text))
+                        toast.show(context.getString(R.string.xd_ab_report_copied))
+                    }
+                }, icon = XdIcons.copy)
+                XdButton(stringResource(R.string.common_ok), { showReport = false }, kind = XdButtonKind.PRIMARY)
+            }) {
+            XdKv(listOfNotNull(
+                r.coresLine?.let { stringResource(R.string.xd_ab_k_cpu) to it + (r.isa?.let { isa -> " · $isa" } ?: "") },
+                r.gpu?.let { stringResource(R.string.xd_ab_k_gpu) to it + (r.vulkan?.let { v -> " · Vulkan $v" } ?: "") },
+            ) + r.notes.map { stringResource(R.string.xd_ab_k_core_note) to it })
+            ReportList(stringResource(R.string.xd_ab_report_cpu, r.cpuFeatures.size), r.cpuFeatures)
+            ReportList(stringResource(R.string.xd_ab_report_ext, r.extensions.size), r.extensions)
+        }
+    }
+
     if (showLicenses) XdSheet(onDismiss = { showLicenses = false }, title = stringResource(R.string.ab_licenses), wide = true, actions = {
         XdButton(stringResource(R.string.common_ok), { showLicenses = false }, kind = XdButtonKind.PRIMARY)
     }) {
         AndroidView(factory = { ctx -> WebView(ctx).apply { loadUrl("file:///android_asset/licenses.html") } },
             modifier = Modifier.fillMaxWidth().height(380.dp))
+    }
+}
+
+/** The version as people quote it: "v412 · 5cb79f4d" from CI; a local build's own changes as a
+ *  short digest ("5cb79f4d+local.ab12cd-debug"), never cut in the middle. */
+private fun versionLine(): String {
+    val name = BuildConfig.VERSION_NAME.replace(Regex("""(\+local\.[0-9a-f]{6})[0-9a-f]+"""), "$1")
+    return (BuildConfig.VERSION_CODE.takeIf { it > 1 }?.let { "v$it · " } ?: "") + name
+}
+
+/** A list of the core's report (CPU features, Vulkan extensions) in the mono font, wrapping as words. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ReportList(title: String, items: List<String>) {
+    if (items.isEmpty()) return
+    val c = Xd.colors
+    Text(title, style = XdText.label, color = c.fg, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (item in items) Text(item, style = XdText.mono.copy(fontSize = 11.sp), color = c.fg2,
+            modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(c.s1).padding(horizontal = 7.dp, vertical = 3.dp))
     }
 }
 

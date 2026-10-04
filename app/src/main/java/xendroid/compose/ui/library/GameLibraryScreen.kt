@@ -93,14 +93,16 @@ fun GameLibraryScreen(
     gameSettings: (@Composable (String) -> GameSettingsViewModel)? = null,
     /** Opened as the Collections area: the first collection is shown. */
     collectionsArea: Boolean = false,
-    /** Bumped each time the rail asks for Games or Collections: the filter starts over. */
-    areaTick: Int = 0,
+    /** The rail asked for Games or Collections: the filter starts over, once ([onAreaHandled]). */
+    areaReset: Boolean = false,
+    onAreaHandled: () -> Unit = {},
     /** The app updates screen (lote 6). */
     onOpenUpdates: () -> Unit = {},
     /** The first-run assistant creates a profile here and makes it P1; null: only "Open Profiles". */
     onCreateProfile: ((String) -> Unit)? = null,
-    /** Bumped to open the setup assistant again (About). */
-    assistantTick: Int = 0,
+    /** About asked for the setup assistant again: it opens at its first step, once ([onAssistantHandled]). */
+    assistantRequested: Boolean = false,
+    onAssistantHandled: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -124,10 +126,21 @@ fun GameLibraryScreen(
     var density by remember { mutableStateOf(CoverDensityStore.read(context)) }
     var pinned by remember { mutableStateOf(PinnedSettings.read(context)) }
     var menuOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(areaTick) { if (areaTick > 0) { filterKey = null; query = "" } }
+    LaunchedEffect(areaReset) { if (areaReset) { filterKey = null; query = ""; onAreaHandled() } }
     val gridState = rememberLazyGridState()
 
-    var showBrowser by remember { mutableStateOf(false) }
+    var showBrowser by rememberSaveable { mutableStateOf(false) }
+    // Declared before the browser's early return below: while the browser shows, flags declared
+    // after it leave the composition and would start over (the assistant at its first step).
+    var foldersOpen by rememberSaveable { mutableStateOf(false) }
+    var missingOpen by rememberSaveable { mutableStateOf(false) }
+    // L01: once, until finished or skipped; reopened from the menu or About. Not over the
+    // no-Vulkan gate, which already explains why games cannot run.
+    var assistantOpen by rememberSaveable { mutableStateOf(!FirstRunStore.done(context)) }
+    var assistantStep by rememberSaveable { mutableStateOf(FirstRunStep.PHONE) }
+    LaunchedEffect(assistantRequested) {
+        if (assistantRequested) { assistantStep = FirstRunStep.PHONE; assistantOpen = true; onAssistantHandled() }
+    }
     // Lote 6: a missing game's file chosen in the browser: its folder joins the game folders.
     var findingFile by remember { mutableStateOf<xendroid.compose.data.MissingTitle?>(null) }
     var allFilesGranted by remember { mutableStateOf(AllFilesAccess.isGranted()) }
@@ -181,7 +194,6 @@ fun GameLibraryScreen(
     }
 
     // L03, lote 6: the library's game folders (add, remove, where installs go; files are never touched).
-    var foldersOpen by rememberSaveable { mutableStateOf(false) }
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val scanProgress by viewModel.scanProgress.collectAsStateWithLifecycle()
     val openFolders = { viewModel.loadFolders(); foldersOpen = true }
@@ -209,7 +221,6 @@ fun GameLibraryScreen(
     }
 
     // L06, lote 6: games played or seen before that this scan did not list.
-    var missingOpen by rememberSaveable { mutableStateOf(false) }
     if (missingOpen) {
         MissingGamesScreen(
             missing = missing, activity = activity, coverOf = viewModel::coverOfTitle,
@@ -230,12 +241,7 @@ fun GameLibraryScreen(
         return
     }
 
-    // L01: once, until finished or skipped; reopened from the menu. Not over the no-Vulkan
-    // gate, which already explains why games cannot run.
-    var assistantOpen by rememberSaveable { mutableStateOf(!FirstRunStore.done(context)) }
-    // Kept here: the folder browser replaces the assistant for a while, and it comes back on the same step.
-    var assistantStep by rememberSaveable { mutableStateOf(FirstRunStep.PHONE) }
-    LaunchedEffect(assistantTick) { if (assistantTick > 0) { assistantStep = FirstRunStep.PHONE; assistantOpen = true } }
+    // The assistant (state above): the folder browser replaces it for a while, and it comes back on the same step.
     if (assistantOpen && state != LibraryUiState.NoVulkan) {
         LaunchedEffect(Unit) { viewModel.loadFolders() }
         val found = (state as? LibraryUiState.Loaded)?.games

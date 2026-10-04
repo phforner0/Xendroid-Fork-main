@@ -74,9 +74,9 @@ class InGameMenuStateTest {
         assertEquals(graphics.size, player.count)
         // Wrapping navigation stays inside the shown actions.
         assertEquals(graphics.last(), player.move(-1).action)
-        // Open, the advanced list still has no developer option: only stretch and the color filter.
+        // Open, the advanced list still has no developer option: stretch, the color filter and dither.
         val graphicsOpen = player.toggleAdvanced()
-        assertEquals(2, graphicsOpen.advancedCount())
+        assertEquals(3, graphicsOpen.advancedCount())
         assertTrue(graphicsOpen.actions().none { it in developerActions })
         assertTrue(InGameAction.STRETCH in graphicsOpen.actions())
         assertTrue(player.actions(InGamePage.SYSTEM).none { it == InGameAction.HUD_HOST_SUBMISSIONS })

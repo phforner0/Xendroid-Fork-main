@@ -347,8 +347,6 @@
     <string name="set_language_desc">Idioma do console informado aos jogos (1=inglês, 2=japonês, 3=alemão…)</string>
     <string name="set_country">País do console</string>
     <string name="set_country_desc">País/região do console informado aos jogos</string>
-    <string name="set_mute">Sem som</string>
-    <string name="set_mute_desc">Silencia toda a saída de áudio</string>
     <string name="set_apply_patches">Aplicar patches</string>
     <string name="set_apply_patches_desc">Aplica os arquivos de patch aos jogos quando eles carregam</string>
     <string name="set_export_logs">Exportar logs da sessão para Downloads</string>

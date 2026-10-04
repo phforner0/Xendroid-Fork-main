@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.InputDevice
 import android.view.KeyEvent
+import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -58,12 +59,28 @@ val LocalInputMode = compositionLocalOf { InputMode.TOUCH }
 
 /** Physical controllers (not the phone's own keys, not a virtual pad). */
 object Gamepads {
+    /**
+     * A controller someone plays with: a gamepad with A and B, or a joystick with a stick. Phones
+     * also declare parts of themselves as gamepads or joysticks (fingerprint readers, Xiaomi's
+     * uinput helpers, shoulder keys), so a built-in device counts only as a whole pad: A, B, X, Y,
+     * Start and a stick (a handheld's own controls). Plugged in or Bluetooth: A and B or a stick.
+     */
     fun isController(device: InputDevice?): Boolean {
         if (device == null || device.isVirtual) return false
         val s = device.sources
-        return s and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
-            s and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
+        val gamepad = s and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD
+        val joystick = s and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
+        if (!gamepad && !joystick) return false
+        fun has(vararg keys: Int) = runCatching { device.hasKeys(*keys).all { it } }.getOrDefault(false)
+        val faceButtons = has(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B)
+        val stick = joystick && device.getMotionRange(MotionEvent.AXIS_X, InputDevice.SOURCE_JOYSTICK) != null &&
+            device.getMotionRange(MotionEvent.AXIS_Y, InputDevice.SOURCE_JOYSTICK) != null
+        if (device.isExternal) return faceButtons || stick
+        return faceButtons && stick && has(KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_BUTTON_START)
     }
+
+    /** A key or motion event from a controller [isController] accepts. */
+    fun isControllerEvent(event: android.view.InputEvent): Boolean = isController(event.device)
 
     fun anyConnected(): Boolean = InputDevice.getDeviceIds().any { isController(InputDevice.getDevice(it)) }
 }

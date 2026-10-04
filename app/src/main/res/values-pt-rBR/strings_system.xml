@@ -79,4 +79,17 @@
     <string name="xd_ms_find_note">Escolha o arquivo do jogo: a pasta dele entra nas pastas de jogos.</string>
     <string name="xd_up_hero_no_feed">%1$s · sem canal de atualização</string>
     <string name="xd_ab_shortcuts_head">Atalhos</string>
+    <string name="xd_ab_k_cpu">CPU</string>
+    <string name="xd_ab_k_cpu_features">Recursos da CPU</string>
+    <string name="xd_ab_k_vulkan">Vulkan</string>
+    <string name="xd_ab_k_core_note">O núcleo diz</string>
+    <string name="xd_ab_full_report">Relato completo do núcleo</string>
+    <string name="xd_ab_report_note">O que o núcleo do emulador lê deste aparelho: cada recurso da CPU e cada extensão Vulkan. Copie para um relato de problema.</string>
+    <string name="xd_ab_report_cpu">Recursos da CPU (%1$d)</string>
+    <string name="xd_ab_report_ext">Extensões Vulkan (%1$d)</string>
+    <string name="xd_ab_report_copied">Relato do núcleo copiado.</string>
+    <plurals name="xd_ab_v_vulkan">
+        <item quantity="one">%1$s · %2$d extensão</item>
+        <item quantity="other">%1$s · %2$d extensões</item>
+    </plurals>
 </resources>

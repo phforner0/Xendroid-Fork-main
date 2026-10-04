@@ -79,4 +79,17 @@
     <string name="xd_ms_find_note">Choose the game\'s file: its folder joins the game folders.</string>
     <string name="xd_up_hero_no_feed">%1$s · no update channel</string>
     <string name="xd_ab_shortcuts_head">Shortcuts</string>
+    <string name="xd_ab_k_cpu">CPU</string>
+    <string name="xd_ab_k_cpu_features">CPU features</string>
+    <string name="xd_ab_k_vulkan">Vulkan</string>
+    <string name="xd_ab_k_core_note">Core says</string>
+    <string name="xd_ab_full_report">Full core report</string>
+    <string name="xd_ab_report_note">What the emulator core reads from this phone: every CPU feature and Vulkan extension. Copy it into a problem report.</string>
+    <string name="xd_ab_report_cpu">CPU features (%1$d)</string>
+    <string name="xd_ab_report_ext">Vulkan extensions (%1$d)</string>
+    <string name="xd_ab_report_copied">Core report copied.</string>
+    <plurals name="xd_ab_v_vulkan">
+        <item quantity="one">%1$s · %2$d extension</item>
+        <item quantity="other">%1$s · %2$d extensions</item>
+    </plurals>
 </resources>

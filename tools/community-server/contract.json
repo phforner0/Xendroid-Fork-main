@@ -49,7 +49,6 @@
     "GPU|native_2x_msaa",
     "GPU|non_seamless_cube_map",
     "GPU|occlusion_query",
-    "GPU|readback_memexport",
     "GPU|readback_resolve",
     "GPU|render_target_path",
     "GPU|resolve_copy_dest_number_packing",

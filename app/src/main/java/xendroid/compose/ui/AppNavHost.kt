@@ -102,10 +102,12 @@ fun AppNavHost(container: AppContainer) {
     val mode = xendroid.compose.ui.design.LocalInputMode.current
     // Collections is the library's own area: the library entry stays, its filter changes.
     var collectionsArea by rememberSaveable { mutableStateOf(false) }
-    var areaTick by remember { mutableStateOf(0) }
+    // One-shot requests the library consumes: a counter kept its value, so every return to the
+    // library started the filter over and (after About) reopened the setup assistant.
+    var areaReset by remember { mutableStateOf(false) }
     var gamertag by remember { mutableStateOf<String?>(null) }
-    // About asks for the setup assistant again: the library opens it when this changes.
-    var assistantTick by remember { mutableStateOf(0) }
+    // About asks for the setup assistant again: the library opens it once.
+    var assistantRequested by remember { mutableStateOf(false) }
     val navigator = remember(nav, mode) {
         object : XdNavigator {
             /** A top-level area: one entry above the library, never a stack of them. */
@@ -120,7 +122,7 @@ fun AppNavHost(container: AppContainer) {
             override fun area(area: XdArea) = when (area) {
                 XdArea.GAMES, XdArea.COLLECTIONS -> {
                     collectionsArea = area == XdArea.COLLECTIONS
-                    areaTick++
+                    areaReset = true
                     nav.popBackStack(Routes.LIBRARY, inclusive = false)
                     Unit
                 }
@@ -164,7 +166,8 @@ fun AppNavHost(container: AppContainer) {
                 onOpenGame = { game, section -> navigateOnce(gameRoute(game, section)) },
                 gameSettings = { titleId -> viewModel(key = "panel-settings-$titleId", factory = container.gameSettingsViewModelFactory(titleId)) },
                 collectionsArea = collectionsArea,
-                areaTick = areaTick,
+                areaReset = areaReset,
+                onAreaHandled = { areaReset = false },
                 onOpenSettings = { navigateOnce(Routes.SETTINGS) },
                 onOpenKeymap = { navigateOnce(Routes.KEYMAP) },
                 onOpenAbout = { navigateOnce(Routes.ABOUT) },
@@ -202,7 +205,8 @@ fun AppNavHost(container: AppContainer) {
                     val locale = java.util.Locale.getDefault().let { xendroid.compose.ui.library.FirstRun.guestLocale(it.language, it.country) }
                     profiles.create(tag, locale.languageValue?.toIntOrNull() ?: 1, locale.countryValue?.toIntOrNull() ?: 103, null, activate = true)
                 },
-                assistantTick = assistantTick,
+                assistantRequested = assistantRequested,
+                onAssistantHandled = { assistantRequested = false },
             )
         }
         composable(
@@ -308,7 +312,7 @@ fun AppNavHost(container: AppContainer) {
             val go: (String) -> Unit = { route -> if (entry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) nav.navigate(route) }
             AboutScreen(onBack = entry.backOnce(nav), onUpdates = { go(Routes.UPDATES) }, onDiagnostics = { go("${Routes.DIAGNOSTICS}?title=") },
                 onSetup = {
-                    assistantTick++
+                    assistantRequested = true
                     nav.popBackStack(Routes.LIBRARY, inclusive = false)
                 })
         }

@@ -233,7 +233,6 @@ object SettingsSchema {
             b("GPU", "execute_unclipped_draw_vs_on_cpu_with_scissor", "Unclipped draw VS on CPU (scissor)", false),
             b("GPU", "mrt_edram_used_range_clamp_to_min", "MRT EDRAM used-range clamp to min", true),
             b("GPU", "execute_unclipped_draw_vs_on_cpu", "Unclipped draw VS on CPU", true),
-            b("GPU", "readback_memexport", "Readback memexport", false),
             b("GPU", "force_convert_triangle_fans_to_lists", "Convert triangle fans to lists", false),
             b("GPU", "non_seamless_cube_map", "Non-seamless cube map", true),
             b("GPU", "depth_float24_round", "Depth float24 round", false),
@@ -304,7 +303,6 @@ object SettingsSchema {
             b("APU", "apu_performance_hint", "Audio performance hint (ADPF)", true),
             i("Console", "xmp_default_volume", "XMP default volume", 70, 0, 100),
             b("APU", "ffmpeg_verbose", "FFmpeg verbose", false),
-            b("APU", "mute", "Mute", false),
             i("APU", "apu_max_queued_frames", "Max queued frames", 8, 4, 64),
             i("APU", "apu_aaudio_buffer_bursts", "Audio buffer depth", 4, 2, 8),
             // 15j: grows after underruns, back to the depth above after quiet stretches.
@@ -338,7 +336,7 @@ object SettingsSchema {
         "UI|android_soft_keyboard", "UI|android_message_box",
         "UI|show_achievement_notification",
         "Console|user_language", "Console|user_country",
-        "APU|mute", "General|apply_patches",
+        "APU|volume", "General|apply_patches",
         "Logging|dump_session_logs",
     )
 

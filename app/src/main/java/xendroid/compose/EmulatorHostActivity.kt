@@ -908,10 +908,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     private fun noteController(deviceId: Int, what: String) {
         val device = InputDevice.getDevice(deviceId) ?: return
-        val sources = device.sources
-        val controller = sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
-            sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
-        if (!controller || device.isVirtual) return
+        // The app's own check: a phone's built-in keys must not take player 1 from a real pad.
+        if (!xendroid.compose.ui.design.Gamepads.isController(device)) return
         // IDs only: a Bluetooth name can carry its owner's name.
         val id = "vendor 0x%04X product 0x%04X".format(device.vendorId, device.productId)
         controllers[deviceId] = id
@@ -926,8 +924,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
      *  on-screen controls aside (TouchOverlayPresence). Virtual devices never count. */
     private fun noteControllerUse(event: android.view.InputEvent) {
         if (overlayHiddenByController.value) return
-        val device = event.device ?: return
-        if (device.isVirtual) return
+        // Only a real controller: a phone's own "gamepad" keys must not hide the touch controls.
+        if (!xendroid.compose.ui.design.Gamepads.isController(event.device)) return
         if (touchPresence.controllerInput(hideTouchWithController, playerSlot(event.deviceId))) {
             touchHiddenBy = event.deviceId
             overlayHiddenByController.value = true

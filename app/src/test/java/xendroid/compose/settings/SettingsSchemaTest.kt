@@ -13,19 +13,20 @@ class SettingsSchemaTest {
 
     private val all = SettingsSchema.allSettings
 
-    // 146 before the redesign, plus the 29 cvars of the core it shows now (docs/ui-redesign/README.md).
+    // 146 before the redesign, plus the 29 cvars of the core it shows now (docs/ui-redesign/README.md),
+    // less APU|mute and GPU|readback_memexport, which the core never defined (ajustes-2.md).
     // Display|host_present_from_non_ui_thread is intentionally absent (forced true natively).
-    @Test fun total_entry_count_is_175() {
-        assertEquals(175, all.size)
+    @Test fun total_entry_count_is_173() {
+        assertEquals(173, all.size)
         assertEquals(
-            175,
+            173,
             all.count { it is Setting.Bool } + all.count { it is Setting.IntRange } +
                 all.count { it is Setting.ListChoice } + all.count { it is Setting.Action } + all.count { it is Setting.Text },
         )
     }
 
     @Test fun counts_by_type_match_verified_inventory() {
-        assertEquals(121, all.count { it is Setting.Bool })        // 103 + 18 new
+        assertEquals(119, all.count { it is Setting.Bool })        // 103 + 18 new - 2 the core never had
         assertEquals(20, all.count { it is Setting.IntRange })     // 14 + 6 new
         assertEquals(30, all.count { it is Setting.ListChoice })   // 27 + 3 new
         assertEquals(2, all.count { it is Setting.Action })

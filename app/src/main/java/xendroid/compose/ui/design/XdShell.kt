@@ -121,9 +121,11 @@ val LocalSwapConfirm = staticCompositionLocalOf { false }
 fun BRail(current: XdArea?, modifier: Modifier = Modifier) {
     val c = Xd.colors
     val nav = LocalXdNavigator.current
-    Row(modifier.fillMaxHeight()) {
+    // Its colour runs under a cutout or a side navigation bar; the items stay clear of them.
+    Row(modifier.fillMaxHeight().background(c.s1).windowInsetsPadding(WindowInsets.safeDrawing.part(start = true))) {
         Column(
-            Modifier.width(66.dp).fillMaxHeight().background(c.s1).verticalScroll(rememberScrollState())
+            Modifier.width(66.dp).fillMaxHeight().verticalScroll(rememberScrollState())
+                .windowInsetsPadding(WindowInsets.safeDrawing.part(top = true, bottom = true))
                 .padding(top = 10.dp, bottom = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -162,7 +164,8 @@ private fun RailItem(area: XdArea, selected: Boolean, onClick: () -> Unit) {
 fun BBottomBar(current: XdArea?, modifier: Modifier = Modifier) {
     val c = Xd.colors
     val nav = LocalXdNavigator.current
-    Column(modifier.fillMaxWidth().background(c.s1)) {
+    // Above the navigation bar (three buttons or the gesture handle), its colour running under it.
+    Column(modifier.fillMaxWidth().background(c.s1).windowInsetsPadding(WindowInsets.safeDrawing.part(bottom = true, start = true, end = true))) {
         HorizontalDivider(thickness = 1.dp, color = c.line)
         Row(Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 6.dp), horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically) {
@@ -371,6 +374,8 @@ fun XdSingleScreen(
     overlay: (@Composable BoxScope.() -> Unit)? = null,
     /** Controller mode: pad buttons the screen handles itself; true = handled. */
     onPad: ((PadButton) -> Boolean)? = null,
+    /** False for a modal flow (the folder browser): no rail or bottom bar to wander off mid-way. */
+    showNav: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = Xd.colors
@@ -395,8 +400,11 @@ fun XdSingleScreen(
                 else Column(inner.padding(start = 16.dp, end = 16.dp, top = 14.dp), content = content)
             }
         }
-        if (portrait) Column(Modifier.fillMaxSize()) { body(Modifier.weight(1f)); BBottomBar(area) }
-        else Row(Modifier.fillMaxSize()) { BRail(area); body(Modifier.weight(1f)) }
+        when {
+            !showNav -> body(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.part(bottom = true, start = !portrait)))
+            portrait -> Column(Modifier.fillMaxSize()) { body(Modifier.weight(1f)); BBottomBar(area) }
+            else -> Row(Modifier.fillMaxSize()) { BRail(area); body(Modifier.weight(1f)) }
+        }
         overlay?.invoke(this)
     }
 }

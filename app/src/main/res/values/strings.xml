@@ -347,8 +347,6 @@
     <string name="set_language_desc">Console language ID reported to games (1=English, 2=Japanese, 3=German, …)</string>
     <string name="set_country">User country</string>
     <string name="set_country_desc">Console country/region ID reported to games</string>
-    <string name="set_mute">Mute</string>
-    <string name="set_mute_desc">Silences all audio output</string>
     <string name="set_apply_patches">Apply patches</string>
     <string name="set_apply_patches_desc">Applies user patch files to games when they load</string>
     <string name="set_export_logs">Export session logs to Downloads</string>

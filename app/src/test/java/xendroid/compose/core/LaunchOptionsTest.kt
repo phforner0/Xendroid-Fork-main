@@ -35,13 +35,13 @@ class LaunchOptionsTest {
     @Test fun ignoring_the_game_settings_hands_the_global_values_in_the_core_shapes() {
         val args = LaunchOptions(ignoreGameSettings = mapOf(
             "GPU|framerate_limit" to "60",
-            "APU|mute" to "true",
+            "Console|widescreen" to "true",
             "GPU|draw_resolution_scale_x" to "1.000000",
             "Display|postprocess_scaling_and_sharpening" to "fsr",
             "Nope|unknown" to "1",
             "Logging|dump_session_logs" to "x",
         )).toArgs(slots)
-        assertEquals(setOf("--framerate_limit=60", "--mute=true", "--draw_resolution_scale_x=1", "--postprocess_scaling_and_sharpening=fsr"),
+        assertEquals(setOf("--framerate_limit=60", "--widescreen=true", "--draw_resolution_scale_x=1", "--postprocess_scaling_and_sharpening=fsr"),
             args.toSet())
     }
 
@@ -54,7 +54,7 @@ class LaunchOptionsTest {
         val root = Files.createTempDirectory("drivers").toFile()
         val lib = File(root, "abc/libvulkan_freedreno.so").apply { parentFile.mkdirs(); writeText("elf") }
         val made = LaunchOptions(profileXuid = "BBBBBBBBBBBBBBBB", driverPath = lib.absolutePath, launchModule = "a.xex", noPatches = true,
-            ignoreGameSettings = mapOf("GPU|framerate_limit" to "30", "APU|mute" to "false"), extraCommandLine = "x").toArgs(slots)
+            ignoreGameSettings = mapOf("GPU|framerate_limit" to "30", "Console|widescreen" to "false"), extraCommandLine = "x").toArgs(slots)
         assertEquals(made, LaunchOptions.sanitize(made.toTypedArray(), root))
     }
 
@@ -81,7 +81,7 @@ class LaunchOptionsTest {
     }
 
     @Test fun sanitize_takes_each_name_once() {
-        assertEquals(listOf("--mute=true"), LaunchOptions.sanitize(arrayOf("--mute=true", "--mute=false"), null))
+        assertEquals(listOf("--widescreen=true"), LaunchOptions.sanitize(arrayOf("--widescreen=true", "--mute=false"), null))
     }
 
     @Test fun installed_driver_must_be_a_library_inside_the_folder() {
