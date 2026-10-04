@@ -11,8 +11,10 @@ por tela com prints antes/depois a cada lote.
 ## Protótipo B + C (direção escolhida)
 
 A direção escolhida é **B como padrão (toque) e C como modo controle**. O protótipo do app
-inteiro nesse formato fica em [`bc/`](bc/README.md), com um lote de telas por vez e prints em
-`prints/bc/`. O `prototipo.html` abaixo continua como registro das três direções.
+inteiro nesse formato fica em [`bc/`](bc/README.md), com prints em `prints/bc/`. Os sete lotes
+estão prototipados (biblioteca e ficha; configurações e drivers; jogo aberto; controles; perfis e
+saves; conteúdo e diagnóstico; primeira abertura e telas do app; painéis do jogo). O
+`prototipo.html` abaixo continua como registro das três direções.
 
 ## Como abrir
 

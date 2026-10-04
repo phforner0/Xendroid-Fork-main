@@ -1,6 +1,6 @@
 # Protótipo B + C: o app inteiro em toque (B) e controle (C)
 
-**Estado:** protótipo em HTML; nada mudou no app. Escolha registrada: **direção B como padrão
+**Estado:** protótipo em HTML de todas as telas (lotes Base a 7); nada mudou no app. Escolha registrada: **direção B como padrão
 (toque) e C como modo controle**, ligado sozinho quando um controle está conectado.
 
 ## Como abrir
@@ -40,7 +40,7 @@
 | 4 | Perfis; saves | Prototipado |
 | 5 | Conteúdo; diagnóstico; comparar execuções | Prototipado |
 | 6 | Primeira abertura; pastas; jogos que saíram; sem Vulkan; atualizador; Sobre | Prototipado |
-| 7 | Painéis do jogo: mensagem, teclado, troca de disco | Próximo |
+| 7 | Painéis do jogo: mensagem, teclado, troca de disco | Prototipado |
 
 O painel de pausa (`PauseMenuPanel`) e o painel lateral (`GuestSidePanel`) não aparecem no lote 7:
 nenhuma tela os chama hoje; o menu em jogo os substituiu.
@@ -154,3 +154,32 @@ nenhuma tela os chama hoje; o menu em jogo os substituiu.
   o SHA-256, instalar) e os erros numa frase. Estados na barra.
 - **Sobre** (`AboutScreen.kt`): versão, aparelho em tabela com copiar tudo, créditos, licenças e
   atalhos para atualizações, diagnóstico e o assistente.
+
+### Lote 7: Painéis do jogo
+
+- **Mensagem do jogo** (`GuestMessageBoxPanel.kt`): o painel diz qual jogo está perguntando e que
+  ele espera a resposta; título, texto que rola quando é longo e as opções em linhas inteiras; sem
+  cancelar (B avisa que o jogo espera).
+- **Teclado do jogo** (`GuestKeyboardPanel.kt`, `KeyboardGrid.kt`): o pedido do jogo, o campo com o
+  limite contado como o jogo conta, a grade de letras e símbolos com as teclas de comando em
+  português (hoje Shift, Space, Done e Cancel ficam em inglês) e os atalhos do Xbox 360 à vista no
+  modo controle.
+- **Troca de disco** (`DiscSwapPanel.kt`): o disco pedido em destaque, o de antes marcado, Cancelar
+  por último com o aviso de que o jogo fica sem disco; sem disco achado, procurar o arquivo.
+
+## O que o protótipo achou no app de hoje
+
+- Dois interruptores para os controles de toque: “Mostrar controle na tela” (config do core,
+  também por jogo) e “Ligado” nos Gerais do editor.
+- Os saves de um jogo aparecem só pelo XUID, sem gamertag nem avatar.
+- Giroscópio, vibração padrão, entrada sem buffer e câmera por toque só mudam pelo menu em jogo.
+- As teclas de comando do teclado do jogo estão em inglês.
+- O painel de pausa (`PauseMenuPanel`) e o painel lateral (`GuestSidePanel`) não são chamados por
+  nenhuma tela.
+- Controles, conteúdo e diagnóstico ficam espalhados no menu ⋮ da biblioteca; o protótipo os
+  junta em áreas do trilho (no modo controle, no menu do Start).
+
+## Próximo passo
+
+Implementar em Compose, lote por lote, com prints antes/depois (Roborazzi) e a validação no
+aparelho marcada como pendente; só começa com o seu ok, sem PR, merge ou release sem pedido.
