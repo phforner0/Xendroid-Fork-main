@@ -1180,6 +1180,15 @@ static void j_set_presentation_mode(JNIEnv* env, jobject thiz, jint mode) {
 static void j_set_scaling_effect(JNIEnv* env, jobject thiz, jint effect) {
     if (effect >= -1 && effect <= 5) xe::ui::RuntimePresentation().scaling_effect = effect;
 }
+// The in-game menu's Image options (negative: the Settings value), from the next frame.
+static void j_set_image_tuning(JNIEnv* env, jobject thiz, jint antialiasing, jfloat cas_sharpness,
+                               jfloat fsr_sharpness_reduction, jint dither) {
+    auto& runtime = xe::ui::RuntimePresentation();
+    runtime.antialiasing = antialiasing >= 0 && antialiasing <= 2 ? int(antialiasing) : -1;
+    runtime.cas_sharpness = cas_sharpness >= 0.0f ? std::min(float(cas_sharpness), 1.0f) : -1.0f;
+    runtime.fsr_sharpness_reduction = fsr_sharpness_reduction >= 0.0f ? std::min(float(fsr_sharpness_reduction), 2.0f) : -1.0f;
+    runtime.dither = dither >= 0 ? (dither != 0 ? 1 : 0) : -1;
+}
 static void j_set_color_filter(JNIEnv* env, jobject thiz, jint mode) {
     auto& runtime = xe::ui::RuntimePresentation();
     runtime.color_filter_error = 0; runtime.color_filter = std::clamp(int(mode), 0, 4);
@@ -2037,6 +2046,7 @@ int register_xendroid_Emulator(JNIEnv* env){
             ,{"set_presentation_mode", "(I)V", (void *) j_set_presentation_mode}
             ,{"set_scaling_effect", "(I)V", (void *) j_set_scaling_effect}
             ,{"set_color_filter", "(I)V", (void *) j_set_color_filter}
+            ,{"set_image_tuning", "(IFFI)V", (void *) j_set_image_tuning}
             ,{"active_gpu_label", "()Ljava/lang/String;", (void *) j_active_gpu_label}
             ,{"active_driver_identity", "()Ljava/lang/String;", (void *) j_active_driver_identity}
             ,{"guest_frame_time_histogram", "()[J", (void *) j_guest_frame_time_histogram}

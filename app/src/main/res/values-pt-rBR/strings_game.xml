@@ -28,4 +28,30 @@
     </plurals>
     <string name="xd_boot_limit">Limite %1$d FPS</string>
     <string name="xd_menu_battery">bateria</string>
+    <string name="xd_hud_now">Agora</string>
+    <string name="xd_hud_pacing">Ritmo</string>
+    <string name="xd_hud_work">Trabalho</string>
+    <string name="xd_hud_settings">Ajustes em vigor</string>
+    <string name="xd_hud_vulkan">Envios Vulkan</string>
+    <string name="xd_hud_gpu_memory">Mem. GPU (total)</string>
+    <string name="xd_hud_battery">Bateria</string>
+    <string name="xd_hud_power">Potência</string>
+    <string name="xd_hud_per_second">%1$s/s</string>
+    <string name="xd_hud_charging">carregando</string>
+    <string name="xd_hud_full_in">cheia em %1$s</string>
+    <string name="menu_aa_value">Antisserrilhamento: %1$s</string>
+    <string name="menu_aa_fxaa_extreme">FXAA extremo</string>
+    <string name="menu_from_settings">como nos ajustes</string>
+    <string name="menu_sharpness_value">Nitidez: %1$s</string>
+    <string name="menu_sharpness_soft">suave</string>
+    <string name="menu_sharpness_low">baixa</string>
+    <string name="menu_sharpness_medium">média</string>
+    <string name="menu_sharpness_high">alta</string>
+    <string name="menu_sharpness_max">máxima</string>
+    <string name="menu_sharpness_needs">com CAS ou FSR</string>
+    <string name="menu_dither_value">Pontilhamento: %1$s</string>
+    <string name="menu_save_game_image">Guardar esta imagem para o jogo</string>
+    <string name="menu_image_live_note">Escala, antisserrilhamento, nitidez e pontilhamento mudam na hora; guarde para o jogo abrir assim da próxima vez. Os outros ajustes de Imagem valem na próxima abertura.</string>
+    <string name="host_image_saved">Imagem guardada para este jogo: ele abre assim da próxima vez.</string>
+    <string name="host_image_nothing">Nada para guardar: a imagem está como nos ajustes.</string>
 </resources>

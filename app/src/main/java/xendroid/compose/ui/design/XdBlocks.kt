@@ -107,7 +107,11 @@ fun XdKv(rows: List<Pair<String, String>>, modifier: Modifier = Modifier) {
     }
 }
 
-/** A list row: leading icon or image, title (and badges), subtitle, actions at the end. */
+/**
+ * A list row: leading icon or image, title (and badges), subtitle, actions at the end. The badges
+ * wrap under the title when they do not fit beside it, so a long title is never squeezed;
+ * [actionsBelow] (a narrow screen with wide buttons) puts the actions under the text.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun XdListRow(
@@ -119,6 +123,7 @@ fun XdListRow(
     badges: (@Composable RowScope.() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     divider: Boolean = true,
+    actionsBelow: Boolean = false,
     actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val c = Xd.colors
@@ -141,13 +146,16 @@ fun XdListRow(
                 }
             }
             Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(title, style = XdText.label, color = c.fg, modifier = Modifier.weight(1f, fill = false))
-                    badges?.invoke(this)
+                if (badges == null) Text(title, style = XdText.label, color = c.fg)
+                else FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(title, style = XdText.label, color = c.fg, modifier = Modifier.align(Alignment.CenterVertically))
+                    badges(this)
                 }
                 if (subtitle != null) Text(subtitle, style = XdText.small, color = c.fg3, modifier = Modifier.padding(top = 2.dp))
+                if (actions != null && actionsBelow) FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
             }
-            if (actions != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, content = actions)
+            if (actions != null && !actionsBelow) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, content = actions)
         }
         if (divider && !c.controller) HorizontalDivider(thickness = 1.dp, color = c.line)
     }

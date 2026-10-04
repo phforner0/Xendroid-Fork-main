@@ -651,6 +651,14 @@ std::unique_lock<std::mutex> Presenter::ConsumeGuestOutput(
     *paint_config_out = guest_output_paint_config_;
     const int effect = RuntimePresentation().scaling_effect.load(std::memory_order_relaxed);
     if (effect >= 0 && effect <= 5) paint_config_out->SetEffect(GuestOutputPaintConfig::Effect(effect));
+    // The in-game menu's sharpness and dither win over the Settings values while set
+    // (the setters clamp to their ranges).
+    const float cas = RuntimePresentation().cas_sharpness.load(std::memory_order_relaxed);
+    if (cas >= 0.0f) paint_config_out->SetCasAdditionalSharpness(cas);
+    const float fsr = RuntimePresentation().fsr_sharpness_reduction.load(std::memory_order_relaxed);
+    if (fsr >= 0.0f) paint_config_out->SetFsrSharpnessReduction(fsr);
+    const int dither = RuntimePresentation().dither.load(std::memory_order_relaxed);
+    if (dither >= 0) paint_config_out->SetDither(dither != 0);
   }
 
   // Lock the mutex to make sure the image that will be acquired now is owned

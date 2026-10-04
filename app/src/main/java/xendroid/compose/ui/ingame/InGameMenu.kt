@@ -159,6 +159,8 @@ fun InGameMenu(
         val scrollState = remember(state.page, state.confirmingQuit, state.logPicker) { ScrollState(0) }
         val selectedRow = remember(state.page, state.confirmingQuit, state.logPicker) { BringIntoViewRequester() }
         LaunchedEffect(state.page, state.selected, state.confirmingQuit, state.logPicker) {
+            // After this frame's layout: when the menu opens, the selected row is not placed yet.
+            androidx.compose.runtime.withFrameNanos { }
             selectedRow.bringIntoView()
         }
         val shape = if (portrait) RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp) else RoundedCornerShape(topEnd = 22.dp, bottomEnd = 22.dp)
@@ -265,7 +267,8 @@ fun InGameMenu(
                         )
                     }
                     if (state.page == InGamePage.GRAPHICS) {
-                        MenuNote(stringResource(R.string.menu_graphics_note), Modifier.padding(top = 6.dp))
+                        MenuNote(stringResource(R.string.menu_image_live_note), Modifier.padding(top = 6.dp))
+                        MenuNote(stringResource(R.string.menu_graphics_note))
                         if (!BuildConfig.DEBUG && state.developer) MenuNote(stringResource(R.string.menu_fg_gated))
                     }
                     if (state.page == InGamePage.SYSTEM) MenuNote(stringResource(R.string.menu_system_note), Modifier.padding(top = 6.dp))
@@ -400,6 +403,10 @@ private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, panel: 
         InGameAction.EXTERNAL_DISPLAY -> stringResource(R.string.menu_external_display)
         InGameAction.TV_MARGIN -> stringResource(R.string.menu_tv_margin_title)
         InGameAction.SCALING_EFFECT -> stringResource(R.string.menu_scaling)
+        InGameAction.ANTIALIASING -> stringResource(R.string.menu_aa_value, stringResource(R.string.menu_from_settings))
+        InGameAction.SHARPNESS -> stringResource(R.string.menu_sharpness_value, stringResource(R.string.menu_from_settings))
+        InGameAction.DITHER -> stringResource(R.string.menu_dither_value, stringResource(R.string.menu_from_settings))
+        InGameAction.SAVE_GAME_IMAGE -> stringResource(R.string.menu_save_game_image)
         InGameAction.PERFORMANCE_HINTS -> stringResource(R.string.menu_hints)
         InGameAction.COLOR_FILTER -> stringResource(R.string.menu_color_filter)
         InGameAction.GYRO_CALIBRATE -> stringResource(R.string.menu_gyro_calibrate)
@@ -438,7 +445,7 @@ private fun fpsText(fps: Int?): String = when (fps) {
 
 private val InGameAction.isPersistence: Boolean
     get() = this == InGameAction.SAVE_GAME_FPS || this == InGameAction.INHERIT_GAME_FPS ||
-        this == InGameAction.SAVE_GLOBAL_FPS || this == InGameAction.STRETCH
+        this == InGameAction.SAVE_GLOBAL_FPS || this == InGameAction.STRETCH || this == InGameAction.SAVE_GAME_IMAGE
 
 private val InGameAction.isFrameGeneration: Boolean
     get() = this == InGameAction.WINFG || this == InGameAction.WINFG_PRESET ||

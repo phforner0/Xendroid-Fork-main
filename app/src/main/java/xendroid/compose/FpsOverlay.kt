@@ -28,7 +28,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -46,13 +45,31 @@ import xendroid.compose.core.presentSubmissionRate
 import xendroid.compose.core.HudDetail
 import xendroid.compose.core.HudMetric
 import xendroid.compose.core.PerformancePanel
-import xendroid.compose.ui.ingame.performancePanelText
 import xendroid.compose.core.HudLook
 import xendroid.compose.core.HudPlacement
 import xendroid.compose.core.HudPlacements
 import xendroid.compose.core.KgslMemory
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.em
+import xendroid.compose.ui.design.XdFonts
+import xendroid.compose.ui.ingame.HudTone
+import xendroid.compose.ui.ingame.PanelSection
+import xendroid.compose.ui.ingame.performancePanelSections
 
 private data class GpuCounter(
     val busy: Long,
@@ -203,9 +220,50 @@ internal class HudPreferences(private val prefs: android.content.SharedPreferenc
     }
 }
 
-/** [titleId]: the running game, whose own HUD place and size are used and kept (15g); [look]:
- *  box, outline or plain text. [detail] (15n): FPS only, the [metrics] chosen in the menu, or
- *  the performance panel, which shows every metric and then [panel]. */
+/** The battery as the power row shows it ([BatteryReadout]). */
+internal data class PowerReading(val watts: Double?, val percent: Int?, val pluggedIn: Boolean, val minutesLeft: Int?, val minutesToFull: Int?)
+
+/** One sample of what the HUD shows; null where the phone does not report it (the row is left out). */
+internal data class HudSample(
+    val fps: Double = 0.0,
+    val frameMs: Double = 0.0,
+    val submissionsPerSecond: Double? = null,
+    val cpu: Float = 0f,
+    val gpu: Int? = null,
+    val ramUsed: Long = 0L,
+    val ramTotal: Long = 0L,
+    val batteryCelsius: Float = 0f,
+    val socCelsius: Float? = null,
+    val power: PowerReading? = null,
+    val gpuMemory: Long? = null,
+)
+
+/** A row of the HUD: what is measured and its value; [tone] colours the value. */
+private data class HudLine(val label: String, val value: AnnotatedString, val tone: HudTone = HudTone.NORMAL)
+
+private val HudText = Color.White.copy(alpha = 0.92f)
+private val HudLabel = Color.White.copy(alpha = 0.62f)
+private val HudGood = Color(0xFF9BE37F)
+private val HudWarn = Color(0xFFF3CF55)
+private val HudBad = Color(0xFFFF8B84)
+
+private fun toneColor(tone: HudTone): Color = when (tone) {
+    HudTone.NORMAL -> HudText
+    HudTone.GOOD -> HudGood
+    HudTone.WARN -> HudWarn
+    HudTone.BAD -> HudBad
+}
+
+/** Numbers as the phone's language writes them ("16,0" in Portuguese). */
+private fun fmt(pattern: String, vararg args: Any): String = String.format(Locale.getDefault(), pattern, *args)
+
+/**
+ * [titleId]: the running game, whose own HUD place and size are used and kept (15g); [look]: box,
+ * outline or plain text. [detail] (15n): FPS only, the [metrics] chosen in the menu, or the
+ * performance panel, which shows every metric and then [panel]. Redesign: rows of a label and its
+ * value in the app's mono font, the frame rate in green and heat near or past the limit in yellow
+ * or red; a metric the phone does not report is left out instead of reading "N/A".
+ */
 @Composable
 fun FpsOverlay(
     session: EmulatorSession,
@@ -214,7 +272,7 @@ fun FpsOverlay(
     metrics: Set<HudMetric> = HudMetric.entries.toSet(),
     modifier: Modifier = Modifier,
     pollHz: Int = 4,
-    baseFontSizeSp: Float = 9f,
+    baseFontSizeSp: Float = 10f,
     titleId: String? = null,
     look: HudLook = HudLook.BOX,
     panel: PerformancePanel.Snapshot? = null,
@@ -223,7 +281,7 @@ fun FpsOverlay(
     val compact = detail == HudDetail.COMPACT
     @Suppress("NAME_SHADOWING")
     val metrics = if (detail == HudDetail.PANEL) HudMetric.entries.toSet() else metrics
-    val panelText = if (detail == HudDetail.PANEL) panel?.let { performancePanelText(it) } else null
+    val panelSections = if (detail == HudDetail.PANEL) panel?.let { performancePanelSections(it) } else null
 
     val context = LocalContext.current
     val store = remember { HudPreferences.of(context) }
@@ -245,8 +303,8 @@ fun FpsOverlay(
     var ramTotal by remember { mutableStateOf(0L) }
     var batTemp by remember { mutableStateOf(0f) }
     var socTemp by remember { mutableStateOf<Float?>(null) }
-    var powerLine by remember { mutableStateOf<String?>(null) }
-    var gpuMemoryLine by remember { mutableStateOf<String?>(null) }
+    var power by remember { mutableStateOf<PowerReading?>(null) }
+    var gpuMemory by remember { mutableStateOf<Long?>(null) }
     val batteryEstimate = remember { BatteryTimeEstimate() }
 
     LaunchedEffect(pollHz, compact, metrics) {
@@ -282,8 +340,8 @@ fun FpsOverlay(
                 previousPresentNs = presentNs
             }
 
-            var nextPowerLine = powerLine
-            var nextGpuMemoryLine = gpuMemoryLine
+            var nextPower = power
+            var nextGpuMemory = gpuMemory
             val stats = withContext(Dispatchers.IO) {
                 if (HudMetric.GPU in metrics && gpuSource == null) {
                     gpuSource = findGpuSource()
@@ -330,16 +388,15 @@ fun FpsOverlay(
                 // The fuel gauge once a second: four binder calls are not worth 4 Hz.
                 if (HudMetric.POWER in metrics && tick % pollHz.coerceIn(1, 10) == 0L) {
                     val battery = runCatching { readBatterySample(context) }.getOrNull()
-                    nextPowerLine = battery?.let {
+                    nextPower = battery?.let {
                         val left = batteryEstimate.sample(SystemClock.elapsedRealtime(), it.percent, it.chargeRaw,
                             it.currentRaw, it.pluggedIn)
-                        BatteryReadout.line(BatteryReadout.watts(it.currentRaw, it.voltageRaw), it.percent,
-                            it.pluggedIn, left, it.minutesToFull)
-                    } ?: "PWR N/A"
+                        PowerReading(BatteryReadout.watts(it.currentRaw, it.voltageRaw), it.percent, it.pluggedIn, left, it.minutesToFull)
+                    }
                 }
                 // 15g: KGSL's total once a second (one small sysfs read).
                 if (HudMetric.GPU_MEMORY in metrics && tick % pollHz.coerceIn(1, 10) == 0L) {
-                    nextGpuMemoryLine = KgslMemory.line(runCatching { KgslMemory.parse(File(KgslMemory.PATH).readText()) }.getOrNull())
+                    nextGpuMemory = runCatching { KgslMemory.parse(File(KgslMemory.PATH).readText()) }.getOrNull()
                 }
                 tick++
                 Triple(cpuUsage, gpuUsage, ram) to (bTemp to sTemp)
@@ -348,58 +405,28 @@ fun FpsOverlay(
             fps = currentFps
             frameMs = currentFrameMs
             cpu = stats.first.first
-            gpu = stats.first.second // inaccessible counters must show N/A, not a stale percent
+            gpu = stats.first.second // an unreadable counter leaves the row out, never a stale percent
             ramUsed = stats.first.third.first
             ramTotal = stats.first.third.second
             batTemp = stats.second.first
             socTemp = stats.second.second
-            powerLine = nextPowerLine
-            gpuMemoryLine = nextGpuMemoryLine
+            power = nextPower
+            gpuMemory = nextGpuMemory
 
             delay(periodMs)
         }
     }
 
+    val sample = HudSample(fps, frameMs, presentSubmissionsPerSecond, cpu, gpu, ramUsed, ramTotal, batTemp, socTemp, power, gpuMemory)
     Box(
         modifier = modifier
             .fillMaxSize()
             .onSizeChanged { containerSize = it }
     ) {
-        val usedGb = ramUsed / 1_073_741_824.0
-        val totalGb = ramTotal / 1_073_741_824.0
-
-        Text(
-            text = buildString {
-                append(String.format(Locale.US, "FPS %.0f · %.1f ms\n", fps, frameMs))
-                if (!compact) {
-                    if (HudMetric.HOST_SUBMISSIONS in metrics) presentSubmissionsPerSecond?.let {
-                        append(String.format(Locale.US, "Vulkan submitted %.0f/s\n", it))
-                    }
-                    if (HudMetric.CPU in metrics) append(String.format(Locale.US, "CPU %.0f%%\n", cpu))
-                    if (HudMetric.GPU in metrics) append(gpu?.let { "GPU $it%\n" } ?: "GPU N/A\n")
-                    if (HudMetric.GPU_MEMORY in metrics) gpuMemoryLine?.let { append(it).append("\n") }
-                    if (HudMetric.RAM in metrics) append(String.format(Locale.US, "RAM %.1f/%.1f GB\n", usedGb, totalGb))
-                    if (HudMetric.BATTERY_TEMPERATURE in metrics) append(String.format(Locale.US, "BAT %.1f°C\n", batTemp))
-                    if (HudMetric.SOC_TEMPERATURE in metrics) append(socTemp?.let { String.format(Locale.US, "SoC/CPU %.0f°C", it) } ?: "SoC/CPU N/A")
-                    if (HudMetric.POWER in metrics) powerLine?.let {
-                        if (isNotEmpty() && !endsWith("\n")) append("\n")
-                        append(it)
-                    }
-                    panelText?.let {
-                        if (!endsWith("\n")) append("\n")
-                        append("\n").append(it)
-                    }
-                }
-            },
-            color = Color.White.copy(alpha = 0.85f),
-            fontSize = (baseFontSizeSp * scale).sp,
-            fontFamily = FontFamily.Monospace,
-            // 15g: an outline (a dark halo around the letters) instead of the box, or plain text.
-            style = if (look == HudLook.OUTLINE) TextStyle(shadow = Shadow(Color.Black, Offset(1f, 1f), blurRadius = 4f)) else TextStyle.Default,
-            modifier = Modifier
+        HudView(
+            sample, detail, metrics, look, scale, baseFontSizeSp, panelSections,
+            Modifier
                 .offset { IntOffset(offset.x.roundToInt(), offset.y.roundToInt()) }
-                .let { if (look == HudLook.BOX) it.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp)) else it }
-                .padding(horizontal = (4 * scale).dp, vertical = (3 * scale).dp)
                 .pointerInput(titleId) {
                     detectTransformGestures { _, pan, zoom, _ ->
                         scale = (scale * zoom).coerceIn(HudPlacements.MIN_SCALE, HudPlacements.MAX_SCALE)
@@ -416,7 +443,115 @@ fun FpsOverlay(
                         // 15g: kept for this game, and as where the next game without its own starts.
                         HudPlacements.write(store, titleId, HudPlacement(offset.x, offset.y, scale, currentLook))
                     }
-                }
+                },
         )
     }
+}
+
+/**
+ * The HUD as drawn, from one [sample]: FPS alone (compact), the chosen [metrics] as rows of a
+ * label and its value, or (the panel, [panelSections]) every metric under "Now" and then the
+ * panel's groups. [look]: box, outline or plain text; [scale]: the player's pinch.
+ */
+@Composable
+internal fun HudView(
+    sample: HudSample,
+    detail: HudDetail,
+    metrics: Set<HudMetric>,
+    look: HudLook,
+    scale: Float = 1f,
+    baseFontSizeSp: Float = 10f,
+    panelSections: List<PanelSection>? = null,
+    modifier: Modifier = Modifier,
+) {
+    val compact = detail == HudDetail.COMPACT
+    val perSecond = stringResource(R.string.xd_hud_per_second)
+    val charging = stringResource(R.string.xd_hud_charging)
+    val fullIn = stringResource(R.string.xd_hud_full_in)
+    val fpsValue = buildAnnotatedString {
+        withStyle(SpanStyle(color = HudGood)) { append(fmt("%.0f", sample.fps)) }
+        withStyle(SpanStyle(color = HudLabel)) { append(" · ") }
+        append(fmt("%.1f ms", sample.frameMs))
+    }
+    val rows = if (compact) emptyList() else buildList {
+        add(HudLine("FPS", fpsValue))
+        if (HudMetric.HOST_SUBMISSIONS in metrics) sample.submissionsPerSecond?.let {
+            add(HudLine(stringResource(R.string.xd_hud_vulkan), AnnotatedString(perSecond.format(fmt("%.0f", it)))))
+        }
+        if (HudMetric.CPU in metrics) add(HudLine("CPU", AnnotatedString(fmt("%.0f%%", sample.cpu))))
+        if (HudMetric.GPU in metrics) sample.gpu?.let { add(HudLine("GPU", AnnotatedString(fmt("%d%%", it)))) }
+        if (HudMetric.GPU_MEMORY in metrics) sample.gpuMemory?.let { bytes ->
+            add(HudLine(stringResource(R.string.xd_hud_gpu_memory), AnnotatedString(
+                if (bytes >= 1L shl 30) fmt("%.2f GB", bytes / 1_073_741_824.0) else fmt("%.0f MB", bytes / 1_048_576.0))))
+        }
+        if (HudMetric.RAM in metrics && sample.ramTotal > 0) {
+            add(HudLine("RAM", AnnotatedString(fmt("%.1f / %.1f GB", sample.ramUsed / 1_073_741_824.0, sample.ramTotal / 1_073_741_824.0))))
+        }
+        if (HudMetric.BATTERY_TEMPERATURE in metrics && sample.batteryCelsius > 0f) {
+            val t = sample.batteryCelsius
+            add(HudLine(stringResource(R.string.xd_hud_battery), AnnotatedString(fmt("%.1f °C", t)),
+                when { t >= 45f -> HudTone.BAD; t >= 40f -> HudTone.WARN; else -> HudTone.NORMAL }))
+        }
+        if (HudMetric.SOC_TEMPERATURE in metrics) sample.socCelsius?.let { t ->
+            add(HudLine("SoC", AnnotatedString(fmt("%.0f °C", t)),
+                when { t >= 95f -> HudTone.BAD; t >= 80f -> HudTone.WARN; else -> HudTone.NORMAL }))
+        }
+        if (HudMetric.POWER in metrics) sample.power?.let { p ->
+            val parts = listOfNotNull(
+                if (p.pluggedIn) charging else p.watts?.let { fmt("%.1f W", it) },
+                p.percent?.let { "$it%" },
+                if (p.pluggedIn) p.minutesToFull?.let { fullIn.format(BatteryReadout.duration(it)) }
+                else p.minutesLeft?.let { "~" + BatteryReadout.duration(it) },
+            )
+            if (parts.isNotEmpty()) add(HudLine(stringResource(R.string.xd_hud_power), AnnotatedString(parts.joinToString(" · "))))
+        }
+    }
+    val style = TextStyle(
+        fontFamily = XdFonts.mono,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = (baseFontSizeSp * scale).sp,
+        lineHeight = (baseFontSizeSp * scale * 1.4f).sp,
+        fontFeatureSettings = "tnum",
+        // 15g: an outline (a dark halo around the letters) instead of the box, or plain text.
+        shadow = if (look == HudLook.OUTLINE) Shadow(Color.Black, Offset(1f, 1f), blurRadius = 4f) else null,
+    )
+    Column(
+        modifier
+            .then(if (look == HudLook.BOX) Modifier.background(Color.Black.copy(alpha = 0.58f), RoundedCornerShape((8 * scale).dp)) else Modifier)
+            .padding(horizontal = (8 * scale).dp, vertical = (5 * scale).dp)
+            // The rows as wide as the widest, values to the right; the panel wraps its longer lines.
+            .widthIn(max = (if (panelSections != null) 300 else 260).times(scale).dp)
+            .width(IntrinsicSize.Max),
+    ) {
+        if (compact) {
+            Text(buildAnnotatedString {
+                withStyle(SpanStyle(color = HudGood)) { append(fmt("%.0f", sample.fps)) }
+                append(" FPS")
+                withStyle(SpanStyle(color = HudLabel)) { append(" · ") }
+                append(fmt("%.1f ms", sample.frameMs))
+            }, style = style, color = HudText, maxLines = 1)
+        } else {
+            if (panelSections != null) HudHeading(stringResource(R.string.xd_hud_now), style)
+            rows.forEach { line -> HudRow(line, style, scale) }
+            panelSections?.forEach { section ->
+                Box(Modifier.fillMaxWidth().padding(vertical = (4 * scale).dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
+                HudHeading(section.title, style)
+                section.lines.forEach { line -> Text(line.text, style = style, color = toneColor(line.tone)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HudRow(line: HudLine, style: TextStyle, scale: Float) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(line.label, style = style, color = HudLabel, maxLines = 1)
+        Text(line.value, style = style, color = toneColor(line.tone), maxLines = 1, modifier = Modifier.padding(start = (14 * scale).dp))
+    }
+}
+
+@Composable
+private fun HudHeading(text: String, style: TextStyle) {
+    Text(text.uppercase(), style = style.copy(fontFamily = XdFonts.body, fontWeight = FontWeight.Bold, fontSize = style.fontSize * 0.82f,
+        letterSpacing = 0.12.em), color = HudLabel, modifier = Modifier.padding(bottom = 2.dp))
 }

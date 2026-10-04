@@ -144,6 +144,28 @@ Sem `-Pscreenshots` os mesmos testes desenham cada tela sem gravar arquivo (test
   discos achados com o arquivo de cada um, o que estava no drive marcado "o de antes" (a escolha
   fica à vista quando a lista rola) e Cancelar por último, avisando que o jogo já ejetou o disco.
 
+### Ajustes 1: o que veio do aparelho
+
+Retorno de um Xiaomi com Android 16 e Adreno 825. Os "antes" são as capturas do próprio aparelho,
+que não entram no repositório (mostram a barra de status de quem testou).
+
+- **Botões de baixo fora da tela** em folhas e diálogos: no Android 15+ o Compose 1.7 dimensiona a
+  janela de um diálogo de largura total pela altura da tela *com* as barras do sistema, e a janela
+  ainda respeitava as barras, então o rodapé caía para fora. `XdDialogEdgeToEdge()` (em
+  `XdSheet.kt`) tira os insets da janela do diálogo; a folha, o guia do controle e o assistente já
+  aplicam os insets eles mesmos.
+- **Drivers com texto quebrado letra por letra** (retrato): os selos e os botões espremiam o título.
+  `XdListRow` ganhou selos que quebram de linha ao lado do título e `actionsBelow`, que põe as
+  ações embaixo do texto quando a tela é estreita (menos de 520 dp).
+- **HUD de desempenho no visual novo** (`FpsOverlay.kt`): linhas de rótulo e valor na fonte mono,
+  FPS em verde, calor perto ou acima do limite em amarelo ou vermelho, métricas que o aparelho não
+  informa ficam de fora (em vez de "N/A") e o painel com títulos por grupo (Agora, Ritmo, Trabalho,
+  Ajustes em vigor). Números no formato do idioma do aparelho.
+- **Opções de Imagem no menu em jogo, aplicadas na hora**: Suavização (FXAA, FXAA extremo),
+  Nitidez (CAS ou FSR, cinco níveis) e Pontilhado, além do efeito de escala que já existia. O núcleo
+  recebe os valores por `set_image_tuning` e o apresentador os usa no quadro seguinte; "Guardar esta
+  imagem para o jogo" grava efeito, suavização, nitidez e pontilhado na config do jogo.
+
 ## Testes
 
 Rodados em 2026-10-04, no fim do lote 7:
@@ -170,6 +192,7 @@ Rodados em 2026-10-04, no fim do lote 7:
 | 5 | Instalar conteúdo de Downloads; lixeira; sessões do diagnóstico com jogos reais; comparar execuções |
 | 6 | Assistente numa instalação limpa (acesso a todos os arquivos, Android 10 e 14); navegador com cartão SD e USB (nome do volume); "Onde ele está agora?"; atualização num build `.fork` com canal (baixar, conferir, permissão do instalador); copiar os dados em Sobre |
 | 7 | Mensagem, teclado e troca de disco em jogos reais: seleção pelo direcional vinda do host, teclado do telefone sem cobrir o campo, atalhos do Xbox 360, troca num jogo de vários discos |
+| Ajustes 1 | Rodapé das folhas visível no Android 15 e 16; Suavização, Nitidez e Pontilhado mudando a imagem na hora num jogo real; "Guardar esta imagem para o jogo" valendo na sessão seguinte |
 
 ## Propostas do protótipo que ficaram de fora
 
@@ -194,3 +217,4 @@ Rodados em 2026-10-04, no fim do lote 7:
 | Lote 5: Conteúdo, Diagnóstico e Comparar | [comparar execuções](prints/app/lote5/antes-comparar-execucoes.png), [conteúdo](prints/app/lote5/antes-conteudo.png), [diagnóstico](prints/app/lote5/antes-diagnostico.png), [instalar conteúdo](prints/app/lote5/antes-instalar-conteudo.png) | [como medir](prints/app/lote5/depois-como-medir.png), [comparar execuções controle](prints/app/lote5/depois-comparar-execucoes-controle.png), [comparar execuções retrato](prints/app/lote5/depois-comparar-execucoes-retrato.png), [comparar execuções](prints/app/lote5/depois-comparar-execucoes.png), [comparar sem marcar](prints/app/lote5/depois-comparar-sem-marcar.png), [conteúdo controle](prints/app/lote5/depois-conteudo-controle.png), [conteúdo do jogo atualizacoes](prints/app/lote5/depois-conteudo-do-jogo-atualizacoes.png), [conteúdo do jogo controle](prints/app/lote5/depois-conteudo-do-jogo-controle.png), [conteúdo do jogo](prints/app/lote5/depois-conteudo-do-jogo.png), [conteúdo lixeira](prints/app/lote5/depois-conteudo-lixeira.png), [conteúdo retrato](prints/app/lote5/depois-conteudo-retrato.png), [conteúdo](prints/app/lote5/depois-conteudo.png), [diagnóstico controle](prints/app/lote5/depois-diagnostico-controle.png), [diagnóstico do jogo](prints/app/lote5/depois-diagnostico-do-jogo.png), [diagnóstico resumo](prints/app/lote5/depois-diagnostico-resumo.png), [diagnóstico retrato](prints/app/lote5/depois-diagnostico-retrato.png), [diagnóstico](prints/app/lote5/depois-diagnostico.png), [instalar conteúdo retrato](prints/app/lote5/depois-instalar-conteudo-retrato.png), [instalar conteúdo](prints/app/lote5/depois-instalar-conteudo.png), [remover conteúdo](prints/app/lote5/depois-remover-conteudo.png) |
 | Lote 6: primeira abertura e telas do app | [atualizador](prints/app/lote6/antes-atualizador.png), [jogos que saíram](prints/app/lote6/antes-jogos-que-sairam.png), [navegador de pastas](prints/app/lote6/antes-navegador-de-pastas.png), [pastas](prints/app/lote6/antes-pastas.png), [primeira abertura](prints/app/lote6/antes-primeira-abertura.png), [sem vulkan](prints/app/lote6/antes-sem-vulkan.png), [sobre](prints/app/lote6/antes-sobre.png) | [atualizador baixando](prints/app/lote6/depois-atualizador-baixando.png), [atualizador controle](prints/app/lote6/depois-atualizador-controle.png), [atualizador retrato](prints/app/lote6/depois-atualizador-retrato.png), [atualizador](prints/app/lote6/depois-atualizador.png), [jogos que saíram](prints/app/lote6/depois-jogos-que-sairam.png), [navegador arquivo retrato](prints/app/lote6/depois-navegador-arquivo-retrato.png), [navegador de pastas controle](prints/app/lote6/depois-navegador-de-pastas-controle.png), [navegador de pastas](prints/app/lote6/depois-navegador-de-pastas.png), [pastas retrato](prints/app/lote6/depois-pastas-retrato.png), [pastas](prints/app/lote6/depois-pastas.png), [primeira abertura como usar](prints/app/lote6/depois-primeira-abertura-como-usar.png), [primeira abertura idioma](prints/app/lote6/depois-primeira-abertura-idioma.png), [primeira abertura jogos](prints/app/lote6/depois-primeira-abertura-jogos.png), [primeira abertura perfil](prints/app/lote6/depois-primeira-abertura-perfil.png), [primeira abertura retrato](prints/app/lote6/depois-primeira-abertura-retrato.png), [primeira abertura](prints/app/lote6/depois-primeira-abertura.png), [sem vulkan retrato](prints/app/lote6/depois-sem-vulkan-retrato.png), [sem vulkan](prints/app/lote6/depois-sem-vulkan.png), [sobre controle](prints/app/lote6/depois-sobre-controle.png), [sobre retrato](prints/app/lote6/depois-sobre-retrato.png), [sobre](prints/app/lote6/depois-sobre.png) |
 | Lote 7: painéis do jogo | [mensagem](prints/app/lote7/antes-mensagem.png), [troca de disco](prints/app/lote7/antes-troca-de-disco.png) | [mensagem controle](prints/app/lote7/depois-mensagem-controle.png), [mensagem longa retrato](prints/app/lote7/depois-mensagem-longa-retrato.png), [mensagem](prints/app/lote7/depois-mensagem.png), [teclado controle](prints/app/lote7/depois-teclado-controle.png), [teclado símbolos retrato](prints/app/lote7/depois-teclado-simbolos-retrato.png), [teclado](prints/app/lote7/depois-teclado.png), [troca de disco controle](prints/app/lote7/depois-troca-de-disco-controle.png), [troca de disco sem disco retrato](prints/app/lote7/depois-troca-de-disco-sem-disco-retrato.png), [troca de disco](prints/app/lote7/depois-troca-de-disco.png) |
+| Ajustes 1: retorno do aparelho | — | [drivers para baixar retrato](prints/app/ajustes-1/depois-drivers-para-baixar-retrato.png), [drivers para baixar](prints/app/ajustes-1/depois-drivers-para-baixar.png), [hud](prints/app/ajustes-1/depois-hud.png), [menu imagem controle](prints/app/ajustes-1/depois-menu-imagem-controle.png), [menu imagem retrato](prints/app/ajustes-1/depois-menu-imagem-retrato.png), [menu imagem](prints/app/ajustes-1/depois-menu-imagem.png) |

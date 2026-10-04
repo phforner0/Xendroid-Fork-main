@@ -1315,7 +1315,7 @@
     <string name="panel_sustained">modo sustentado</string>
     <string name="panel_changed">Alterados do padrão (%1$d):</string>
     <string name="panel_changed_none">Alterados do padrão: nenhum</string>
-    <string name="panel_changed_more">e mais: %1$d</string>
+    <string name="panel_changed_more">+ %1$d outros</string>
     <string name="km_drawn_hint">Toque num botão do controle para dar uma tecla a ele, ou escolha na lista abaixo.</string>
     <string name="km_swap_face">Trocar A/B e X/Y</string>
     <string name="km_swap_face_note">Para controles no padrão da Nintendo, com o A à direita. Toque de novo para desfazer.</string>

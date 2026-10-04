@@ -52,6 +52,8 @@ public class Emulator extends xendroid.emulator.Emulator{
     public native void set_presentation_mode(int mode);
     public native void set_scaling_effect(int effect);
     public native void set_color_filter(int mode);
+    /** The in-game menu's Image options; a negative value leaves the Settings value. */
+    public native void set_image_tuning(int antialiasing, float casSharpness, float fsrSharpnessReduction, int dither);
     public native String active_gpu_label();
     // "key=value;..." identity of the Vulkan driver in use (DriverIdentity); "" before boot.
     public native String active_driver_identity();

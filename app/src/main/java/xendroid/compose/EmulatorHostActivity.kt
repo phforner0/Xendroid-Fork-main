@@ -330,6 +330,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     /** 15c: the split last written to the run's timeline. */
     private var splitRecorded: String? = null
     private val scalingEffect = mutableIntStateOf(-1)
+    /** The Image options tried from the in-game menu (each -1: the game's Settings value). */
+    private val imageTuning = mutableStateOf(xendroid.compose.core.ImageTuning())
     private val performanceHints by lazy { PresenterPerformanceHints(applicationContext) }
     private val performanceHintsLabel = mutableStateOf("Presenter ADPF · Off")
     private var started = false
@@ -1763,6 +1765,24 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                 java.text.NumberFormat.getNumberInstance().format(tvMargin.floatValue.toDouble())),
                                             InGameAction.SCALING_EFFECT to stringResource(R.string.menu_scaling_value,
                                                 listOf(stringResource(R.string.menu_scaling_inherited), "Bilinear", "CAS", "FSR", "SGSR", "Lanczos", "CRT")[scalingEffect.intValue + 1]),
+                                            InGameAction.ANTIALIASING to stringResource(R.string.menu_aa_value, when (imageTuning.value.antialiasing) {
+                                                0 -> off
+                                                1 -> "FXAA"
+                                                2 -> stringResource(R.string.menu_aa_fxaa_extreme)
+                                                else -> stringResource(R.string.menu_from_settings)
+                                            }),
+                                            InGameAction.SHARPNESS to stringResource(R.string.menu_sharpness_value,
+                                                imageTuning.value.sharpness.let { level ->
+                                                    if (level !in 0..4) stringResource(R.string.menu_from_settings)
+                                                    else listOf(R.string.menu_sharpness_soft, R.string.menu_sharpness_low, R.string.menu_sharpness_medium,
+                                                        R.string.menu_sharpness_high, R.string.menu_sharpness_max).map { stringResource(it) }[level]
+                                                } + if (scalingEffect.intValue >= 0 && scalingEffect.intValue != 1 && scalingEffect.intValue != 2)
+                                                    " (" + stringResource(R.string.menu_sharpness_needs) + ")" else ""),
+                                            InGameAction.DITHER to stringResource(R.string.menu_dither_value, when (imageTuning.value.dither) {
+                                                0 -> off
+                                                1 -> on
+                                                else -> stringResource(R.string.menu_from_settings)
+                                            }),
                                             InGameAction.REFRESH_RATE to stringResource(R.string.menu_refresh_rate_value,
                                                 requestedRefresh.value?.toString() ?: stringResource(R.string.menu_auto),
                                                 (if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else windowManager.defaultDisplay.refreshRate).toString()),
@@ -3324,6 +3344,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             InGameAction.SAVE_GAME_FPS,
             InGameAction.INHERIT_GAME_FPS,
             InGameAction.SAVE_GLOBAL_FPS -> persistMenuFps(action)
+            InGameAction.ANTIALIASING -> applyImageTuning(imageTuning.value.nextAntialiasing())
+            InGameAction.SHARPNESS -> applyImageTuning(imageTuning.value.nextSharpness())
+            InGameAction.DITHER -> applyImageTuning(imageTuning.value.nextDither())
+            InGameAction.SAVE_GAME_IMAGE -> persistImageTuning()
             InGameAction.STRETCH -> {
                 if (fpsConfig.value.loading || fpsConfig.value.saving || fpsConfig.value.error != null) return
                 val enabled = !fullscreenStretchEnabled.value
@@ -3390,6 +3414,29 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             }
             InGameAction.QUIT -> menuState.value = menuState.value.askToQuit()
             else -> Unit
+        }
+    }
+
+    /** The Image options tried from the in-game menu: the core applies them from the next frame. */
+    private fun applyImageTuning(next: xendroid.compose.core.ImageTuning) {
+        imageTuning.value = next
+        session.setImageTuning(next)
+        recordEvent("image", "aa ${next.antialiasing} sharpness ${next.sharpness} dither ${next.dither}")
+    }
+
+    /** Keeps the scaling effect and the Image options tried in the menu for this game. */
+    private fun persistImageTuning() {
+        val title = session.activeTitleId() ?: return
+        val values = imageTuning.value.cvars(scalingEffect.intValue)
+        if (values.isEmpty()) {
+            Toast.makeText(this, getString(R.string.host_image_nothing), Toast.LENGTH_SHORT).show()
+            return
+        }
+        lifecycleScope.launch {
+            val saved = withContext(Dispatchers.IO) { runCatching { inGameConfig.saveGameImage(title, values) } }
+            saved.onFailure { Log.w(TAG, "Saving the image options failed; keeping the previous file", it) }
+            Toast.makeText(this@EmulatorHostActivity, getString(if (saved.isSuccess) R.string.host_image_saved else R.string.host_config_not_saved),
+                if (saved.isSuccess) Toast.LENGTH_SHORT else Toast.LENGTH_LONG).show()
         }
     }
 

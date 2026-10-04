@@ -1,5 +1,7 @@
 package xendroid.compose.ui.design
 
+import android.os.Build
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -34,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,6 +82,7 @@ fun XdSheet(
         ),
     ) {
         (LocalView.current.parent as? DialogWindowProvider)?.window?.setDimAmount(0f)
+        XdDialogEdgeToEdge()
         val c = Xd.colors
         BoxWithConstraints(
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f))
@@ -119,6 +123,30 @@ fun XdSheet(
                     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                         verticalArrangement = Arrangement.spacedBy(8.dp)) { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), content = actions) }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Lets the window of a full-size dialog cover the system bars, as the app's own window does (edge
+ * to edge); the content then keeps clear of them with the insets. Needed on Android 15+: there the
+ * screen size a full-width dialog is measured against (Configuration.screenHeightDp, Compose 1.7)
+ * counts the system bars, while a dialog window still fits inside them by default, so the window
+ * starts under the status bar and its bottom (a sheet's or the assistant's buttons) falls off the
+ * screen. Call it first thing inside the Dialog's content.
+ */
+@Composable
+fun XdDialogEdgeToEdge() {
+    val window = (LocalView.current.parent as? DialogWindowProvider)?.window ?: return
+    SideEffect {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            val attrs = window.attributes
+            val cutout = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            if (attrs.fitInsetsTypes != 0 || attrs.layoutInDisplayCutoutMode != cutout) {
+                attrs.fitInsetsTypes = 0
+                attrs.layoutInDisplayCutoutMode = cutout
+                window.attributes = attrs
             }
         }
     }

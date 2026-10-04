@@ -28,4 +28,30 @@
     </plurals>
     <string name="xd_boot_limit">Limit %1$d FPS</string>
     <string name="xd_menu_battery">battery</string>
+    <string name="xd_hud_now">Now</string>
+    <string name="xd_hud_pacing">Pacing</string>
+    <string name="xd_hud_work">Work</string>
+    <string name="xd_hud_settings">Settings in effect</string>
+    <string name="xd_hud_vulkan">Vulkan submits</string>
+    <string name="xd_hud_gpu_memory">GPU mem (all)</string>
+    <string name="xd_hud_battery">Battery</string>
+    <string name="xd_hud_power">Power</string>
+    <string name="xd_hud_per_second">%1$s/s</string>
+    <string name="xd_hud_charging">charging</string>
+    <string name="xd_hud_full_in">full in %1$s</string>
+    <string name="menu_aa_value">Antialiasing: %1$s</string>
+    <string name="menu_aa_fxaa_extreme">FXAA extreme</string>
+    <string name="menu_from_settings">as in Settings</string>
+    <string name="menu_sharpness_value">Sharpness: %1$s</string>
+    <string name="menu_sharpness_soft">soft</string>
+    <string name="menu_sharpness_low">low</string>
+    <string name="menu_sharpness_medium">medium</string>
+    <string name="menu_sharpness_high">high</string>
+    <string name="menu_sharpness_max">maximum</string>
+    <string name="menu_sharpness_needs">with CAS or FSR</string>
+    <string name="menu_dither_value">Dither: %1$s</string>
+    <string name="menu_save_game_image">Keep this image for the game</string>
+    <string name="menu_image_live_note">Scaling, antialiasing, sharpness and dither change right away; keep them for the game to open like this next time. The other Image settings apply at the next launch.</string>
+    <string name="host_image_saved">Image kept for this game: it opens like this next time.</string>
+    <string name="host_image_nothing">Nothing to keep: the image is as in the Settings.</string>
 </resources>

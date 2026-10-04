@@ -52,6 +52,12 @@ class InGameConfigRepository(private val store: ConfigStore) {
         store.editGameConfig(titleId) { it.putInt("GPU", "framerate_limit", limit) }
     }
 
+    /** The in-game menu's Image options kept for [titleId], each as the Settings screens write it. */
+    fun saveGameImage(titleId: String, values: List<Pair<String, String>>) {
+        if (values.isEmpty()) return
+        store.editGameConfig(titleId) { config -> values.forEach { (key, raw) -> config.putSetting(SettingsSchema.byKey.getValue(key), raw) } }
+    }
+
     fun saveGlobalFps(limit: Int) {
         require(limit >= 0)
         store.editLiveConfig { it.putInt("GPU", "framerate_limit", limit) }

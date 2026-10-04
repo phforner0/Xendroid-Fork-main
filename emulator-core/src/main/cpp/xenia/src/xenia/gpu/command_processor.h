@@ -31,6 +31,7 @@
 #include "xenia/gpu/xenos_zpd_report.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/memory.h"
+#include "xenia/ui/presentation_runtime.h"
 #include "xenia/ui/presenter.h"
 
 namespace xe {
@@ -614,6 +615,13 @@ class CommandProcessor {
   // "Actual" is for the command processor thread, to be read by the
   // implementations.
   SwapPostEffect GetActualSwapPostEffect() const {
+    // The in-game menu's antialiasing wins over the Settings value while set; the
+    // FXAA pipelines exist from setup, so it can change between two swaps.
+    const int antialiasing =
+        ui::RuntimePresentation().antialiasing.load(std::memory_order_relaxed);
+    if (antialiasing >= 0 && antialiasing <= 2) {
+      return SwapPostEffect(antialiasing);
+    }
     return swap_post_effect_actual_;
   }
 

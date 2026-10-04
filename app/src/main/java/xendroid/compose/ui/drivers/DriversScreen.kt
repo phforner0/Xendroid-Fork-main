@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -221,6 +222,7 @@ fun DriversScreen(
     onGameSettings: ((String) -> Unit)? = null,
     gameName: (String) -> String? = { null },
     gameArt: (String) -> Any? = { null },
+    initialSection: String = "drv:now",
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -230,7 +232,7 @@ fun DriversScreen(
     val state = remember(global) { DriversState(context, global, scope, toast) }
     LaunchedEffect(state) { state.refresh() }
     val current = values[KEY]?.raw.orEmpty()
-    var section by rememberSaveable { mutableStateOf("drv:now") }
+    var section by rememberSaveable { mutableStateOf(initialSection) }
     LaunchedEffect(section) { if (section == "drv:avail") state.loadAvailable() }
     val pickZip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) state.import(uri, current) }
     var removing by remember { mutableStateOf<InstalledDriverPackage?>(null) }
@@ -359,83 +361,93 @@ private fun InstalledBody(state: DriversState, current: String, games: Map<Strin
                           onImport: () -> Unit, onRemove: (InstalledDriverPackage) -> Unit) {
     val c = Xd.colors
     val context = LocalContext.current
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        XdButton(stringResource(R.string.drv_import_zip), onImport, size = XdButtonSize.SM, icon = XdIcons.upload, enabled = state.downloading == null)
-        if (state.downloading == "import") XdBar(0.3f)
-        XdCard {
-            XdListRow(stringResource(R.string.drv_system), icon = XdIcons.cpu, subtitle = stringResource(R.string.xd_drv_system_always),
-                badges = { if (current.isBlank()) XdBadge(stringResource(R.string.xd_drv_in_use), tone = BadgeTone.ACCENT) }) {
-                if (current.isNotBlank()) XdButton(stringResource(R.string.drv_use), { state.select("", current) }, size = XdButtonSize.SM)
-            }
-            val list = state.installed
-            if (list == null) XdEmpty(stringResource(R.string.xd_game_loading))
-            list?.forEachIndexed { i, d ->
-                val path = d.library.absolutePath
-                val inUse = path == current
-                val usedByGames = games.values.any { it[KEY] == path }
-                XdListRow(listOfNotNull(d.name, d.version).joinToString(" "), icon = XdIcons.chip, divider = i < list.lastIndex,
-                    subtitle = listOf(formatSize(d.bytes), java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(d.installedAt)))
-                        .joinToString(" · "),
-                    badges = {
-                        if (inUse) XdBadge(stringResource(R.string.xd_drv_in_use), tone = BadgeTone.ACCENT)
-                        if (d.verifiedLayout) XdBadge(stringResource(R.string.xd_drv_badge_checked), tone = BadgeTone.OK)
-                        else XdBadge(stringResource(R.string.xd_drv_older_import), tone = BadgeTone.WARN)
-                        if (usedByGames) XdBadge(stringResource(R.string.xd_drv_badge_games))
-                    }) {
-                    if (!inUse) {
-                        XdButton(stringResource(R.string.drv_use), { state.select(path, current) }, size = XdButtonSize.SM)
-                        XdButton(stringResource(R.string.common_remove), { onRemove(d) }, size = XdButtonSize.SM, kind = XdButtonKind.GHOST)
+    BoxWithConstraints {
+        val narrow = maxWidth < NARROW
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            XdButton(stringResource(R.string.drv_import_zip), onImport, size = XdButtonSize.SM, icon = XdIcons.upload, enabled = state.downloading == null)
+            if (state.downloading == "import") XdBar(0.3f)
+            XdCard {
+                XdListRow(stringResource(R.string.drv_system), icon = XdIcons.cpu, subtitle = stringResource(R.string.xd_drv_system_always),
+                    badges = { if (current.isBlank()) XdBadge(stringResource(R.string.xd_drv_in_use), tone = BadgeTone.ACCENT) }) {
+                    if (current.isNotBlank()) XdButton(stringResource(R.string.drv_use), { state.select("", current) }, size = XdButtonSize.SM)
+                }
+                val list = state.installed
+                if (list == null) XdEmpty(stringResource(R.string.xd_game_loading))
+                list?.forEachIndexed { i, d ->
+                    val path = d.library.absolutePath
+                    val inUse = path == current
+                    val usedByGames = games.values.any { it[KEY] == path }
+                    XdListRow(listOfNotNull(d.name, d.version).joinToString(" "), icon = XdIcons.chip, divider = i < list.lastIndex, actionsBelow = narrow,
+                        subtitle = listOf(formatSize(d.bytes), java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(d.installedAt)))
+                            .joinToString(" · "),
+                        badges = {
+                            if (inUse) XdBadge(stringResource(R.string.xd_drv_in_use), tone = BadgeTone.ACCENT)
+                            if (d.verifiedLayout) XdBadge(stringResource(R.string.xd_drv_badge_checked), tone = BadgeTone.OK)
+                            else XdBadge(stringResource(R.string.xd_drv_older_import), tone = BadgeTone.WARN)
+                            if (usedByGames) XdBadge(stringResource(R.string.xd_drv_badge_games))
+                        }) {
+                        if (!inUse) {
+                            XdButton(stringResource(R.string.drv_use), { state.select(path, current) }, size = XdButtonSize.SM)
+                            XdButton(stringResource(R.string.common_remove), { onRemove(d) }, size = XdButtonSize.SM, kind = XdButtonKind.GHOST)
+                        }
                     }
                 }
             }
+            Text(stringResource(R.string.xd_drv_installed_note), style = XdText.note, color = c.fg3)
+            if (state.installed?.isEmpty() == true) Text(driverName(context, current), style = XdText.tiny, color = c.fg3)
         }
-        Text(stringResource(R.string.xd_drv_installed_note), style = XdText.note, color = c.fg3)
-        if (state.installed?.isEmpty() == true) Text(driverName(context, current), style = XdText.tiny, color = c.fg3)
     }
 }
 
 @Composable
 private fun AvailableBody(state: DriversState, current: String) {
     val c = Xd.colors
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            XdButton(stringResource(R.string.xd_drv_refresh), { state.loadAvailable(force = true) }, size = XdButtonSize.SM, kind = XdButtonKind.GHOST,
-                icon = XdIcons.refresh, enabled = !state.loading)
-            Text(pluralStringResource(R.plurals.xd_drv_from_sources, state.sources.size, state.sources.size, state.sources.joinToString(", ")),
-                style = XdText.note, color = c.fg3, modifier = Modifier.weight(1f))
-        }
-        val list = state.available
-        val suggested = list?.let { DriverSuggestion.suggest(it, state.gpu) }
-        when {
-            state.loading -> XdBar(0.3f)
-            list == null -> {}
-            list.isEmpty() -> XdEmpty(stringResource(if (state.sources.isEmpty()) R.string.drv_sources_none else R.string.drv_none))
-            else -> XdCard {
-                val ordered = listOfNotNull(suggested) + list.filter { it != suggested }
-                ordered.forEachIndexed { i, d ->
-                    val installed = state.installedPath(d)
-                    XdListRow(d.name, icon = XdIcons.download, divider = i < ordered.lastIndex,
-                        subtitle = listOfNotNull(d.version, d.source.takeIf { it.isNotEmpty() && state.sources.size > 1 }?.let { stringResource(R.string.drv_from, it) },
-                            d.publishedAt.take(10).ifEmpty { null }).joinToString(" · "),
-                        badges = {
-                            if (d == suggested) DriverSuggestion.adrenoModel(state.gpu)?.let { XdBadge(stringResource(R.string.drv_suggested, it), tone = BadgeTone.ACCENT) }
-                            if (d.sha256.isNotBlank()) XdBadge(stringResource(R.string.xd_drv_badge_sha), tone = BadgeTone.OK)
-                            else XdBadge(stringResource(R.string.drv_no_checksum), tone = BadgeTone.WARN)
-                        }) {
-                        if (state.downloading == d.url) {
-                            Column(Modifier.width(120.dp)) {
-                                XdBar(state.progress / 100f)
-                                Text("${state.progress}%", style = XdText.tiny, color = c.fg3)
-                            }
-                        } else XdButton(stringResource(if (installed != null) R.string.drv_use else R.string.drv_download_install), { state.download(d, current) },
-                            size = XdButtonSize.SM, enabled = state.downloading == null && installed != current)
+    // A phone in portrait: the download button goes under the name instead of squeezing it.
+    BoxWithConstraints {
+        val narrow = maxWidth < NARROW
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                XdButton(stringResource(R.string.xd_drv_refresh), { state.loadAvailable(force = true) }, size = XdButtonSize.SM, kind = XdButtonKind.GHOST,
+                    icon = XdIcons.refresh, enabled = !state.loading)
+                Text(pluralStringResource(R.plurals.xd_drv_from_sources, state.sources.size, state.sources.size, state.sources.joinToString(", ")),
+                    style = XdText.note, color = c.fg3, modifier = Modifier.weight(1f))
+            }
+            val list = state.available
+            val suggested = list?.let { DriverSuggestion.suggest(it, state.gpu) }
+            when {
+                state.loading -> XdBar(0.3f)
+                list == null -> {}
+                list.isEmpty() -> XdEmpty(stringResource(if (state.sources.isEmpty()) R.string.drv_sources_none else R.string.drv_none))
+                else -> XdCard {
+                    val ordered = listOfNotNull(suggested) + list.filter { it != suggested }
+                    ordered.forEachIndexed { i, d ->
+                        val installed = state.installedPath(d)
+                        XdListRow(d.name, icon = XdIcons.download, divider = i < ordered.lastIndex, actionsBelow = narrow,
+                            subtitle = listOfNotNull(d.version, d.source.takeIf { it.isNotEmpty() && state.sources.size > 1 }?.let { stringResource(R.string.drv_from, it) },
+                                d.publishedAt.take(10).ifEmpty { null }).joinToString(" · "),
+                            badges = {
+                                if (d == suggested) DriverSuggestion.adrenoModel(state.gpu)?.let { XdBadge(stringResource(R.string.drv_suggested, it), tone = BadgeTone.ACCENT) }
+                                if (d.sha256.isNotBlank()) XdBadge(stringResource(R.string.xd_drv_badge_sha), tone = BadgeTone.OK)
+                                else XdBadge(stringResource(R.string.drv_no_checksum), tone = BadgeTone.WARN)
+                            }) {
+                            if (state.downloading == d.url) {
+                                Column(Modifier.width(120.dp)) {
+                                    XdBar(state.progress / 100f)
+                                    Text("${state.progress}%", style = XdText.tiny, color = c.fg3)
+                                }
+                            } else XdButton(stringResource(if (installed != null) R.string.drv_use else R.string.drv_download_install), { state.download(d, current) },
+                                size = XdButtonSize.SM, enabled = state.downloading == null && installed != current)
+                        }
                     }
                 }
             }
+            Text(stringResource(R.string.xd_drv_available_note), style = XdText.note, color = c.fg3)
         }
-        Text(stringResource(R.string.xd_drv_available_note), style = XdText.note, color = c.fg3)
     }
 }
+
+/** Below this width a row's buttons go under its text. */
+private val NARROW = 520.dp
 
 @Composable
 private fun SourcesBody(state: DriversState) {

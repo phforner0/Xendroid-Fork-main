@@ -668,6 +668,7 @@ private fun CPanel(section: XdSection?, modifier: Modifier, portrait: Boolean) {
 fun CGuide(onDismiss: () -> Unit) {
     val nav = LocalXdNavigator.current
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        XdDialogEdgeToEdge()
         val c = Xd.colors
         val first = remember { FocusRequester() }
         Box(

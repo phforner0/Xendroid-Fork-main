@@ -78,6 +78,7 @@ import xendroid.compose.ui.design.XdButton
 import xendroid.compose.ui.design.XdButtonKind
 import xendroid.compose.ui.design.XdButtonSize
 import xendroid.compose.ui.design.XdCard
+import xendroid.compose.ui.design.XdDialogEdgeToEdge
 import xendroid.compose.ui.design.XdIcons
 import xendroid.compose.ui.design.XdLogo
 import xendroid.compose.ui.design.XdNote
@@ -127,6 +128,7 @@ fun FirstRunAssistant(
 
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
         dismissOnClickOutside = false, dismissOnBackPress = false)) {
+        XdDialogEdgeToEdge()
         BackHandler(enabled = step != steps.first(), onBack = back)
         val c = Xd.colors
         // With a controller, each step starts on its main button, not on the first step of the rail.

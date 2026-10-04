@@ -43,15 +43,20 @@ enum class InGameAction {
     HUD_LOOK,
     /** 15h: a margin around the picture on a TV that cuts the edges (overscan). */
     TV_MARGIN,
+    /** Image options tried live: antialiasing (FXAA), sharpness (CAS and FSR), dither. */
+    ANTIALIASING, SHARPNESS, DITHER,
+    /** Keeps the scaling effect and the Image options tried here for the game. */
+    SAVE_GAME_IMAGE,
 }
 
 /** Every option once, on the tab it belongs to (U01), most used first. */
 val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
     InGamePage.GRAPHICS to listOf(
         InGameAction.DISPLAY_FIT, InGameAction.DISPLAY_FILL, InGameAction.DISPLAY_STRETCH, InGameAction.DISPLAY_INTEGER,
-        InGameAction.SCALING_EFFECT, InGameAction.EXTERNAL_DISPLAY, InGameAction.TV_MARGIN,
+        InGameAction.SCALING_EFFECT, InGameAction.ANTIALIASING, InGameAction.SHARPNESS, InGameAction.SAVE_GAME_IMAGE,
+        InGameAction.EXTERNAL_DISPLAY, InGameAction.TV_MARGIN,
         InGameAction.WINFG, InGameAction.WINFG_PRESET, InGameAction.LSFG, InGameAction.DRIVER_INFO,
-        InGameAction.STRETCH, InGameAction.COLOR_FILTER,
+        InGameAction.STRETCH, InGameAction.COLOR_FILTER, InGameAction.DITHER,
         InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET, InGameAction.IMPORT_LSFG_DLL, InGameAction.CLEAR_LSFG_CACHE,
     ),
     InGamePage.SYSTEM to listOf(
@@ -76,7 +81,7 @@ val inGamePageActions: Map<InGamePage, List<InGameAction>> = mapOf(
 
 /** U01: behind "More options" on their tab: persistence, imports, fine HUD and power tuning. */
 val advancedActions: Set<InGameAction> = setOf(
-    InGameAction.STRETCH, InGameAction.COLOR_FILTER,
+    InGameAction.STRETCH, InGameAction.COLOR_FILTER, InGameAction.DITHER,
     InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET, InGameAction.IMPORT_LSFG_DLL, InGameAction.CLEAR_LSFG_CACHE,
     InGameAction.SAVE_GLOBAL_FPS, InGameAction.SUSTAINED_PERFORMANCE, InGameAction.PERFORMANCE_HINTS,
     InGameAction.HUD_HOST_SUBMISSIONS, InGameAction.HUD_CPU, InGameAction.HUD_GPU,

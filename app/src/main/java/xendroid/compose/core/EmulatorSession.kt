@@ -168,6 +168,10 @@ class EmulatorSession {
     fun setPresentationMode(mode: Int) { if (booted) core.set_presentation_mode(mode) }
     fun setScalingEffect(effect: Int) { if (booted) core.set_scaling_effect(effect) }
     fun setColorFilter(mode: Int) { if (booted) core.set_color_filter(mode) }
+    /** The in-game menu's Image options (negative: the Settings value), from the next frame. */
+    fun setImageTuning(t: ImageTuning) {
+        if (booted) core.set_image_tuning(t.antialiasing, t.casSharpness, t.fsrSharpnessReduction, t.dither)
+    }
     fun activeGpuLabel(): String = if (booted) core.active_gpu_label().orEmpty() else ""
     /** Identity of the Vulkan driver actually loaded (see [DriverIdentity]); null before the presenter starts. */
     fun activeDriverIdentity(): DriverIdentity? =

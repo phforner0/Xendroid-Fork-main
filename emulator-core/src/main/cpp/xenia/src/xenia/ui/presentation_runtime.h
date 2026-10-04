@@ -30,6 +30,12 @@ struct PresentationRuntime {
   std::atomic<int> frame_generation_multiplier{2};
   std::atomic<uint64_t> configuration_epoch{0};
   std::atomic<int> scaling_effect{-1}; // inherited / bilinear / CAS / FSR / SGSR / Lanczos / CRT
+  // The in-game menu's Image options, applied from the next frame; a negative value
+  // leaves the Settings value. Antialiasing: 0 none, 1 FXAA, 2 FXAA extreme.
+  std::atomic<int> antialiasing{-1};
+  std::atomic<float> cas_sharpness{-1.0f};            // CAS additional sharpness, 0..1
+  std::atomic<float> fsr_sharpness_reduction{-1.0f};  // FSR sharpness reduction, 0..2 stops
+  std::atomic<int> dither{-1};                        // 0 off, 1 on
   std::atomic<int> color_filter{0};
   std::atomic<int> color_filter_error{0};
   std::atomic<int> presenter_tid{0};

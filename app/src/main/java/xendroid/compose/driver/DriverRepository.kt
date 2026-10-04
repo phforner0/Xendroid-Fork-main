@@ -29,6 +29,9 @@ fun githubAssetSha256(digest: String?): String? =
         ?.substringAfter(':')
 
 object DriverRepository {
+    /** Screen tests: answers a releases API URL instead of the network. */
+    @androidx.annotation.VisibleForTesting
+    internal var fetchForTests: ((String) -> String)? = null
 
     /** 15p: every source's releases, in the order of [sources]; one that fails does not stop the others. */
     suspend fun loadDrivers(sources: List<String> = listOf(DriverSources.DEFAULT)): DriverListing = withContext(Dispatchers.IO) {
@@ -36,7 +39,7 @@ object DriverRepository {
         val failures = mutableListOf<Pair<String, String>>()
         for (source in sources) {
             currentCoroutineContext().ensureActive()
-            runCatching { DriverReleases.parse(fetch(DriverSources.releasesApi(source)), source) }
+            runCatching { DriverReleases.parse((fetchForTests ?: ::fetch)(DriverSources.releasesApi(source)), source) }
                 .onSuccess { drivers += it }
                 .onFailure { failures += source to (it.message ?: it.javaClass.simpleName) }
         }
