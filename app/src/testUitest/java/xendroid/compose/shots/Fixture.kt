@@ -38,6 +38,12 @@ object Fixture {
     /** Drains the main looper while background work (IO) lands. */
     fun settle(rounds: Int = 20) = repeat(rounds) { ShadowLooper.idleMainLooper(); Thread.sleep(15) }
 
+    /** Runs [block] off the main thread (DataStore must never be awaited on it) and settles until it is done. */
+    fun io(block: suspend () -> Unit) {
+        val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { block() }
+        settleUntil(400) { job.isCompleted }
+    }
+
     /** Settles until [done] (background work landed), at most [rounds] times. */
     fun settleUntil(rounds: Int = 300, done: () -> Boolean) {
         var n = 0

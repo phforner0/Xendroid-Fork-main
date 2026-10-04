@@ -10,7 +10,6 @@ import kotlinx.serialization.json.Json
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.Serializer
 import androidx.datastore.core.DataMigration
-import androidx.datastore.core.MultiProcessDataStoreFactory
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -27,7 +26,7 @@ class GamepadLayoutStore(private val appContext: Context) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val key = stringPreferencesKey("gamepad_config_v1")
     private val store: DataStore<GamepadConfigDto> = stores.computeIfAbsent(appContext.filesDir.absolutePath) {
-        MultiProcessDataStoreFactory.create(
+        SharedStores.create(
             serializer = GamepadConfigSerializer,
             migrations = listOf(object : DataMigration<GamepadConfigDto> {
                 override suspend fun shouldMigrate(currentData: GamepadConfigDto) = currentData.version < 2
@@ -38,7 +37,7 @@ class GamepadLayoutStore(private val appContext: Context) {
                 }
                 override suspend fun cleanUp() = Unit // retain the old file for rollback
             }),
-            produceFile = { File(appContext.filesDir, "datastore/gamepad-runtime-v2.json") },
+            file = { File(appContext.filesDir, "datastore/gamepad-runtime-v2.json") },
         )
     }
 
@@ -50,6 +49,12 @@ class GamepadLayoutStore(private val appContext: Context) {
 
     suspend fun save(cfg: GamepadConfigDto) {
         store.updateData { cfg.copy(version = 2) }
+    }
+
+    /** Changes the stored layouts in one step (the Controls area edits the globals and the
+     *  named layouts while the editor, or a game, may hold their own copy). */
+    suspend fun update(transform: (GamepadConfigDto) -> GamepadConfigDto) {
+        store.updateData { transform(it).copy(version = 2) }
     }
 
     companion object { private val stores = ConcurrentHashMap<String, DataStore<GamepadConfigDto>>() }

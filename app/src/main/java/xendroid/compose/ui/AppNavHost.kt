@@ -78,6 +78,8 @@ object Routes {
     const val GAME = "game"
     /** Batch 1: the drivers area (installed, downloads, sources, Turnip flags). */
     const val DRIVERS = "drivers"
+    /** The Controls area (lote 3): its tools are the routes above. */
+    const val CONTROLS = "controls"
 }
 
 /** The game sheet's route for [game], opened at [section] (null: the overview). */
@@ -117,7 +119,7 @@ fun AppNavHost(container: AppContainer) {
                 }
                 XdArea.CONTENT -> top(Routes.INSTALL_CONTENT)
                 XdArea.PROFILES -> top(Routes.PROFILES)
-                XdArea.CONTROLS -> top(Routes.KEYMAP)
+                XdArea.CONTROLS -> top(Routes.CONTROLS)
                 XdArea.DRIVERS -> top(Routes.DRIVERS)
                 XdArea.SETTINGS -> top(Routes.SETTINGS)
             }
@@ -232,7 +234,8 @@ fun AppNavHost(container: AppContainer) {
             xendroid.compose.ui.benchmark.BenchmarkScreen(onBack = entry.backOnce(nav))
         }
         composable(Routes.CONTROLLER_TEST) { entry ->
-            xendroid.compose.ui.controllertest.ControllerTestScreen(onBack = entry.backOnce(nav))
+            val vm: SettingsViewModel = viewModel(factory = container.settingsViewModelFactory())
+            xendroid.compose.ui.controllertest.ControllerTestScreen(onBack = entry.backOnce(nav), global = vm)
         }
         composable(Routes.PHONE_CONTROLLER) { entry ->
             val vm: PhoneControllerViewModel = viewModel()
@@ -263,6 +266,17 @@ fun AppNavHost(container: AppContainer) {
                 gameName = { games.byTitle[it]?.name },
                 gameArt = { title -> games.byTitle[title]?.let { games.art(it) } },
             )
+        }
+        composable(Routes.CONTROLS) { entry ->
+            val vm: SettingsViewModel = viewModel(factory = container.settingsViewModelFactory())
+            val keymap: KeymapViewModel = viewModel(factory = container.keymapViewModelFactory())
+            val go: (String) -> Unit = { route -> if (entry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) nav.navigate(route) }
+            xendroid.compose.ui.controls.ControlsScreen(vm, keymap, onBack = entry.backOnce(nav), links = xendroid.compose.ui.controls.ControlsLinks(
+                onKeymap = { go(Routes.KEYMAP) },
+                onEditor = { go(Routes.GAMEPAD_EDITOR) },
+                onTest = { go(Routes.CONTROLLER_TEST) },
+                onPhone = { go(Routes.PHONE_CONTROLLER) },
+            ))
         }
         composable(Routes.KEYMAP) { entry ->
             val vm: KeymapViewModel =

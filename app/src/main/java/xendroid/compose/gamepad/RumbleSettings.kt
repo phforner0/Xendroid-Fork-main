@@ -29,11 +29,17 @@ data class RumbleSettings(
             RumbleIntensity.HIGH -> null
             else -> own.next()
         }
+        return withDevice(descriptor, next)
+    }
+
+    /** This controller's own [intensity], or back to the default (null). */
+    fun withDevice(descriptor: String, intensity: RumbleIntensity?): RumbleSettings {
+        if (descriptor.isBlank()) return this
         val others = perDevice - descriptor
-        if (next == null) return copy(perDevice = others)
+        if (intensity == null) return copy(perDevice = others)
         // Bounded: the controller set longest ago gives its place.
         val kept = if (others.size >= MAX_DEVICES) others.entries.drop(others.size - MAX_DEVICES + 1).associate { it.toPair() } else others
-        return copy(perDevice = kept + (descriptor to next))
+        return copy(perDevice = kept + (descriptor to intensity))
     }
 
     /** The per-controller part, for preferences. */

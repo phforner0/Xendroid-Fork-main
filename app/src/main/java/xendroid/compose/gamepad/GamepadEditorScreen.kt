@@ -1,32 +1,34 @@
 package xendroid.compose.gamepad
 
-import xendroid.compose.R
-import androidx.compose.ui.res.stringResource
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,11 +39,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -49,6 +62,26 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import xendroid.compose.R
+import xendroid.compose.ui.controls.TouchOptionRows
+import xendroid.compose.ui.design.CHints
+import xendroid.compose.ui.design.LocalSwapConfirm
+import xendroid.compose.ui.design.LocalXdToast
+import xendroid.compose.ui.design.Xd
+import xendroid.compose.ui.design.XdButton
+import xendroid.compose.ui.design.XdButtonKind
+import xendroid.compose.ui.design.XdButtonSize
+import xendroid.compose.ui.design.XdChip
+import xendroid.compose.ui.design.XdHint
+import xendroid.compose.ui.design.XdIconButton
+import xendroid.compose.ui.design.XdIcons
+import xendroid.compose.ui.design.XdSegmented
+import xendroid.compose.ui.design.XdSheet
+import xendroid.compose.ui.design.XdStepper
+import xendroid.compose.ui.design.XdSwitch
+import xendroid.compose.ui.design.XdText
+import xendroid.compose.ui.design.XdToastHost
+import xendroid.compose.ui.design.XdToastState
 
 /** Snap grid: cells along the SHORTER screen edge. The longer edge gets proportionally more
  *  cells of the same pixel pitch, so the cells are square. Higher = smaller (finer) cells. */
@@ -69,26 +102,38 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 
 @Composable
 fun GamepadEditorScreen(controller: GamepadController, onDone: () -> Unit, inGame: Boolean = false,
-                        titleId: String? = null) {
+                        titleId: String? = null, gameName: String? = null) {
     // 15l: the controls show the size they have over the game, so the app's UI scale stays out.
-    xendroid.compose.ui.theme.NaturalSize { GamepadEditorContent(controller, onDone, inGame, titleId) }
+    xendroid.compose.ui.theme.NaturalSize { GamepadEditorContent(controller, onDone, inGame, titleId, gameName) }
 }
 
+/**
+ * The touch layout editor: the controls over a dark frame (the paused game in a game), the grid,
+ * the chosen control's panel (size, dead zone, shown or not) and a toolbar that folds away.
+ * Every change can be undone; nothing is kept until "Save and exit". With a controller: LB/RB pick
+ * a control, the D-pad moves it a cell, A opens its panel, X the layouts, Y the general options,
+ * Start saves and Select folds the toolbar.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GamepadEditorContent(controller: GamepadController, onDone: () -> Unit, inGame: Boolean,
-                                 titleId: String?) {
+                                 titleId: String?, gameName: String?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val toast = remember { XdToastState() }
+    val c = Xd.colors
     val persisted by controller.config.collectAsState(initial = GamepadConfigDto())
     var working by remember(persisted) { mutableStateOf(persisted) }
-    var landscape by remember { mutableStateOf(true) }
+    val history = remember(persisted) { EditHistory<GamepadConfigDto>() }
+    var canUndo by remember(persisted) { mutableStateOf(false) }
+    val startLandscape = LocalConfiguration.current.orientation != Configuration.ORIENTATION_PORTRAIT
+    var landscape by remember { mutableStateOf(startLandscape) }
     var selected by remember { mutableStateOf<ControlId?>(null) }
     var snap by remember { mutableStateOf(true) }
     // 15r: move and resize the selected control's group (face buttons, trigger + bumper…) together.
     var grouped by remember { mutableStateOf(false) }
-    var showGlobals by remember { mutableStateOf(false) }
-    var chromeCollapsed by remember { mutableStateOf(false) }
+    var globalsOpen by remember { mutableStateOf(false) }
+    var collapsed by remember { mutableStateOf(false) }
     var layoutsOpen by remember { mutableStateOf(false) }
     // U06: with a game running, edits can go to that game's own layout instead of the shared one.
     val perGame = titleId != null && working.hasOwnLayout(titleId, landscape)
@@ -120,24 +165,22 @@ private fun GamepadEditorContent(controller: GamepadController, onDone: () -> Un
     }
 
     // The Landscape/Portrait toggle FORCES the screen orientation, so each layout previews the way
-    // it appears in-game. (MainActivity is sensorLandscape-locked, so without this the portrait
-    // layout could only be edited stretched across a landscape screen.) MainActivity declares
-    // orientation in configChanges, so this rotates WITHOUT recreating the activity (no lost edits).
+    // it appears in-game. MainActivity declares orientation in configChanges, so this rotates
+    // WITHOUT recreating the activity (no lost edits).
     LaunchedEffect(landscape, activity) {
         activity?.requestedOrientation = if (landscape)
             ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     }
 
-    // Go edge-to-edge immersive while editing, so the overlay matches the fullscreen game exactly
+    // Edge-to-edge immersive while editing, so the overlay matches the fullscreen game exactly
     // (true WYSIWYG) and a control can be placed at the very top/bottom edge. Orientation + bars
     // restored on exit.
     DisposableEffect(Unit) {
         val insets = activity?.window?.let { WindowCompat.getInsetsController(it, view) }
         val prevBehavior = insets?.systemBarsBehavior
         insets?.let {
-            it.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            it.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             it.hide(WindowInsetsCompat.Type.systemBars())
         }
         onDispose {
@@ -150,39 +193,112 @@ private fun GamepadEditorContent(controller: GamepadController, onDone: () -> Un
         }
     }
 
-    fun mutateControls(transform: (List<OnScreenControl>) -> List<OnScreenControl>) {
-        // U06: controls and fields this build does not know stay in the stored layout.
-        working = working.withLayout(editScope, landscape,
-            transform(base).toDto().preserving(working.layoutFor(editScope, landscape)))
+    /** A change that can be undone. */
+    fun commit(next: GamepadConfigDto) {
+        if (next == working) return
+        history.push(working)
+        canUndo = true
+        working = next
     }
-    fun mutateGlobals(transform: (GamepadGlobalsDto) -> GamepadGlobalsDto) {
-        working = working.copy(globals = transform(working.globals))
+    fun undo() {
+        history.undo()?.let { working = it }
+        canUndo = history.canUndo
+    }
+    fun layoutWith(cfg: GamepadConfigDto, transform: (List<OnScreenControl>) -> List<OnScreenControl>): GamepadConfigDto =
+        // U06: controls and fields this build does not know stay in the stored layout.
+        cfg.withLayout(editScope, landscape, transform(base).toDto().preserving(cfg.layoutFor(editScope, landscape)))
+    fun mutateControls(transform: (List<OnScreenControl>) -> List<OnScreenControl>) = commit(layoutWith(working, transform))
+    fun resize(id: ControlId, s: Float) = mutateControls { list ->
+        if (grouped) ControlGroups.resize(list, id, s)
+        else list.map { if (it.id == id) it.withLayout(s = s.coerceIn(ControlGroups.SCALES.start, ControlGroups.SCALES.endInclusive)) else it }
+    }
+    fun place(id: ControlId, x: Float, y: Float) = mutateControls { list ->
+        if (grouped) ControlGroups.move(list, id, x, y) else list.map { if (it.id == id) it.withLayout(x = x, y = y) else it }
+    }
+    /** One grid cell in a direction (the D-pad of a controller). */
+    fun nudge(dx: Int, dy: Int) {
+        val id = selected ?: base.firstOrNull()?.id?.also { selected = it } ?: return
+        val control = base.firstOrNull { it.id == id } ?: return
+        place(id,
+            (snapFrac(control.xFraction, stepsX) + dx / stepsX.toFloat()).coerceIn(1f / stepsX, (stepsX - 1f) / stepsX),
+            (snapFrac(control.yFraction, stepsY) + dy / stepsY.toFloat()).coerceIn(1f / stepsY, (stepsY - 1f) / stepsY))
+    }
+    fun pickNext(step: Int) {
+        if (base.isEmpty()) return
+        val i = base.indexOfFirst { it.id == selected }
+        selected = base[if (i < 0) 0 else (i + step + base.size) % base.size].id
+    }
+    fun save() {
+        scope.launch {
+            try { controller.save(working); onDone() }
+            catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                toast.show(context.getString(R.string.ge_save_failed))
+            }
+        }
     }
 
-    // Dark backdrop: there's no game behind the overlay in the editor, so the white-outlined
-    // controls would be invisible on the light app surface. A solid dark fill makes them visible
-    // and previews how they read over a (dark) game frame.
-    Box(Modifier.fillMaxSize().background(Color(0xFF15171C)).onSizeChanged { editorSize = it }) {
+    val controllerMode = c.controller
+    val rootFocus = remember { FocusRequester() }
+    val panelFocus = remember { FocusRequester() }
+    var panelFocused by remember { mutableStateOf(false) }
+    var barFocused by remember { mutableStateOf(false) }
+    val inUi = panelFocused || barFocused
+    LaunchedEffect(controllerMode) { if (controllerMode) runCatching { rootFocus.requestFocus() } }
+    BackHandler {
+        if (inUi) runCatching { rootFocus.requestFocus() } else onDone()
+    }
+
+    CompositionLocalProvider(LocalXdToast provides toast) {
+    // A dark frame stands for the game (in a game, the paused frame shows through it).
+    Box(
+        Modifier.fillMaxSize().background(if (inGame) Color(0xFF15171C).copy(alpha = 0.55f) else Color(0xFF15171C))
+            .onSizeChanged { editorSize = it }
+            .focusRequester(rootFocus)
+            .focusable(enabled = controllerMode)
+            .onPreviewKeyEvent { e ->
+                if (!controllerMode || e.type != KeyEventType.KeyDown || layoutsOpen || globalsOpen) return@onPreviewKeyEvent false
+                when (e.nativeKeyEvent.keyCode) {
+                    KeyEvent.KEYCODE_BUTTON_L1 -> { pickNext(-1); runCatching { rootFocus.requestFocus() }; true }
+                    KeyEvent.KEYCODE_BUTTON_R1 -> { pickNext(1); runCatching { rootFocus.requestFocus() }; true }
+                    KeyEvent.KEYCODE_BUTTON_X -> { layoutsOpen = true; true }
+                    KeyEvent.KEYCODE_BUTTON_Y -> { globalsOpen = true; true }
+                    KeyEvent.KEYCODE_BUTTON_START -> { save(); true }
+                    KeyEvent.KEYCODE_BUTTON_SELECT -> { collapsed = !collapsed; true }
+                    KeyEvent.KEYCODE_DPAD_UP -> if (inUi) false else { nudge(0, -1); true }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> if (inUi) false else { nudge(0, 1); true }
+                    KeyEvent.KEYCODE_DPAD_LEFT -> if (inUi) false else { nudge(-1, 0); true }
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> if (inUi) false else { nudge(1, 0); true }
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A -> if (inUi) false else {
+                        if (selected == null) pickNext(1)
+                        runCatching { panelFocus.requestFocus() }
+                        true
+                    }
+                    else -> false
+                }
+            },
+    ) {
         // Full-screen, edge-to-edge WYSIWYG overlay: controls can be dragged ANYWHERE on the
         // screen (no top-bar inset). Pass the square-grid cell counts only while Snap is on.
         GamepadOverlay(
-            controls = base, opacity = working.globals.opacity, modifier = Modifier.fillMaxSize(),
+            controls = base, opacity = working.globals.opacity.coerceAtLeast(0.5f), modifier = Modifier.fillMaxSize(),
             onKeyEvent = { _, _, _ -> }, editMode = true,
             gridStepsX = if (snap) stepsX else 0, gridStepsY = if (snap) stepsY else 0,
             selectedId = selected, onSelect = { selected = it },
             onTranslate = { id, dx, dy ->
                 // Seed the raw accumulator from the control's CURRENT committed fraction on the
-                // first delta of this drag, then advance it by the raw finger delta. Never snap
-                // here -- snapping the running value re-rounds sub-half-step deltas back to the
-                // same grid cell and freezes the control (the old bug).
+                // first delta of this drag (the state before it is what Undo brings back), then
+                // advance it by the raw finger delta. Never snap here -- snapping the running value
+                // re-rounds sub-half-step deltas back to the same grid cell and freezes the control.
+                val first = dragRaw?.first != id
                 val cur = dragRaw?.takeIf { it.first == id }?.second
-                    ?: base.firstOrNull { it.id == id }
-                        ?.let { Offset(it.xFraction, it.yFraction) }
+                    ?: base.firstOrNull { it.id == id }?.let { Offset(it.xFraction, it.yFraction) }
                     ?: return@GamepadOverlay
+                if (first) { history.push(working); canUndo = true }
                 val nx = (cur.x + dx).coerceIn(0.02f, 0.98f)
                 val ny = (cur.y + dy).coerceIn(0.02f, 0.98f)
                 dragRaw = id to Offset(nx, ny)
-                mutateControls { list ->
+                working = layoutWith(working) { list ->
                     if (grouped) ControlGroups.move(list, id, nx, ny)
                     else list.map { if (it.id == id) it.withLayout(x = nx, y = ny) else it }
                 }
@@ -192,189 +308,182 @@ private fun GamepadEditorContent(controller: GamepadController, onDone: () -> Un
                 val raw = dragRaw?.takeIf { it.first == id }?.second
                 dragRaw = null
                 if (snap && raw != null) {
-                    // Snap to the nearest IN-BOUNDS square-grid line (per-axis steps). snapFrac can
-                    // round to 0.0/1.0 (center on the screen edge, half the control off-screen), so
-                    // clamp to [1/steps, (steps-1)/steps] -- real grid lines, fully on-screen.
+                    // Snap to the nearest IN-BOUNDS square-grid line: real grid lines, fully on-screen.
                     val nx = snapFrac(raw.x, stepsX).coerceIn(1f / stepsX, (stepsX - 1f) / stepsX)
                     val ny = snapFrac(raw.y, stepsY).coerceIn(1f / stepsY, (stepsY - 1f) / stepsY)
-                    mutateControls { list ->
+                    working = layoutWith(working) { list ->
                         // 15r: the group follows the dragged control onto the grid, keeping its shape.
                         if (grouped) ControlGroups.move(list, id, nx, ny)
                         else list.map { if (it.id == id) it.withLayout(x = nx, y = ny) else it }
                     }
                 }
             },
-            onScale = { id, f -> mutateControls { list ->
-                if (grouped) list.firstOrNull { it.id == id }?.let { ControlGroups.resize(list, id, it.scale * f) } ?: list
-                else list.map { if (it.id == id) it.withLayout(s = (it.scale * f).coerceIn(0.5f, 3f)) else it } } },
+            onScale = { id, f -> base.firstOrNull { it.id == id }?.let { resize(id, it.scale * f) } },
         )
 
-        // Floating, translucent, COLLAPSIBLE toolbar. No opaque top bar -> the top of the
-        // screen is free for controls; collapse it to free the bottom too. Taps on the toolbar
-        // hit its buttons; taps anywhere else drag a control.
-        EditorChrome(
-            modifier = Modifier.align(Alignment.BottomCenter).padding(8.dp),
-            collapsed = chromeCollapsed,
-            onToggleCollapse = { chromeCollapsed = !chromeCollapsed },
-            landscape = landscape, onSetLandscape = { landscape = it },
-            snap = snap, onToggleSnap = { snap = !snap },
-            grouped = grouped, onToggleGrouped = { grouped = !grouped },
-            hasSelection = selected != null,
-            // Resize the selected control via an absolute-scale slider (pinch still works too).
-            selectedScale = selected?.let { id -> base.firstOrNull { it.id == id }?.scale },
-            onScaleSelected = { s ->
-                selected?.let { id ->
-                    mutateControls { list ->
-                        if (grouped) ControlGroups.resize(list, id, s)
-                        else list.map { if (it.id == id) it.withLayout(s = s.coerceIn(0.5f, 3f)) else it }
-                    }
+        val chosen = base.firstOrNull { it.id == selected }
+        if (chosen == null) {
+            Text(stringResource(if (controllerMode) R.string.xd_te_tip_pad else R.string.xd_te_tip_touch), style = XdText.small, color = c.fg2,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp).clip(RoundedCornerShape(50))
+                    .background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 14.dp, vertical = 7.dp))
+        } else {
+            val names = if (grouped) ControlGroups.of(chosen.id).filter { it != chosen.id }.map { controlName(it) } else emptyList()
+            ControlPanel(chosen, names, panelFocus,
+                onSize = { d -> resize(chosen.id, ((chosen.scale * 100).roundToInt() + d) / 100f) },
+                onDeadZone = { d ->
+                    val now = chosen.deadZoneOrNull ?: return@ControlPanel
+                    mutateControls { list -> list.map { if (it.id == chosen.id) it.withLayout(deadZone = ((now * 100).roundToInt() + d) / 100f) else it } }
+                },
+                onVisible = { mutateControls { list -> list.map { if (it.id == chosen.id) it.withLayout(vis = !it.visible) else it } } },
+                onClose = { selected = null; if (controllerMode) runCatching { rootFocus.requestFocus() } },
+                // Between the triggers, where a layout has the least to cover.
+                modifier = Modifier.align(Alignment.TopCenter).padding(12.dp)
+                    .onFocusChanged { panelFocused = it.hasFocus },
+            )
+        }
+
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (collapsed) {
+                Row(
+                    Modifier.padding(10.dp).clip(RoundedCornerShape(50)).background(c.solid(c.sheet).copy(alpha = 0.92f))
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(50))
+                        .clickable(role = Role.Button) { collapsed = false }.padding(horizontal = 16.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(XdIcons.move, null, Modifier.size(16.dp), tint = c.acc)
+                    Text(stringResource(R.string.xd_te_tools), style = XdText.labelSm, color = c.fg)
                 }
-            },
-            // 15f: the selected d-pad's or stick's own dead zone.
-            selectedDeadZone = selected?.let { id -> base.firstOrNull { it.id == id }?.deadZoneOrNull },
-            deadZoneRange = when (base.firstOrNull { it.id == selected }) {
-                is OnScreenControl.Dpad -> OnScreenControl.Dpad.DEAD_ZONES
-                is OnScreenControl.AnalogStick -> OnScreenControl.AnalogStick.DEAD_ZONES
-                else -> null
-            },
-            onDeadZoneSelected = { dz ->
-                selected?.let { id -> mutateControls { list -> list.map { if (it.id == id) it.withLayout(deadZone = dz) else it } } }
-            },
-            onReset = {
-                working = working.withLayout(editScope, landscape,
-                    defaultLayout(landscape).toDto().preserving(working.layoutFor(editScope, landscape)))
-            },
-            onLayouts = { layoutsOpen = true },
-            // Turning it on starts the game's own layout from what it plays with now; off goes
-            // back to the shared layout (the game's copy is dropped on save).
-            perGame = if (titleId != null) perGame else null,
-            onTogglePerGame = {
-                working = if (perGame) working.withoutOwnLayout(titleId, landscape)
-                else working.withLayout(titleId, landscape, base.toDto().preserving(working.layoutFor(null, landscape)))
-            },
-            onHideShow = {
-                val id = selected ?: return@EditorChrome
-                mutateControls { list -> list.map { if (it.id == id) it.withLayout(vis = !it.visible) else it } }
-            },
-            showGlobals = showGlobals, onToggleGlobals = { showGlobals = !showGlobals },
-            globals = working.globals, onMutateGlobals = ::mutateGlobals,
-            onCancel = onDone,
-            onSave = { scope.launch {
-                try { controller.save(working); onDone() }
-                catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
-                    android.widget.Toast.makeText(context, context.getString(R.string.ge_save_failed), android.widget.Toast.LENGTH_LONG).show()
+            } else {
+                FlowRow(
+                    Modifier.padding(horizontal = 10.dp, vertical = 8.dp).widthIn(max = 980.dp).clip(RoundedCornerShape(16.dp))
+                        .background(c.solid(c.sheet).copy(alpha = 0.94f)).border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                        .onFocusChanged { barFocused = it.hasFocus }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    val mid = Modifier.align(Alignment.CenterVertically)
+                    XdSegmented(listOf(true to stringResource(R.string.ge_landscape), false to stringResource(R.string.ge_portrait)), landscape,
+                        { landscape = it }, mid, compact = true)
+                    XdChip(stringResource(R.string.ge_snap), snap, { snap = !snap }, mid)
+                    XdChip(stringResource(R.string.ge_group), grouped, { grouped = !grouped }, mid)
+                    if (titleId != null) XdChip(gameName?.let { stringResource(R.string.xd_te_only_game, it) } ?: stringResource(R.string.ge_this_game), perGame, {
+                        // On: the game's own layout starts from what it plays with now; off: back to the shared one.
+                        commit(if (perGame) working.withoutOwnLayout(titleId, landscape)
+                            else working.withLayout(titleId, landscape, base.toDto().preserving(working.layoutFor(null, landscape))))
+                    }, mid)
+                    Bar(mid)
+                    XdIconButton(XdIcons.reset, stringResource(R.string.xd_undo), ::undo, mid, enabled = canUndo, size = 34.dp)
+                    XdButton(stringResource(R.string.lp_title), { layoutsOpen = true }, mid, kind = XdButtonKind.GHOST, size = XdButtonSize.SM)
+                    XdButton(stringResource(R.string.ge_globals), { globalsOpen = true }, mid, kind = XdButtonKind.GHOST, size = XdButtonSize.SM)
+                    XdButton(stringResource(R.string.ge_reset), {
+                        commit(working.withLayout(editScope, landscape, defaultLayout(landscape).toDto().preserving(working.layoutFor(editScope, landscape))))
+                        toast.show(context.getString(R.string.xd_te_reset_done))
+                    }, mid, kind = XdButtonKind.GHOST, size = XdButtonSize.SM)
+                    XdIconButton(XdIcons.chevD, stringResource(R.string.xd_te_collapse), { collapsed = true }, mid, size = 34.dp)
+                    Bar(mid)
+                    XdButton(stringResource(R.string.common_cancel), onDone, mid, kind = XdButtonKind.GHOST, size = XdButtonSize.SM)
+                    XdButton(stringResource(R.string.ge_save_quit), ::save, mid, kind = XdButtonKind.PRIMARY, size = XdButtonSize.SM)
                 }
-            } },
-        )
+            }
+            if (controllerMode) {
+                val swap = LocalSwapConfirm.current
+                CHints(listOf(
+                    XdHint("LB/RB", stringResource(R.string.xd_te_hint_pick)),
+                    XdHint(if (swap) "B" else "A", stringResource(R.string.xd_te_hint_settings)),
+                    XdHint("X", stringResource(R.string.lp_title), { layoutsOpen = true }),
+                    XdHint("Y", stringResource(R.string.ge_globals), { globalsOpen = true }),
+                    XdHint("⧉", stringResource(R.string.xd_te_hint_tools), { collapsed = !collapsed }),
+                    XdHint("≡", stringResource(R.string.ge_save_quit), ::save),
+                    XdHint(if (swap) "A" else "B", stringResource(R.string.common_cancel), onDone),
+                ))
+            }
+        }
+        XdToastHost(toast, Modifier.align(Alignment.TopCenter).padding(top = 52.dp))
+
         if (layoutsOpen) {
             LayoutPresetsDialog(config = working, editScope = editScope, landscape = landscape,
-                onChange = { working = it }, onDismiss = { layoutsOpen = false })
+                onChange = ::commit, onMessage = { toast.show(it) }, onDismiss = { layoutsOpen = false })
         }
+        if (globalsOpen) {
+            XdSheet(onDismiss = { globalsOpen = false }, title = stringResource(R.string.ge_globals), wide = true,
+                subtitle = stringResource(R.string.xd_te_globals_sub),
+                actions = { XdButton(stringResource(R.string.xd_done), { globalsOpen = false }, kind = XdButtonKind.PRIMARY) }) {
+                TouchOptionRows(working.globals, onGlobals = { change -> commit(working.copy(globals = change(working.globals))) })
+            }
+        }
+    }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EditorChrome(
+private fun Bar(modifier: Modifier = Modifier) = Box(modifier.width(1.dp).height(22.dp).background(Color.White.copy(alpha = 0.12f)))
+
+/** The chosen control: its size, its dead zone (d-pad and sticks) and whether it is shown. */
+@Composable
+private fun ControlPanel(
+    control: OnScreenControl,
+    group: List<String>,
+    firstFocus: FocusRequester,
+    onSize: (Int) -> Unit,
+    onDeadZone: (Int) -> Unit,
+    onVisible: () -> Unit,
+    onClose: () -> Unit,
     modifier: Modifier,
-    collapsed: Boolean,
-    onToggleCollapse: () -> Unit,
-    landscape: Boolean,
-    onSetLandscape: (Boolean) -> Unit,
-    snap: Boolean,
-    onToggleSnap: () -> Unit,
-    grouped: Boolean,
-    onToggleGrouped: () -> Unit,
-    hasSelection: Boolean,
-    selectedScale: Float?,
-    onScaleSelected: (Float) -> Unit,
-    selectedDeadZone: Float?,
-    deadZoneRange: ClosedFloatingPointRange<Float>?,
-    onDeadZoneSelected: (Float) -> Unit,
-    onReset: () -> Unit,
-    onLayouts: () -> Unit,
-    /** Null when no game is running (only the shared layout can be edited). */
-    perGame: Boolean?,
-    onTogglePerGame: () -> Unit,
-    onHideShow: () -> Unit,
-    showGlobals: Boolean,
-    onToggleGlobals: () -> Unit,
-    globals: GamepadGlobalsDto,
-    onMutateGlobals: ((GamepadGlobalsDto) -> GamepadGlobalsDto) -> Unit,
-    onCancel: () -> Unit,
-    onSave: () -> Unit,
 ) {
-    if (collapsed) {
-        // Small re-open pill; leaves the whole screen free for placing controls.
-        Surface(
-            modifier = modifier,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-            shape = RoundedCornerShape(50),
-            tonalElevation = 4.dp,
-        ) {
-            TextButton(onClick = onToggleCollapse,
-                modifier = Modifier.padding(horizontal = 4.dp)) { Text(stringResource(R.string.ge_edit_tools)) }
-        }
-        return
-    }
-    Surface(
-        modifier = modifier.widthIn(max = 560.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        // Pin the content colour: a copy()-d surface colour doesn't resolve to onSurface, so plain
-        // Text inside (the Globals labels) would fall back to the default content colour (black)
-        // and be illegible on a dark-theme toolbar.
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(16.dp),
-        tonalElevation = 6.dp,
+    val c = Xd.colors
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        modifier.width(250.dp).clip(shape).background(c.solid(c.sheet).copy(alpha = 0.95f)).border(1.dp, Color.White.copy(alpha = 0.08f), shape)
+            .padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                FilterChip(selected = landscape, onClick = { onSetLandscape(true) },
-                    label = { Text(stringResource(R.string.ge_landscape)) })
-                FilterChip(selected = !landscape, onClick = { onSetLandscape(false) },
-                    label = { Text(stringResource(R.string.ge_portrait)) })
-                FilterChip(selected = snap, onClick = onToggleSnap, label = { Text(stringResource(R.string.ge_snap)) })
-                FilterChip(selected = grouped, onClick = onToggleGrouped, label = { Text(stringResource(R.string.ge_group)) })
-                if (perGame != null) {
-                    FilterChip(selected = perGame, onClick = onTogglePerGame, label = { Text(stringResource(R.string.ge_this_game)) })
-                }
-                TextButton(onClick = onReset) { Text(stringResource(R.string.ge_reset)) }
-                TextButton(onClick = onLayouts) { Text(stringResource(R.string.lp_title)) }
-                TextButton(onClick = onHideShow, enabled = hasSelection) { Text(stringResource(R.string.ge_hide_show)) }
-                TextButton(onClick = onToggleGlobals) { Text(stringResource(R.string.ge_globals)) }
-                TextButton(onClick = onToggleCollapse) { Text(stringResource(R.string.ge_collapse)) }
-            }
-            // Size of the selected control (only shown when one is selected). Absolute scale.
-            if (selectedScale != null) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.ge_size), modifier = Modifier.padding(end = 8.dp))
-                    Slider(value = selectedScale, valueRange = 0.5f..3f,
-                        onValueChange = onScaleSelected, modifier = Modifier.weight(1f))
-                    Text("${(selectedScale * 100).roundToInt()}%",
-                        modifier = Modifier.padding(start = 8.dp))
-                }
-            }
-            if (selectedDeadZone != null && deadZoneRange != null) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.ge_dead_zone), modifier = Modifier.padding(end = 8.dp))
-                    Slider(value = selectedDeadZone.coerceIn(deadZoneRange), valueRange = deadZoneRange,
-                        onValueChange = onDeadZoneSelected, modifier = Modifier.weight(1f))
-                    Text("${(selectedDeadZone * 100).roundToInt()}%", modifier = Modifier.padding(start = 8.dp))
-                }
-            }
-            if (showGlobals) GlobalsEditor(globals, onMutateGlobals)
-            Row(verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End,
-                modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
-                Button(onClick = onSave, modifier = Modifier.padding(start = 8.dp)) { Text(stringResource(R.string.ge_save_quit)) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(controlName(control.id), style = XdText.label, color = c.fg, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            XdIconButton(XdIcons.x, stringResource(R.string.xd_close), onClose, size = 34.dp)
+        }
+        val size = (control.scale * 100).roundToInt()
+        PanelRow(stringResource(R.string.ge_size)) {
+            XdStepper("$size%", { onSize(-10) }, { onSize(10) }, canPrevious = size > 50, canNext = size < 300,
+                minLabelWidth = 52.dp, modifier = Modifier.focusRequester(firstFocus))
+        }
+        val range = when (control) {
+            is OnScreenControl.Dpad -> OnScreenControl.Dpad.DEAD_ZONES
+            is OnScreenControl.AnalogStick -> OnScreenControl.AnalogStick.DEAD_ZONES
+            else -> null
+        }
+        val dz = control.deadZoneOrNull
+        if (range != null && dz != null) {
+            val now = (dz * 100).roundToInt()
+            PanelRow(stringResource(R.string.ge_dead_zone)) {
+                XdStepper("$now%", { onDeadZone(-5) }, { onDeadZone(5) },
+                    canPrevious = now > (range.start * 100).roundToInt(), canNext = now < (range.endInclusive * 100).roundToInt(), minLabelWidth = 52.dp)
             }
         }
+        PanelRow(stringResource(R.string.xd_te_visible)) { XdSwitch(control.visible, { onVisible() }) }
+        if (group.isNotEmpty()) Text(stringResource(R.string.xd_te_group_note, group.joinToString(", ")), style = XdText.small, color = c.fg3,
+            modifier = Modifier.padding(end = 6.dp))
     }
+}
+
+@Composable
+private fun PanelRow(label: String, control: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = XdText.bodySm, color = Xd.colors.fg2, modifier = Modifier.weight(1f))
+        control()
+    }
+}
+
+/** A touch control's name as the player knows it. */
+@Composable
+internal fun controlName(id: ControlId): String = when (id) {
+    ControlId.DPAD -> stringResource(R.string.xd_te_ctl_dpad)
+    ControlId.BACK -> stringResource(R.string.xd_te_ctl_back)
+    ControlId.START -> stringResource(R.string.xd_te_ctl_start)
+    ControlId.LEFT_STICK -> stringResource(R.string.xd_te_ctl_ls)
+    ControlId.RIGHT_STICK -> stringResource(R.string.xd_te_ctl_rs)
+    ControlId.LS_CLICK -> stringResource(R.string.xd_te_ctl_l3)
+    ControlId.RS_CLICK -> stringResource(R.string.xd_te_ctl_r3)
+    else -> id.name
 }
 
 /** 15c: the name of a split-screen mode, for the editor and the in-game menu. */
@@ -383,66 +492,4 @@ fun splitScreenLabel(mode: SplitScreenMode): Int = when (mode) {
     SplitScreenMode.OFF -> R.string.ge_split_off
     SplitScreenMode.TABLETOP -> R.string.ge_split_tabletop
     SplitScreenMode.ALWAYS -> R.string.ge_split_always
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun GlobalsEditor(
-    globals: GamepadGlobalsDto,
-    mutate: ((GamepadGlobalsDto) -> GamepadGlobalsDto) -> Unit,
-) {
-    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-        Text(stringResource(R.string.ge_globals_title),
-            style = MaterialTheme.typography.labelMedium)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.ge_enabled), modifier = Modifier.padding(end = 8.dp))
-            Switch(checked = globals.enabled, onCheckedChange = { v -> mutate { it.copy(enabled = v) } })
-        }
-        Text(stringResource(R.string.ge_opacity, (globals.opacity * 100).roundToInt()))
-        Slider(value = globals.opacity, valueRange = 0.2f..1.0f,
-            onValueChange = { v -> mutate { it.copy(opacity = v) } })
-        Text(stringResource(R.string.ge_auto_hide, globals.autoHideSeconds.roundToInt()))
-        Slider(value = globals.autoHideSeconds, valueRange = 0f..20f,
-            onValueChange = { v -> mutate { it.copy(autoHideSeconds = v) } })
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.ge_haptics), modifier = Modifier.padding(end = 8.dp))
-            Switch(checked = globals.hapticsEnabled,
-                onCheckedChange = { v -> mutate { it.copy(hapticsEnabled = v) } })
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.ge_hide_with_controller), modifier = Modifier.weight(1f).padding(end = 8.dp))
-            Switch(checked = globals.hideWithController,
-                onCheckedChange = { v -> mutate { it.copy(hideWithController = v) } })
-        }
-        Text(stringResource(R.string.ge_hide_with_controller_desc), style = MaterialTheme.typography.bodySmall)
-        // 15c: the game above, the controls clear of it.
-        Text(stringResource(R.string.ge_split), modifier = Modifier.padding(top = 4.dp))
-        val split = SplitScreenMode.parse(globals.splitScreen)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            SplitScreenMode.entries.forEach { mode ->
-                FilterChip(selected = split == mode, onClick = { mutate { it.copy(splitScreen = mode.key) } },
-                    label = { Text(stringResource(splitScreenLabel(mode))) })
-            }
-        }
-        Text(stringResource(R.string.ge_split_desc), style = MaterialTheme.typography.bodySmall)
-        // 15f: sliding between the controls without lifting the finger.
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.ge_slide_buttons), modifier = Modifier.weight(1f).padding(end = 8.dp))
-            Switch(checked = globals.slideButtons, onCheckedChange = { v -> mutate { it.copy(slideButtons = v) } })
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.ge_slide_sticks), modifier = Modifier.weight(1f).padding(end = 8.dp))
-            Switch(checked = globals.slideSticks, onCheckedChange = { v -> mutate { it.copy(slideSticks = v) } })
-        }
-        Text(stringResource(R.string.ge_slide_desc), style = MaterialTheme.typography.bodySmall)
-        // U07: the touch camera (turned on in the in-game menu): how fast it turns and how much
-        // of the right side of the screen it takes.
-        Text(stringResource(R.string.ge_camera_speed, (globals.cameraSensitivity * 100).roundToInt()))
-        Slider(value = globals.cameraSensitivity.coerceIn(0.5f, 2f), valueRange = 0.5f..2f,
-            onValueChange = { v -> mutate { it.copy(cameraSensitivity = v) } })
-        val cameraWidth = 1f - TouchCamera.areaStart(globals.cameraAreaStart)
-        Text(stringResource(R.string.ge_camera_area, (cameraWidth * 100).roundToInt()))
-        Slider(value = cameraWidth, valueRange = 0.3f..0.7f,
-            onValueChange = { v -> mutate { it.copy(cameraAreaStart = 1f - v) } })
-    }
 }

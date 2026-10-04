@@ -433,6 +433,31 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             session.keyEvent(code, down, value)
         }
     } }
+    /** The input options every game starts with; the in-game menu changes them for the next ones too. */
+    private val controlOptions by lazy { xendroid.compose.gamepad.ControlOptionsStore(applicationContext) }
+
+    private fun applyControlOptions(options: xendroid.compose.gamepad.ControlOptions) {
+        touchCamera.value = options.touchCamera
+        gyroAim.value = options.gyroAim
+        gyroSensitivity.intValue = options.gyroSensitivity.ordinal
+        gyroCamera.sensitivity = options.gyroSensitivity.scale
+        val unbuffered = unbufferedInput.value != options.unbufferedInput
+        unbufferedInput.value = options.unbufferedInput
+        if (unbuffered && window?.decorView?.isAttachedToWindow == true) applyUnbufferedInput()
+        if (rumbleSettings.value.default != options.rumble) rumbleSettings.value = rumbleSettings.value.copy(default = options.rumble)
+        val gyro = options.gyroCamera && gyroCamera.available
+        if (gyro != gyroEnabled.value) {
+            gyroEnabled.value = gyro
+            if (gyro && foregroundState.value && !menuState.value.open && hasWindowFocus()) gyroCamera.start()
+        }
+    }
+
+    /** Saves an in-game change for the next games (the shared store, never this process's preferences). */
+    private fun saveControlOptions(change: (xendroid.compose.gamepad.ControlOptions) -> xendroid.compose.gamepad.ControlOptions) {
+        lifecycleScope.launch {
+            runCatching { controlOptions.update(change) }.onFailure { Log.w(TAG, "Saving the control options failed", it) }
+        }
+    }
     private val lsfgCache = mutableStateOf<String?>(null)
     private var importingLsfg = false
     private val lsfgPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -503,10 +528,13 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         // L02: the interface mode chosen in the library; read once per game process.
         menuState.value = menuState.value.copy(
             developer = xendroid.compose.settings.UiModeStore.read(this) == xendroid.compose.settings.UiMode.DEVELOPER)
-        touchCamera.value = getSharedPreferences("touch_options", MODE_PRIVATE).getBoolean("touch_camera", false)
-        getSharedPreferences("touch_options", MODE_PRIVATE).let { prefs ->
-            gyroAim.value = xendroid.compose.gamepad.GyroAim.parse(prefs.getString("gyro_aim", null))
-            unbufferedInput.value = prefs.getBoolean("unbuffered_input", true)
+        // What the game starts with for input (the Controls area's values): older builds' at once,
+        // then the shared store's as soon as it is read.
+        applyControlOptions(xendroid.compose.gamepad.ControlOptions.legacy(getSharedPreferences("touch_options", MODE_PRIVATE)))
+        lifecycleScope.launch {
+            runCatching { controlOptions.options.first() }
+                .onFailure { Log.w(TAG, "Reading the control options failed", it) }
+                .getOrNull()?.let(::applyControlOptions)
         }
         enterImmersiveMode()
         gameModeSignal.update(xendroid.compose.core.GamePhase.LOADING)
@@ -1695,11 +1723,12 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                             )
 
                             if (editorOpen.value) {
-                                xendroidTheme { GamepadEditorScreen(
+                                xendroidTheme(mode = hostMode) { GamepadEditorScreen(
                                     controller = gamepad,
                                     onDone = { editorOpen.value = false },
                                     inGame = true,
                                     titleId = activeTitleState.value,
+                                    gameName = loadingName,
                                 ) }
                             } else if (menuState.value.open) {
                                 xendroidTheme(scale = uiScale, mode = hostMode) {
@@ -3078,30 +3107,36 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             return
         }
         if (action == InGameAction.GYRO_CAMERA) {
-            if (gyroCamera.available) gyroEnabled.value = !gyroEnabled.value
+            if (gyroCamera.available) {
+                gyroEnabled.value = !gyroEnabled.value
+                val on = gyroEnabled.value
+                saveControlOptions { it.copy(gyroCamera = on) }
+            }
             return
         }
         if (action == InGameAction.GYRO_CALIBRATE) { gyroCamera.calibrate(); return }
         if (action == InGameAction.GYRO_AIM) {
             if (!gyroCamera.available) return
             gyroAim.value = gyroAim.value.next()
-            getSharedPreferences("touch_options", MODE_PRIVATE).edit().putString("gyro_aim", gyroAim.value.name).apply()
+            val aim = gyroAim.value
+            saveControlOptions { it.copy(gyroAim = aim) }
             return
         }
         if (action == InGameAction.SPLIT_SCREEN) {
             // Saved with the touch controls (as the editor's "Split screen"): off, at a fold, always.
             lifecycleScope.launch {
                 runCatching {
-                    val cfg = gamepad.config.first()
-                    val next = xendroid.compose.gamepad.SplitScreenMode.parse(cfg.globals.splitScreen).next()
-                    gamepad.save(cfg.copy(globals = cfg.globals.copy(splitScreen = next.key)))
+                    gamepad.update { cfg ->
+                        cfg.copy(globals = cfg.globals.copy(splitScreen = xendroid.compose.gamepad.SplitScreenMode.parse(cfg.globals.splitScreen).next().key))
+                    }
                 }.onFailure { Log.w(TAG, "Saving the split screen mode failed", it) }
             }
             return
         }
         if (action == InGameAction.UNBUFFERED_INPUT) {
             unbufferedInput.value = !unbufferedInput.value
-            getSharedPreferences("touch_options", MODE_PRIVATE).edit().putBoolean("unbuffered_input", unbufferedInput.value).apply()
+            val unbuffered = unbufferedInput.value
+            saveControlOptions { it.copy(unbufferedInput = unbuffered) }
             applyUnbufferedInput()
             recordEvent("input", "unbuffered " + if (unbufferedInput.value) "on" else "off")
             return
@@ -3118,14 +3153,16 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
         if (action == InGameAction.CONTROLLER_RUMBLE) {
             rumbleSettings.value = rumbleSettings.value.cycleDefault()
-            getSharedPreferences(xendroid.compose.gamepad.RumbleSettings.PREFS, MODE_PRIVATE).edit()
-                .putString(xendroid.compose.gamepad.RumbleSettings.DEFAULT_KEY, rumbleSettings.value.default.name).apply()
+            val rumble = rumbleSettings.value.default
+            saveControlOptions { it.copy(rumble = rumble) }
             stopRumble()
             return
         }
         if (action == InGameAction.GYRO_SENSITIVITY) {
-            gyroSensitivity.intValue = (gyroSensitivity.intValue + 1) % 3
-            gyroCamera.sensitivity = listOf(0.2f, 0.35f, 0.6f)[gyroSensitivity.intValue]
+            val next = xendroid.compose.gamepad.GyroSensitivity.entries[gyroSensitivity.intValue].next()
+            gyroSensitivity.intValue = next.ordinal
+            gyroCamera.sensitivity = next.scale
+            saveControlOptions { it.copy(gyroSensitivity = next) }
             return
         }
         if (action == InGameAction.SUSTAINED_PERFORMANCE) {
@@ -3329,8 +3366,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             }
             InGameAction.TOUCH_CAMERA -> {
                 touchCamera.value = !touchCamera.value
-                getSharedPreferences("touch_options", MODE_PRIVATE).edit()
-                    .putBoolean("touch_camera", touchCamera.value).apply()
+                val on = touchCamera.value
+                saveControlOptions { it.copy(touchCamera = on) }
             }
             InGameAction.RESUME -> closeMenuAndResume()
             InGameAction.SHARE_LOGS -> lifecycleScope.launch {

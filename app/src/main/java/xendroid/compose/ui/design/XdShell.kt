@@ -369,11 +369,13 @@ fun XdSingleScreen(
     hints: List<XdHint>? = null,
     scroll: Boolean = true,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
+    /** Controller mode: pad buttons the screen handles itself; true = handled. */
+    onPad: ((PadButton) -> Boolean)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = Xd.colors
     if (Xd.controller) {
-        CFrame(modifier, art = null, hints = hints ?: defaultHints(sections = false), overlay = overlay) { _ ->
+        CFrame(modifier, art = null, hints = hints ?: defaultHints(sections = false), onPad = onPad, overlay = overlay) { _ ->
             Column(Modifier.fillMaxSize()) {
                 CHead(title, subtitle, onBack, lead = null, headIcon = headIcon, actions = actions)
                 val body = Modifier.weight(1f).fillMaxWidth()

@@ -52,11 +52,12 @@ fun controlRadiusPx(c: OnScreenControl, density: Density): Float {
     }
 }
 
-/** Pure hit-test: first visible control whose center is within its radius of pos. */
+/** Pure hit-test: first visible control whose center is within its radius of pos; the editor
+ *  also finds the hidden ones ([includeHidden]), which it still draws. */
 fun hitTest(
-    controls: List<OnScreenControl>, pos: Offset, size: IntSize, density: Density,
+    controls: List<OnScreenControl>, pos: Offset, size: IntSize, density: Density, includeHidden: Boolean = false,
 ): OnScreenControl? = controls.firstOrNull { c ->
-    if (!c.visible) return@firstOrNull false
+    if (!c.visible && !includeHidden) return@firstOrNull false
     val center = controlCenterPx(c, size)
     hypot(pos.x - center.x, pos.y - center.y) <= controlRadiusPx(c, density)
 }
@@ -307,10 +308,12 @@ fun GamepadOverlay(
         }
         val contrastNow = contrast()   // draw-phase read: animation frames only re-draw
         for (c in controls) {
-            if (!c.visible) continue
+            // The editor still shows a hidden control, faint and ringed, so it can be shown again.
+            if (!c.visible && !editMode) continue
             if (adaptiveSticks && !editMode && c is OnScreenControl.AnalogStick && stickOrigins[c.id] == null) continue
+            if (!c.visible) drawHiddenMark(c, sizePx, density)
             drawControl(
-                c, opacity, contrastNow, sizePx, density, drawCache,
+                c, if (c.visible) opacity else opacity * 0.3f, contrastNow, sizePx, density, drawCache,
                 pressed = claims.containsValue(c.id),
                 dpadDirs = if (c is OnScreenControl.Dpad) dpadState[c.id] ?: emptySet() else emptySet(),
                 activePos = activePos(c.id),
@@ -345,7 +348,7 @@ private suspend fun PointerInputScope.editPointerLoop(
             val pressed = ev.changes.filter { it.pressed }
             // DOWN: hit-test + select + start a drag on the hit control.
             ev.changes.firstOrNull { it.changedToDownIgnoreConsumed() }?.let { ch ->
-                val hit = hitTest(controlsState.value, ch.position, size, density)
+                val hit = hitTest(controlsState.value, ch.position, size, density, includeHidden = true)
                 onSelect(hit?.id)
                 dragId = hit?.id
                 lastDrag = if (hit != null) ch.position else null
@@ -731,7 +734,17 @@ private fun DrawScope.drawSelection(c: OnScreenControl, size: IntSize, density: 
     val center = controlCenterPx(c, size)
     val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
     val ring = with(density) { 3.dp.toPx() }
-    drawCircle(Color(0xFF4FC3F7), radius + ring, center, style = Stroke(ring))
+    drawCircle(Color(0xFF79DD5F), radius + ring, center, style = Stroke(ring))
+}
+
+/** A dashed ring around a control the player hid (editor only). */
+private fun DrawScope.drawHiddenMark(c: OnScreenControl, size: IntSize, density: Density) {
+    val center = controlCenterPx(c, size)
+    val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
+    val w = with(density) { 1.5.dp.toPx() }
+    val dash = with(density) { 5.dp.toPx() }
+    drawCircle(Color.White.copy(alpha = 0.55f), radius + w, center,
+        style = Stroke(w, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(dash, dash * 0.8f))))
 }
 
 private fun DrawScope.drawLabel(

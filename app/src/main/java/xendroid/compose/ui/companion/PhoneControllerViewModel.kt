@@ -79,10 +79,12 @@ class PhoneControllerViewModel(app: Application) : AndroidViewModel(app) {
         vibrate(0)
     }
 
-    fun cycleIntensity() {
-        intensity.value = intensity.value.next()
-        intensityNow = intensity.value
-        prefs.edit { putString("rumble", intensity.value.name) }
+    fun cycleIntensity() = setIntensity(intensity.value.next())
+
+    fun setIntensity(next: RumbleIntensity) {
+        intensity.value = next
+        intensityNow = next
+        prefs.edit { putString("rumble", next.name) }
         if (state.value is CompanionPadLink.State.Playing) vibrate(rumbleAmplitude(lastMotors, intensityNow))
     }
 

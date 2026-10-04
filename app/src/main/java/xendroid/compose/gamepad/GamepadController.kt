@@ -26,6 +26,14 @@ class GamepadController(appContext: Context) {
         }
     }
 
+    suspend fun update(transform: (GamepadConfigDto) -> GamepadConfigDto) {
+        try { store.update(transform) } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.w("GamepadController", "Layout update failed; previous file preserved", e)
+            throw e
+        }
+    }
+
     /** Runtime controls for an orientation = defaults merged with the persisted layout:
      *  [titleId]'s own when it has one (U06), else the shared one. */
     fun controlsFor(cfg: GamepadConfigDto, landscape: Boolean, titleId: String? = null): List<OnScreenControl> =
