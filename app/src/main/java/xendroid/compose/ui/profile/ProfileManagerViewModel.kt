@@ -67,6 +67,10 @@ class ProfileManagerViewModel(
         data class ConfirmDelete(val entry: ProfileEntry, val summary: ProfileContentSummary) : OpState
     }
 
+    /** What each profile's saves take, by XUID (games, files, bytes), for the cards. */
+    private val _summaries = MutableStateFlow<Map<String, ProfileContentSummary>>(emptyMap())
+    val summaries: StateFlow<Map<String, ProfileContentSummary>> = _summaries.asStateFlow()
+
     private val _opState = MutableStateFlow<OpState>(OpState.Idle)
     val opState: StateFlow<OpState> = _opState.asStateFlow()
 
@@ -107,6 +111,10 @@ class ProfileManagerViewModel(
             }
         }
         _trash.value = withContext(Dispatchers.IO) { runCatching { profileTrash.list() }.getOrDefault(emptyList()) }
+        val listed = (_listState.value as? ListState.Loaded)?.profiles.orEmpty()
+        _summaries.value = withContext(Dispatchers.IO) {
+            listed.mapNotNull { p -> runCatching { profileTrash.summarize(p.xuid) }.getOrNull()?.let { p.xuid to it } }.toMap()
+        }
     }
 
     fun create(gamertag: String, language: Int, country: Int, avatarUri: Uri?) = viewModelScope.launch {

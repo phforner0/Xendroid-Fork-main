@@ -289,7 +289,13 @@ fun AppNavHost(container: AppContainer) {
         composable(Routes.PROFILES) { entry ->
             val vm: ProfileManagerViewModel =
                 viewModel(factory = container.profileManagerViewModelFactory())
-            ProfilesScreen(vm = vm, onBack = entry.backOnce(nav))
+            val games = libraryGames(nav, entry, container)
+            val go: (String) -> Unit = { route -> if (entry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) nav.navigate(route) }
+            ProfilesScreen(vm = vm, onBack = entry.backOnce(nav), links = xendroid.compose.ui.profile.ProfilesLinks(
+                onSaves = { title -> go("${Routes.SAVES}/$title?name=${Uri.encode(games.byTitle[title]?.name.orEmpty())}") },
+                gameName = { games.byTitle[it]?.name },
+                gameArt = { title -> games.byTitle[title]?.let { games.art(it) } },
+            ))
         }
         composable(Routes.GAMEPAD_EDITOR) { entry ->
             val ctx = LocalContext.current
@@ -359,7 +365,9 @@ fun AppNavHost(container: AppContainer) {
         )) { entry ->
             val titleId = entry.arguments?.getString("titleId") ?: return@composable
             val vm: SaveManagerViewModel = viewModel(factory = container.saveManagerViewModelFactory(titleId))
-            SaveManagerScreen(vm, entry.arguments?.getString("name").orEmpty(), entry.backOnce(nav))
+            val games = libraryGames(nav, entry, container)
+            SaveManagerScreen(vm, entry.arguments?.getString("name").orEmpty(), entry.backOnce(nav),
+                art = games.byTitle[titleId.uppercase()]?.let { games.art(it) })
         }
         composable("${Routes.DIAGNOSTICS}?title={title}", arguments = listOf(
             navArgument("title") { nullable = true; defaultValue = null },

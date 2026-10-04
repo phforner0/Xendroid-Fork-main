@@ -54,8 +54,13 @@ object BackupSync {
                 override fun removeOwnFailedUpload(name: String) { created.remove(name)?.delete() }
             }
             BackupReplication.publish(title, archive, sink) { coroutine.ensureActive() }
+                .also { context.getSharedPreferences("backup-sync", Context.MODE_PRIVATE).edit().putLong("published_at_$title", System.currentTimeMillis()).apply() }
         } finally { archive.delete() }
     }
+
+    /** When a backup of [title] last reached the folder (this app's own record), or null. */
+    fun lastPublished(context: Context, title: String): Long? =
+        context.getSharedPreferences("backup-sync", Context.MODE_PRIVATE).getLong("published_at_$title", 0L).takeIf { it > 0L }
 
     suspend fun remoteBackups(context: Context, title: String): List<DocumentFile> = withContext(Dispatchers.IO) {
         val uri = configured(context, title) ?: return@withContext emptyList()

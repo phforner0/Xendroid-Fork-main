@@ -1,20 +1,15 @@
 package xendroid.compose.ui.library
 
-import xendroid.compose.R
-import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,13 +17,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import xendroid.compose.R
+import xendroid.compose.core.ProfilePaths
 import xendroid.compose.data.PlayableProfile
+import xendroid.compose.ui.design.Xd
+import xendroid.compose.ui.design.XdIcons
+import xendroid.compose.ui.design.XdNote
+import xendroid.compose.ui.design.XdSheet
+import xendroid.compose.ui.design.XdSwitch
+import xendroid.compose.ui.design.XdText
+import xendroid.compose.ui.design.focusRing
+import xendroid.compose.ui.profile.ProfileAvatar
 
 /**
- * U11: which local profile signs in (P1) for this game. Saves and achievements stay with each
- * profile's XUID; nothing is moved. "Don't ask again" keeps playing as the chosen one (it can be
- * turned back on in Profiles).
+ * U11: which local profile signs in (P1) for this game: tap one and the game starts as it. Saves
+ * and achievements stay with each profile's XUID; nothing is moved. "Don't ask again" keeps
+ * playing as the chosen one (it can be turned back on in Profiles).
  */
 @Composable
 fun PlayAsDialog(
@@ -37,33 +45,40 @@ fun PlayAsDialog(
     onPlay: (xuid: String, dontAskAgain: Boolean) -> Unit,
     onDismiss: () -> Unit,
     otherPlayers: Map<String, Int> = emptyMap(),
+    gameName: String? = null,
 ) {
-    var chosen by remember { mutableStateOf(preselected) }
+    val c = Xd.colors
     var dontAsk by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.playas_title)) },
-        text = {
-            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                profiles.forEach { profile ->
-                    Row(Modifier.fillMaxWidth().clickable { chosen = profile.xuid }, verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = chosen == profile.xuid, onClick = { chosen = profile.xuid })
-                        Text(profile.gamertag.ifBlank { profile.xuid } +
-                            (otherPlayers[profile.xuid.uppercase()]?.let { " · P$it" } ?: ""))
+    XdSheet(onDismiss = onDismiss, title = stringResource(R.string.playas_title), subtitle = gameName) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            profiles.forEach { profile ->
+                val chosen = profile.xuid.equals(preselected, ignoreCase = true)
+                val player = otherPlayers[profile.xuid.uppercase()]
+                val hasAvatar = remember(profile.xuid) { runCatching { ProfilePaths.tile64Path(profile.xuid).isFile }.getOrDefault(false) }
+                val shape = RoundedCornerShape(12.dp)
+                Row(
+                    Modifier.fillMaxWidth().focusRing(shape).clip(shape)
+                        .clickable(role = Role.Button) { onPlay(profile.xuid, dontAsk) }
+                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ProfileAvatar(profile.xuid, profile.gamertag, hasAvatar, 40.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text(profile.gamertag.ifBlank { profile.xuid }, style = XdText.label, color = c.fg)
+                        Text(when {
+                            chosen -> stringResource(R.string.pf_active_p1)
+                            player != null -> stringResource(R.string.playas_moves, player)
+                            else -> profile.xuid
+                        }, style = XdText.small, color = if (chosen) c.acc else c.fg3)
                     }
+                    Icon(XdIcons.play, null, Modifier.size(18.dp), tint = if (chosen) c.acc else c.fg3)
                 }
-                otherPlayers[chosen.uppercase()]?.let { player ->
-                    Text(stringResource(R.string.playas_moves, player),
-                        style = MaterialTheme.typography.bodySmall)
-                }
-                Row(Modifier.fillMaxWidth().clickable { dontAsk = !dontAsk }, verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = dontAsk, onCheckedChange = { dontAsk = it })
-                    Text(stringResource(R.string.playas_dont_ask), style = MaterialTheme.typography.bodyMedium)
-                }
-                Text(stringResource(R.string.playas_note), style = MaterialTheme.typography.bodySmall)
             }
-        },
-        confirmButton = { TextButton(onClick = { onPlay(chosen, dontAsk) }) { Text(stringResource(R.string.lib_play)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
-    )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            XdSwitch(dontAsk, { dontAsk = it })
+            Text(stringResource(R.string.playas_dont_ask), style = XdText.body, color = c.fg)
+        }
+        XdNote(stringResource(R.string.playas_note))
+    }
 }

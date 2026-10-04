@@ -256,6 +256,7 @@ fun GameActionDialogs(actions: GameActions) {
             profiles = ask.profiles, preselected = ask.preselected, otherPlayers = ask.otherPlayers,
             onPlay = { xuid, dontAsk -> actions.playAsChosen(game, xuid, dontAsk) },
             onDismiss = { actions.playAs = null },
+            gameName = game.name,
         )
     }
     actions.discInstall?.let { (game, count, options) ->

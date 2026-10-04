@@ -20,12 +20,24 @@ import xendroid.compose.core.StorageAccess
 import xendroid.compose.saves.PreparedSaveRestore
 import xendroid.compose.saves.SaveProfile
 import xendroid.compose.saves.BackupSync
+import xendroid.compose.saves.ProfileTrash
+import xendroid.compose.saves.SaveEntry
+import xendroid.compose.saves.SaveHeaders
+import xendroid.compose.core.ContentPaths
+import xendroid.compose.core.EmulatorRuntime
 
 class SaveManagerViewModel(context: Context, val titleId: String) : ViewModel() {
     private val context = context.applicationContext
     private val store get() = StorageAccess.saveStore()
     private val _profiles = MutableStateFlow<List<SaveProfile>>(emptyList())
     val profiles = _profiles.asStateFlow()
+    /** Who a XUID with saves is: its gamertag and avatar, or a profile in the trash (no name kept). */
+    data class Owner(val gamertag: String?, val hasAvatar: Boolean, val inTrash: Boolean)
+    private val _owners = MutableStateFlow<Map<String, Owner>>(emptyMap())
+    val owners = _owners.asStateFlow()
+    /** Each profile's saves of this game, by the names the game gave them. */
+    private val _saves = MutableStateFlow<Map<String, List<SaveEntry>>>(emptyMap())
+    val saves = _saves.asStateFlow()
     sealed interface Operation {
         data object Idle : Operation
         data class Busy(val message: String) : Operation
@@ -39,7 +51,24 @@ class SaveManagerViewModel(context: Context, val titleId: String) : ViewModel() 
     init { refresh() }
     fun refresh() = viewModelScope.launch {
         runCatching { withContext(Dispatchers.IO) { store.profiles(titleId) } }
-            .onSuccess { _profiles.value = it }.onFailure { error(it) }
+            .onSuccess { list ->
+                _profiles.value = list
+                _saves.value = withContext(Dispatchers.IO) {
+                    val root = ContentPaths.contentRoot()
+                    list.associate { it.xuid to runCatching { SaveHeaders.list(root, it.xuid, titleId) }.getOrDefault(emptyList()) }
+                }
+                _owners.value = withContext(Dispatchers.IO) { runCatching { owners() }.getOrDefault(emptyMap()) }
+            }.onFailure { error(it) }
+    }
+
+    private fun owners(): Map<String, Owner> {
+        val root = ContentPaths.contentRoot()
+        EmulatorRuntime.ensureLoaded()
+        val listed = runCatching { EmulatorRuntime.emulator?.list_profiles(root.absolutePath) }.getOrNull().orEmpty()
+            .associate { it.xuid.uppercase() to Owner(it.gamertag?.ifBlank { null }, it.hasAvatar, inTrash = false) }
+        val trashed = runCatching { ProfileTrash(root).list() }.getOrDefault(emptyList())
+            .map { it.xuid.uppercase() }.filter { it !in listed }.associateWith { Owner(null, false, inTrash = true) }
+        return trashed + listed
     }
     fun synchronize() {
         if (_operation.value is Operation.Busy) return
