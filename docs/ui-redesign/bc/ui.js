@@ -37,6 +37,8 @@ const activeProfile = () => PROFILES.find(p => p.active) || PROFILES[0];
 const avatarImg = (p, cls = 'avatar-s') => `<img class="${cls}" src="${p.avatar || ''}" alt="" draggable="false">`;
 
 /* ---------- valores de ajuste (por jogo ou global) ---------- */
+/* ajustes só do app (nunca por jogo): interface, toque e controles */
+const appOnly = k => /^@(app|touch|ctl)\./.test(k);
 function globalOf(k) { if (k === '@res') { const x = globalOf('GPU.draw_resolution_scale_x'), y = globalOf('GPU.draw_resolution_scale_y'); return x === y ? x : 'mixed'; } return k in GLOBAL ? GLOBAL[k] : DEF[k].def; }
 function effOf(g, k) { if (!g) return globalOf(k); if (k === '@res') { const x = effOf(g, 'GPU.draw_resolution_scale_x'), y = effOf(g, 'GPU.draw_resolution_scale_y'); return x === y ? x : 'mixed'; } const o = OV[g.id]; return o && k in o ? o[k] : globalOf(k); }
 function shown(g, k) { return !g || S.editScope === 'global' ? globalOf(k) : effOf(g, k); }
@@ -47,13 +49,13 @@ function coerce(d, v) { if (d.ty === 'bool') return v === true || v === 'true'; 
 function setVal(g, k, raw) {
   if (k === '@res') { setVal(g, 'GPU.draw_resolution_scale_x', raw); setVal(g, 'GPU.draw_resolution_scale_y', raw); return; }
   const d = DEF[k]; const v = coerce(d, raw);
-  if (!g || S.editScope === 'global' || k.startsWith('@app.')) { if (v === d.def) delete GLOBAL[k]; else GLOBAL[k] = v; }
+  if (!g || S.editScope === 'global' || appOnly(k)) { if (v === d.def) delete GLOBAL[k]; else GLOBAL[k] = v; }
   else (OV[g.id] = OV[g.id] || {})[k] = v;
   if (k.startsWith('@app.')) applyApp(k);
 }
 function resetVal(g, k) {
   if (k === '@res') { resetVal(g, 'GPU.draw_resolution_scale_x'); resetVal(g, 'GPU.draw_resolution_scale_y'); return; }
-  if (!g || S.editScope === 'global' || k.startsWith('@app.')) { delete GLOBAL[k]; if (k.startsWith('@app.')) applyApp(k); }
+  if (!g || S.editScope === 'global' || appOnly(k)) { delete GLOBAL[k]; if (k.startsWith('@app.')) applyApp(k); }
   else if (OV[g.id]) delete OV[g.id][k];
 }
 function stepVal(g, k, dir, wrap) {
@@ -66,7 +68,7 @@ function label(d, v) {
   if (v === 'mixed') return 'Misto';
   if (d.ty === 'bool') return v ? 'Ligado' : 'Desligado';
   if (d.ty === 'list') { const o = d.o.find(o => String(o[0]) === String(v)); return o ? o[1] : String(v); }
-  if (d.ty === 'int') return nf(v) + (d.unit || '');
+  if (d.ty === 'int') return d.zero != null && Number(v) === 0 ? d.zero : nf(v) + (d.unit || '');
   if (d.ty === 'num') return Number(v).toFixed(2).replace('.', ',');
   if (d.ty === 'text') return v || (d.ph ? d.ph + ' (padrão)' : '(padrão)');
   return '';
@@ -94,7 +96,7 @@ function control(d, g, v, dis) {
   return `<span class="rng"><input type="range" min="${d.min}" max="${d.max}" step="${d.step || 1}" value="${val}" aria-label="${esc(d.t)}" data-act-input="set" data-key="${k}" data-k="ctl-${k}"${D}><output>${esc(label(d, val))}</output></span>`;
 }
 function scopeTag(g, d) {
-  if (d.vt === 'app') return '<span class="src">App</span>';
+  if (appOnly(d.k)) return '<span class="src">App</span>';
   if (!g || S.editScope === 'global') {
     const n = gamesOverriding(d.k).length;
     return (globalChanged(d.k) ? '<span class="src chg">Alterado</span>' : '<span class="src">Padrão</span>') + (n ? `<button class="reset" data-act="ovlist" data-key="${d.k}" data-k="ol-${d.k}" data-note="ovgames">${n} ${n === 1 ? 'jogo usa' : 'jogos usam'} outro valor</button>` : '');
@@ -107,15 +109,15 @@ function applyTag(d) {
   return `<span class="b-ap">${ic('restart', 12)} Próxima abertura</span>`;
 }
 function settingRow(d, g, v) {
-  const gl = !g || S.editScope === 'global' || d.vt === 'app';
+  const gl = !g || S.editScope === 'global' || appOnly(d.k);
   const ov = gl ? globalChanged(d.k) : isOv(g, d.k);
   const dis = !depOk(g, d);
   if (v === 'q') return `<div class="qrow"><span class="q-t">${esc(d.t)}${g && isOv(g, d.k) ? '<i title="Este jogo"></i>' : ''}</span>${control(d, g, 'q', dis)}</div>`;
   const resetB = ov ? `<button class="reset" data-act="reset" data-key="${d.k}" data-k="rs-${d.k}">${ic('reset', 12)} ${gl ? 'Voltar ao padrão' : 'Voltar ao global: ' + esc(label(d, globalOf(d.k)))}</button>` : '';
-  const pinB = d.ty === 'action' || d.vt === 'app' ? '' : `<button class="pinb ${PINNED.includes(d.k) ? 'on' : ''}" data-act="pin" data-key="${d.k}" data-k="pn-${d.k}" aria-pressed="${PINNED.includes(d.k)}" aria-label="Fixar nos ajustes rápidos" title="Fixar nos ajustes rápidos" data-note="pin">${ic('pin', 16)}</button>`;
+  const pinB = d.ty === 'action' || appOnly(d.k) ? '' : `<button class="pinb ${PINNED.includes(d.k) ? 'on' : ''}" data-act="pin" data-key="${d.k}" data-k="pn-${d.k}" aria-pressed="${PINNED.includes(d.k)}" aria-label="Fixar nos ajustes rápidos" title="Fixar nos ajustes rápidos" data-note="pin">${ic('pin', 16)}</button>`;
   return `<div class="srow ${ov ? 'ovr' : ''} ${dis ? 'dis' : ''}">
     <div><div class="srow-t">${esc(d.t)}${d.n ? '<span class="b-new" data-note="newcvar">NOVO</span>' : ''}${d.nOpt ? '<span class="b-new" data-note="newopt">NOVA OPÇÃO</span>' : ''}</div>
-    <div class="srow-m">${scopeTag(g, d)}${applyTag(d)}${d.vt === 'app' ? '' : d.k[0] === '@' ? '<span>salvo pelo app</span>' : `<code class="keyc">${d.k}</code>`}${resetB}</div></div>
+    <div class="srow-m">${scopeTag(g, d)}${applyTag(d)}${appOnly(d.k) ? '' : d.k[0] === '@' ? '<span>salvo pelo app</span>' : `<code class="keyc">${d.k}</code>`}${resetB}</div></div>
     <div class="srow-c">${control(d, g, 'full', dis)}${pinB}</div>
     ${S.showDesc ? `<p class="srow-d">${esc(d.d)}</p>` : ''}
     ${d.w ? `<p class="srow-w">${ic('warn', 14)} ${esc(d.w)}</p>` : ''}
@@ -123,7 +125,7 @@ function settingRow(d, g, v) {
   </div>`;
 }
 function cRow(d, g) {
-  const val = shown(g, d.k), gl = !g || S.editScope === 'global' || d.vt === 'app';
+  const val = shown(g, d.k), gl = !g || S.editScope === 'global' || appOnly(d.k);
   const ov = gl ? globalChanged(d.k) : isOv(g, d.k), dis = !depOk(g, d);
   const sub = dis ? depText(d) : gl ? (ov ? 'Alterado' : 'Padrão') + (d.ap === 'live' ? ' · ao vivo' : '') : (ov ? 'Este jogo · global: ' + label(d, globalOf(d.k)) : (d.ap === 'live' ? 'Ao vivo · global' : 'Global'));
   if (d.ty === 'text' || d.ty === 'action') return `<div class="crow ${ov ? 'ovr' : ''}"><span class="t"><b>${esc(d.t)}${d.n ? '<span class="b-new">NOVO</span>' : ''}</b><small>${esc(sub)}</small></span>${control(d, g, 'full', dis)}</div>`;
@@ -168,7 +170,7 @@ function settingsPanel(g, v, group) {
         <button class="btn sm ghost" data-act="desc" data-k="b-desc" aria-pressed="${S.showDesc}">${ic('info', 16)} ${S.showDesc ? 'Menos texto' : 'Mais texto'}</button>
       </span>
     </div>
-    <p class="setp-note">${ic('info', 15)}<span>${!g ? `Valem para todos os jogos que não mudam o mesmo ajuste. ${Object.keys(GLOBAL).filter(k => !k.startsWith('@app.')).length} ajustes fora do padrão.` : S.editScope === 'game' ? `Valem só para <b>${esc(g.name)}</b>, em todos os discos e cópias; o resto segue o global.${ovn ? ' <button class="link" data-act="reset-all" data-k="b-resetall">Voltar tudo ao global</button>' : ''}` : 'Valem para todos os jogos que não mudam o mesmo ajuste.'}</span></p>
+    <p class="setp-note">${ic('info', 15)}<span>${!g ? `Valem para todos os jogos que não mudam o mesmo ajuste. ${Object.keys(GLOBAL).filter(k => DEF[k] && !appOnly(k)).length} ajustes fora do padrão.` : S.editScope === 'game' ? `Valem só para <b>${esc(g.name)}</b>, em todos os discos e cópias; o resto segue o global.${ovn ? ' <button class="link" data-act="reset-all" data-k="b-resetall">Voltar tudo ao global</button>' : ''}` : 'Valem para todos os jogos que não mudam o mesmo ajuste.'}</span></p>
     <div id="setp-list" data-v="${v}" data-group="${group || ''}" data-global="${g ? '' : '1'}">${setListHTML(g, v, group)}</div>
   </div>`;
 }
@@ -283,6 +285,7 @@ function sectioned(def) {
     const menu = def.sections.map(s => {
       let h = '';
       if (s.group && s.group !== lastGroup) { lastGroup = s.group; h = `<h5>${s.group}</h5>`; }
+      if (s.go) return h + `<button class="c-mi" data-act="go" data-v="${s.go}" data-k="cm-go-${s.go}">${ic(s.icon || 'chevR', 19)}${s.t}<span class="n">${ic('chevR', 14)}</span></button>`;
       return h + `<button class="c-mi ${s.id === sel ? 'on' : ''} ${s.play ? 'play' : ''}" data-act="sec" data-key="${def.key}" data-v="${s.id}" data-k="cm-${s.id}"${s.id === sel ? ' data-autofocus' : ''}>${ic(s.icon || 'chevR', 19)}${s.t}${s.n ? `<span class="n">${s.n}</span>` : ''}</button>`;
     }).join('');
     return `<div class="cshell" style="${def.dyn || ''}">
@@ -297,6 +300,7 @@ function sectioned(def) {
   const nav = def.sections.map(s => {
     let h = '';
     if (s.group && s.group !== lastGroup) { lastGroup = s.group; h = `<h5>${s.group}</h5>`; }
+    if (s.go) return h + `<button data-act="go" data-v="${s.go}" data-k="bs-go-${s.go}">${ic(s.icon || 'chevR', 17)}${s.t}<span class="go">${ic('chevR', 14)}</span></button>`;
     return h + `<button data-act="sec" data-key="${def.key}" data-v="${s.id}" data-k="bs-${s.id}" aria-current="${s.id === sel}">${ic(s.icon || 'chevR', 17)}${s.t}${s.n ? `<span class="n">${s.n}</span>` : ''}</button>`;
   }).join('');
   return `<div class="shell">${rail()}
@@ -351,7 +355,7 @@ function tomlVal(d, v) {
 }
 function tomlOf(map, headerLines) {
   const secs = {}, app = [];
-  for (const k of Object.keys(map)) { const d = DEF[k]; if (!d || d.vt === 'virtual') continue; if (d.vt === 'app') { if (!k.startsWith('@app.')) app.push(d.t + ' = ' + label(d, map[k])); continue; } const i = k.indexOf('.'); (secs[k.slice(0, i)] = secs[k.slice(0, i)] || []).push(`${k.slice(i + 1)} = ${tomlVal(d, map[k])}`); }
+  for (const k of Object.keys(map)) { const d = DEF[k]; if (!d || d.vt === 'virtual') continue; if (d.vt === 'app') { if (!appOnly(k)) app.push(d.t + ' = ' + label(d, map[k])); continue; } const i = k.indexOf('.'); (secs[k.slice(0, i)] = secs[k.slice(0, i)] || []).push(`${k.slice(i + 1)} = ${tomlVal(d, map[k])}`); }
   let out = headerLines.map(l => '# ' + l).join('\n') + '\n';
   const names = Object.keys(secs).sort();
   if (!names.length) out += '\n# Nenhuma mudança.\n';

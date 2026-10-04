@@ -258,14 +258,23 @@ const BENCH = {
 
 /* ============ controles conectados e mapeamento (U04, U05, U11) ============ */
 const PADS = [
-  { name: '8BitDo Ultimate 2C', src: ['gamepad', 'joystick', 'direcional'], slot: 1, motor: true, gyro: false, state: 'conectado' },
-  { name: 'Teclado Bluetooth', src: ['teclado'], slot: null, motor: false, gyro: false, state: 'conectado' },
+  { id: 'p1', name: '8BitDo Ultimate 2C', vidpid: '2DC8:301A', src: ['gamepad', 'joystick', 'direcional'], conn: 'Bluetooth', motor: true, gyro: false, rumble: null },
+  { id: 'p2', name: 'DualSense Wireless Controller', vidpid: '054C:0CE6', src: ['gamepad', 'joystick'], conn: 'USB', motor: true, gyro: true, rumble: 'low' },
 ];
-const KEYMAP = [
-  ['A', 'Botão A', 'BUTTON_A'], ['B', 'Botão B', 'BUTTON_B'], ['X', 'Botão X', 'BUTTON_X'], ['Y', 'Botão Y', 'BUTTON_Y'],
+const INPUT_OTHER = [{ name: 'Teclado Bluetooth', src: ['teclado'], conn: 'Bluetooth' }];
+const PAD_EVENTS = [['DualSense Wireless Controller', 'reconectado'], ['DualSense Wireless Controller', 'desconectado'], ['DualSense Wireless Controller', 'conectado'], ['8BitDo Ultimate 2C', 'conectado']];
+/* os 16 botões do mapeamento, na ordem do app (GameButtons.ALL): id, nome, tecla padrão */
+const KM_BTNS = [
+  ['LEFT', 'Direcional para a esquerda', 'DPAD_LEFT'], ['UP', 'Direcional para cima', 'DPAD_UP'], ['RIGHT', 'Direcional para a direita', 'DPAD_RIGHT'], ['DOWN', 'Direcional para baixo', 'DPAD_DOWN'],
+  ['A', 'A', 'BUTTON_A'], ['B', 'B', 'BUTTON_B'], ['X', 'X', 'BUTTON_X'], ['Y', 'Y', 'BUTTON_Y'], ['BACK', 'Back', 'BUTTON_SELECT'], ['START', 'Start', 'BUTTON_START'],
   ['LB', 'Botão superior esquerdo (LB)', 'BUTTON_L1'], ['RB', 'Botão superior direito (RB)', 'BUTTON_R1'],
-  ['LT', 'Gatilho esquerdo (LT)', 'BUTTON_L2'], ['RT', 'Gatilho direito (RT)', 'BUTTON_R2'],
-  ['BACK', 'Back', 'BUTTON_SELECT'], ['START', 'Start', 'BUTTON_START'], ['GUIDE', 'Guia', 'BUTTON_MODE'],
   ['L3', 'Apertar o analógico esquerdo (L3)', 'BUTTON_THUMBL'], ['R3', 'Apertar o analógico direito (R3)', 'BUTTON_THUMBR'],
-  ['UP', 'Direcional para cima', 'DPAD_UP'], ['DOWN', 'Direcional para baixo', 'DPAD_DOWN'], ['LEFT', 'Direcional para a esquerda', 'DPAD_LEFT'], ['RIGHT', 'Direcional para a direita', 'DPAD_RIGHT'],
+  ['LT', 'Gatilho esquerdo (LT)', 'BUTTON_L2'], ['RT', 'Gatilho direito (RT)', 'BUTTON_R2'],
+];
+const KM_DEF = Object.fromEntries(KM_BTNS.map(b => [b[0], b[2]]));
+/* layouts de toque salvos (lp_): o que mudam em relação ao atual, por orientação: movidos, com outro tamanho, mostrados, escondidos */
+const LAYOUTS = [
+  { id: 'big', name: 'Polegares grandes', when: '12/09/2026', land: [3, 4, 0, 0], port: [2, 4, 0, 0] },
+  { id: 'race', name: 'Corrida: gatilhos embaixo', when: '20/09/2026', land: [4, 0, 0, 1], port: null },
+  { id: 'tab', name: 'Tablet compacto', when: '01/10/2026', land: [6, 6, 0, 0], port: [5, 5, 1, 0] },
 ];

@@ -36,8 +36,8 @@
 | Base | Biblioteca e ficha do jogo nos dois modos; menu do modo controle | Prototipado |
 | 1 | Configurações globais; Drivers | Prototipado |
 | 2 | Carregamento e falha ao abrir; menu em jogo; HUD | Prototipado |
-| 3 | Controles: mapeamento, editor de toque, teste, celular como controle | Próximo |
-| 4 | Perfis; saves | Pendente |
+| 3 | Controles: área própria, mapeamento, editor de toque, teste, celular como controle | Prototipado |
+| 4 | Perfis; saves | Próximo |
 | 5 | Conteúdo; diagnóstico; comparar execuções | Pendente |
 | 6 | Primeira abertura; pastas; jogos que saíram; sem Vulkan; atualizador; Sobre | Pendente |
 | 7 | Painéis do jogo: mensagem, teclado, troca de disco | Pendente |
@@ -76,3 +76,30 @@ nenhuma tela os chama hoje; o menu em jogo os substituiu.
 - **HUD** (`PerformancePanelText.kt`): compacto, completo e painel, nas três aparências de hoje,
   com o aviso térmico (perto do limite e reduzindo) numa faixa que dá para fechar.
 - Navegação por teclado e controle não rola mais a página do protótipo, só as listas do aparelho.
+
+### Lote 3: Controles
+
+- **Área Controles** (hoje quatro itens no menu ⋮ da biblioteca): quem joga como P1–P4; os ajustes
+  gerais do toque fora do editor (opacidade, esconder sozinho, vibração ao tocar, esconder com
+  controle físico, tela dividida, deslizar, câmera por toque) e os layouts salvos; cada controle
+  físico com a própria vibração; vibração padrão, giroscópio e entrada sem buffer fora do jogo; os
+  ajustes do core para controles (zonas mortas, botão Guia); telefones como controle; atalhos
+  para as quatro ferramentas.
+- **Um interruptor só para os controles de toque:** hoje há dois, “Mostrar controle na tela”
+  (config do core, também por jogo) e “Ligado” nos Gerais do editor. A proposta fica com o do
+  core.
+- **Mapeamento de teclas** (`KeymapScreen.kt`): o controle desenhado e a lista dos 16 botões lado
+  a lado, com legenda dos estados (mudada, em dois botões, sem tecla), a captura num toque
+  (teclado ou controle; trocar com outro botão avisa) e trocar A/B e X/Y. Proposta: mapa próprio
+  por controle.
+- **Editor de toque** (`GamepadEditorScreen.kt`): tela inteira com a grade, arrastar com
+  alinhamento ao soltar, painel do controle escolhido (tamanho, zona morta, mostrar/esconder),
+  desfazer, layouts com a prévia do que muda e os Gerais. Salvar muda os controles do jogo no
+  protótipo. No modo controle: LB/RB escolhem, o direcional move uma casa, A abre o painel.
+- **Testar controles** (`ControllerTestScreen.kt`): o controle desenhado acende junto com a lista
+  dos botões; analógicos com a zona morta e o que o jogo recebe; gatilhos; giroscópio; vibração
+  por controle; a zona morta do core ajustável ali mesmo. Origem na barra: exemplo animado, um
+  controle real pela Gamepad API ou nenhum. Segure B por um segundo para sair.
+- **Celular como controle** (`PhoneControllerScreen.kt`): endereço, código de 6 dígitos (482913
+  conecta no exemplo), nome, vibração, os motivos de recusa e a tela de jogo com P2, latência e
+  Sair. Proposta: achar o jogo na rede local e ler o QR code.

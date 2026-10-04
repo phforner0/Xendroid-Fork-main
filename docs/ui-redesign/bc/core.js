@@ -152,10 +152,12 @@ action('guide', () => { S.guide = !S.guide; render(); });
 action('guide-go', el => { S.guide = false; el.dataset.v === 'library' ? goTop('library') : goTop(el.dataset.v); });
 action('mode-toggle', () => { S.guide = false; S.modePref = S.mode === 'c' ? 'b' : 'c'; GLOBAL['@app.mode'] = S.modePref; persist(); applyMode(true); render(); });
 action('sec', el => { const scr = SCREENS[S.route.name]; if (scr.onSec && scr.onSec(el.dataset.v)) return; S.sec[el.dataset.key] = el.dataset.v; render(); const b = document.getElementById('secbody') || document.getElementById('c-panel'); if (b) b.scrollTop = 0; });
-action('set', el => { setVal(S.route.name === 'settings' ? null : curGame(), el.dataset.key, el.dataset.v); render(); });
-action('step', (el, e) => { if (e) e.stopPropagation(); stepVal(S.route.name === 'settings' ? null : curGame(), el.dataset.key, Number(el.dataset.d)); render(); });
-action('crow', el => { const g = S.route.name === 'settings' ? null : curGame(); const d = DEF[el.dataset.key]; if (el.getAttribute('aria-disabled') === 'true') { toast(depText(d)); return; } stepVal(g, d.k, 1, true); render(); });
-action('reset', el => { resetVal(S.route.name === 'settings' ? null : curGame(), el.dataset.key); render(); });
+/* telas de ajustes globais (Configurações, Controles) editam o global; a ficha edita o jogo */
+const scopeG = () => { const s = SCREENS[S.route.name]; return s && s.globalScope ? null : curGame(); };
+action('set', el => { setVal(scopeG(), el.dataset.key, el.dataset.v); render(); });
+action('step', (el, e) => { if (e) e.stopPropagation(); stepVal(scopeG(), el.dataset.key, Number(el.dataset.d)); render(); });
+action('crow', el => { const g = scopeG(); const d = DEF[el.dataset.key]; if (el.getAttribute('aria-disabled') === 'true') { toast(depText(d)); return; } stepVal(g, d.k, 1, true); render(); });
+action('reset', el => { resetVal(scopeG(), el.dataset.key); render(); });
 action('reset-all', () => { const g = curGame(); UNDO = { id: g.id, ov: Object.assign({}, OV[g.id]) }; OV[g.id] = {}; toast(`Todos os ajustes de ${g.name} voltaram ao global`, true); });
 action('undo', () => { if (UNDO) { if (UNDO.global) Object.assign(GLOBAL, UNDO.global); else OV[UNDO.id] = UNDO.ov; UNDO = null; } S.toast = null; render(); });
 action('pin', el => { const k = el.dataset.key; const i = PINNED.indexOf(k); if (i >= 0) PINNED.splice(i, 1); else PINNED.push(k); toast(i >= 0 ? 'Tirado dos ajustes rápidos' : 'Fixado nos ajustes rápidos'); });
@@ -222,7 +224,7 @@ app.addEventListener('click', e => {
 });
 app.addEventListener('change', e => {
   const el = e.target; const a = el.dataset.actChange || el.dataset.actInput; if (!a) return;
-  if (a === 'set') { setVal(S.route.name === 'settings' || el.closest('[data-global]') ? null : curGame(), el.dataset.key, el.value); render(); }
+  if (a === 'set') { setVal(el.closest('[data-global]') ? null : scopeG(), el.dataset.key, el.value); render(); }
   else if (ACT['change:' + a]) ACT['change:' + a](el, e);
 });
 app.addEventListener('input', e => {
@@ -237,7 +239,7 @@ app.addEventListener('pointerdown', () => { if (S.nav) { S.nav = false; app.clas
 
 /* ---- navegação espacial (teclado e controle) ---- */
 const NAVX = {
-  crow(cur, dir) { const k = cur.dataset.key; if (!k || cur.getAttribute('aria-disabled') === 'true') return true; stepVal(S.route.name === 'settings' ? null : curGame(), k, dir === 'right' ? 1 : -1); render(); return true; },
+  crow(cur, dir) { const k = cur.dataset.key; if (!k || cur.getAttribute('aria-disabled') === 'true') return true; stepVal(scopeG(), k, dir === 'right' ? 1 : -1); render(); return true; },
 };
 const FOC = 'button:not([disabled]):not([tabindex="-1"]),input:not([disabled]),select:not([disabled]),[tabindex="0"]';
 function focusables(scope) { return Array.from(scope.querySelectorAll(FOC)).filter(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; }); }

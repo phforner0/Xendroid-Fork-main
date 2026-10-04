@@ -20,7 +20,7 @@ Object.assign(NOTES, {
 /* ---------- Configurações ---------- */
 const APP_UI = ['@app.mode', '@app.level', '@app.confirm', '@app.uisize', '@app.textsize'];
 function resumoHTML(v) {
-  const changed = Object.keys(GLOBAL).filter(k => !k.startsWith('@app.') && DEF[k]);
+  const changed = Object.keys(GLOBAL).filter(k => DEF[k] && !appOnly(k));
   const games = GAMES.filter(g => ovCount(g));
   return `<div class="grid2">
     <section class="card span2" data-note="resumo"><h3>${ic('sliders', 15)} Fora do padrão em todos os jogos<span class="r">${changed.length}</span></h3>
@@ -77,7 +77,7 @@ modal('bundle-import', () => ({ html: sheetHead('Importar estes ajustes?', 'xend
 action('ovopen-g', el => { S.gameId = el.dataset.gid; S.sec.game = isC() ? 'set' : 'set:' + DEF[Object.keys(OV[el.dataset.gid])[0]].g; go('game'); });
 
 screen('settings', {
-  title: 'Configurações', lote: 'Lote 1 · Configurações e drivers', secKey: 'settings',
+  title: 'Configurações', lote: 'Lote 1 · Configurações e drivers', secKey: 'settings', globalScope: true,
   info: {
     what: 'Uma tela só para tudo que vale em todos os jogos: um resumo do que está fora do padrão, os mesmos grupos de ajustes da ficha (agora no escopo global) e as opções do próprio app.',
     replaces: 'SettingsScreen.kt: lista de categorias com contagem, botão Jogador/Desenvolvedor no topo e, no rodapé, botões dos menus, tamanho, idioma, pacote de dados e canal de atualização.',

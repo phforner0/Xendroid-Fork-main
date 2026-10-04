@@ -37,21 +37,27 @@ const TOUCH_LAYOUT = {
   ],
 };
 const DPAD_SVG = '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M36 6h28a4 4 0 0 1 4 4v22a4 4 0 0 0 4 4h22a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4H72a4 4 0 0 0-4 4v22a4 4 0 0 1-4 4H36a4 4 0 0 1-4-4V68a4 4 0 0 0-4-4H6a4 4 0 0 1-4-4V40a4 4 0 0 1 4-4h22a4 4 0 0 0 4-4V10a4 4 0 0 1 4-4z" fill="rgba(255,255,255,.1)" stroke="rgba(255,255,255,.42)" stroke-width="2.4"/><path d="M50 14l-6 8h12zM50 86l-6-8h12zM14 50l8-6v12zM86 50l-8-6v12z" fill="rgba(255,255,255,.7)"/></svg>';
-function touchEl(e, extra = '') {
-  const pos = `left:${e.x}%;top:${e.y}%;${e.d ? `--d:${e.d}px;` : ''}${e.s ? `scale:${e.s};` : ''}${e.op != null ? `--op:${e.op};` : ''}`;
-  if (e.k === 'stick') return `<div class="tc tc-stick" style="${pos}" data-tc="${e.id}" ${extra}></div>`;
-  if (e.k === 'dpad') return `<div class="tc tc-dpad" style="${pos}" data-tc="${e.id}" ${extra}>${DPAD_SVG}</div>`;
-  if (e.k === 'abxy') return `<div class="tc tc-abxy" style="${pos}" data-tc="${e.id}" ${extra}><span class="tc-btn y">Y</span><span class="tc-btn x">X</span><span class="tc-btn b">B</span><span class="tc-btn a">A</span></div>`;
-  return `<div class="tc ${e.k === 'sh' ? 'tc-sh' : 'tc-sm'}" style="${pos}" data-tc="${e.id}" ${extra}>${e.t}</div>`;
+function touchEl(e, extra = '', cls = '') {
+  const pos = `left:${e.x}%;top:${e.y}%;${e.d ? `--d:${e.d}px;` : ''}${e.s && e.s !== 1 ? `scale:${e.s};` : ''}${e.op != null ? `--op:${e.op};` : ''}`;
+  if (e.k === 'stick') return `<div class="tc tc-stick ${cls}" style="${pos}" data-tc="${e.id}" ${extra}></div>`;
+  if (e.k === 'dpad') return `<div class="tc tc-dpad ${cls}" style="${pos}" data-tc="${e.id}" ${extra}>${DPAD_SVG}</div>`;
+  if (e.k === 'abxy') return `<div class="tc tc-abxy ${cls}" style="${pos}" data-tc="${e.id}" ${extra}><span class="tc-btn y">Y</span><span class="tc-btn x">X</span><span class="tc-btn b">B</span><span class="tc-btn a">A</span></div>`;
+  return `<div class="tc ${e.k === 'sh' ? 'tc-sh' : 'tc-sm'} ${cls}" style="${pos}" data-tc="${e.id}" ${extra}>${e.t}</div>`;
 }
-function touchOverlay(op) { const o = isPortrait() ? 'port' : 'land'; return `<div class="tcl" style="--op:${op || .55}" data-note="tcl">${TOUCH_LAYOUT[o].map(e => touchEl(e)).join('')}</div>`; }
+/* opacidade e liga/desliga vêm dos ajustes gerais do toque (lote 3); dim escurece com o menu aberto */
+const touchOp = () => DEF['@touch.opacity'] ? globalOf('@touch.opacity') / 100 : .6;
+function touchOverlay(dim) {
+  if (!globalOf('HID.show_touch_overlay')) return '';
+  const o = isPortrait() ? 'port' : 'land';
+  return `<div class="tcl" style="--op:${(touchOp() * (dim || 1)).toFixed(2)}" data-note="tcl">${TOUCH_LAYOUT[o].filter(e => e.vis !== false).map(e => touchEl(e)).join('')}</div>`;
+}
 
 /* ---------- estado da sessão em jogo ---------- */
 const IG = {
   menu: true, tab: 'gfx', more: {}, confirmQuit: false, logs: false,
   fps: '30', display: 'fit', scaling: 'fsr', color: 'off', fg: 'off', fgPreset: 'bal', stretchNext: false,
   hud: 'compact', hudLook: 'box', hz: 'auto', sustained: false, hints: true, metrics: new Set(['cpu', 'gpu', 'ram', 'bat', 'soc']),
-  touch: true, adaptive: false, touchCam: false, split: 'off', phones: false, rumble: 'medium', gyroCam: false, gyroAim: 'lt', gyroSens: 'normal', unbuffered: false,
+  touch: true, adaptive: false, touchCam: false, split: 'off', phones: false, rumble: 'medium', gyroCam: false, gyroAim: 'always', gyroSens: 'normal', unbuffered: true,
   lsfgMul: '2', lsfgTarget: 'screen',
   volume: 80, muted: false, scenes: 0, background: true, tv: false, tvMargin: 0,
   t0: Date.now(), thermal: 'near',
@@ -171,7 +177,7 @@ screen('ingame', {
   render() {
     const g = curGame();
     return `<div class="ig ${IG.menu ? 'dim' : ''}" style="${dynVars(g)}"><img class="ig-scene" src="${g.scene || ''}" alt="">
-      ${!isC() && IG.touch ? touchOverlay(IG.menu ? .25 : .55) : ''}
+      ${!isC() && IG.touch ? touchOverlay(IG.menu ? .45 : 1) : ''}
       ${hudHTML(IG.hud, IG.hudLook)}
       ${IG.menu ? '' : `<button class="ig-handle" data-act="ig-open" data-k="ig-handle" data-note="ighandle">${isC() ? glyph('≡') : ic('menu', 15)} Menu</button>`}
       ${igMenu(g)}
@@ -305,7 +311,7 @@ screen('hud', {
   render() {
     const g = curGame();
     return `<div class="ig"><img class="ig-scene" src="${g.scene || ''}" alt="">
-      ${!isC() ? touchOverlay(.45) : ''}
+      ${!isC() ? touchOverlay(.8) : ''}
       ${hudHTML(IG.hud === 'off' ? 'compact' : IG.hud, IG.hudLook)}
       ${IG.thermal !== 'off' ? `<div class="ig-banner" data-note="thermal">${ic('thermo', 18)}<span>${THERMAL[IG.thermal]}</span><button class="ibtn" style="width:28px;height:28px;color:#ffe2a3;flex:none" data-act="ig" data-f="thermal" data-v="off" data-k="hd-ban" aria-label="Fechar aviso">${ic('x', 16)}</button></div>` : ''}
     </div>`;
