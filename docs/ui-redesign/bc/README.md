@@ -39,8 +39,8 @@
 | 3 | Controles: área própria, mapeamento, editor de toque, teste, celular como controle | Prototipado |
 | 4 | Perfis; saves | Prototipado |
 | 5 | Conteúdo; diagnóstico; comparar execuções | Prototipado |
-| 6 | Primeira abertura; pastas; jogos que saíram; sem Vulkan; atualizador; Sobre | Próximo |
-| 7 | Painéis do jogo: mensagem, teclado, troca de disco | Pendente |
+| 6 | Primeira abertura; pastas; jogos que saíram; sem Vulkan; atualizador; Sobre | Prototipado |
+| 7 | Painéis do jogo: mensagem, teclado, troca de disco | Próximo |
 
 O painel de pausa (`PauseMenuPanel`) e o painel lateral (`GuestSidePanel`) não aparecem no lote 7:
 nenhuma tela os chama hoje; o menu em jogo os substituiu.
@@ -134,3 +134,23 @@ nenhuma tela os chama hoje; o menu em jogo os substituiu.
   marcada A, – ou B; o veredito recalcula na hora com os avisos (ordem, aquecimento, execução
   curta, mais de uma mudança, valores misturados) e mostra as execuções na ordem em que rodaram,
   os dois lados e a diferença por par. “Como medir” fica num botão.
+
+### Lote 6: Primeira abertura e app
+
+- **Primeira abertura** (`FirstRunAssistant.kt`): as mesmas verificações e escolhas, agora em cinco
+  passos com Pular e Voltar sempre à mão: o telefone (GPU Vulkan, ARM de 64 bits, Android, pasta),
+  a pasta de jogos com a busca acontecendo ali (quantos jogos e as capas), idioma e região dos
+  jogos, criar o perfil ali mesmo e como usar (modo controle e quantos ajustes mostrar; driver
+  opcional). Exemplo com Android 10, sem pasta.
+- **Pastas de jogos** (`GameFoldersDialog.kt`): tela própria com quantos jogos cada pasta tem, a
+  que recebe as instalações, as indisponíveis agora, remover com Desfazer e procurar de novo.
+- **Navegador de pastas** (`FolderBrowserScreen.kt`): armazenamento interno e cartão SD, caminho
+  clicável, quantos jogos há em cada pasta antes de escolher; serve também para escolher o arquivo
+  de um pacote.
+- **Jogos que saíram** (`MissingGamesDialog.kt`): o motivo, o tempo jogado, a capa guardada e o
+  caminho de antes; remover só da lista, ou apontar onde o arquivo está agora.
+- **Sem Vulkan:** tela com o porquê, as verificações e copiar os dados do aparelho.
+- **Atualizador:** canal, versão instalada e o estado da procura; etapas visíveis (baixar, conferir
+  o SHA-256, instalar) e os erros numa frase. Estados na barra.
+- **Sobre** (`AboutScreen.kt`): versão, aparelho em tabela com copiar tudo, créditos, licenças e
+  atalhos para atualizações, diagnóstico e o assistente.

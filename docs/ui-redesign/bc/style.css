@@ -858,3 +858,68 @@ body.full .full-exit{display:flex;position:fixed;left:6px;top:50%;transform:tran
 .wl{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
 .wl li{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--st-ingame)}
 @container screen (orientation: portrait){ .bm,.privacy{grid-template-columns:minmax(0,1fr)} }
+
+/* =========================================================
+   Lote 6 · primeira abertura, pastas, navegador, jogos que saíram, sem Vulkan, atualizador, Sobre
+   ========================================================= */
+.fr{position:absolute;inset:0;display:grid;grid-template-columns:250px minmax(0,1fr);isolation:isolate;overflow:hidden}
+.fr-side{display:flex;flex-direction:column;gap:14px;padding:22px 18px;background:linear-gradient(180deg,rgba(116,216,99,.1),rgba(0,0,0,0) 60%),var(--s1)}
+.fr-side .logo{width:44px;height:44px;border-radius:13px;background:radial-gradient(circle at 30% 30%,#9be37f,#1d6f2f 70%);box-shadow:0 8px 24px rgba(116,216,99,.25)}
+.fr-side h1{margin:0;font:700 24px/1.05 var(--f-disp)}
+.fr-steps{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.fr-steps button{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:11px;font-size:13.5px;font-weight:600;color:var(--fg3)}
+.fr-steps button .d{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;box-shadow:inset 0 0 0 2px var(--line2);font:700 11.5px/1 var(--f-body);flex:none}
+.fr-steps button.done{color:var(--fg2)}.fr-steps button.done .d{background:var(--acc);color:var(--on-acc);box-shadow:none}
+.fr-steps button[aria-current="step"]{background:var(--s2);color:var(--fg)}.fr-steps button[aria-current="step"] .d{box-shadow:inset 0 0 0 2px var(--acc);color:var(--acc)}
+.fr-main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.fr-body{flex:1;min-height:0;overflow-y:auto;padding:24px 28px 12px;display:flex;flex-direction:column;gap:14px}
+.fr-body h2{margin:0;font:700 26px/1.1 var(--f-disp)}
+.fr-foot{display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}
+.chk-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.chk-l li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:start;padding:10px 12px;border-radius:12px;background:var(--s1)}
+.chk-l li .ic{margin-top:1px}
+.chk-l li.ok .ic{color:var(--st-playable)}.chk-l li.warn .ic{color:var(--st-ingame)}.chk-l li.bad .ic{color:var(--st-nothing)}
+.chk-l b{display:block;font-size:14px;font-weight:650}
+.chk-l small{display:block;font-size:12.5px;color:var(--fg3);margin-top:2px}
+.strip{display:flex;gap:6px;overflow:hidden}
+.strip .cover{width:54px;flex:none}
+.mode-c .fr-side{background:linear-gradient(180deg,rgba(155,227,127,.12),rgba(0,0,0,0) 60%)}
+@container screen (orientation: portrait){
+  .fr{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .fr-side{padding:14px 16px;gap:8px}
+  .fr-side p{display:none}
+  .fr-steps{flex-direction:row;gap:4px}
+  .fr-steps button{padding:6px;justify-content:center}
+  .fr-steps button span.t{display:none}
+  .fr-body{padding:18px 18px 10px}
+}
+/* pastas e navegador */
+.fd{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:12px 6px;border-bottom:1px solid var(--line)}
+.fd:last-child{border-bottom:0}
+.fd > .ic{color:var(--acc)}
+.fd.away > .ic{color:var(--fg3)}
+.fd b{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font:600 13.5px/1.3 var(--f-mono);overflow-wrap:anywhere}
+.fd small{display:block;font-size:12px;color:var(--fg3);margin-top:3px}
+.br-path{display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px;color:var(--fg3)}
+.br-path button{padding:4px 8px;border-radius:8px;font-weight:650;color:var(--fg2)}
+.br-path button:hover{background:var(--s2);color:var(--fg)}
+.br-path button:last-child{color:var(--fg)}
+.br-list{display:flex;flex-direction:column}
+.br-row{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 8px;border-radius:12px;text-align:left;width:100%}
+.br-row:hover{background:var(--s1)}
+.br-row > .ic{color:var(--fg3)}
+.br-row.dir > .ic{color:#f3cf55}
+.br-row b{font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.br-row[aria-pressed="true"]{background:color-mix(in srgb,var(--acc) 16%,transparent);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--acc) 60%,transparent)}
+.br-foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* sem Vulkan */
+.nv{position:absolute;inset:0;display:flex;flex-direction:column;overflow-y:auto;padding:22px;background:radial-gradient(90% 70% at 50% 0%,rgba(242,114,114,.12),transparent 60%),var(--bg)}
+.nv .card{margin:auto;width:min(560px,100%);gap:14px}
+.nv h1{margin:0;font:700 26px/1.1 var(--f-disp);display:flex;gap:12px;align-items:center}
+.nv h1 .ic{color:var(--st-nothing)}
+/* atualizador e Sobre */
+.up-hero{display:flex;gap:16px;align-items:center}
+.app-logo{width:64px;height:64px;border-radius:18px;background:radial-gradient(circle at 30% 30%,#9be37f,#1d6f2f 70%);box-shadow:0 10px 30px rgba(116,216,99,.25);flex:none;display:grid;place-items:center;font:800 26px/1 var(--f-disp);color:#062a08}
+.up-hero b{display:block;font:700 26px/1.05 var(--f-disp)}
+.up-hero small{display:block;font:500 12.5px/1.4 var(--f-mono);color:var(--fg3);margin-top:4px}
+.clog{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--fg2)}
