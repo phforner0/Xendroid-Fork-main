@@ -1,7 +1,9 @@
 # Redesign da UI: protótipos da biblioteca e da ficha do jogo
 
-**Estado:** protótipo em HTML, nada mudou no app. Branch `wip/ui-redesign`, criada a partir de
-`wip/experiencia-em-jogo` (`7bb34099d`). Sem PR, merge ou release.
+**Estado:** o redesenho B + C está implementado no app (Compose), do R0 ao lote 7. O que mudou,
+os prints antes/depois e o que falta validar no aparelho estão em [`app.md`](app.md). Branch
+`wip/ui-redesign`, criada a partir de `wip/experiencia-em-jogo` (`7bb34099d`). Sem PR, merge ou
+release.
 
 **Pedido:** redesign começando pela biblioteca e pela ficha do jogo; tema escuro, capas grandes,
 visual moderno e funcional; expor ajustes que o core já tem e a UI não mostra; muito controle do
@@ -131,24 +133,23 @@ Observações que vão para a implementação:
 - `APU.volume` é o valor de partida; o menu do jogo continua mudando ao vivo.
 - Cada cvar nova precisa de texto en/pt-BR, teste do esquema e do contrato, e validação no aparelho.
 
-## Decisões que dependem de você
+## Decisões
 
-1. **Direção:** A, B, C ou B + C (sugerida).
-2. **Níveis:** trocar Jogador/Desenvolvedor por Essencial/Avançado/Tudo?
-3. **Fontes:** empacotar as do protótipo (Saira Semi Condensed nos títulos, Hanken Grotesk no
-   texto, JetBrains Mono nos IDs; algumas centenas de KB no APK) ou ficar na fonte do sistema?
-4. **Itens do menu do jogo por jogo:** modo de exibição, filtro de cor, HUD e geração de quadros
-   aparecem na ficha como padrão do jogo. Antes de implementar, conferir o que já é salvo por jogo
-   hoje e o que é só da sessão.
-5. **Iniciar com…:** exige mandar ajustes de uma abertura só para o processo `:emu` (hoje pelo
-   `EmuProcessLink`), sem gravar no TOML. Seguir com isso?
-6. **Prints antes/depois:** testes de captura do Compose (Roborazzi, sem aparelho; exige instalar o
-   Android SDK na sessão, como no `BUILD.md`) ou prints tirados por você no aparelho?
+1. **Direção:** B + C (B para toque, C para controle).
+2. **Níveis:** Essencial/Avançado/Tudo no lugar de Jogador/Desenvolvedor (o processo do jogo
+   continua lendo Jogador/Desenvolvedor, mantidos em sincronia).
+3. **Fontes:** uma família só, empacotada (Barlow e Barlow Semi Condensed, JetBrains Mono nos IDs),
+   com as licenças OFL no APK.
+4. **Itens do menu do jogo por jogo** (modo de exibição, filtro de cor, HUD e geração de quadros
+   como padrão do jogo na ficha): **em aberto**. Não entrou; antes, conferir o que já é salvo por
+   jogo hoje e o que é só da sessão.
+5. **Iniciar com…:** feito, passado ao processo `:emu` só para aquela abertura, sem gravar no TOML.
+6. **Prints antes/depois:** testes de captura do Compose (Roborazzi, sem aparelho).
 
-## Plano de implementação (depois da escolha)
+## Plano de implementação (registro)
 
 Cada lote com prints antes/depois, testes locais e a validação no aparelho marcada como pendente,
-como no resto do projeto.
+como no resto do projeto. O que foi feito em cada lote está em [`app.md`](app.md).
 
 | Lote | Tela | Onde mexe hoje |
 |---|---|---|

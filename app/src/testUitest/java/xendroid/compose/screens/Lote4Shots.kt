@@ -129,7 +129,9 @@ class Lote4Shots {
         profiles(InputMode.TOUCH)
         // The second card's button (ChefeMaster117: saves in three games), not the "Saves" label.
         compose.onAllNodes(hasText("Saves") and hasClickAction())[1].performClick()
-        Fixture.settle(10)
+        // The sheet's covers are decoded in the background.
+        Fixture.settle(40)
+        compose.waitForIdle()
         compose.screen("lote4/depois-saves-do-perfil")
     }
     @Config(qualifiers = Phone.LAND) @Test fun playAs() {

@@ -1,7 +1,8 @@
 # Protótipo B + C: o app inteiro em toque (B) e controle (C)
 
-**Estado:** protótipo em HTML de todas as telas (lotes Base a 7); nada mudou no app. Escolha registrada: **direção B como padrão
-(toque) e C como modo controle**, ligado sozinho quando um controle está conectado.
+**Estado:** protótipo em HTML de todas as telas (lotes Base a 7), já implementado no app: veja
+[`../app.md`](../app.md). Escolha registrada: **direção B como padrão (toque) e C como modo
+controle**, ligado sozinho quando um controle está conectado.
 
 ## Como abrir
 
@@ -179,7 +180,8 @@ nenhuma tela os chama hoje; o menu em jogo os substituiu.
 - Controles, conteúdo e diagnóstico ficam espalhados no menu ⋮ da biblioteca; o protótipo os
   junta em áreas do trilho (no modo controle, no menu do Start).
 
-## Próximo passo
+## No app
 
-Implementar em Compose, lote por lote, com prints antes/depois (Roborazzi) e a validação no
-aparelho marcada como pendente; só começa com o seu ok, sem PR, merge ou release sem pedido.
+Implementado em Compose, lote por lote, com prints antes/depois (Roborazzi) em
+`../prints/app/<lote>/`; a validação no aparelho está pendente. O que entrou em cada lote e as
+propostas daqui que ficaram de fora estão em [`../app.md`](../app.md).

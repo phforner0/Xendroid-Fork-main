@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -93,8 +94,13 @@ class Item38TouchLayoutsTest {
 
     @Test fun saveApplyExportImportAndRefusals() {
         var config by mutableStateOf(GamepadConfigDto(version = 2, landscape = moved()))
+        // The dialog reports by onMessage (the editor shows it as a toast); shown here to be waited for.
+        var message by mutableStateOf<String?>(null)
         compose.setContent {
-            xendroidTheme { LayoutPresetsDialog(config, editScope = null, landscape = true, onChange = { config = it }, onDismiss = {}) }
+            xendroidTheme {
+                message?.let { Text(it) }
+                LayoutPresetsDialog(config, editScope = null, landscape = true, onChange = { config = it }, onMessage = { message = it }, onDismiss = {})
+            }
         }
         compose.onNodeWithText(Device.string(R.string.lp_scope_shared)).assertExists()
         save("Corrida")
@@ -137,8 +143,12 @@ class Item38TouchLayoutsTest {
     @Test fun thisGameOnlyTouchesOnlyThatGamesLayout() {
         val game = "4D5309C9"
         var config by mutableStateOf(GamepadConfigDto(version = 2).withLayout(game, true, moved()))
+        var message by mutableStateOf<String?>(null)
         compose.setContent {
-            xendroidTheme { LayoutPresetsDialog(config, editScope = game, landscape = true, onChange = { config = it }, onDismiss = {}) }
+            xendroidTheme {
+                message?.let { Text(it) }
+                LayoutPresetsDialog(config, editScope = game, landscape = true, onChange = { config = it }, onMessage = { message = it }, onDismiss = {})
+            }
         }
         compose.onNodeWithText(Device.string(R.string.lp_scope_game)).assertExists()
         save("Corrida")
