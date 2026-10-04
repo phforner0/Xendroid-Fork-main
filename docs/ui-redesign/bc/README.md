@@ -38,8 +38,8 @@
 | 2 | Carregamento e falha ao abrir; menu em jogo; HUD | Prototipado |
 | 3 | Controles: área própria, mapeamento, editor de toque, teste, celular como controle | Prototipado |
 | 4 | Perfis; saves | Prototipado |
-| 5 | Conteúdo; diagnóstico; comparar execuções | Próximo |
-| 6 | Primeira abertura; pastas; jogos que saíram; sem Vulkan; atualizador; Sobre | Pendente |
+| 5 | Conteúdo; diagnóstico; comparar execuções | Prototipado |
+| 6 | Primeira abertura; pastas; jogos que saíram; sem Vulkan; atualizador; Sobre | Próximo |
 | 7 | Painéis do jogo: mensagem, teclado, troca de disco | Pendente |
 
 O painel de pausa (`PauseMenuPanel`) e o painel lateral (`GuestSidePanel`) não aparecem no lote 7:
@@ -118,3 +118,19 @@ nenhuma tela os chama hoje; o menu em jogo os substituiu.
   cabeçalhos; exportar os escolhidos (com ou sem o perfil), importar; a pasta de sincronização
   numa seção própria, com os backups da pasta listados; revisão antes de restaurar, progresso e
   resultado com a pasta de recuperação.
+
+### Lote 5: Conteúdo, diagnóstico e comparar execuções
+
+- **Conteúdo** (`ContentManagerScreen.kt`, `InstallContentScreen.kt`): a área do trilho mostra
+  todo o conteúdo instalado por jogo, com o tamanho; a lixeira com a cota numa barra, restaurar,
+  apagar de vez e esvaziar (e o aviso de cabeçalho em uso ao restaurar uma title update antiga);
+  instalar com os pacotes encontrados em Downloads, a conferência de jogo e tipo, substituir o que
+  já existe e quando passa a valer. Pela ficha, a mesma tela só com aquele jogo (DLC,
+  Atualizações, Lixeira, Instalar).
+- **Diagnóstico** (`DiagnosticsScreen.kt`): as sessões guardadas com como cada uma terminou
+  (normal, encerrada pelo Android, falha) e o motivo; o resumo da sessão, as últimas linhas do log
+  numa falha e o que vai no arquivo e o que sai antes de compartilhar.
+- **Comparar execuções** (`BenchmarkScreen.kt`): execuções e resultado lado a lado; cada execução
+  marcada A, – ou B; o veredito recalcula na hora com os avisos (ordem, aquecimento, execução
+  curta, mais de uma mudança, valores misturados) e mostra as execuções na ordem em que rodaram,
+  os dois lados e a diferença por par. “Como medir” fica num botão.

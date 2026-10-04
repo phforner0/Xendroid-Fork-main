@@ -808,3 +808,53 @@ body.full .full-exit{display:flex;position:fixed;left:6px;top:50%;transform:tran
 .chk[aria-checked="true"]{background:var(--acc);box-shadow:none;color:var(--on-acc)}
 .mode-c .sv-prof{border-bottom:0;border-radius:12px;background:var(--s1);margin-bottom:6px;padding:10px 12px}
 .busy{display:flex;flex-direction:column;gap:12px;padding:6px 2px}
+
+/* =========================================================
+   Lote 5 · conteúdo, diagnóstico, comparar execuções
+   ========================================================= */
+.cg-h{display:flex;align-items:center;gap:12px}
+.cg-h .cover{width:38px;border-radius:6px}
+.cg-h b{font-size:15px;font-weight:700}
+.cg-h small{display:block;font-size:12px;color:var(--fg3)}
+.usage{display:flex;flex-direction:column;gap:6px}
+.usage .row{justify-content:space-between}
+.ci-steps{display:flex;flex-direction:column;gap:8px;counter-reset:s}
+.ci-steps li{list-style:none;display:grid;grid-template-columns:26px minmax(0,1fr);gap:10px;align-items:start;font-size:13.5px;color:var(--fg2)}
+.ci-steps li::before{counter-increment:s;content:counter(s);display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--s3);font:700 12px/1 var(--f-body);color:var(--fg)}
+.ci-steps{margin:0;padding:0}
+.sess{display:grid;grid-template-columns:auto 34px minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:10px 6px;border-bottom:1px solid var(--line)}
+.sess:last-child{border-bottom:0}
+.sess .cover{width:34px;border-radius:5px}
+.sess b{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px;font-weight:650}
+.sess small{display:block;font-size:12px;color:var(--fg3);margin-top:2px}
+.sess .st{width:10px;height:10px;border-radius:50%;background:var(--st-playable)}
+.sess .st.end-interrupted{background:var(--st-ingame)}.sess .st.end-fail{background:var(--st-nothing)}
+.mode-c .sess{border-bottom:0;border-radius:12px;background:var(--s1);margin-bottom:6px;padding:10px 12px}
+.privacy{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.privacy ul{margin:0;padding-left:18px;font-size:12.5px;color:var(--fg2);display:flex;flex-direction:column;gap:3px}
+.bm{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:14px;align-items:start}
+.bm-run{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:9px 6px;border-bottom:1px solid var(--line)}
+.bm-run:last-child{border-bottom:0}
+.bm-run .n{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:var(--s3);font:700 12px/1 var(--f-mono);color:var(--fg2)}
+.bm-run.A .n{background:#2f6fd1;color:#fff}.bm-run.B .n{background:#c4501c;color:#fff}
+.bm-run b{font-size:13.5px;font-weight:650}
+.bm-run small{display:block;font-size:12px;line-height:1.35;color:var(--fg3);margin-top:2px}
+.mode-c .bm-run{border-bottom:0;border-radius:12px;background:var(--s1);margin-bottom:6px;padding:9px 10px}
+.verdict{font:700 19px/1.2 var(--f-disp);margin:0}
+.verdict.warn{color:var(--st-ingame)}
+.verdict.ok{color:var(--st-playable)}
+.bm-bars{display:flex;align-items:flex-end;gap:8px;height:120px;padding:8px 4px 0;border-bottom:1px solid var(--line2)}
+.bm-bars .bb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%;font:600 11px/1 var(--f-mono);color:var(--fg2)}
+.bm-bars .bb i{display:block;width:100%;max-width:46px;border-radius:7px 7px 2px 2px;background:var(--s4)}
+.bm-bars .bb.A i{background:#2f6fd1}.bm-bars .bb.B i{background:#c4501c}
+.bm-bars .bb span{color:var(--fg3)}
+.bm-legend{display:flex;gap:14px;font-size:12px;color:var(--fg3)}
+.bm-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.bm-sides{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.bm-side{padding:10px 12px;border-radius:12px;background:var(--s2)}
+.bm-side b{display:block;font:700 22px/1 var(--f-disp)}
+.bm-side small{display:block;margin-top:4px;font-size:12px;color:var(--fg3)}
+.bm-side.A{box-shadow:inset 3px 0 0 #2f6fd1}.bm-side.B{box-shadow:inset 3px 0 0 #c4501c}
+.wl{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.wl li{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--st-ingame)}
+@container screen (orientation: portrait){ .bm,.privacy{grid-template-columns:minmax(0,1fr)} }
