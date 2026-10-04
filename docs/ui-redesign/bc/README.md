@@ -37,8 +37,8 @@
 | 1 | Configurações globais; Drivers | Prototipado |
 | 2 | Carregamento e falha ao abrir; menu em jogo; HUD | Prototipado |
 | 3 | Controles: área própria, mapeamento, editor de toque, teste, celular como controle | Prototipado |
-| 4 | Perfis; saves | Próximo |
-| 5 | Conteúdo; diagnóstico; comparar execuções | Pendente |
+| 4 | Perfis; saves | Prototipado |
+| 5 | Conteúdo; diagnóstico; comparar execuções | Próximo |
 | 6 | Primeira abertura; pastas; jogos que saíram; sem Vulkan; atualizador; Sobre | Pendente |
 | 7 | Painéis do jogo: mensagem, teclado, troca de disco | Pendente |
 
@@ -103,3 +103,18 @@ nenhuma tela os chama hoje; o menu em jogo os substituiu.
 - **Celular como controle** (`PhoneControllerScreen.kt`): endereço, código de 6 dígitos (482913
   conecta no exemplo), nome, vibração, os motivos de recusa e a tela de jogo com P2, latência e
   Sair. Proposta: achar o jogo na rede local e ler o QR code.
+
+### Lote 4: Perfis e saves
+
+- **Perfis** (`ProfilesScreen.kt`): cartões com avatar, gamertag, idioma, região, quem é o ativo
+  (P1) e quanto cada perfil guarda, com atalho para os saves dele em cada jogo; “Quem joga” com
+  P1–P4 lado a lado (trocar e “Ninguém” num toque) e “Perguntar quem joga antes de cada jogo”;
+  lixeira com restaurar e remover de vez; criar e editar com a regra da gamertag. No modo
+  controle, avatares grandes em linha, e A abre as opções do perfil.
+- **Jogar como** (`playas_*`): com a pergunta ligada, Jogar abre a escolha do perfil; quem era
+  P2–P4 passa para o P1 e deixa a vaga livre.
+- **Saves do jogo** (`SaveManagerScreen.kt`, que hoje lista só o XUID): gamertag e avatar com o
+  XUID como detalhe, tamanho e último save, e os saves de cada perfil pelos nomes dos
+  cabeçalhos; exportar os escolhidos (com ou sem o perfil), importar; a pasta de sincronização
+  numa seção própria, com os backups da pasta listados; revisão antes de restaurar, progresso e
+  resultado com a pasta de recuperação.

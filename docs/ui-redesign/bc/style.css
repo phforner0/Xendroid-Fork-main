@@ -759,3 +759,52 @@ body.full .full-exit{display:flex;position:fixed;left:6px;top:50%;transform:tran
 .pc-pill{position:absolute;left:50%;top:10px;translate:-50% 0;z-index:5;display:inline-flex;align-items:center;gap:10px;height:32px;padding:0 6px 0 14px;border-radius:999px;background:rgba(0,0,0,.55);font-size:13px;font-weight:650}
 .pc-pill .btn{height:24px;padding:0 10px;font-size:12px}
 @container screen (orientation: portrait){ .pc{grid-template-columns:minmax(0,1fr)} }
+
+/* =========================================================
+   Lote 4 · perfis e saves
+   ========================================================= */
+.pf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.pf-card{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:16px;background:var(--s1);min-width:0}
+.pf-card.on{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--acc) 70%,transparent);background:color-mix(in srgb,var(--acc) 7%,var(--s1))}
+.pf-top{display:flex;gap:12px;align-items:center;min-width:0}
+.pf-top > div{min-width:0;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.pf-top b{font:700 21px/1.05 var(--f-disp);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.pf-top small{font:500 11px/1 var(--f-mono);color:var(--fg3)}
+.app .avatar-s{width:34px;height:34px;border-radius:50%;object-fit:cover;flex:none}
+.avatar-l{width:62px;height:62px;border-radius:50%;object-fit:cover;flex:none;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.avatar-xl{width:104px;height:104px;border-radius:50%;object-fit:cover;flex:none;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.pf-new{display:grid;place-items:center;gap:6px;min-height:170px;padding:14px;border-radius:16px;box-shadow:inset 0 0 0 1.5px var(--line2);color:var(--fg2);font-weight:650;text-align:center}
+.pf-new:hover{background:var(--s1);color:var(--fg)}
+.pf-new .ic{color:var(--acc)}
+.pf-trash img{filter:grayscale(.8) brightness(.8)}
+.pf-c{display:flex;gap:14px;overflow-x:auto;padding:6px 4px 14px;scrollbar-width:none}
+.pf-c::-webkit-scrollbar{display:none}
+.pf-ct{display:flex;flex-direction:column;align-items:center;gap:8px;width:150px;padding:16px 10px;border-radius:18px;background:var(--s1);flex:none;text-align:center;transition:transform .14s,background .14s}
+.pf-ct b{font:700 18px/1.1 var(--f-disp)}
+.pf-ct small{font-size:12px;color:var(--fg3)}
+.pf-ct.on{background:color-mix(in srgb,var(--acc) 14%,var(--s1))}
+.pf-ct:focus-visible,.app.nav .pf-ct:focus{outline:none;background:var(--acc);color:var(--on-acc);transform:scale(1.04)}
+.pf-ct:focus-visible small,.app.nav .pf-ct:focus small{color:var(--on-acc)}
+.pslot{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;background:var(--s2);min-width:0}
+.pslot.free{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line2)}
+.pslot .p{font:700 19px/1 var(--f-disp);color:var(--acc)}
+.pslot.free .p{color:var(--fg3)}
+.pslot .who{display:flex;align-items:center;gap:8px;min-width:0}
+.pslot .who b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pslot .who img{width:30px;height:30px;border-radius:50%}
+.pslot .row{gap:6px}
+.pslots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@container screen (orientation: portrait){ .pslots{grid-template-columns:repeat(2,minmax(0,1fr))} .pf-grid{grid-template-columns:minmax(0,1fr)} }
+/* saves */
+.sv-prof{display:grid;grid-template-columns:auto 38px minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:10px 6px;border-bottom:1px solid var(--line)}
+.sv-prof:last-child{border-bottom:0}
+.sv-prof img{width:38px;height:38px;border-radius:50%}
+.sv-prof b{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px;font-weight:650}
+.sv-prof small{display:block;font-size:12px;color:var(--fg3);margin-top:2px}
+.sv-files{grid-column:3 / -1;display:flex;flex-direction:column;gap:4px;margin-top:4px}
+.sv-files span{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--fg2);padding:6px 10px;border-radius:9px;background:var(--s2)}
+.sv-files span i{font-style:normal;color:var(--fg3);font-size:12px}
+.chk{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;box-shadow:inset 0 0 0 2px var(--line2);color:transparent;flex:none}
+.chk[aria-checked="true"]{background:var(--acc);box-shadow:none;color:var(--on-acc)}
+.mode-c .sv-prof{border-bottom:0;border-radius:12px;background:var(--s1);margin-bottom:6px;padding:10px 12px}
+.busy{display:flex;flex-direction:column;gap:12px;padding:6px 2px}
