@@ -1,6 +1,7 @@
 package xendroid.compose.ui.content
 
 import android.content.Context
+import android.os.Environment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -21,10 +22,16 @@ import xendroid.compose.saves.TrashFullException
 import xendroid.compose.saves.TrashedContent
 import java.io.File
 
+/**
+ * Installed DLC and title updates, the content trash and installing packages: one game's
+ * ([titleId]), or every game's (null: the Content area), where the list is grouped by game.
+ */
 class ContentManagerViewModel(
     private val appContext: Context,
     private val metadata: GameMetadataSource,
-    private val titleId: String,
+    private val titleId: String?,
+    /** Where downloaded packages wait (Downloads); null when it cannot be read. */
+    private val inbox: () -> File? = { Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) },
 ) : ViewModel() {
 
     data class ContentEntry(
@@ -32,20 +39,41 @@ class ContentManagerViewModel(
         val displayName: String,
         val size: Long,
         val contentType: Int,
+        /** The title it is installed for (uppercase). */
+        val titleId: String = "",
     )
+
+    /** One game's installed packages. */
+    data class GameContent(val titleId: String, val dlc: List<ContentEntry>, val updates: List<ContentEntry>) {
+        val packages: Int get() = dlc.size + updates.size
+        val bytes: Long get() = dlc.sumOf { it.size } + updates.sumOf { it.size }
+    }
 
     sealed interface ListState {
         data object Loading : ListState
-        /** [trashed]: this game's packages in the trash (L12); [trashUsed] counts every game's. */
+        /** [trashed]: the game's packages in the trash (L12), every game's in the Content area;
+         *  [trashUsed] counts every game's. [games]: by game, those with something installed. */
         data class Loaded(
             val dlc: List<ContentEntry>,
             val updates: List<ContentEntry>,
             val trashed: List<TrashedContent> = emptyList(),
             val trashUsed: Long = 0,
             val trashQuota: Long = ContentTrash.DEFAULT_QUOTA,
+            val games: List<GameContent> = emptyList(),
         ) : ListState
         data class Error(val message: String) : ListState
     }
+
+    /** True for the Content area (every game's content). */
+    val allGames: Boolean get() = titleId == null
+
+    private val _found = MutableStateFlow<List<FoundPackage>?>(null)
+    /** Packages lying in Downloads (this game's only, for one game); null until looked for. */
+    val found: StateFlow<List<FoundPackage>?> = _found.asStateFlow()
+
+    private val _freeBytes = MutableStateFlow<Long?>(null)
+    /** Free space where packages are installed. */
+    val freeBytes: StateFlow<Long?> = _freeBytes.asStateFlow()
 
     /** L12: removing moves a package to the trash; restore or delete it for good from there. */
     private val trash by lazy { ContentTrash(ContentPaths.contentRoot()) }
@@ -85,29 +113,53 @@ class ContentManagerViewModel(
                 ?: return@withContext ListState.Error(appContext.getString(xendroid.compose.R.string.pf_no_emulator))
             // Settle a removal or restore a killed process left half done, before listing.
             runCatching { StorageAccess.acquire().use { trash.recover(it) } }
-            val root = ContentPaths.contentRoot().absolutePath
+            val contentRoot = ContentPaths.contentRoot()
+            val root = contentRoot.absolutePath
             try {
-                val dlc = emu.list_content(root, titleId, ContentPaths.DLC_CONTENT_TYPE)
-                    ?: return@withContext ListState.Error(appContext.getString(xendroid.compose.R.string.cm_read_failed))
-                val updates = emu.list_content(root, titleId, ContentPaths.TU_CONTENT_TYPE)
-                    ?: return@withContext ListState.Error(appContext.getString(xendroid.compose.R.string.cm_read_failed))
-                val trashed = runCatching { trash.list() }.getOrDefault(emptyList())
+                // The core lists one title at a time: the game, or every title with a content folder.
+                val titles = titleId?.let { listOf(it.uppercase()) } ?: ContentCatalog.titlesWithContent(contentRoot)
+                val games = titles.map { title ->
+                    val dlc = emu.list_content(root, title, ContentPaths.DLC_CONTENT_TYPE)
+                        ?: return@withContext ListState.Error(appContext.getString(xendroid.compose.R.string.cm_read_failed))
+                    val updates = emu.list_content(root, title, ContentPaths.TU_CONTENT_TYPE)
+                        ?: return@withContext ListState.Error(appContext.getString(xendroid.compose.R.string.cm_read_failed))
+                    GameContent(title, dlc.toEntries(ContentPaths.DLC_CONTENT_TYPE, title), updates.toEntries(ContentPaths.TU_CONTENT_TYPE, title))
+                }.filter { titleId != null || it.packages > 0 }
+                val trashed = runCatching { trash.list() }.getOrDefault(emptyList()).sortedByDescending { it.deletedAt }
                 ListState.Loaded(
-                    dlc = dlc.toEntries(ContentPaths.DLC_CONTENT_TYPE),
-                    updates = updates.toEntries(ContentPaths.TU_CONTENT_TYPE),
-                    trashed = trashed.filter { it.titleId.equals(titleId, ignoreCase = true) },
+                    dlc = games.flatMap { it.dlc },
+                    updates = games.flatMap { it.updates },
+                    trashed = if (titleId == null) trashed else trashed.filter { it.titleId.equals(titleId, ignoreCase = true) },
                     trashUsed = trashed.sumOf { it.bytes },
                     trashQuota = trash.quotaBytes,
+                    games = games,
                 )
             } catch (t: RuntimeException) {
                 ListState.Error(t.message ?: appContext.getString(xendroid.compose.R.string.cm_read_failed))
             }
         }
+        _freeBytes.value = withContext(Dispatchers.IO) { ContentCatalog.freeBytes() }
     }
 
-    private fun Array<Emulator.ContentItem>.toEntries(contentType: Int) =
-        map { ContentEntry(it.pkgDir, it.displayName ?: it.pkgDir, it.size, contentType) }
+    /** Looks in Downloads for packages (a few header bytes of its newest files; the core reads
+     *  the header of those that look like one). */
+    fun lookForPackages() = viewModelScope.launch {
+        _found.value = withContext(Dispatchers.IO) {
+            EmulatorRuntime.ensureLoaded()
+            ContentCatalog.packagesIn(runCatching { inbox() }.getOrNull()).mapNotNull { file ->
+                val meta = metadata.readContentHeader(file.absolutePath) ?: return@mapNotNull null
+                FoundPackage(file.absolutePath, file.name, meta.titleId, meta.contentType, meta.displayName.ifBlank { file.name },
+                    file.length(), file.lastModified())
+            }.filter { titleId == null || it.titleId.equals(titleId, ignoreCase = true) }
+        }
+    }
+
+    private fun Array<Emulator.ContentItem>.toEntries(contentType: Int, title: String) =
+        map { ContentEntry(it.pkgDir, it.displayName ?: it.pkgDir, it.size, contentType, title) }
             .sortedBy { it.displayName.lowercase() }
+
+    /** The title [item] is installed for. */
+    private fun titleOf(item: ContentEntry): String = item.titleId.ifEmpty { titleId.orEmpty() }
 
     /** [srcPath] = absolute host path to the picked package. */
     fun install(srcPath: String) = viewModelScope.launch {
@@ -133,7 +185,7 @@ class ContentManagerViewModel(
         _state.value = ContentInstallState.Busy(appContext.getString(xendroid.compose.R.string.cm_trashing))
         val result = withContext(Dispatchers.IO) {
             runCatching {
-                StorageAccess.acquire().use { trash.moveToTrash(it, titleId, item.contentType, item.pkgDir, item.displayName) }
+                StorageAccess.acquire().use { trash.moveToTrash(it, titleOf(item), item.contentType, item.pkgDir, item.displayName) }
             }
         }
         result.onSuccess {
@@ -197,7 +249,7 @@ class ContentManagerViewModel(
         val status = withContext(Dispatchers.IO) {
             val emu = EmulatorRuntime.emulator ?: return@withContext -1
             runCatching { StorageAccess.acquire().use { emu.delete_content(
-                ContentPaths.contentRoot().absolutePath, titleId,
+                ContentPaths.contentRoot().absolutePath, titleOf(item),
                 item.contentType, item.pkgDir) } }.getOrDefault(0xC0000022.toInt())
         }
         if (status == 0) {
@@ -223,12 +275,13 @@ class ContentManagerViewModel(
             meta.contentType != ContentPaths.TU_CONTENT_TYPE)
             return PreCheck.Reject(
                 appContext.getString(xendroid.compose.R.string.cm_wrong_type, meta.contentType.toUInt().toString(16)))
-        if (meta.titleId == null || !meta.titleId.equals(titleId, ignoreCase = true))
+        // One game's screen installs that game's packages only; the Content area takes any title's.
+        if (meta.titleId == null || (titleId != null && !meta.titleId.equals(titleId, ignoreCase = true)))
             return PreCheck.Reject(
-                appContext.getString(xendroid.compose.R.string.cm_wrong_title, meta.titleId ?: "?", titleId))
+                appContext.getString(xendroid.compose.R.string.cm_wrong_title, meta.titleId ?: "?", titleId ?: "?"))
         val name = meta.displayName.ifBlank { File(srcPath).name }
         storageShortfall(appContext, meta.contentSize)?.let { return PreCheck.Reject(it) }
-        val pkgDir = File(ContentPaths.contentDir(titleId, meta.contentType), File(srcPath).name)
+        val pkgDir = File(ContentPaths.contentDir(meta.titleId, meta.contentType), File(srcPath).name)
         return if (pkgDir.exists()) PreCheck.Overwrite(name) else PreCheck.Ok(name)
     }
 

@@ -156,7 +156,8 @@ class AppContainer(context: Context) {
         }
 
     /** Per-game content/DLC manager (install + list + delete) for one title id. */
-    fun gameContentManagerViewModelFactory(titleId: String): ViewModelProvider.Factory =
+    /** One game's content ([titleId]), or every game's (null: the Content area). */
+    fun gameContentManagerViewModelFactory(titleId: String?): ViewModelProvider.Factory =
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {

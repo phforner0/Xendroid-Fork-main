@@ -21,6 +21,9 @@ object FakeCore {
     /** Installed content by "<TITLEID>:<type>". */
     val content = HashMap<String, List<Emulator.ContentItem>>()
 
+    /** What content_header reads from a package, by its file name. */
+    val headers = HashMap<String, Emulator.ContentInfo>()
+
     var deviceInfo = "Adreno (TM) 740 · Qualcomm 819.0 · Android 14"
 
     fun profile(xuid: String, gamertag: String, language: Int = 9, country: Int = 13) = Emulator.ProfileInfo().apply {
@@ -29,8 +32,12 @@ object FakeCore {
 
     fun item(dir: String, name: String, size: Long) = Emulator.ContentItem().apply { pkgDir = dir; displayName = name; this.size = size }
 
+    fun header(titleId: String, type: Int, name: String, size: Long) = Emulator.ContentInfo().apply {
+        this.titleId = titleId.toLong(16).toInt(); contentType = type; contentSize = size; displayName = name
+    }
+
     fun reset() {
-        tables.clear(); nextHandle = 1L; profiles = emptyList(); content.clear()
+        tables.clear(); nextHandle = 1L; profiles = emptyList(); content.clear(); headers.clear()
     }
 
     // ---- TOML (only what the config files use: tables, key = value, comments) ----
@@ -143,6 +150,9 @@ class ShadowCoreEmulator {
     @Implementation
     fun list_content(contentRoot: String, titleId: String, contentType: Int): Array<Emulator.ContentItem> =
         FakeCore.content["${titleId.uppercase()}:$contentType"].orEmpty().toTypedArray()
+
+    @Implementation
+    fun content_header(srcPath: String): Emulator.ContentInfo? = FakeCore.headers[java.io.File(srcPath).name]
 
     @Implementation
     fun simple_device_info(): String = FakeCore.deviceInfo

@@ -3,17 +3,19 @@ package xendroid.compose.ui.content
 import android.content.Context
 import xendroid.compose.R
 import androidx.compose.ui.res.stringResource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import xendroid.compose.core.ContentPaths
+import xendroid.compose.ui.design.NoteTone
+import xendroid.compose.ui.design.Xd
+import xendroid.compose.ui.design.XdButton
+import xendroid.compose.ui.design.XdButtonKind
+import xendroid.compose.ui.design.XdNote
+import xendroid.compose.ui.design.XdSheet
+import xendroid.compose.ui.design.XdText
 import java.io.File
 
 /** Shared install flow state for both the per-game ContentManager and the global
@@ -60,56 +62,41 @@ private fun formatBytes(b: Long): String {
     return "%.1f %s".format(v, u[i])
 }
 
-/** Busy / ConfirmOverwrite / Done / Failed dialogs for the shared install flow. */
+/** Busy / ConfirmOverwrite / Done / Failed sheets for the shared install flow. */
 @Composable
 fun ContentInstallDialogs(
     state: ContentInstallState,
     onDismiss: () -> Unit,
     onConfirmOverwrite: (srcPath: String, displayName: String) -> Unit,
 ) {
+    val c = Xd.colors
     when (val s = state) {
-        is ContentInstallState.Busy -> AlertDialog(
-            onDismissRequest = {},
-            title = { Text(s.message) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (s.progress >= 0f) {
-                        LinearProgressIndicator(
-                            progress = { s.progress },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text(stringResource(R.string.lib_compress_progress, (s.progress * 100).toInt()))
-                    } else {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        Text(stringResource(R.string.lib_may_take_while))
-                    }
-                }
-            },
-            confirmButton = {},
-        )
-        is ContentInstallState.ConfirmOverwrite -> AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text(stringResource(R.string.ci_already_title)) },
-            text = { Text(stringResource(R.string.ci_already_text, s.displayName)) },
-            confirmButton = {
-                TextButton(onClick = { onConfirmOverwrite(s.srcPath, s.displayName) }) {
-                    Text(stringResource(R.string.ci_overwrite))
-                }
-            },
-            dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
-        )
-        is ContentInstallState.Done -> AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text(stringResource(R.string.common_done)) },
-            text = { Text(s.message) },
-            confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_ok)) } },
-        )
-        is ContentInstallState.Failed -> AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text(stringResource(R.string.pf_failed)) },
-            text = { Text(s.message) },
-            confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_ok)) } },
-        )
+        is ContentInstallState.Busy -> XdSheet(onDismiss = {}, title = null, dismissible = false) {
+            Text(s.message, style = XdText.label, color = c.fg)
+            if (s.progress >= 0f) {
+                LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth(), color = c.acc, trackColor = c.s3)
+                Text(stringResource(R.string.lib_compress_progress, (s.progress * 100).toInt()), style = XdText.note, color = c.fg3)
+            } else {
+                LinearProgressIndicator(Modifier.fillMaxWidth(), color = c.acc, trackColor = c.s3)
+                Text(stringResource(R.string.lib_may_take_while), style = XdText.note, color = c.fg3)
+            }
+        }
+        is ContentInstallState.ConfirmOverwrite -> XdSheet(onDismiss = onDismiss, title = stringResource(R.string.ci_already_title), actions = {
+            XdButton(stringResource(R.string.common_cancel), onDismiss, kind = XdButtonKind.GHOST)
+            XdButton(stringResource(R.string.ci_overwrite), { onConfirmOverwrite(s.srcPath, s.displayName) }, kind = XdButtonKind.PRIMARY)
+        }) {
+            Text(stringResource(R.string.ci_already_text, s.displayName), style = XdText.body, color = c.fg2)
+        }
+        is ContentInstallState.Done -> XdSheet(onDismiss = onDismiss, title = stringResource(R.string.common_done), actions = {
+            XdButton(stringResource(R.string.common_ok), onDismiss, kind = XdButtonKind.PRIMARY)
+        }) {
+            XdNote(s.message, tone = NoteTone.OK)
+        }
+        is ContentInstallState.Failed -> XdSheet(onDismiss = onDismiss, title = stringResource(R.string.pf_failed), actions = {
+            XdButton(stringResource(R.string.common_ok), onDismiss, kind = XdButtonKind.PRIMARY)
+        }) {
+            XdNote(s.message, tone = NoteTone.ERROR)
+        }
         ContentInstallState.Idle -> {}
     }
 }

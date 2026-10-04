@@ -26,7 +26,10 @@ import kotlinx.serialization.json.Json
  */
 object SessionLogs {
     private const val TAG = "SessionLogs"
-    private const val CAPTURE_NAME = "logcat-current.txt"
+    /** The live logcat capture of the current session, in the logs folder. */
+    const val CAPTURE_NAME = "logcat-current.txt"
+    /** The id [sessions] gives the session still being written. */
+    const val CURRENT_ID = "current"
     private const val EXIT_TS_MARKER = ".exitinfo-ts"
     // Shelve only the newest portion of runaway logs.
     private const val MAX_SHELVED_BYTES = 64L * 1024 * 1024
@@ -57,7 +60,7 @@ object SessionLogs {
         val dir = File(log.parentFile, "logs")
         val currentFiles = listOf(log, File(dir, CAPTURE_NAME)).filter { it.isFile }
         val currentContext = readContext(File(dir, CONTEXT_NAME))
-        val current = if (currentFiles.isNotEmpty()) listOf(Session("current", "Current session", currentFiles.maxOf { it.lastModified() },
+        val current = if (currentFiles.isNotEmpty()) listOf(Session(CURRENT_ID, "Current session", currentFiles.maxOf { it.lastModified() },
             currentFiles.sumOf { it.length() }, currentContext.titleIds)) else emptyList()
         val old = dir.listFiles { f -> f.name.matches(Regex("session_[A-Za-z0-9_-]+\\.zip")) }.orEmpty()
             .sortedByDescending { it.lastModified() }.map { file ->
@@ -281,7 +284,7 @@ object SessionLogs {
 
     /** A separate, redacted ZIP for Android share sheets. Raw exports remain local. */
     fun exportRedactedForSharing(context: Context, selectedId: String? = null): File? {
-        require(selectedId == null || selectedId == "current" || selectedId.matches(Regex("session_[A-Za-z0-9_-]+\\.zip")))
+        require(selectedId == null || selectedId == CURRENT_ID || selectedId.matches(Regex("session_[A-Za-z0-9_-]+\\.zip")))
         val xeLog = File(Utils.get_log_file_path())
         val logsDir = File(xeLog.parentFile, "logs")
         val histories = logsDir.listFiles { f ->
@@ -291,7 +294,7 @@ object SessionLogs {
             xeLog to "xe.log",
             File(logsDir, CAPTURE_NAME) to "logcat.txt",
             File(logsDir, CONTEXT_NAME) to "context.json",
-        ).filter { (selectedId == null || selectedId == "current") && it.first.isFile && it.first.length() > 0 }
+        ).filter { (selectedId == null || selectedId == CURRENT_ID) && it.first.isFile && it.first.length() > 0 }
 
         val sharedDir = File(context.cacheDir, "shared-logs").apply { mkdirs() }
         sharedDir.listFiles()?.filter { it.lastModified() < System.currentTimeMillis() - 86_400_000L }

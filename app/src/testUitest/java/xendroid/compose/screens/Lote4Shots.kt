@@ -94,7 +94,9 @@ class Lote4Shots {
         val vm = container.profileManagerViewModelFactory().create(ProfileManagerViewModel::class.java)
         Fixture.settleUntil { vm.summaries.value.isNotEmpty() }
         compose.app(mode) {
-            ProfilesScreen(vm, onBack = {}, links = ProfilesLinks(gameName = { id -> SampleLibrary.games.firstOrNull { it.titleId == id }?.name }),
+            ProfilesScreen(vm, onBack = {}, links = ProfilesLinks(gameName = { id -> SampleLibrary.games.firstOrNull { it.titleId == id }?.name },
+                gameArt = { id -> SampleLibrary.games.firstOrNull { it.titleId == id }?.let { g ->
+                    File(Fixture.context.cacheDir, "cover-$id.png").apply { if (!isFile) writeBytes(SampleArt.coverPng(g)) } } }),
                 initialSection = section)
         }
         Fixture.settle(20)

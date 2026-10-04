@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -217,7 +218,7 @@ fun ProfilesScreen(
                 games.forEachIndexed { i, t ->
                     XdListRow(links.gameName(t.titleId) ?: t.titleId,
                         subtitle = Formatter.formatShortFileSize(context, t.bytes),
-                        lead = links.gameArt(t.titleId)?.let { art -> { AsyncImage(art, null, Modifier.width(34.dp).heightIn(max = 48.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop) } },
+                        lead = links.gameArt(t.titleId)?.let { art -> { AsyncImage(art, null, Modifier.width(34.dp).aspectRatio(0.75f).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop) } },
                         icon = XdIcons.save, divider = i < games.lastIndex) {
                         XdButton(stringResource(R.string.xd_open), { savesOf = null; links.onSaves(t.titleId) }, size = XdButtonSize.SM)
                     }

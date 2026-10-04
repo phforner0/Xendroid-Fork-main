@@ -9,13 +9,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -192,7 +192,7 @@ fun SaveManagerScreen(vm: SaveManagerViewModel, gameName: String, onBack: () -> 
     XdSectionedScreen(
         title = stringResource(R.string.sv_title, title), sections = sections, selected = section, onSelect = { section = it },
         onBack = if (busy) null else onBack, subtitle = "${vm.titleId} · $count", art = art, headIcon = XdIcons.save,
-        lead = art?.let { a -> { AsyncImage(a, null, Modifier.width(40.dp).heightIn(max = 56.dp).clip(RoundedCornerShape(7.dp)), contentScale = ContentScale.Crop) } },
+        lead = art?.let { a -> { AsyncImage(a, null, Modifier.width(40.dp).aspectRatio(0.75f).clip(RoundedCornerShape(7.dp)), contentScale = ContentScale.Crop) } },
     )
 
     when (val op = operation) {

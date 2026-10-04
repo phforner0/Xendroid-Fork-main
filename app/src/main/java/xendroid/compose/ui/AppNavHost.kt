@@ -34,7 +34,7 @@ import xendroid.compose.settings.GameSettingsViewModel
 import xendroid.compose.settings.SettingsViewModel
 import xendroid.compose.ui.compress.GameCompressViewModel
 import xendroid.compose.ui.content.ContentManagerViewModel
-import xendroid.compose.ui.content.ContentManagerScreen
+import xendroid.compose.ui.content.ContentScreen
 import xendroid.compose.ui.content.InstallContentViewModel
 import xendroid.compose.ui.content.InstallContentScreen
 import xendroid.compose.ui.library.GameLibraryScreen
@@ -69,10 +69,13 @@ object Routes {
     // "$CONTENT_MANAGER/{titleId}?name={name}"
     const val CONTENT_MANAGER = "content_manager"
     const val INSTALL_CONTENT = "install_content"
+    /** Lote 5: the Content area, "$CONTENT?section={section}" (every game's content). */
+    const val CONTENT = "content"
     const val SAVES = "saves"
     const val DIAGNOSTICS = "diagnostics"
     const val PHONE_CONTROLLER = "phone_controller"
     const val CONTROLLER_TEST = "controller_test"
+    // "$BENCHMARK?title={title}": compare runs, of that game first
     const val BENCHMARK = "benchmark"
     // "$GAME?key={key}&section={section}": the game sheet, by the game's launch path
     const val GAME = "game"
@@ -117,14 +120,15 @@ fun AppNavHost(container: AppContainer) {
                     nav.popBackStack(Routes.LIBRARY, inclusive = false)
                     Unit
                 }
-                XdArea.CONTENT -> top(Routes.INSTALL_CONTENT)
+                XdArea.CONTENT -> top(Routes.CONTENT)
                 XdArea.PROFILES -> top(Routes.PROFILES)
                 XdArea.CONTROLS -> top(Routes.CONTROLS)
                 XdArea.DRIVERS -> top(Routes.DRIVERS)
                 XdArea.SETTINGS -> top(Routes.SETTINGS)
             }
             override fun shortcut(shortcut: XdShortcut) = when (shortcut) {
-                XdShortcut.DIAGNOSTICS, XdShortcut.COMPARE -> top("${Routes.DIAGNOSTICS}?title=")
+                XdShortcut.DIAGNOSTICS -> top("${Routes.DIAGNOSTICS}?title=")
+                XdShortcut.COMPARE -> top(Routes.BENCHMARK)
                 XdShortcut.ABOUT -> top(Routes.ABOUT)
             }
             override val gamertag: String? get() = gamertag
@@ -180,7 +184,7 @@ fun AppNavHost(container: AppContainer) {
                 onOpenDiagnostics = { titleId ->
                     navigateOnce("${Routes.DIAGNOSTICS}?title=${titleId.orEmpty()}")
                 },
-                onOpenInstallContent = { navigateOnce(Routes.INSTALL_CONTENT) },
+                onOpenInstallContent = { navigateOnce("${Routes.CONTENT}?section=${xendroid.compose.ui.content.ContentSections.INSTALL}") },
                 onInstallFromDisc = { path ->
                     navigateOnce("${Routes.INSTALL_CONTENT}?src=" + Uri.encode(path))
                 },
@@ -224,14 +228,19 @@ fun AppNavHost(container: AppContainer) {
                     onContent = { id?.let { go("${Routes.CONTENT_MANAGER}/$it?name=${Uri.encode(game.name)}") } },
                     onSaves = { id?.let { go("${Routes.SAVES}/$it?name=${Uri.encode(game.name)}") } },
                     onDiagnostics = { go("${Routes.DIAGNOSTICS}?title=${id.orEmpty()}") },
-                    onCompare = { go("${Routes.DIAGNOSTICS}?title=${id.orEmpty()}") },
+                    onCompare = { go("${Routes.BENCHMARK}?title=${id.orEmpty()}") },
                     onDrivers = { go(Routes.DRIVERS) },
                     onInstallFromDisc = { path -> go("${Routes.INSTALL_CONTENT}?src=" + Uri.encode(path)) },
                 ),
             )
         }
-        composable(Routes.BENCHMARK) { entry ->
-            xendroid.compose.ui.benchmark.BenchmarkScreen(onBack = entry.backOnce(nav))
+        composable("${Routes.BENCHMARK}?title={title}", arguments = listOf(
+            navArgument("title") { nullable = true; defaultValue = null },
+        )) { entry ->
+            val games = libraryGames(nav, entry, container)
+            xendroid.compose.ui.benchmark.BenchmarkScreen(onBack = entry.backOnce(nav),
+                titleId = entry.arguments?.getString("title")?.takeIf { it.isNotEmpty() },
+                links = xendroid.compose.ui.benchmark.BenchmarkLinks(gameName = { games.byTitle[it]?.name }))
         }
         composable(Routes.CONTROLLER_TEST) { entry ->
             val vm: SettingsViewModel = viewModel(factory = container.settingsViewModelFactory())
@@ -249,7 +258,7 @@ fun AppNavHost(container: AppContainer) {
                 onDrivers = { go(Routes.DRIVERS) },
                 onGameSettings = { title -> games.byTitle[title]?.let { go(gameRoute(it, xendroid.compose.ui.game.GameSections.SETTINGS)) } },
                 onDiagnostics = { go("${Routes.DIAGNOSTICS}?title=") },
-                onCompare = { go("${Routes.DIAGNOSTICS}?title=") },
+                onCompare = { go(Routes.BENCHMARK) },
                 onControllerTest = { go(Routes.CONTROLLER_TEST) },
                 onAbout = { go(Routes.ABOUT) },
                 gameName = { games.byTitle[it]?.name },
@@ -345,7 +354,25 @@ fun AppNavHost(container: AppContainer) {
             val gameName = backStackEntry.arguments?.getString("name") ?: ""
             val vm: ContentManagerViewModel =
                 viewModel(factory = container.gameContentManagerViewModelFactory(titleId))
-            ContentManagerScreen(vm = vm, gameName = gameName, onBack = backStackEntry.backOnce(nav))
+            val games = libraryGames(nav, backStackEntry, container)
+            ContentScreen(vm = vm, onBack = backStackEntry.backOnce(nav), titleId = titleId.uppercase(), gameName = gameName,
+                art = games.byTitle[titleId.uppercase()]?.let { games.art(it) },
+                links = xendroid.compose.ui.content.ContentLinks(gameName = { games.byTitle[it]?.name }))
+        }
+        composable("${Routes.CONTENT}?section={section}", arguments = listOf(
+            navArgument("section") { nullable = true; defaultValue = null },
+        )) { entry ->
+            val vm: ContentManagerViewModel = viewModel(factory = container.gameContentManagerViewModelFactory(null))
+            val installer: InstallContentViewModel = viewModel(factory = container.installContentViewModelFactory())
+            val games = libraryGames(nav, entry, container)
+            val go: (String) -> Unit = { route -> if (entry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) nav.navigate(route) }
+            ContentScreen(vm = vm, onBack = entry.backOnce(nav), installer = installer,
+                links = xendroid.compose.ui.content.ContentLinks(
+                    gameName = { games.byTitle[it]?.name },
+                    gameArt = { title -> games.byTitle[title]?.let { games.art(it) } },
+                    onOpenGame = { title, name -> go("${Routes.CONTENT_MANAGER}/$title?name=${Uri.encode(name)}") },
+                ),
+                initialSection = entry.arguments?.getString("section")?.takeIf { it.isNotEmpty() })
         }
         composable(
             "${Routes.INSTALL_CONTENT}?src={src}",
@@ -371,7 +398,14 @@ fun AppNavHost(container: AppContainer) {
         }
         composable("${Routes.DIAGNOSTICS}?title={title}", arguments = listOf(
             navArgument("title") { nullable = true; defaultValue = null },
-        )) { entry -> DiagnosticsScreen(entry.arguments?.getString("title")?.takeIf { it.isNotEmpty() }, entry.backOnce(nav)) }
+        )) { entry ->
+            val games = libraryGames(nav, entry, container)
+            DiagnosticsScreen(entry.arguments?.getString("title")?.takeIf { it.isNotEmpty() }, entry.backOnce(nav),
+                links = xendroid.compose.ui.diagnostics.DiagnosticsLinks(
+                    gameName = { games.byTitle[it]?.name },
+                    gameArt = { title -> games.byTitle[title]?.let { games.art(it) } },
+                ))
+        }
     }
     }
 }
