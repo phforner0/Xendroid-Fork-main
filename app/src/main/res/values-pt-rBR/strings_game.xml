@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- O jogo aberto no redesign: carregamento, falha ao abrir, menu em jogo (docs/ui-redesign/bc, lote 2). -->
+    <string name="xd_menu_paused">Pausado · Voltar para fechar</string>
+    <string name="xd_menu_running">Rodando · Voltar para fechar</string>
+    <string name="xd_menu_logs_note">Escolha uma sessão; dados pessoais saem antes.</string>
+    <string name="xd_boot_opening">Abrindo · %1$d s</string>
+    <string name="xd_boot_signs_in">Entra como %1$s</string>
+    <string name="xd_boot_title">Title ID %1$s</string>
+    <string name="xd_boot_step_emulator">Iniciando o emulador</string>
+    <string name="xd_boot_step_game">Iniciando o jogo</string>
+    <string name="xd_boot_step_graphics">Preparando os gráficos</string>
+    <string name="xd_boot_step_first_frame">Esperando o primeiro quadro</string>
+    <string name="xd_boot_seconds">%1$d s</string>
+    <string name="xd_boot_with_options">Iniciado com opções desta abertura</string>
+    <string name="xd_fail_busy_title">Os dados do jogo estão ocupados</string>
+    <string name="xd_fail_recovery_title">Uma restauração de save foi interrompida</string>
+    <string name="xd_fail_system_driver">Tentar com o driver do sistema</string>
+    <string name="xd_fail_note">Tentar de novo abre num processo novo.</string>
+    <string name="xd_fail_note_driver">O driver do sistema vale só para esta abertura; o escolhido continua salvo.</string>
+    <plurals name="xd_boot_step_graphics_n">
+        <item quantity="one">Preparando os gráficos: %1$d pipeline criado</item>
+        <item quantity="other">Preparando os gráficos: %1$d pipelines criados</item>
+    </plurals>
+    <plurals name="xd_boot_own_settings">
+        <item quantity="one">%1$d ajuste deste jogo</item>
+        <item quantity="other">%1$d ajustes deste jogo</item>
+    </plurals>
+    <string name="xd_boot_limit">Limite %1$d FPS</string>
+    <string name="xd_menu_battery">bateria</string>
+</resources>

@@ -94,6 +94,9 @@ fun getRemainingCooldown(context: Context): Long {
 fun shouldCheckForUpdates(context: Context): Boolean =
     System.currentTimeMillis() - prefs(context).getLong(KEY_LAST_CHECK, 0L) >= UPDATE_INTERVAL
 
+/** When the app last looked for an update (null: never). */
+fun lastUpdateCheck(context: Context): Long? = prefs(context).getLong(KEY_LAST_CHECK, 0L).takeIf { it > 0 }
+
 fun saveLastCheck(context: Context) {
     prefs(context).edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
 }

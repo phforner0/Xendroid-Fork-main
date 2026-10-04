@@ -83,6 +83,32 @@ class GameSettingsViewModel(
     }
 
     fun isOverridden(s: Setting) = repo.isOverridden(s)
+    /** The global value this game follows where it has none of its own. */
+    fun inheritedRaw(s: Setting): String = repo.inheritedValue(s)
+
+    /** Drops every value of this game (back to the global ones); returns them, for an undo. */
+    fun resetAll(): Map<String, String> {
+        val before = _overrides.value
+        before.keys.mapNotNull { SettingsSchema.byKey[it] }.forEach { setOverride(it, false) }
+        return before
+    }
+
+    /** Puts back this game's values as [resetAll] returned them (undo). */
+    fun restore(values: Map<String, String>) {
+        _overrides.value.keys.filter { it !in values }.mapNotNull { SettingsSchema.byKey[it] }.forEach { setOverride(it, false) }
+        values.forEach { (key, raw) -> SettingsSchema.byKey[key]?.let { setRaw(it, raw) } }
+    }
+
+    /** Bumped when the inherited (global) values were read again, so rows showing them redraw. */
+    private val _inheritedRevision = MutableStateFlow(0)
+    val inheritedRevision: StateFlow<Int> = _inheritedRevision.asStateFlow()
+
+    /** Re-reads the global values this game inherits (after the global config changed). */
+    fun reloadInherited() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { repo.flush(); repo.reload(); reloadAll(); _inheritedRevision.value++ }.onFailure { fail(it) }
+        }
+    }
     fun inheritedLabel(s: Setting) = repo.inheritedLabel(s)
     private fun change(s: Setting, edit: () -> Unit) {
         runCatching { edit(); refreshKey(s) }.onFailure { fail(it) }

@@ -215,7 +215,7 @@ private fun PerGameCategoryDetail(
 
 /** U02: what a recommended-settings action did, in the shown language. */
 @Composable
-private fun profileMessageText(message: GameSettingsViewModel.ProfileMessage): String = when (message) {
+internal fun profileMessageText(message: GameSettingsViewModel.ProfileMessage): String = when (message) {
     GameSettingsViewModel.ProfileMessage.RestoreFirst -> stringResource(R.string.prof_msg_restore_first)
     is GameSettingsViewModel.ProfileMessage.Applied ->
         pluralStringResource(R.plurals.prof_msg_applied, message.count, message.name, message.count)

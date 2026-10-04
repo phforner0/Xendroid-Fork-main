@@ -10,7 +10,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class SettingsViewModel(private val repo: SettingsRepository) : ViewModel(), SettingsHost {
+class SettingsViewModel(
+    private val repo: SettingsRepository,
+    /** Lote 1: the games with values of their own (null: not shown). */
+    private val gameIndex: GameOverridesIndex? = null,
+) : ViewModel(), SettingsHost {
 
     val categories: List<SettingsCategory> = SettingsSchema.categories
     override val isCustomDriverSupported: Boolean get() = repo.isCustomDriverSupported
@@ -22,7 +26,20 @@ class SettingsViewModel(private val repo: SettingsRepository) : ViewModel(), Set
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
+    /** Title ID to its own values, for "N games use another value" and the summary. */
+    private val _gameValues = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
+    val gameValues: StateFlow<Map<String, Map<String, String>>> = _gameValues.asStateFlow()
+
     init { load() }
+
+    /** Reads the games' own values again (after one of them changed). */
+    fun reloadGameValues() {
+        val index = gameIndex ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { index.read() }.onSuccess { _gameValues.value = it }
+                .onFailure { Log.w("SettingsViewModel", "Reading the games' own settings failed", it) }
+        }
+    }
 
     /** Single off-main load path (shared by init + onResume): ensureLoaded() can sleep +
      *  System.loadLibrary on delay-load devices (Adreno 5xx/6xx) where Application.onCreate
@@ -39,6 +56,7 @@ class SettingsViewModel(private val repo: SettingsRepository) : ViewModel(), Set
                 _error.value = null
             }.onFailure { _ready.value = false; fail(it) }
         }
+        reloadGameValues()
     }
 
     private fun reloadAll() {
@@ -78,6 +96,12 @@ class SettingsViewModel(private val repo: SettingsRepository) : ViewModel(), Set
     override fun currentDriverPath(s: Setting.Action) = raw(s) ?: ""
     override fun currentText(s: Setting.Text) = raw(s) ?: s.default
     override fun onTextChanged(s: Setting.Text, value: String) = change(s) { repo.setRawString(s, value) }
+
+    /** The value "Back to default" writes. */
+    fun defaultRaw(s: Setting): String = repo.defaultRaw(s)
+
+    /** Writes [s]'s default back (the redesign's "Back to default"). */
+    fun resetToDefault(s: Setting) = setRaw(s, defaultRaw(s))
 
     /** Synchronous durable write; I/O-free when nothing was edited. */
     fun flush() {

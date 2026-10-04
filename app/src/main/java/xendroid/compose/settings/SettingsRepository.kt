@@ -32,7 +32,7 @@ class SettingsRepository(private val store: ConfigStore) {
     private var terminated = false
 
     val isCustomDriverSupported: Boolean
-        get() = runCatching { File("/dev/kgsl-3d0").exists() }.getOrDefault(false)
+        get() = xendroid.compose.driver.CustomDrivers.supported
 
     /** Open the live config + read template defaults. Call once per screen entry.
      *  @Synchronized so the off-main load() and the lifecycle pause/resume flush can't
@@ -84,6 +84,10 @@ class SettingsRepository(private val store: ConfigStore) {
         is Setting.Action    -> s.default
         is Setting.Text      -> s.default
     }
+
+    /** The default a setting goes back to: the bundled template's value, else the schema's. */
+    @Synchronized
+    fun defaultRaw(s: Setting): String = templateDefaults[s.key] ?: schemaDefaultString(s)
 
     // ---- Typed reads with schema-default fallback (null-safe vs un-open()ed handle) ----
     @Synchronized

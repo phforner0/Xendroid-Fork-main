@@ -22,7 +22,7 @@ class GameSettingsRepository(private val store: ConfigStore, val titleId: String
     private var opened = false
 
     val isCustomDriverSupported: Boolean
-        get() = runCatching { File("/dev/kgsl-3d0").exists() }.getOrDefault(false)
+        get() = xendroid.compose.driver.CustomDrivers.supported
 
     @Synchronized
     fun open() {
@@ -68,6 +68,9 @@ class GameSettingsRepository(private val store: ConfigStore, val titleId: String
      *  value so a value-only edit changes the snapshot (containsKey still means "overridden"). */
     @Synchronized
     fun rawOverride(s: Setting): String? = overrides[s.key]
+
+    @Synchronized
+    fun inheritedValue(s: Setting): String = inheritedRaw(s)
 
     private fun inheritedRaw(s: Setting): String =
         globalValues[s.key] ?: schemaDefaultString(s)

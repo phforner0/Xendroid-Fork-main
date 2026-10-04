@@ -67,9 +67,6 @@ enum class LibrarySort(val label: String) {
     NAME_ASC("Name A–Z"), NAME_DESC("Name Z–A"), FORMAT("Format"), RECENT("Recently played"),
 }
 
-/** How the library shows the games: the grid, or the carousel made for a controller. */
-enum class LibraryView { GRID, CAROUSEL }
-
 /** Orders by the title's last finished run (newest first); never-played games follow by name. */
 fun sortByRecent(games: List<Game>, activity: Map<String, xendroid.compose.sessions.TitleActivity>): List<Game> =
     games.sortedWith(compareByDescending<Game> { game -> game.titleId?.uppercase()?.let { activity[it]?.lastPlayedAt } ?: Long.MIN_VALUE }
@@ -99,18 +96,6 @@ class GameLibraryViewModel(
         .map { raw -> LibrarySort.entries.firstOrNull { it.name == raw } ?: LibrarySort.NAME_ASC }
         .catch { Log.w("GameLibrary", "Reading library sort failed", it); emit(LibrarySort.NAME_ASC) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibrarySort.NAME_ASC)
-
-    val view = preferences.libraryView
-        .map { raw -> LibraryView.entries.firstOrNull { it.name == raw } ?: LibraryView.GRID }
-        .catch { Log.w("GameLibrary", "Reading the library view failed", it); emit(LibraryView.GRID) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryView.GRID)
-
-    fun setView(view: LibraryView) {
-        viewModelScope.launch {
-            runCatching { preferences.setLibraryView(view.name) }
-                .onFailure { Log.w("GameLibrary", "Saving the library view failed", it) }
-        }
-    }
 
     fun toggleFavorite(game: Game) {
         viewModelScope.launch {
@@ -156,6 +141,10 @@ class GameLibraryViewModel(
     /** Last played / play time per Title ID, from finished game runs (sessions/). */
     private val _activity = MutableStateFlow<Map<String, xendroid.compose.sessions.TitleActivity>>(emptyMap())
     val activity: StateFlow<Map<String, xendroid.compose.sessions.TitleActivity>> = _activity.asStateFlow()
+
+    /** Redesign: each title's latest own compatibility result, for the library's cards. */
+    private val _compat = MutableStateFlow<Map<String, xendroid.compose.compatibility.CompatStatus>>(emptyMap())
+    val compat: StateFlow<Map<String, xendroid.compose.compatibility.CompatStatus>> = _compat.asStateFlow()
 
     /** Compatibility reports and the last finished run of the game whose sheet is open. */
     data class GameDetails(
@@ -320,6 +309,7 @@ class GameLibraryViewModel(
                         lastRun?.driver, game.mediaId, game.discNumber)
                 }.onFailure { Log.w("GameLibrary", "Saving the compatibility report failed", it) }
             }
+            _compat.value = _compat.value + (title to status)
             loadDetails(game)
         }
     }
@@ -406,6 +396,10 @@ class GameLibraryViewModel(
         }
         _activity.value = activity
         missing?.let { _missing.value = it }
+        _compat.value = withContext(Dispatchers.IO) {
+            runCatching { compatibilityStore.all().mapNotNull { (id, c) -> c.latest?.let { id to it.status } }.toMap() }
+                .onFailure { Log.w("GameLibrary", "Reading compatibility results failed", it) }.getOrDefault(emptyMap())
+        }
     }
 
     /** L09: what the running scan is doing (null when idle). */
@@ -580,7 +574,7 @@ class GameLibraryViewModel(
             }
         }
 
-    fun buildLaunchIntent(game: Game): Intent =
+    fun buildLaunchIntent(game: Game, launchArgs: List<String> = emptyList()): Intent =
         Intent(ACTION_LAUNCH_GAME).apply {
             setPackage(appContext.packageName)          // self; host is in this app
             putExtra(EXTRA_GAME_URI, game.launchUri)
@@ -590,7 +584,38 @@ class GameLibraryViewModel(
             putExtra(EXTRA_DISC_PATHS, discs.map { it.launchUri }.toTypedArray())
             putExtra(EXTRA_GAME_NAME, game.name)
             coverFile(game)?.let { putExtra(EXTRA_GAME_ART, it.absolutePath) }
+            // R4: this launch's own options, with the token that tells the host they are ours.
+            if (launchArgs.isNotEmpty()) {
+                putExtra(xendroid.compose.EmulatorHostActivity.EXTRA_LAUNCH_ARGS, launchArgs.toTypedArray())
+                putExtra(xendroid.compose.EmulatorHostActivity.EXTRA_LAUNCH_TOKEN,
+                    xendroid.compose.core.LaunchToken.get(appContext.filesDir))
+            }
         }
+
+    /** R4: [options] as command-line cvars, against the player slots configured now. */
+    suspend fun launchArgs(options: xendroid.compose.core.LaunchOptions): List<String> = withContext(Dispatchers.IO) {
+        val slots = if (options.profileXuid != null) runCatching { configuredSlots() }.getOrDefault(emptyList()) else emptyList()
+        options.toArgs(slots).also { xendroid.compose.core.LaunchToken.get(appContext.filesDir) }
+    }
+
+    /** R4: who can play ("Start with…" profile choice) and who plays as P1 now. */
+    suspend fun launchProfiles(): Pair<List<xendroid.compose.data.PlayableProfile>, String?> = withContext(Dispatchers.IO) {
+        runCatching {
+            EmulatorRuntime.ensureLoaded()
+            localProfiles() to configuredXuid()
+        }.onFailure { Log.w("GameLibrary", "Reading profiles failed", it) }.getOrDefault(emptyList<xendroid.compose.data.PlayableProfile>() to null)
+    }
+
+    /** The Title ID of [game]: the scan's, else read from the file now (null when unreadable). */
+    suspend fun resolveTitleId(game: Game): String? {
+        validTitle(game)?.let { return it }
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                EmulatorRuntime.ensureLoaded()
+                repo.readTitleId(appContext, game)?.uppercase()?.takeIf { it.matches(Regex("[0-9A-F]{8}")) && it != "00000000" }
+            }.onFailure { Log.w("GameLibrary", "Reading the title id failed", it) }.getOrNull()
+        }
+    }
 
     /** Every disc of [game]'s title, including the one being launched: after a swap
      *  the launched disc becomes a swap target again (install disc -> play disc).

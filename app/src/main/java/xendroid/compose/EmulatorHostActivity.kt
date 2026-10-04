@@ -121,8 +121,14 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         const val EXTRA_GAME_ART = "game_art"
         /** 15e: "Try again" asks the main process to start the game again in a new :emu. */
         const val ACTION_RELAUNCH_GAME = "xendroid.intent.action.RELAUNCH_GAME"
-        /** The extras a relaunch carries over (the game, its discs, what the loading screen shows). */
-        val RELAUNCH_EXTRAS = listOf(EXTRA_GAME_URI, EXTRA_DISC_LABELS, EXTRA_DISC_PATHS, EXTRA_GAME_NAME, EXTRA_GAME_ART)
+        /** R4 "Start with…": command-line cvars for this launch only, honoured with this app's
+         *  [xendroid.compose.core.LaunchToken] and after [xendroid.compose.core.LaunchOptions.sanitize]. */
+        const val EXTRA_LAUNCH_ARGS = "launch_args"
+        const val EXTRA_LAUNCH_TOKEN = "launch_token"
+        /** The extras a relaunch carries over (the game, its discs, what the loading screen shows,
+         *  the options of this launch). */
+        val RELAUNCH_EXTRAS = listOf(EXTRA_GAME_URI, EXTRA_DISC_LABELS, EXTRA_DISC_PATHS, EXTRA_GAME_NAME, EXTRA_GAME_ART,
+            EXTRA_LAUNCH_ARGS, EXTRA_LAUNCH_TOKEN)
 
         private const val KC_DPAD_LEFT = 0
         private const val KC_DPAD_UP = 1
@@ -188,6 +194,12 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     /** 15e: the loading screen's picture and name (from the library, or the title's cover once known). */
     private val loadingArt = mutableStateOf<java.io.File?>(null)
     private var loadingName: String? = null
+    /** Batch 2: who plays and what the game starts with, under the loading screen's stages. */
+    private val loadingDetails = mutableStateOf<xendroid.compose.ui.ingame.LoadingDetails?>(null)
+    /** Batch 2: the in-game menu's status line, refreshed each second while it is open. */
+    private val menuStatus = mutableStateOf<List<xendroid.compose.ui.ingame.MenuStat>>(emptyList())
+    /** Batch 2: why the game did not start, shown over everything (replaces the old dialog). */
+    private val launchFailureState = mutableStateOf<xendroid.compose.ui.ingame.LaunchFailure?>(null)
     /** What Android's GameManager hears: loading, playing, paused under the menu, or nothing. */
     private val gameModeSignal by lazy { xendroid.compose.core.GameModeSignal(applicationContext) }
     private val createdAtMs = android.os.SystemClock.elapsedRealtime()
@@ -631,7 +643,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     EmulatorSession.StorageResult.Unavailable.Reason.BUSY -> getString(R.string.host_storage_busy)
                     EmulatorSession.StorageResult.Unavailable.Reason.RECOVERY_PENDING -> getString(R.string.host_storage_recovery, storage.detail)
                     EmulatorSession.StorageResult.Unavailable.Reason.FAILED -> getString(R.string.host_storage_failed, storage.detail)
-                }, storage.english)
+                }, storage.english, when (storage.reason) {
+                    EmulatorSession.StorageResult.Unavailable.Reason.BUSY -> xendroid.compose.ui.ingame.LaunchFailure.Kind.BUSY
+                    EmulatorSession.StorageResult.Unavailable.Reason.RECOVERY_PENDING -> xendroid.compose.ui.ingame.LaunchFailure.Kind.RECOVERY
+                    EmulatorSession.StorageResult.Unavailable.Reason.FAILED -> xendroid.compose.ui.ingame.LaunchFailure.Kind.OTHER
+                })
                 return@launch
             }
             recordEvent("storage", "ready")
@@ -938,26 +954,78 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** [shown] in the dialog, in the shown language; [logged] (English) in the run's record.
      *  15e (DroidDeck `02f356f`): the dialog stays with Back, Try again and Share logs. */
-    private fun showLaunchFailure(shown: String, logged: String = shown) {
+    private fun showLaunchFailure(shown: String, logged: String = shown,
+                                  kind: xendroid.compose.ui.ingame.LaunchFailure.Kind = xendroid.compose.ui.ingame.LaunchFailure.Kind.OTHER) {
         launchFailure = logged
         recordEvent("error", logged, flush = true)
         if (isFinishing || isDestroyed) return
-        val dialog = android.app.AlertDialog.Builder(this)
-            .setTitle(getString(R.string.host_launch_failed))
-            .setMessage(shown)
-            .setPositiveButton(R.string.common_back) { _, _ -> leave() }
-            .setNegativeButton(R.string.host_try_again) { _, _ -> tryAgain() }
-            .setNeutralButton(R.string.menu_share_logs, null)
-            .setOnCancelListener { leave() }
-            .show()
-        // Sharing keeps the dialog: Back or Try again come after.
-        dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener { shareSessionLogs(null) }
+        lifecycleScope.launch {
+            // The core's last words, on screen only (never shared from here).
+            val log = withContext(Dispatchers.IO) {
+                runCatching {
+                    java.io.File(Utils.get_log_file_path()).takeIf { it.isFile }?.let { f ->
+                        java.io.RandomAccessFile(f, "r").use { raf ->
+                            val from = (raf.length() - 4096).coerceAtLeast(0)
+                            raf.seek(from)
+                            val bytes = ByteArray((raf.length() - from).toInt())
+                            raf.readFully(bytes)
+                            String(bytes, Charsets.UTF_8).lines().map { it.trimEnd() }.filter { it.isNotBlank() }.takeLast(6)
+                                .map { it.take(160) }
+                        }
+                    }
+                }.getOrNull().orEmpty()
+            }
+            // A core that did not start on a custom driver may start on the system one.
+            val customDriver = withContext(Dispatchers.IO) {
+                runCatching { inGameConfig.driverPath(activeTitleState.value) }.getOrNull()?.isNotBlank() == true
+            }
+            val shownKind = if (kind == xendroid.compose.ui.ingame.LaunchFailure.Kind.CORE && customDriver)
+                xendroid.compose.ui.ingame.LaunchFailure.Kind.DRIVER else kind
+            launchFailureState.value = xendroid.compose.ui.ingame.LaunchFailure(shown, shownKind, log)
+            if (failureView == null) {
+                failureView = ComposeView(this@EmulatorHostActivity).apply {
+                    setContent {
+                        val failure = launchFailureState.value ?: return@setContent
+                        val mode = xendroid.compose.ui.design.InputModeStore.read(this@EmulatorHostActivity)
+                            .resolve(xendroid.compose.ui.design.rememberControllerConnected())
+                        xendroidTheme(mode = mode) {
+                            xendroid.compose.ui.ingame.LaunchFailureScreen(failure, loadingArt.value,
+                                onBack = ::leave, onRetry = { tryAgain() }, onShareLogs = { shareSessionLogs(null) },
+                                onRetrySystemDriver = { tryAgain(systemDriver = true) })
+                        }
+                    }
+                }
+                addContentView(failureView, android.view.ViewGroup.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+            }
+        }
+    }
+
+    /** The failure screen's own view (it may come before the game's views exist). */
+    private var failureView: ComposeView? = null
+
+    /** Batch 2: the menu's status line: FPS now, p99 of the last seconds, battery, the driver. */
+    private fun buildMenuStatus(): List<xendroid.compose.ui.ingame.MenuStat> = buildList {
+        val fps = session.averageFps().takeIf { it > 0 } ?: lastGuestFps
+        if (fps > 0) add(xendroid.compose.ui.ingame.MenuStat(fps.roundToInt().toString(), "FPS"))
+        performancePanel.recent()?.let { add(xendroid.compose.ui.ingame.MenuStat(it.p99UnderMs.toString(), "ms", "p99")) }
+        xendroid.compose.sessions.SessionRuns.batteryCelsius(applicationContext)?.let {
+            add(xendroid.compose.ui.ingame.MenuStat("%.0f".format(it), "°C"))
+        }
+        val level = runCatching {
+            (getSystemService(BATTERY_SERVICE) as android.os.BatteryManager).getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        }.getOrNull()?.takeIf { it in 0..100 }
+        level?.let { add(xendroid.compose.ui.ingame.MenuStat("$it%", label = getString(R.string.xd_menu_battery))) }
+        runCatching { session.activeDriverIdentity() }.getOrNull()?.let { d ->
+            add(xendroid.compose.ui.ingame.MenuStat(listOf(d.driverName, d.driverInfo).filter { it.isNotBlank() }.joinToString(" ")
+                .ifBlank { d.label }.take(40)))
+        }
     }
 
     /** 15e: the core is single-shot per process, so the main process starts the game again in a
      *  new :emu once this one is gone. */
-    private fun tryAgain() {
-        recordEvent("exit", "trying again", flush = true)
+    private fun tryAgain(systemDriver: Boolean = false) {
+        recordEvent("exit", if (systemDriver) "trying again with the system driver" else "trying again", flush = true)
         val source = intent
         val relaunch = Intent(this, MainActivity::class.java).apply {
             action = ACTION_RELAUNCH_GAME
@@ -965,6 +1033,13 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             RELAUNCH_EXTRAS.forEach { key ->
                 source?.getStringExtra(key)?.let { putExtra(key, it) }
                 source?.getStringArrayExtra(key)?.let { putExtra(key, it) }
+            }
+            if (systemDriver) {
+                // This launch's own options, plus the system driver; the chosen one stays saved.
+                val own = if (xendroid.compose.core.LaunchToken.matches(filesDir, source?.getStringExtra(EXTRA_LAUNCH_TOKEN)))
+                    source?.getStringArrayExtra(EXTRA_LAUNCH_ARGS).orEmpty().filterNot { it.startsWith("--vulkan_lib_path=") } else emptyList()
+                putExtra(EXTRA_LAUNCH_ARGS, (own + "--vulkan_lib_path=").toTypedArray())
+                putExtra(EXTRA_LAUNCH_TOKEN, xendroid.compose.core.LaunchToken.get(filesDir))
             }
             // A game another app handed over keeps its read grant through the relaunch.
             source?.getStringExtra(EXTRA_GAME_URI)?.takeIf { it.startsWith("content://") }?.let { uri ->
@@ -1075,7 +1150,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     Utils.get_log_file_path(),
 
                 "--log_append=true",
-            )
+            ) + launchOptionArgs().also { launchArgsUsed = it }.toTypedArray()
         )
 
         session.setupUriInfoListFile(
@@ -1083,6 +1158,45 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 .get_uri_info_list_file()
                 .absolutePath
         )
+    }
+
+    /** The options this launch passed to the core (R4), for the loading screen. */
+    private var launchArgsUsed: List<String> = emptyList()
+
+    /** Batch 2: what the loading screen says about the launch once the title is known. */
+    private fun loadingDetailsOf(title: String): xendroid.compose.ui.ingame.LoadingDetails {
+        val own = runCatching {
+            val handle = ConfigStore(applicationContext).openGameConfig(title)
+            try { xendroid.compose.settings.SettingsSchema.allSettings.count { handle.getString(it.section, it.name) != null } }
+            finally { handle.closeDiscard() }
+        }.getOrDefault(0)
+        val driver = runCatching { xendroid.compose.ui.settings.driverName(this, inGameConfig.driverPath(title)) }.getOrNull()
+        val limit = runCatching { session.fpsLimit() }.getOrNull()?.let {
+            if (it == 0) getString(R.string.menu_unlimited) else getString(R.string.xd_boot_limit, it)
+        }
+        val profile = runCatching {
+            firstPlayerXuid()?.let { xuid ->
+                xendroid.compose.core.EmulatorRuntime.emulator
+                    ?.list_profiles(xendroid.compose.core.ContentPaths.contentRoot().absolutePath)
+                    ?.firstOrNull { it.xuid.equals(xuid, ignoreCase = true) }?.gamertag?.ifBlank { null }
+            }
+        }.getOrNull()
+        return xendroid.compose.ui.ingame.LoadingDetails(profile = profile, titleId = title, badges = listOfNotNull(driver, limit),
+            ownSettings = own, withOptions = launchArgsUsed.isNotEmpty())
+    }
+
+    /** R4: this launch's own options, when the library sent them (its token); every other launch
+     *  boots as configured. */
+    private fun launchOptionArgs(): List<String> {
+        val requested = intent?.getStringArrayExtra(EXTRA_LAUNCH_ARGS) ?: return emptyList()
+        if (!xendroid.compose.core.LaunchToken.matches(filesDir, intent?.getStringExtra(EXTRA_LAUNCH_TOKEN))) {
+            Log.w(TAG, "Launch options without this app's token ignored")
+            return emptyList()
+        }
+        val args = xendroid.compose.core.LaunchOptions.sanitize(requested, Application.get_custom_driver_dir())
+        if (args.size != requested.size) Log.w(TAG, "${requested.size - args.size} launch options dropped")
+        if (args.isNotEmpty()) recordEvent("launch options", args.joinToString(" ") { it.substringBefore('=') })
+        return args
     }
 
     /** 15c: follows the fold of a foldable (Jetpack WindowManager); a horizontal one half open is
@@ -1139,6 +1253,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         val compose =
             ComposeView(this).apply {
                 setContent {
+                    // Batch 2: the menu and panels in touch or controller layout, like the app.
+                    val hostMode = xendroid.compose.ui.design.InputModeStore.read(this@EmulatorHostActivity)
+                        .resolve(xendroid.compose.ui.design.rememberControllerConnected())
                     val cfg by gamepad.config.collectAsState(
                         initial = GamepadConfigDto()
                     )
@@ -1268,8 +1385,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(400)),
                             ) {
                                 lastLoading?.let { status ->
-                                    xendroid.compose.ui.ingame.GameLoadingScreen(status, loadingArt.value, loadingName,
-                                        onCancel = if (menuState.value.open || loading == null) null else ::cancelBoot)
+                                    xendroidTheme(scale = uiScale, mode = hostMode) {
+                                        xendroid.compose.ui.ingame.GameLoadingScreen(status, loadingArt.value, loadingName,
+                                            onCancel = if (menuState.value.open || loading == null) null else ::cancelBoot,
+                                            details = loadingDetails.value)
+                                    }
                                 }
                             }
 
@@ -1422,6 +1542,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                 runCatching { inGameConfig.driverPath(activeTitle) }
                                                     .onFailure { Log.w(TAG, "Reading the driver setting failed", it) }.getOrNull()
                                             }
+                                            if (bootStatus.value != null) loadingDetails.value = withContext(Dispatchers.IO) {
+                                                runCatching { loadingDetailsOf(activeTitle) }
+                                                    .onFailure { Log.w(TAG, "Reading what the game starts with failed", it) }.getOrNull()
+                                            }
                                         }
                                         adaptiveSticks.value = activeTitle != null &&
                                             getSharedPreferences("touch_options", MODE_PRIVATE)
@@ -1506,6 +1630,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             null -> {}
                                         }
                                     }
+                                    if (menuState.value.open) menuStatus.value = buildMenuStatus()
                                     // 15n: the performance panel, built only while it is on screen.
                                     panelSnapshot.value = if (performanceOverlayEnabled.value &&
                                         hudDetail.value == xendroid.compose.core.HudDetail.PANEL) {
@@ -1577,7 +1702,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     titleId = activeTitleState.value,
                                 ) }
                             } else if (menuState.value.open) {
-                                xendroidTheme(scale = uiScale) {
+                                xendroidTheme(scale = uiScale, mode = hostMode) {
                                     // U02: from string resources (en / pt-BR); status texts built by
                                     // other components (ADPF, TV, phone controllers) are still English.
                                     val on = stringResource(R.string.menu_on)
@@ -1668,6 +1793,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         onSelect = { index -> menuState.value = menuState.value.select(index) },
                                         onAction = ::performMenuAction,
                                         onQuitChoice = ::chooseMenuQuit,
+                                        gameName = loadingName,
+                                        art = loadingArt.value,
+                                        status = menuStatus.value,
                                     )
                                 }
                             } else if (
@@ -1721,7 +1849,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                             }
 
                             keyboardRequest?.let { req ->
-                                xendroidTheme(scale = uiScale) {
+                                xendroidTheme(scale = uiScale, mode = hostMode) {
                                     GuestKeyboardPanel(
                                         request = req,
 
@@ -1781,7 +1909,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                             }
 
                             messageBoxRequest?.let { req ->
-                                xendroidTheme(scale = uiScale) {
+                                xendroidTheme(scale = uiScale, mode = hostMode) {
                                     GuestMessageBoxPanel(
                                         request = req,
 
@@ -1836,7 +1964,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                             }
 
                             discRequest?.let { req ->
-                                xendroidTheme(scale = uiScale) {
+                                xendroidTheme(scale = uiScale, mode = hostMode) {
                                     DiscSwapPanel(
                                         request = req,
 
@@ -2006,7 +2134,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 )
 
                 val detail = t.message ?: t.javaClass.simpleName
-                showLaunchFailure(getString(R.string.host_core_failed, detail), "The emulator core did not start: $detail")
+                showLaunchFailure(getString(R.string.host_core_failed, detail), "The emulator core did not start: $detail",
+                    xendroid.compose.ui.ingame.LaunchFailure.Kind.CORE)
             }
         } else {
             session.attachSurface(
@@ -2821,6 +2950,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         fpsLimitState.intValue = session.fpsLimit()
         presentationState.value = session.presentationState()
         menuState.value = menuState.value.show(pausedHere)
+        menuStatus.value = runCatching { buildMenuStatus() }.getOrDefault(emptyList())
         refreshFpsConfig()
         refreshDriverLine()
         lifecycleScope.launch {

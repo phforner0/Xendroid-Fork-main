@@ -7,7 +7,7 @@
     <string name="menu_paused">Paused · Back to close</string>
     <string name="menu_running">Game running · Back to close</string>
     <string name="menu_tab_graphics">Graphics</string>
-    <string name="menu_tab_system">System</string>
+    <string name="menu_tab_system">Performance</string>
     <string name="menu_tab_controls">Controls</string>
     <string name="menu_tab_session">Session</string>
     <string name="menu_exit_question">Exit the game?</string>

@@ -78,19 +78,31 @@ data class DriverIdentity(
          */
         fun describeEffective(requestedPath: String, last: DriverIdentity?, lastRunStartedAt: Long?, selectedAt: Long?): String? {
             last ?: return null
-            if (selectedAt != null && lastRunStartedAt != null && lastRunStartedAt < selectedAt) {
-                return "No game has run with this selection yet (the last one used ${last.label})"
-            }
             val ran = "Last game ran on ${last.label}"
+            return when (effective(requestedPath, last, lastRunStartedAt, selectedAt)) {
+                Effective.NOT_RUN_YET -> "No game has run with this selection yet (the last one used ${last.label})"
+                Effective.CUSTOM_DID_NOT_LOAD ->
+                    "$ran: the selected custom driver did not load (missing or rejected), so the system driver was used"
+                Effective.OTHER_LIBRARY -> "$ran, not the library selected now (${requestedPath.substringAfterLast('/')})"
+                Effective.CUSTOM_THEN -> "$ran (a custom driver was selected then)"
+                else -> ran
+            }
+        }
+
+        /** What the latest run that recorded a driver says about the selection (for the screens' own words). */
+        enum class Effective { NOT_RUN_YET, RAN, CUSTOM_DID_NOT_LOAD, OTHER_LIBRARY, CUSTOM_THEN }
+
+        /** The case [describeEffective] words; null without any recorded run. */
+        fun effective(requestedPath: String, last: DriverIdentity?, lastRunStartedAt: Long?, selectedAt: Long?): Effective? {
+            last ?: return null
+            if (selectedAt != null && lastRunStartedAt != null && lastRunStartedAt < selectedAt) return Effective.NOT_RUN_YET
             val requestedLibrary = requestedPath.substringAfterLast('/')
             return when {
-                last.loader.isEmpty() -> ran                    // recorded before the loader was known
-                requestedPath.isNotBlank() && last.loader == "system" ->
-                    "$ran: the selected custom driver did not load (missing or rejected), so the system driver was used"
-                requestedPath.isNotBlank() && last.library.isNotBlank() && last.library != requestedLibrary ->
-                    "$ran, not the library selected now ($requestedLibrary)"
-                requestedPath.isBlank() && last.loader == "custom" -> "$ran (a custom driver was selected then)"
-                else -> ran
+                last.loader.isEmpty() -> Effective.RAN                    // recorded before the loader was known
+                requestedPath.isNotBlank() && last.loader == "system" -> Effective.CUSTOM_DID_NOT_LOAD
+                requestedPath.isNotBlank() && last.library.isNotBlank() && last.library != requestedLibrary -> Effective.OTHER_LIBRARY
+                requestedPath.isBlank() && last.loader == "custom" -> Effective.CUSTOM_THEN
+                else -> Effective.RAN
             }
         }
 

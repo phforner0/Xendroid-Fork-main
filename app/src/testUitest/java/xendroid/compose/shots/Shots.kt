@@ -8,10 +8,10 @@ import com.github.takahirom.roborazzi.RoborazziTaskType
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.io.File
 
-/** Phone sizes of the prints: a 20:9 phone in landscape and portrait (dp), at 1.5x, dark mode. */
+/** Phone sizes of the prints: a 20:9 phone in landscape and portrait (dp), at 1.5x, dark mode, in Brazilian Portuguese. */
 object Phone {
-    const val LAND = "w914dp-h411dp-land-night-hdpi"
-    const val PORT = "w411dp-h914dp-port-night-hdpi"
+    const val LAND = "pt-rBR-w914dp-h411dp-land-night-hdpi"
+    const val PORT = "pt-rBR-w411dp-h914dp-port-night-hdpi"
 }
 
 /**
@@ -28,4 +28,14 @@ fun ComposeContentTestRule.shot(name: String) {
     }
     val file = File(dir, "$name.png").apply { parentFile?.mkdirs() }
     onRoot().captureRoboImage(file.absolutePath, RoborazziOptions(taskType = RoborazziTaskType.Record))
+}
+
+/** Like [shot], but the whole screen with its dialogs (sheets open over a screen). */
+@OptIn(ExperimentalRoborazziApi::class)
+fun ComposeContentTestRule.screen(name: String) {
+    waitForIdle()
+    val dir = System.getProperty("xendroid.screenshots")
+    if (dir.isNullOrBlank()) return
+    val file = File(dir, "$name.png").apply { parentFile?.mkdirs() }
+    com.github.takahirom.roborazzi.captureScreenRoboImage(file.absolutePath, RoborazziOptions(taskType = RoborazziTaskType.Record))
 }

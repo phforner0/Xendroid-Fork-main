@@ -3,6 +3,19 @@ package xendroid.compose.ui
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import xendroid.compose.ui.design.InputMode
+import xendroid.compose.ui.design.InputModePref
+import xendroid.compose.ui.design.InputModeStore
+import xendroid.compose.ui.design.ProvideXdNavigation
+import xendroid.compose.ui.design.XdArea
+import xendroid.compose.ui.design.XdNavigator
+import xendroid.compose.ui.design.XdShortcut
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -61,7 +74,15 @@ object Routes {
     const val PHONE_CONTROLLER = "phone_controller"
     const val CONTROLLER_TEST = "controller_test"
     const val BENCHMARK = "benchmark"
+    // "$GAME?key={key}&section={section}": the game sheet, by the game's launch path
+    const val GAME = "game"
+    /** Batch 1: the drivers area (installed, downloads, sources, Turnip flags). */
+    const val DRIVERS = "drivers"
 }
+
+/** The game sheet's route for [game], opened at [section] (null: the overview). */
+fun gameRoute(game: xendroid.compose.data.Game, section: String? = null): String =
+    "${Routes.GAME}?key=${Uri.encode(game.stableId)}" + (section?.let { "&section=${Uri.encode(it)}" } ?: "")
 
 private fun NavBackStackEntry.backOnce(nav: NavController): () -> Unit = {
     if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) nav.popBackStack()
@@ -70,6 +91,46 @@ private fun NavBackStackEntry.backOnce(nav: NavController): () -> Unit = {
 @Composable
 fun AppNavHost(container: AppContainer) {
     val nav = rememberNavController()
+    val context = LocalContext.current
+    val mode = xendroid.compose.ui.design.LocalInputMode.current
+    // Collections is the library's own area: the library entry stays, its filter changes.
+    var collectionsArea by rememberSaveable { mutableStateOf(false) }
+    var areaTick by remember { mutableStateOf(0) }
+    var gamertag by remember { mutableStateOf<String?>(null) }
+    val navigator = remember(nav, mode) {
+        object : XdNavigator {
+            /** A top-level area: one entry above the library, never a stack of them. */
+            private fun top(route: String) {
+                if (nav.currentDestination?.route == route) return
+                nav.navigate(route) {
+                    popUpTo(Routes.LIBRARY) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+            override fun area(area: XdArea) = when (area) {
+                XdArea.GAMES, XdArea.COLLECTIONS -> {
+                    collectionsArea = area == XdArea.COLLECTIONS
+                    areaTick++
+                    nav.popBackStack(Routes.LIBRARY, inclusive = false)
+                    Unit
+                }
+                XdArea.CONTENT -> top(Routes.INSTALL_CONTENT)
+                XdArea.PROFILES -> top(Routes.PROFILES)
+                XdArea.CONTROLS -> top(Routes.KEYMAP)
+                XdArea.DRIVERS -> top(Routes.DRIVERS)
+                XdArea.SETTINGS -> top(Routes.SETTINGS)
+            }
+            override fun shortcut(shortcut: XdShortcut) = when (shortcut) {
+                XdShortcut.DIAGNOSTICS, XdShortcut.COMPARE -> top("${Routes.DIAGNOSTICS}?title=")
+                XdShortcut.ABOUT -> top(Routes.ABOUT)
+            }
+            override val gamertag: String? get() = gamertag
+            override fun toggleInputMode() = InputModeStore.write(context,
+                if (mode == InputMode.CONTROLLER) InputModePref.TOUCH else InputModePref.CONTROLLER)
+        }
+    }
+    ProvideXdNavigation(navigator, remember { xendroid.compose.gamepad.MenuButtonPrefs.swapConfirm(context) }) {
     NavHost(navController = nav, startDestination = Routes.LIBRARY) {
         composable(Routes.LIBRARY) { libraryEntry ->
             val vm: GameLibraryViewModel =
@@ -83,9 +144,15 @@ fun AppNavHost(container: AppContainer) {
                     nav.navigate(route)
                 }
             }
+            val profile by vm.activeProfile.collectAsStateWithLifecycle()
+            LaunchedEffect(profile) { gamertag = profile }
             GameLibraryScreen(
                 viewModel = vm,
                 compressVm = compressVm,
+                onOpenGame = { game, section -> navigateOnce(gameRoute(game, section)) },
+                gameSettings = { titleId -> viewModel(key = "panel-settings-$titleId", factory = container.gameSettingsViewModelFactory(titleId)) },
+                collectionsArea = collectionsArea,
+                areaTick = areaTick,
                 onOpenSettings = { navigateOnce(Routes.SETTINGS) },
                 onOpenKeymap = { navigateOnce(Routes.KEYMAP) },
                 onOpenAbout = { navigateOnce(Routes.ABOUT) },
@@ -120,6 +187,47 @@ fun AppNavHost(container: AppContainer) {
                 onOpenBenchmark = { navigateOnce(Routes.BENCHMARK) },
             )
         }
+        composable(
+            "${Routes.GAME}?key={key}&section={section}",
+            arguments = listOf(
+                navArgument("key") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("section") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
+        ) { entry ->
+            val libraryEntry = remember(entry) { nav.getBackStackEntry(Routes.LIBRARY) }
+            val library: GameLibraryViewModel = viewModel(libraryEntry, factory = container.libraryViewModelFactory())
+            val compressVm: GameCompressViewModel = viewModel(libraryEntry, factory = container.gameCompressViewModelFactory())
+            val state by library.state.collectAsStateWithLifecycle()
+            val key = entry.arguments?.getString("key")?.let { Uri.decode(it) }
+            val game = (state as? xendroid.compose.ui.library.LibraryUiState.Loaded)?.games?.firstOrNull { it.stableId == key }
+            val back = entry.backOnce(nav)
+            if (game == null) {
+                // The list is still loading (process restored) or the game left it: back to the library.
+                LaunchedEffect(state) { if (state !is xendroid.compose.ui.library.LibraryUiState.Loading) back() }
+                return@composable
+            }
+            var titleId by remember(game.stableId) { mutableStateOf(game.titleId?.uppercase()?.takeIf { it.matches(Regex("[0-9A-F]{8}")) && it != "00000000" }) }
+            LaunchedEffect(game.stableId) { if (titleId == null) titleId = library.resolveTitleId(game) }
+            val id = titleId
+            val settings: GameSettingsViewModel? = id?.let { viewModel(key = "game-settings-$it", factory = container.gameSettingsViewModelFactory(it)) }
+            val patches: GamePatchesViewModel? = id?.let { viewModel(key = "game-patches-$it", factory = container.gamePatchesViewModelFactory(it)) }
+            val global: SettingsViewModel = viewModel(key = "global-settings", factory = container.settingsViewModelFactory())
+            val go: (String) -> Unit = { route -> if (entry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) nav.navigate(route) }
+            xendroid.compose.ui.game.GameScreen(
+                game = game, library = library, compressVm = compressVm, settings = settings, global = global, patches = patches,
+                initialSection = entry.arguments?.getString("section"),
+                links = xendroid.compose.ui.game.GameScreenLinks(
+                    onBack = back,
+                    onPatches = { id?.let { go("${Routes.GAME_PATCHES}/$it?name=${Uri.encode(game.name)}") } },
+                    onContent = { id?.let { go("${Routes.CONTENT_MANAGER}/$it?name=${Uri.encode(game.name)}") } },
+                    onSaves = { id?.let { go("${Routes.SAVES}/$it?name=${Uri.encode(game.name)}") } },
+                    onDiagnostics = { go("${Routes.DIAGNOSTICS}?title=${id.orEmpty()}") },
+                    onCompare = { go("${Routes.DIAGNOSTICS}?title=${id.orEmpty()}") },
+                    onDrivers = { go(Routes.DRIVERS) },
+                    onInstallFromDisc = { path -> go("${Routes.INSTALL_CONTENT}?src=" + Uri.encode(path)) },
+                ),
+            )
+        }
         composable(Routes.BENCHMARK) { entry ->
             xendroid.compose.ui.benchmark.BenchmarkScreen(onBack = entry.backOnce(nav))
         }
@@ -132,7 +240,29 @@ fun AppNavHost(container: AppContainer) {
         }
         composable(Routes.SETTINGS) { entry ->
             val vm: SettingsViewModel = viewModel(factory = container.settingsViewModelFactory())
-            SettingsScreen(vm = vm, onBack = entry.backOnce(nav))
+            val games = libraryGames(nav, entry, container)
+            val go: (String) -> Unit = { route -> if (entry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) nav.navigate(route) }
+            SettingsScreen(vm = vm, onBack = entry.backOnce(nav), links = xendroid.compose.ui.settings.SettingsLinks(
+                onDrivers = { go(Routes.DRIVERS) },
+                onGameSettings = { title -> games.byTitle[title]?.let { go(gameRoute(it, xendroid.compose.ui.game.GameSections.SETTINGS)) } },
+                onDiagnostics = { go("${Routes.DIAGNOSTICS}?title=") },
+                onCompare = { go("${Routes.DIAGNOSTICS}?title=") },
+                onControllerTest = { go(Routes.CONTROLLER_TEST) },
+                onAbout = { go(Routes.ABOUT) },
+                gameName = { games.byTitle[it]?.name },
+                gameArt = { title -> games.byTitle[title]?.let { games.art(it) } },
+            ))
+        }
+        composable(Routes.DRIVERS) { entry ->
+            val vm: SettingsViewModel = viewModel(factory = container.settingsViewModelFactory())
+            val games = libraryGames(nav, entry, container)
+            val go: (String) -> Unit = { route -> if (entry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) nav.navigate(route) }
+            xendroid.compose.ui.drivers.DriversScreen(
+                global = vm, onBack = entry.backOnce(nav),
+                onGameSettings = { title -> games.byTitle[title]?.let { go(gameRoute(it, xendroid.compose.ui.game.GameSections.SETTINGS)) } },
+                gameName = { games.byTitle[it]?.name },
+                gameArt = { title -> games.byTitle[title]?.let { games.art(it) } },
+            )
         }
         composable(Routes.KEYMAP) { entry ->
             val vm: KeymapViewModel =
@@ -220,5 +350,20 @@ fun AppNavHost(container: AppContainer) {
         composable("${Routes.DIAGNOSTICS}?title={title}", arguments = listOf(
             navArgument("title") { nullable = true; defaultValue = null },
         )) { entry -> DiagnosticsScreen(entry.arguments?.getString("title")?.takeIf { it.isNotEmpty() }, entry.backOnce(nav)) }
+    }
+    }
+}
+
+/** The library's games by Title ID (and their art), for screens that name games: Settings, Drivers. */
+private class LibraryGames(val byTitle: Map<String, xendroid.compose.data.Game>, val art: (xendroid.compose.data.Game) -> Any)
+
+@Composable
+private fun libraryGames(nav: NavController, entry: NavBackStackEntry, container: AppContainer): LibraryGames {
+    val libraryEntry = remember(entry) { runCatching { nav.getBackStackEntry(Routes.LIBRARY) }.getOrNull() } ?: return LibraryGames(emptyMap()) { it }
+    val library: GameLibraryViewModel = viewModel(libraryEntry, factory = container.libraryViewModelFactory())
+    val state by library.state.collectAsStateWithLifecycle()
+    val games = (state as? xendroid.compose.ui.library.LibraryUiState.Loaded)?.games.orEmpty()
+    return remember(games) {
+        LibraryGames(games.filter { !it.titleId.isNullOrBlank() }.groupBy { it.titleId!!.uppercase() }.mapValues { it.value.first() }) { library.iconFileOrFallback(it) }
     }
 }

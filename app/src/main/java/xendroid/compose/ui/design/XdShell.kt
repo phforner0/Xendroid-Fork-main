@@ -258,11 +258,13 @@ fun XdSectionedScreen(
     actions: (@Composable RowScope.() -> Unit)? = null,
     hints: List<XdHint>? = null,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
+    /** Controller mode: pad buttons the screen handles itself (Y favourites…); true = handled. */
+    onPad: ((PadButton) -> Boolean)? = null,
 ) {
     val real = sections.filter { it.goTo == null && it.content != null }
     val current = real.firstOrNull { it.id == selected } ?: real.firstOrNull()
     if (Xd.controller) {
-        CSectioned(title, sections, current, onSelect, modifier, subtitle, onBack, lead, headIcon, art, actions, hints, overlay)
+        CSectioned(title, sections, current, onSelect, modifier, subtitle, onBack, lead, headIcon, art, actions, hints, overlay, onPad)
         return
     }
     val c = Xd.colors
@@ -556,6 +558,7 @@ private fun CSectioned(
     actions: (@Composable RowScope.() -> Unit)?,
     hints: List<XdHint>?,
     overlay: (@Composable BoxScope.() -> Unit)?,
+    onPad: ((PadButton) -> Boolean)?,
 ) {
     val c = Xd.colors
     val real = sections.filter { it.goTo == null && it.content != null }
@@ -566,7 +569,7 @@ private fun CSectioned(
     val requesters = remember(sections.map { it.id }) { sections.associate { it.id to FocusRequester() } }
     CFrame(modifier, art, hints ?: defaultHints(sections = true), onShoulder = { d ->
         shoulder(d)
-    }, overlay = overlay) { _ ->
+    }, onPad = onPad, overlay = overlay) { _ ->
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val portrait = maxHeight > maxWidth
             val menuItem: @Composable (XdSection) -> Unit = { s -> CMenuItem(s, s.id == current?.id, onSelect, requesters.getValue(s.id), portrait) }

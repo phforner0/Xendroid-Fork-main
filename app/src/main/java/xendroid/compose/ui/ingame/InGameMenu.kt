@@ -1,6 +1,34 @@
 package xendroid.compose.ui.ingame
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import coil.compose.AsyncImage
+import xendroid.compose.ui.design.ButtonGlyph
+import xendroid.compose.ui.design.CHints
+import xendroid.compose.ui.design.LocalSwapConfirm
+import xendroid.compose.ui.design.Xd
+import xendroid.compose.ui.design.XdButton
+import xendroid.compose.ui.design.XdButtonKind
+import xendroid.compose.ui.design.XdHint
+import xendroid.compose.ui.design.XdIconButton
+import xendroid.compose.ui.design.XdIcons
+import xendroid.compose.ui.design.XdText
+import xendroid.compose.ui.design.part
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -19,10 +47,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -65,17 +90,20 @@ fun InGameMenuHandle(onOpen: () -> Unit, modifier: Modifier = Modifier) {
         },
     ) {
         val description = stringResource(R.string.menu_open)
-        Text(
-            text = "☰",
-            color = Color.White,
-            modifier = Modifier.align(Alignment.TopStart)
-                .background(Color.Black.copy(alpha = 0.48f))
+        Row(
+            Modifier.align(Alignment.TopStart).padding(top = 10.dp)
+                .clip(RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp))
+                .background(Color.Black.copy(alpha = 0.5f))
                 .clickable(onClick = onOpen)
                 .semantics { contentDescription = description; role = Role.Button }
-                .padding(horizontal = 5.dp, vertical = 8.dp),
-        )
+                .padding(horizontal = 6.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) { Icon(XdIcons.menu, null, Modifier.size(16.dp), tint = Color.White) }
     }
 }
+
+/** One figure of the menu's status line: "30 FPS", "p99 34 ms", "41 °C"… ([value] in bold). */
+data class MenuStat(val value: String, val unit: String? = null, val label: String? = null)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -111,14 +139,21 @@ fun InGameMenu(
     onAction: (InGameAction) -> Unit,
     onQuitChoice: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    /** Batch 2: the game's name and cover in the menu's head. */
+    gameName: String? = null,
+    art: Any? = null,
+    /** Batch 2: the status line (FPS, p99, temperature, battery, driver) without the HUD. */
+    status: List<MenuStat> = emptyList(),
 ) {
+    val c = Xd.colors
+    val controller = Xd.controller
     BoxWithConstraints(
         modifier.fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.54f))
+            .background(Color.Black.copy(alpha = 0.5f))
             .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
-        contentAlignment = Alignment.CenterStart,
     ) {
-        val sheetWidth = minOf(maxWidth * 0.88f, 400.dp)
+        val portrait = maxHeight > maxWidth
+        val short = maxHeight < 400.dp
         // Hardware navigation changes the selected option, not Compose focus. Scroll the
         // corresponding row into view rather than leaving the highlight off-screen.
         val scrollState = remember(state.page, state.confirmingQuit, state.logPicker) { ScrollState(0) }
@@ -126,147 +161,172 @@ fun InGameMenu(
         LaunchedEffect(state.page, state.selected, state.confirmingQuit, state.logPicker) {
             selectedRow.bringIntoView()
         }
-        Surface(
-            modifier = Modifier.width(sheetWidth).fillMaxHeight(),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
-            shape = MaterialTheme.shapes.large,
+        val shape = if (portrait) RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp) else RoundedCornerShape(topEnd = 22.dp, bottomEnd = 22.dp)
+        val panel = if (portrait) Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.8f)
+        else Modifier.align(Alignment.CenterStart).width(minOf(maxWidth * 0.66f, if (controller) 500.dp else 430.dp)).fillMaxHeight()
+        Column(
+            panel.clip(shape).background(c.solid(c.sheet))
+                .windowInsetsPadding(WindowInsets.safeDrawing.part(top = !portrait, bottom = true, start = true))
+                .padding(horizontal = if (short) 12.dp else 16.dp, vertical = if (short) 10.dp else 14.dp),
+            verticalArrangement = Arrangement.spacedBy(if (short) 8.dp else 10.dp),
         ) {
-            Column(Modifier.fillMaxHeight().padding(if (maxHeight < 400.dp) 12.dp else 20.dp)) {
-                Text(
-                    "XenDroid${fpsConfig.titleId?.let { " · $it" }.orEmpty()}",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Text(
-                    stringResource(if (paused) R.string.menu_paused else R.string.menu_running),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                if (!state.confirmingQuit && !state.logPicker) {
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        InGamePage.entries.forEach { page ->
-                            TextButton(onClick = { onPage(page) }) {
-                                Text(
-                                    page.label(),
-                                    color = if (page == state.page) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
+            // Head: the game, its state, and the way back to it.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (art != null) AsyncImage(art, null, Modifier.size(40.dp, 52.dp).clip(RoundedCornerShape(7.dp)), contentScale = ContentScale.Crop)
+                Column(Modifier.weight(1f)) {
+                    Text(gameName ?: "XenDroid${fpsConfig.titleId?.let { " · $it" }.orEmpty()}", style = XdText.h2, color = c.fg,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(stringResource(if (paused) R.string.xd_menu_paused else R.string.xd_menu_running), style = XdText.small, color = c.fg3)
                 }
-                // Header, tabs and footer stay visible even on short screens. Only options
-                // scroll; hardware selection is kept visible by the requester above.
-                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState)) {
-                    if (state.confirmingQuit) {
-                        Text(stringResource(R.string.menu_exit_question), modifier = Modifier.padding(top = 22.dp))
-                        Text(stringResource(R.string.menu_exit_warning), style = MaterialTheme.typography.bodySmall)
-                        GuestPanelOption(
-                            label = stringResource(R.string.menu_cancel), selected = state.selected == 0,
-                            onClick = { onQuitChoice(false) },
-                            modifier = Modifier.padding(top = 12.dp)
-                                .then(if (state.selected == 0) Modifier.bringIntoViewRequester(selectedRow) else Modifier),
-                        )
-                        GuestPanelOption(
-                            label = stringResource(R.string.menu_exit_game), selected = state.selected == 1,
-                            onClick = { onQuitChoice(true) },
-                            modifier = Modifier.padding(top = 8.dp)
-                                .then(if (state.selected == 1) Modifier.bringIntoViewRequester(selectedRow) else Modifier),
-                        )
-                    } else if (state.logPicker) {
-                        Text(stringResource(R.string.menu_logs_title), style = MaterialTheme.typography.titleSmall)
-                        val labels = listOf(stringResource(R.string.menu_logs_all)) +
-                            logSessions.map { stringResource(R.string.menu_logs_session, it.label, (it.bytes / 1024).toInt()) } +
-                            stringResource(R.string.menu_back)
-                        labels.forEachIndexed { index, label ->
-                            GuestPanelOption(label, selected = state.selected == index,
-                                modifier = Modifier.padding(top = 8.dp).then(
-                                    if (state.selected == index) Modifier.bringIntoViewRequester(selectedRow) else Modifier),
-                                onClick = { onLogChoice(index) })
-                        }
-                    } else {
-                        if (state.page == InGamePage.GRAPHICS && state.developer) {
-                            Text(presentation.label, style = MaterialTheme.typography.bodySmall)
-                            frameGenerationBudget?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                            frameGenerationNotes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-                            Text(stringResource(R.string.menu_fg_experimental), style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (state.page == InGamePage.SYSTEM) {
-                            Text(stringResource(R.string.menu_frame_limit_title), style = MaterialTheme.typography.titleSmall)
-                            Text(stringResource(R.string.menu_live_limit, fpsText(fpsLimit)), style = MaterialTheme.typography.bodySmall)
-                            Text(
-                                when {
-                                    fpsConfig.saving -> stringResource(R.string.menu_saving_config)
-                                    fpsConfig.loading -> stringResource(R.string.menu_reading_config)
-                                    fpsConfig.error != null -> fpsConfig.error
-                                    else -> stringResource(R.string.menu_next_launch, fpsText(fpsConfig.globalLimit),
-                                        if (fpsConfig.titleId == null) stringResource(R.string.menu_game_id_unavailable)
-                                        else stringResource(R.string.menu_game_limit,
-                                            fpsConfig.gameLimit?.let { fpsText(it) } ?: stringResource(R.string.menu_inherits_global)))
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        state.actions().forEachIndexed { index, action ->
-                            GuestPanelOption(
-                                label = if (action == InGameAction.MORE_OPTIONS) {
-                                    if (state.page in state.advanced) stringResource(R.string.menu_fewer_options)
-                                    else stringResource(R.string.menu_more_options, state.advancedCount())
-                                } else {
-                                    extensionLabels[action] ?: action.label(fpsLimit, performanceHud, compactHud, hudPanel, touchControls, adaptiveSticks, stretch, hudMetrics, presentation, fgPreset, volume)
-                                },
-                                selected = index == state.selected,
-                                enabled = (action != InGameAction.ADAPTIVE_STICKS || fpsConfig.titleId != null) &&
-                                    (!action.isFrameGeneration || BuildConfig.DEBUG) &&
-                                    (action != InGameAction.LSFG || lsfgAvailable) &&
-                                    (!action.isPersistence ||
-                                        (!fpsConfig.loading && !fpsConfig.saving && fpsConfig.error == null &&
-                                            (action == InGameAction.SAVE_GLOBAL_FPS || action == InGameAction.STRETCH ||
-                                                fpsConfig.titleId != null))),
-                                modifier = Modifier.padding(top = 8.dp)
-                                    .then(if (index == state.selected) Modifier.bringIntoViewRequester(selectedRow) else Modifier),
-                                onClick = {
-                                    onSelect(index)
-                                    onAction(action)
-                                },
-                            )
-                        }
-                        if (state.page == InGamePage.GRAPHICS) {
-                            Text(
-                                stringResource(R.string.menu_graphics_note),
-                                modifier = Modifier.padding(top = 14.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            if (!BuildConfig.DEBUG && state.developer) Text(stringResource(R.string.menu_fg_gated), style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (state.page == InGamePage.SYSTEM) {
-                            Text(stringResource(R.string.menu_system_note), style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (state.page == InGamePage.CONTROLS) {
-                            phoneControllers?.let {
-                                Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
-                            }
-                            Text(stringResource(R.string.menu_adaptive_note), style = MaterialTheme.typography.bodySmall)
-                            Text(stringResource(R.string.menu_touch_camera_note), style = MaterialTheme.typography.bodySmall)
-                            Text(stringResource(R.string.menu_phones_note), style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (state.page == InGamePage.SESSION) {
-                            Text(sessionInfo, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp))
-                        }
-                    }
+                if (!controller) XdIconButton(XdIcons.x, stringResource(R.string.menu_continue), { onAction(InGameAction.RESUME) })
+            }
+            if (status.isNotEmpty() && !state.confirmingQuit && !state.logPicker) StatusLine(status)
+            if (!state.confirmingQuit && !state.logPicker) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (controller) ButtonGlyph("LB")
+                    InGamePage.entries.forEach { page -> MenuTab(page.label(), page == state.page) { onPage(page) } }
+                    if (controller) ButtonGlyph("RB")
                 }
-                if (!state.confirmingQuit && !state.logPicker) {
-                    Row(Modifier.fillMaxWidth()) {
-                        TextButton(onClick = { onAction(InGameAction.RESUME) }, modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.menu_continue))
-                        }
-                        TextButton(onClick = { onAction(InGameAction.QUIT) }, modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.menu_exit_game))
-                        }
+            }
+            // Head, tabs and foot stay visible even on short screens. Only options scroll;
+            // hardware selection is kept visible by the requester above.
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                if (state.confirmingQuit) {
+                    Text(stringResource(R.string.menu_exit_question), style = XdText.h2, color = c.fg, modifier = Modifier.padding(top = 8.dp))
+                    Text(stringResource(R.string.menu_exit_warning), style = XdText.bodySm, color = c.fg2)
+                    GuestPanelOption(
+                        label = stringResource(R.string.menu_cancel), selected = state.selected == 0,
+                        onClick = { onQuitChoice(false) },
+                        modifier = Modifier.padding(top = 6.dp)
+                            .then(if (state.selected == 0) Modifier.bringIntoViewRequester(selectedRow) else Modifier),
+                    )
+                    GuestPanelOption(
+                        label = stringResource(R.string.menu_exit_game), selected = state.selected == 1,
+                        onClick = { onQuitChoice(true) }, danger = true,
+                        modifier = if (state.selected == 1) Modifier.bringIntoViewRequester(selectedRow) else Modifier,
+                    )
+                } else if (state.logPicker) {
+                    Text(stringResource(R.string.menu_logs_title), style = XdText.h2, color = c.fg)
+                    Text(stringResource(R.string.xd_menu_logs_note), style = XdText.note, color = c.fg3)
+                    val labels = listOf(stringResource(R.string.menu_logs_all)) +
+                        logSessions.map { stringResource(R.string.menu_logs_session, it.label, (it.bytes / 1024).toInt()) } +
+                        stringResource(R.string.menu_back)
+                    labels.forEachIndexed { index, label ->
+                        GuestPanelOption(label, selected = state.selected == index,
+                            modifier = if (state.selected == index) Modifier.bringIntoViewRequester(selectedRow) else Modifier,
+                            onClick = { onLogChoice(index) })
                     }
+                } else {
+                    if (state.page == InGamePage.GRAPHICS && state.developer) {
+                        MenuNote(presentation.label)
+                        frameGenerationBudget?.let { MenuNote(it) }
+                        frameGenerationNotes.forEach { MenuNote(it) }
+                        MenuNote(stringResource(R.string.menu_fg_experimental))
+                    }
+                    if (state.page == InGamePage.SYSTEM) {
+                        Text(stringResource(R.string.menu_frame_limit_title), style = XdText.label, color = c.fg)
+                        MenuNote(stringResource(R.string.menu_live_limit, fpsText(fpsLimit)) + " " +
+                            when {
+                                fpsConfig.saving -> stringResource(R.string.menu_saving_config)
+                                fpsConfig.loading -> stringResource(R.string.menu_reading_config)
+                                fpsConfig.error != null -> fpsConfig.error
+                                else -> stringResource(R.string.menu_next_launch, fpsText(fpsConfig.globalLimit),
+                                    if (fpsConfig.titleId == null) stringResource(R.string.menu_game_id_unavailable)
+                                    else stringResource(R.string.menu_game_limit,
+                                        fpsConfig.gameLimit?.let { fpsText(it) } ?: stringResource(R.string.menu_inherits_global)))
+                            })
+                    }
+                    state.actions().forEachIndexed { index, action ->
+                        val more = action == InGameAction.MORE_OPTIONS
+                        GuestPanelOption(
+                            label = if (more) {
+                                if (state.page in state.advanced) stringResource(R.string.menu_fewer_options)
+                                else stringResource(R.string.menu_more_options, state.advancedCount())
+                            } else {
+                                extensionLabels[action] ?: action.label(fpsLimit, performanceHud, compactHud, hudPanel, touchControls, adaptiveSticks, stretch, hudMetrics, presentation, fgPreset, volume)
+                            },
+                            selected = index == state.selected,
+                            enabled = (action != InGameAction.ADAPTIVE_STICKS || fpsConfig.titleId != null) &&
+                                (!action.isFrameGeneration || BuildConfig.DEBUG) &&
+                                (action != InGameAction.LSFG || lsfgAvailable) &&
+                                (!action.isPersistence ||
+                                    (!fpsConfig.loading && !fpsConfig.saving && fpsConfig.error == null &&
+                                        (action == InGameAction.SAVE_GLOBAL_FPS || action == InGameAction.STRETCH ||
+                                            fpsConfig.titleId != null))),
+                            splitValue = true,
+                            subtle = more,
+                            danger = action == InGameAction.QUIT,
+                            modifier = if (index == state.selected) Modifier.bringIntoViewRequester(selectedRow) else Modifier,
+                            onClick = {
+                                onSelect(index)
+                                onAction(action)
+                            },
+                        )
+                    }
+                    if (state.page == InGamePage.GRAPHICS) {
+                        MenuNote(stringResource(R.string.menu_graphics_note), Modifier.padding(top = 6.dp))
+                        if (!BuildConfig.DEBUG && state.developer) MenuNote(stringResource(R.string.menu_fg_gated))
+                    }
+                    if (state.page == InGamePage.SYSTEM) MenuNote(stringResource(R.string.menu_system_note), Modifier.padding(top = 6.dp))
+                    if (state.page == InGamePage.CONTROLS) {
+                        phoneControllers?.let {
+                            Text(it, style = XdText.bodySm, color = c.fg, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                .background(c.s1).padding(12.dp))
+                        }
+                        MenuNote(stringResource(R.string.menu_adaptive_note))
+                        MenuNote(stringResource(R.string.menu_touch_camera_note))
+                        MenuNote(stringResource(R.string.menu_phones_note))
+                    }
+                    if (state.page == InGamePage.SESSION) MenuNote(sessionInfo, Modifier.padding(top = 6.dp))
+                }
+            }
+            if (controller) {
+                val swap = LocalSwapConfirm.current
+                CHints(listOf(XdHint(if (swap) "B" else "A", stringResource(R.string.xd_hint_select)),
+                    XdHint(if (swap) "A" else "B", stringResource(R.string.xd_close)) { onAction(InGameAction.RESUME) },
+                    XdHint("LB/RB", stringResource(R.string.xd_hint_tabs))), Modifier.clip(RoundedCornerShape(12.dp)))
+            } else if (!state.confirmingQuit && !state.logPicker) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    XdButton(stringResource(R.string.menu_continue), { onAction(InGameAction.RESUME) }, kind = XdButtonKind.PRIMARY,
+                        icon = XdIcons.play, modifier = Modifier.weight(1f))
+                    XdButton(stringResource(R.string.menu_exit_game), { onAction(InGameAction.QUIT) }, kind = XdButtonKind.GHOST, icon = XdIcons.exit)
                 }
             }
         }
     }
+}
+
+@Composable
+private fun StatusLine(status: List<MenuStat>) {
+    val c = Xd.colors
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.05f))
+        .horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        for (s in status) {
+            Text(buildAnnotatedString {
+                s.label?.let { append(it); append(' ') }
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = c.fg)) { append(s.value) }
+                s.unit?.let { append(' '); append(it) }
+            }, style = XdText.small, color = c.fg2, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun MenuTab(text: String, selected: Boolean, onClick: () -> Unit) {
+    val c = Xd.colors
+    val shape = RoundedCornerShape(50)
+    Box(
+        Modifier.height(34.dp).clip(shape).background(if (selected) c.acc.copy(alpha = 0.18f) else Color.Transparent)
+            .clickable(role = Role.Tab, onClick = onClick).semantics { this.selected = selected }.padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, style = XdText.labelSm, color = if (selected) c.acc else c.fg2, maxLines = 1) }
+}
+
+@Composable
+private fun MenuNote(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = XdText.note, color = Xd.colors.fg3, modifier = modifier)
 }
 
 @Composable

@@ -18,12 +18,9 @@ class PreferencesStore(private val appContext: Context) {
     private val gameDirPathKey = stringPreferencesKey("game_dir_path")
     private val favoriteIdsKey = stringSetPreferencesKey("favorite_game_ids")
     private val librarySortKey = stringPreferencesKey("library_sort")
-    /** How the library shows the games: "GRID" or "CAROUSEL". */
-    private val libraryViewKey = stringPreferencesKey("library_view")
 
     val favoriteIds: Flow<Set<String>> = appContext.dataStore.data.map { it[favoriteIdsKey].orEmpty() }
     val librarySort: Flow<String> = appContext.dataStore.data.map { it[librarySortKey] ?: "NAME_ASC" }
-    val libraryView: Flow<String> = appContext.dataStore.data.map { it[libraryViewKey] ?: "GRID" }
 
     /** Read-modify-write inside one DataStore transaction (keyed by [Game.identityKey]). */
     suspend fun toggleFavorite(game: Game) {
@@ -34,10 +31,6 @@ class PreferencesStore(private val appContext: Context) {
 
     suspend fun setLibrarySort(sort: String) {
         appContext.dataStore.edit { it[librarySortKey] = sort }
-    }
-
-    suspend fun setLibraryView(view: String) {
-        appContext.dataStore.edit { it[libraryViewKey] = view }
     }
 
     /** Adds favorites (a data bundle's import) in one transaction; none is ever removed. */

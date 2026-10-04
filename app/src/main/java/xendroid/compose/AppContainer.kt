@@ -112,7 +112,7 @@ class AppContainer(context: Context) {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 require(modelClass == SettingsViewModel::class.java) { "Unknown ViewModel ${modelClass.name}" }
-                return SettingsViewModel(SettingsRepository(configStore)) as T
+                return SettingsViewModel(SettingsRepository(configStore), xendroid.compose.settings.GameOverridesIndex(configStore)) as T
             }
         }
 

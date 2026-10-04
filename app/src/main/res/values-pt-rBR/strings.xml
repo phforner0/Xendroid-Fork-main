@@ -7,7 +7,7 @@
     <string name="menu_paused">Pausado · Voltar para fechar</string>
     <string name="menu_running">Jogo rodando · Voltar para fechar</string>
     <string name="menu_tab_graphics">Gráficos</string>
-    <string name="menu_tab_system">Sistema</string>
+    <string name="menu_tab_system">Desempenho</string>
     <string name="menu_tab_controls">Controles</string>
     <string name="menu_tab_session">Sessão</string>
     <string name="menu_exit_question">Sair do jogo?</string>
