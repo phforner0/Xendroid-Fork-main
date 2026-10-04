@@ -111,7 +111,8 @@ fun XdButton(
     val shape = RoundedCornerShape(50)
     Row(
         modifier
-            .focusRing(shape)
+            // An accent ring would vanish on the accent fill of a primary button.
+            .focusRing(shape, color = if (kind == XdButtonKind.PRIMARY) c.fg else null)
             .defaultMinSize(minHeight = height)
             .height(height)
             .clip(shape)

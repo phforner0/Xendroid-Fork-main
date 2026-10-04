@@ -192,8 +192,8 @@ fun XdUserDataCard() {
 
 /** R02: which releases this build offers (stable, preview, off). Absent without a release feed. */
 @Composable
-fun XdUpdateChannelOption() {
-    if (updateRepository() == null) return
+fun XdUpdateChannelOption(shown: Boolean = updateRepository() != null) {
+    if (!shown) return
     val context = LocalContext.current
     var channel by remember { mutableStateOf(updateChannel(context)) }
     xendroid.compose.ui.design.XdSheetOption(stringResource(R.string.upd_title), subtitle = when (channel) {

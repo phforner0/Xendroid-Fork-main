@@ -1,8 +1,6 @@
 package xendroid.compose.ui.library
 
 import android.app.Activity
-import android.content.Context
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +21,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -37,8 +34,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import xendroid.compose.R
 import xendroid.compose.core.AllFilesAccess
 import xendroid.compose.data.Game
@@ -61,14 +56,7 @@ import xendroid.compose.ui.design.XdText
 import xendroid.compose.ui.settings.GameSettingsEditing
 import xendroid.compose.ui.settings.XdQuickSettings
 import xendroid.compose.ui.userdata.openUserData
-import xendroid.compose.updater.CooldownDialog
-import xendroid.compose.updater.LatestVersionDialog
-import xendroid.compose.updater.UpdateDialog
-import xendroid.compose.updater.UpdateResult
-import xendroid.compose.updater.checkForUpdates
-import xendroid.compose.updater.getRemainingCooldown
-import xendroid.compose.updater.saveLastCheck
-import xendroid.compose.updater.shouldCheckForUpdates
+import xendroid.compose.ui.design.LocalXdToast
 
 /** A scan shorter than this shows no progress row. */
 private const val SCAN_PROGRESS_DELAY_MS = 700L
@@ -107,11 +95,16 @@ fun GameLibraryScreen(
     collectionsArea: Boolean = false,
     /** Bumped each time the rail asks for Games or Collections: the filter starts over. */
     areaTick: Int = 0,
+    /** The app updates screen (lote 6). */
+    onOpenUpdates: () -> Unit = {},
+    /** The first-run assistant creates a profile here and makes it P1; null: only "Open Profiles". */
+    onCreateProfile: ((String) -> Unit)? = null,
+    /** Bumped to open the setup assistant again (About). */
+    assistantTick: Int = 0,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var updateResult by remember { mutableStateOf<UpdateResult?>(null) }
+    val toast = LocalXdToast.current
     val actions = rememberGameActions(viewModel, compressVm, onInstallFromDisc)
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
@@ -135,6 +128,8 @@ fun GameLibraryScreen(
     val gridState = rememberLazyGridState()
 
     var showBrowser by remember { mutableStateOf(false) }
+    // Lote 6: a missing game's file chosen in the browser: its folder joins the game folders.
+    var findingFile by remember { mutableStateOf<xendroid.compose.data.MissingTitle?>(null) }
     var allFilesGranted by remember { mutableStateOf(AllFilesAccess.isGranted()) }
     // Not-yet-granted sends the user to Settings; the grant returns no result, so it is
     // observed on the next ON_START.
@@ -159,6 +154,8 @@ fun GameLibraryScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // Folders in toasts are named as the phone's Files app names them.
+    val storageRoots = rememberStorageRoots()
     if (showBrowser) {
         FolderBrowserScreen(
             onFolderChosen = { path -> showBrowser = false; viewModel.onRealPathFolderPicked(path) },
@@ -166,45 +163,105 @@ fun GameLibraryScreen(
         )
         return
     }
+    findingFile?.let { title ->
+        FolderBrowserScreen(
+            onFileChosen = { path ->
+                findingFile = null
+                java.io.File(path).parent?.let { folder ->
+                    viewModel.onRealPathFolderPicked(folder)
+                    toast.show(context.getString(R.string.xd_ms_added, StoragePaths.display(folder, storageRoots)))
+                }
+            },
+            onCancel = { findingFile = null },
+            start = generateSequence(java.io.File(title.lastPath).parentFile) { it.parentFile }.firstOrNull { it.isDirectory },
+            title = stringResource(R.string.xd_ms_find_title, title.name),
+            hint = stringResource(R.string.xd_ms_find_note),
+        )
+        return
+    }
 
-    // L03: the library's game folders (add, remove; files are never touched).
-    var foldersOpen by remember { mutableStateOf(false) }
+    // L03, lote 6: the library's game folders (add, remove, where installs go; files are never touched).
+    var foldersOpen by rememberSaveable { mutableStateOf(false) }
+    val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val scanProgress by viewModel.scanProgress.collectAsStateWithLifecycle()
+    val openFolders = { viewModel.loadFolders(); foldersOpen = true }
     if (foldersOpen) {
-        val folders by viewModel.folders.collectAsStateWithLifecycle()
-        GameFoldersDialog(
+        GameFoldersScreen(
             folders = folders,
             unavailable = (state as? LibraryUiState.Loaded)?.unavailableRoots.orEmpty(),
-            onAdd = { foldersOpen = false; startRealPathMode() },
-            onRemove = viewModel::removeFolder,
-            onDismiss = { foldersOpen = false },
+            games = (state as? LibraryUiState.Loaded)?.games.orEmpty(),
+            scanning = scanProgress != null || isRefreshing,
+            onAdd = startRealPathMode,
+            onRemove = { folder ->
+                val before = folders
+                viewModel.removeFolder(folder)
+                toast.show(context.getString(R.string.xd_fd_removed, StoragePaths.display(folder, storageRoots)),
+                    context.getString(R.string.xd_undo)) { viewModel.restoreFolders(before) }
+            },
+            onMakeInstallFolder = { folder ->
+                viewModel.makeInstallFolder(folder)
+                toast.show(context.getString(R.string.xd_fd_install_moved))
+            },
+            onRescan = { viewModel.refresh() },
+            onBack = { foldersOpen = false },
         )
+        return
     }
-    val openFolders = { viewModel.loadFolders(); foldersOpen = true }
 
-    // L06: games played or seen before that this scan did not list.
-    var missingOpen by remember { mutableStateOf(false) }
+    // L06, lote 6: games played or seen before that this scan did not list.
+    var missingOpen by rememberSaveable { mutableStateOf(false) }
     if (missingOpen) {
-        MissingGamesDialog(
-            missing = missing, activity = activity, coverOf = viewModel::coverOfTitle, onRemove = viewModel::hideMissing,
-            onManageFolders = { missingOpen = false; openFolders() }, onDismiss = { missingOpen = false },
+        MissingGamesScreen(
+            missing = missing, activity = activity, coverOf = viewModel::coverOfTitle,
+            onRemove = { title ->
+                viewModel.hideMissing(title)
+                toast.show(context.getString(R.string.xd_ms_removed, title.name))
+            },
+            onAddFolderOf = { title ->
+                java.io.File(title.lastPath).parent?.let { folder ->
+                    viewModel.onRealPathFolderPicked(folder)
+                    toast.show(context.getString(R.string.xd_ms_added, StoragePaths.display(folder, storageRoots)))
+                }
+            },
+            onFind = { title -> findingFile = title },
+            onFolders = { missingOpen = false; openFolders() },
+            onBack = { missingOpen = false },
         )
+        return
     }
 
     // L01: once, until finished or skipped; reopened from the menu. Not over the no-Vulkan
     // gate, which already explains why games cannot run.
     var assistantOpen by rememberSaveable { mutableStateOf(!FirstRunStore.done(context)) }
+    // Kept here: the folder browser replaces the assistant for a while, and it comes back on the same step.
+    var assistantStep by rememberSaveable { mutableStateOf(FirstRunStep.PHONE) }
+    LaunchedEffect(assistantTick) { if (assistantTick > 0) { assistantStep = FirstRunStep.PHONE; assistantOpen = true } }
     if (assistantOpen && state != LibraryUiState.NoVulkan) {
+        LaunchedEffect(Unit) { viewModel.loadFolders() }
+        val found = (state as? LibraryUiState.Loaded)?.games
         FirstRunAssistant(
             folderReady = state is LibraryUiState.Loaded,
             onChooseFolder = startRealPathMode,
             onOpenProfiles = onOpenProfiles,
-            onClose = { FirstRunStore.markDone(context); assistantOpen = false },
+            onClose = {
+                FirstRunStore.markDone(context)
+                assistantOpen = false
+                toast.show(context.getString(R.string.xd_fr_done))
+            },
+            folders = folders,
+            gamesFound = found?.size,
+            scanning = state == LibraryUiState.Loading || scanProgress != null,
+            covers = remember(found) { found.orEmpty().take(10).map { viewModel.iconFileOrFallback(it) } },
+            activeProfile = activeProfile,
+            onCreateProfile = onCreateProfile,
+            step = assistantStep,
+            onStep = { assistantStep = it },
         )
     }
 
     val loaded = state as? LibraryUiState.Loaded
     if (loaded == null || loaded.games.isEmpty()) {
-        LibraryEmpty(state, viewModel, allFilesGranted, startRealPathMode, missing, openFolders) { missingOpen = true }
+        LibraryEmpty(state, viewModel, allFilesGranted, startRealPathMode, missing, openFolders, onMenu = { menuOpen = true }) { missingOpen = true }
     } else {
         val data = remember(loaded.games, favorites, activity, compat, collections, sort) {
             LibraryData(loaded.games, favorites, activity, compat, collections, sort)
@@ -276,15 +333,8 @@ fun GameLibraryScreen(
         onRescan = { menuOpen = false; viewModel.refresh() },
         onSetup = { menuOpen = false; assistantOpen = true },
         onUserData = { menuOpen = false; openUserData(context) },
-        onUpdates = { menuOpen = false; checkForUpdatesClicked(context, scope) { updateResult = it } },
+        onUpdates = { menuOpen = false; onOpenUpdates() },
     )
-
-    when (val result = updateResult) {
-        is UpdateResult.Available -> UpdateDialog(release = result.release, onDismiss = { updateResult = null })
-        is UpdateResult.Latest -> LatestVersionDialog(commitHash = result.commitHash, onDismiss = { updateResult = null })
-        is UpdateResult.Cooldown -> CooldownDialog(remainingMillis = result.remainingMillis, onDismiss = { updateResult = null })
-        null -> {}
-    }
     GameActionDialogs(actions)
 }
 
@@ -334,15 +384,18 @@ private fun LibraryEmpty(
     startRealPathMode: () -> Unit,
     missing: List<xendroid.compose.data.MissingTitle>,
     onFolders: () -> Unit,
+    onMenu: () -> Unit,
     onMissing: () -> Unit,
 ) {
     val context = LocalContext.current
     if (state == LibraryUiState.NoVulkan) {
-        NoVulkanDialog(onQuit = { (context as? Activity)?.finish() })
+        NoVulkanScreen(onQuit = { (context as? Activity)?.finish() })
         return
     }
     val c = Xd.colors
-    XdSingleScreen(title = stringResource(R.string.lib_title), area = XdArea.GAMES, headIcon = XdIcons.grid, scroll = false) {
+    // The library's own menu (folders, assistant, updates) stays at hand while it is empty.
+    XdSingleScreen(title = stringResource(R.string.lib_title), area = XdArea.GAMES, headIcon = XdIcons.grid, scroll = false,
+        actions = { xendroid.compose.ui.design.XdIconButton(XdIcons.more, stringResource(R.string.lib_more), onMenu) }) {
         Box(Modifier.fillMaxSize().background(c.bg), contentAlignment = Alignment.Center) {
             Column(Modifier.widthIn(max = 520.dp).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -422,34 +475,6 @@ private fun LibraryNotices(
     if (gone > 0) Row(pad) { XdLink(pluralStringResource(R.plurals.lib_games_gone, gone, gone), onMissing) }
 }
 
-@Composable
-private fun NoVulkanDialog(onQuit: () -> Unit) {
-    XdSheet(onDismiss = onQuit, title = stringResource(R.string.lib_unsupported),
-        actions = { XdButton(stringResource(R.string.lib_quit), onQuit, kind = XdButtonKind.PRIMARY) }) {
-        Text(stringResource(R.string.lib_no_vulkan), style = XdText.bodySm, color = Xd.colors.fg2)
-    }
-}
-
-fun checkForUpdatesClicked(
-    context: Context,
-    scope: CoroutineScope,
-    onResult: (UpdateResult) -> Unit
-) {
-    scope.launch {
-        if (!shouldCheckForUpdates(context)) {
-            Log.d("Updater", "Skipping update check")
-            onResult(UpdateResult.Cooldown(getRemainingCooldown(context)))
-            return@launch
-        }
-        try {
-            val result = checkForUpdates(context)
-            saveLastCheck(context)
-            onResult(result)
-        } catch (e: Exception) {
-            Log.e("Updater", "Failed to check updates", e)
-        }
-    }
-}
 
 /** U02: a compatibility result as shown; reports keep the English label. */
 @Composable

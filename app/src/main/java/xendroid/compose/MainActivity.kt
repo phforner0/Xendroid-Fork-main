@@ -45,9 +45,8 @@ import xendroid.compose.ui.theme.xendroidTheme
 import xendroid.compose.settings.AppLanguageStore
 import xendroid.compose.settings.ConfigStore
 import xendroid.compose.settings.seedTouchOverlayDefault
-import xendroid.compose.updater.LatestVersionDialog
-import xendroid.compose.updater.UpdateDialog
 import xendroid.compose.updater.UpdateResult
+import xendroid.compose.updater.UpdateSheet
 import xendroid.compose.updater.checkForUpdates
 import xendroid.compose.updater.shouldCheckForUpdates
 import xendroid.compose.updater.saveLastCheck
@@ -245,22 +244,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                when (val result = updateResult) {
-                    is UpdateResult.Available -> {
-                        UpdateDialog(
-                            release = result.release,
-                            onDismiss = { updateResult = null }
-                        )
-                    }
-
-                    is UpdateResult.Latest -> {
-                        LatestVersionDialog(
-                            commitHash = result.commitHash,
-                            onDismiss = { updateResult = null }
-                        )
-                    }
-
-                    is UpdateResult.Cooldown, null -> {}
+                // Lote 6: the offered update as a sheet with its steps (download, check, install).
+                (updateResult as? UpdateResult.Available)?.let { result ->
+                    UpdateSheet(release = result.release, onDismiss = { updateResult = null })
                 }
             }
             }

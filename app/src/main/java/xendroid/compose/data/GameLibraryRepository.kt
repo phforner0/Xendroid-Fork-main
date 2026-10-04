@@ -85,6 +85,11 @@ class GameLibraryRepository(
     /** Stops scanning [path]; nothing in it is deleted. */
     suspend fun removeGameDirPath(path: String) = withContext(Dispatchers.IO) { prefs.removeGameDirPath(path) }
 
+    suspend fun firstGameDirPath(path: String) = withContext(Dispatchers.IO) { prefs.firstGameDirPath(path) }
+
+    /** Undo of a removal: the folders as they were, even one not readable now (it shows as unavailable). */
+    suspend fun setGameDirPaths(paths: List<String>) = withContext(Dispatchers.IO) { prefs.setGameDirPaths(paths) }
+
     suspend fun gameDirPaths(): List<String> = withContext(Dispatchers.IO) {
         prefs.gameDirPaths.firstOrNull().orEmpty()
     }

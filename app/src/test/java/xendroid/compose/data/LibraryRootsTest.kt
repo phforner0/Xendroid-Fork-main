@@ -24,6 +24,14 @@ class LibraryRootsTest {
         assertEquals(roots, LibraryRoots.remove(roots, "/missing"))
     }
 
+    @Test fun theFolderThatReceivesInstallsMovesToTheTop() {
+        val roots = listOf("/a", "/b", "/c")
+        assertEquals(listOf("/c", "/a", "/b"), LibraryRoots.first(roots, "/c"))
+        assertEquals(roots, LibraryRoots.first(roots, "/a"))
+        // A folder that is not one of the library's is not added by it.
+        assertEquals(roots, LibraryRoots.first(roots, "/elsewhere"))
+    }
+
     @Test fun nestedRootsAreCoveredAndMissingOnesDoNotStopTheOthers() {
         // /sdcard is a symlink to /storage/emulated/0 on Android.
         val canonical = mapOf(

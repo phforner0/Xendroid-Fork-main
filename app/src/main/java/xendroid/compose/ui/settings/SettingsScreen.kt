@@ -322,7 +322,8 @@ private fun GlobalTomlSheet(editing: SettingsEditing, onDismiss: () -> Unit) {
 private fun UpdatesBody() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var result by remember { mutableStateOf<xendroid.compose.updater.UpdateResult?>(null) }
+    // Lote 6: what the check finds shows here, with its steps (no dialog).
+    val update = xendroid.compose.updater.rememberUpdateState()
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         XdUpdateChannelOption()
         XdCard(title = stringResource(R.string.xd_set_version), icon = XdIcons.download) {
@@ -333,16 +334,10 @@ private fun UpdatesBody() {
                     android.text.format.DateUtils.getRelativeTimeSpanString(it, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS).toString()
                 } ?: stringResource(R.string.xd_lib_never)),
             ))
-            XdButton(stringResource(R.string.lib_menu_updates), {
-                xendroid.compose.ui.library.checkForUpdatesClicked(context, scope) { result = it }
-            }, size = XdButtonSize.SM, icon = XdIcons.refresh)
+            XdButton(stringResource(if (update.checking) R.string.xd_up_checking else R.string.lib_menu_updates), { update.check(context, scope) },
+                size = XdButtonSize.SM, icon = XdIcons.refresh, enabled = !update.checking && update.stage == null)
         }
-    }
-    when (val r = result) {
-        is xendroid.compose.updater.UpdateResult.Available -> xendroid.compose.updater.UpdateDialog(release = r.release, onDismiss = { result = null })
-        is xendroid.compose.updater.UpdateResult.Latest -> xendroid.compose.updater.LatestVersionDialog(commitHash = r.commitHash, onDismiss = { result = null })
-        is xendroid.compose.updater.UpdateResult.Cooldown -> xendroid.compose.updater.CooldownDialog(remainingMillis = r.remainingMillis, onDismiss = { result = null })
-        null -> {}
+        xendroid.compose.updater.UpdatePanel(update)
     }
 }
 

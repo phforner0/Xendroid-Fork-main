@@ -70,11 +70,24 @@ class PreferencesStore(private val appContext: Context) {
         }
     }
 
+    /** Makes [path] the first folder: full-game installs go there. */
+    suspend fun firstGameDirPath(path: String) {
+        appContext.dataStore.edit { prefs ->
+            val roots = LibraryRoots.decode(prefs[gameDirPathsKey], prefs[gameDirPathKey])
+            prefs[gameDirPathsKey] = LibraryRoots.encode(LibraryRoots.first(roots, path))
+        }
+    }
+
     /** Stops scanning a folder; its files are never touched. */
     suspend fun removeGameDirPath(path: String) {
         appContext.dataStore.edit { prefs ->
             val roots = LibraryRoots.decode(prefs[gameDirPathsKey], prefs[gameDirPathKey])
             prefs[gameDirPathsKey] = LibraryRoots.encode(LibraryRoots.remove(roots, path))
         }
+    }
+
+    /** Puts back a list of folders as it was (Undo after a removal), order included. */
+    suspend fun setGameDirPaths(paths: List<String>) {
+        appContext.dataStore.edit { prefs -> prefs[gameDirPathsKey] = LibraryRoots.encode(paths.distinct()) }
     }
 }

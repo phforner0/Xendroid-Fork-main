@@ -524,10 +524,27 @@ class GameLibraryViewModel(
         }
     }
 
+    /** Lote 6: full-game installs go to [path] from now on (it becomes the first folder). */
+    fun makeInstallFolder(path: String) {
+        viewModelScope.launch {
+            repo.firstGameDirPath(path)
+            _folders.value = repo.gameDirPaths()
+        }
+    }
+
     /** Stops scanning [path] (its files stay where they are) + rescan. */
     fun removeFolder(path: String) {
         viewModelScope.launch {
             repo.removeGameDirPath(path)
+            _folders.value = repo.gameDirPaths()
+            refresh()
+        }
+    }
+
+    /** Lote 6: Undo of [removeFolder]: [before] comes back in its order (installs go where they went). */
+    fun restoreFolders(before: List<String>) {
+        viewModelScope.launch {
+            repo.setGameDirPaths(before)
             _folders.value = repo.gameDirPaths()
             refresh()
         }

@@ -117,7 +117,8 @@ class ProfileManagerViewModel(
         }
     }
 
-    fun create(gamertag: String, language: Int, country: Int, avatarUri: Uri?) = viewModelScope.launch {
+    /** [activate]: the new profile also becomes P1 (the first-run assistant). */
+    fun create(gamertag: String, language: Int, country: Int, avatarUri: Uri?, activate: Boolean = false) = viewModelScope.launch {
         if (!Gamertag.isValid(gamertag)) {
             _opState.value = OpState.Failed(appContext.getString(R.string.pf_bad_gamertag))
             return@launch
@@ -134,6 +135,7 @@ class ProfileManagerViewModel(
                         ContentPaths.contentRoot().absolutePath, gamertag, language, country)
                         ?: return@withContext OpState.Failed(appContext.getString(R.string.pf_create_failed_short))
                     val avatarError = tiles?.let { runCatching { writeAvatar(xuid, it) }.exceptionOrNull() }
+                    if (activate) writeActiveXuid(xuid.uppercase())
                     if (avatarError == null) OpState.Done(appContext.getString(R.string.pf_created, gamertag))
                     else OpState.Done(appContext.getString(R.string.pf_created_no_avatar, gamertag, avatarError.message))
                 }

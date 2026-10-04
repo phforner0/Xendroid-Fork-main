@@ -1,34 +1,11 @@
 package xendroid.compose.updater
 
 import xendroid.compose.R
-import androidx.compose.ui.res.stringResource
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.util.Log
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import com.google.gson.annotations.SerializedName
 import java.io.File
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -166,7 +143,7 @@ suspend fun downloadUpdate(context: Context, release: FeedRelease, onProgress: (
     }
 
 /** U02: why the download cannot be used, in the shown language. */
-private fun downloadFailureText(context: Context, e: UpdateDownloadException): String = when (e.reason) {
+internal fun downloadFailureText(context: Context, e: UpdateDownloadException): String = when (e.reason) {
     UpdateDownloadException.Reason.NO_APK -> context.getString(R.string.upd_err_no_apk)
     UpdateDownloadException.Reason.NO_SHA256 -> context.getString(R.string.upd_err_no_sha256)
     UpdateDownloadException.Reason.HTTP -> context.getString(R.string.upd_err_http, e.args[0])
@@ -187,109 +164,4 @@ fun cleanChangelog(text: String): String {
         .replace(Regex("\\* "), "• ")
         .replace(Regex("\n{3,}"), "\n\n")
         .trim()
-}
-
-/** R03/R04: notes, then download + verify + system installer; or skip, later, or the release page. */
-@Composable
-fun UpdateDialog(
-    release: FeedRelease,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var progress by remember { mutableStateOf<Float?>(null) }
-    var failure by remember { mutableStateOf<String?>(null) }
-    val asset = apkAsset(release)
-    val verifiable = asset?.sha256 != null
-
-    AlertDialog(
-        onDismissRequest = { if (progress == null) onDismiss() },
-        title = { Text(stringResource(R.string.upd_available)) },
-        text = {
-            Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                Text((release.title ?: release.tagName) + if (release.prerelease) " " + stringResource(R.string.upd_preview_tag) else "")
-                asset?.let {
-                    Text("${it.size / (1024 * 1024)} MB · " +
-                        if (verifiable) stringResource(R.string.upd_verifiable)
-                        else stringResource(R.string.upd_not_verifiable))
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(release.notes?.let(::cleanChangelog) ?: stringResource(R.string.upd_no_changelog))
-                progress?.let {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    LinearProgressIndicator(progress = { it })
-                }
-                failure?.let {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(it)
-                }
-            }
-        },
-        confirmButton = {
-            if (verifiable) TextButton(enabled = progress == null, onClick = {
-                failure = null
-                progress = 0f
-                scope.launch {
-                    try {
-                        val apk = downloadUpdate(context, release) { progress = it }
-                        val refusal = withContext(Dispatchers.IO) { UpdateInstaller.verify(context, apk) }
-                        if (refusal != null) {
-                            apk.delete()
-                            failure = context.getString(R.string.upd_not_installed_why, refusal)
-                        } else {
-                            UpdateInstaller.install(context, apk)
-                            onDismiss()
-                        }
-                    } catch (e: Exception) {
-                        if (e is kotlinx.coroutines.CancellationException) throw e
-                        failure = (e as? UpdateDownloadException)?.let { downloadFailureText(context, it) }
-                            ?: context.getString(R.string.upd_download_failed, e.message ?: e.javaClass.simpleName)
-                    } finally {
-                        progress = null
-                    }
-                }
-            }) { Text(stringResource(R.string.upd_download_install)) }
-            else TextButton(onClick = {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.pageUrl)))
-                onDismiss()
-            }) { Text(stringResource(R.string.upd_release_page)) }
-        },
-        dismissButton = {
-            Column {
-                TextButton(enabled = progress == null, onClick = {
-                    release.tag?.versionCode?.let { skipVersion(context, it) }
-                    onDismiss()
-                }) { Text(stringResource(R.string.upd_skip)) }
-                TextButton(enabled = progress == null, onClick = onDismiss) { Text(stringResource(R.string.upd_later)) }
-            }
-        }
-    )
-}
-
-@Composable
-fun LatestVersionDialog(
-    commitHash: String,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.upd_none)) },
-        text = { Text(stringResource(R.string.upd_latest, commitHash)) },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_ok)) } }
-    )
-}
-
-@Composable
-fun CooldownDialog(
-    remainingMillis: Long,
-    onDismiss: () -> Unit
-) {
-    val minutes = remainingMillis / 1000 / 60
-    val seconds = (remainingMillis / 1000) % 60
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.upd_cooldown_title)) },
-        text = { Text(stringResource(R.string.upd_cooldown, minutes, seconds)) },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_ok)) } }
-    )
 }

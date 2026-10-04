@@ -1,244 +1,176 @@
 package xendroid.compose.ui.library
 
-import xendroid.compose.R
-import androidx.compose.ui.res.stringResource
-import android.content.Context
-import android.os.Build
-import android.os.Environment
-import android.os.storage.StorageManager
+import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.io.File
-
-/** A browsable storage root: internal storage or a mounted removable volume. */
-private data class StorageRoot(val label: String, val dir: File)
+import xendroid.compose.R
+import xendroid.compose.ui.design.BadgeTone
+import xendroid.compose.ui.design.Xd
+import xendroid.compose.ui.design.XdBadge
+import xendroid.compose.ui.design.XdButton
+import xendroid.compose.ui.design.XdButtonKind
+import xendroid.compose.ui.design.XdChip
+import xendroid.compose.ui.design.XdIcons
+import xendroid.compose.ui.design.XdSingleScreen
+import xendroid.compose.ui.design.XdText
+import xendroid.compose.ui.design.focusRing
 
 /**
- * Self-contained java.io.File directory browser for REAL-PATH (All Files Access) mode.
- * Replaces the SAF OPEN_DOCUMENT_TREE picker, which MIUI/HyperOS refuses. Starts at the
- * primary external storage root, lists subdirectories only (sorted, hidden skipped), and
- * lets the user confirm the current directory as the games folder.
+ * Lote 6: the app's own folder browser (java.io.File; the SAF picker is refused by some ROMs),
+ * for REAL-PATH (All Files Access) mode. The storage roots as chips (internal storage, SD cards
+ * and USB, API 30+), the path as steps to go back several levels at once, "Up", the folders with
+ * how many games each holds (counted in the background), and at the bottom how many games this
+ * folder holds with "Use this folder".
  *
- * Mounted removable volumes (USB/SD) get a "volumes" level above the storage roots;
- * enumeration needs API 30+, below that only primary storage is offered.
+ * [title] and [hint] say what is being chosen when it is not a games folder or a package file.
  *
  * Two modes (the caller picks via which callback it passes):
- *  - folder-pick (default): [onFolderChosen] non-null -> a "Use this folder" button
- *    confirms the current directory; only sub-dirs are listed.
- *  - file-pick: [onFileChosen] non-null -> regular files are ALSO listed and tapping one
- *    returns its absolute path (used by "Install content / DLC" to pick a package).
+ *  - folder-pick: [onFolderChosen] non-null -> "Use this folder" confirms the current directory;
+ *  - file-pick: [onFileChosen] non-null -> files are listed too and tapping one returns its
+ *    absolute path (used by "Install content" to pick a package).
  *
- * listFiles() may return null for an unreadable directory (e.g. Android/data) even with
- * All Files Access -- that is handled as "no entries" rather than a crash.
+ * listFiles() may return null for an unreadable directory (e.g. Android/data) even with All
+ * Files Access: that is "no entries", never a crash. The system back (and a controller's B)
+ * goes one folder up, and out of the browser from its top.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FolderBrowserScreen(
     onFolderChosen: ((path: String) -> Unit)? = null,
     onFileChosen: ((path: String) -> Unit)? = null,
     onCancel: () -> Unit,
+    start: File? = null,
+    title: String? = null,
+    hint: String? = null,
 ) {
     val context = LocalContext.current
-    val roots = remember { enumerateStorageRoots(context) }
+    val c = Xd.colors
+    val roots = rememberStorageRoots()
+    var current by remember { mutableStateOf(start?.takeIf { it.isDirectory } ?: roots.first().dir) }
+    val root = roots.filter { current.absolutePath.startsWith(it.dir.absolutePath) }.maxByOrNull { it.dir.absolutePath.length } ?: roots.first()
+    val atRoot = current.absolutePath == root.dir.absolutePath
 
-    // null = the volume-list level.
-    var current by remember {
-        mutableStateOf<File?>(if (roots.size > 1) null else roots.first().dir)
+    val subDirs = remember(current.absolutePath) {
+        current.listFiles()?.filter { it.isDirectory && !it.isHidden }?.sortedBy { it.name.lowercase() } ?: emptyList()
     }
-
-    // Subdirectories of the current dir: directories only, no hidden, sorted by name.
-    val subDirs = remember(current?.absolutePath) {
-        current?.listFiles()
-            ?.filter { it.isDirectory && !it.isHidden }
-            ?.sortedBy { it.name.lowercase() }
-            ?: emptyList()
+    val files = remember(current.absolutePath) {
+        if (onFileChosen == null) emptyList()
+        else current.listFiles()?.filter { it.isFile && !it.isHidden }?.sortedBy { it.name.lowercase() } ?: emptyList()
     }
-
-    // File-pick mode only: regular files in the current dir, sorted, hidden skipped.
-    val files = remember(current?.absolutePath) {
-        val dir = current
-        if (onFileChosen == null || dir == null) emptyList()
-        else dir.listFiles()
-            ?.filter { it.isFile && !it.isHidden }
-            ?.sortedBy { it.name.lowercase() }
-            ?: emptyList()
-    }
-
-    val atVolumeList = current == null
-    val atVolumeRoot = current != null &&
-        roots.any { it.dir.absolutePath == current!!.absolutePath }
-
-    // One folder up, or out of the browser from its top.
-    val goUp: () -> Unit = {
-        val dir = current
-        when {
-            dir == null -> onCancel()
-            atVolumeRoot ->
-                if (roots.size > 1) current = null else onCancel()
-            dir.parentFile != null -> current = dir.parentFile
-            else -> onCancel()
-        }
-    }
-    // The system back (and a controller's B) does the same as the arrow. Without this it went
-    // to the screen behind the browser: from the library, it closed the app.
+    val goUp: () -> Unit = { if (atRoot) onCancel() else current = current.parentFile ?: root.dir }
     BackHandler(onBack = goUp)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        current?.absolutePath ?: stringResource(R.string.browse_storage),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = goUp) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription =
-                                if (atVolumeList || (atVolumeRoot && roots.size == 1))
-                                    stringResource(R.string.common_cancel) else stringResource(R.string.browse_up),
-                        )
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            // Action row: confirm the CURRENT directory (folder-pick only), or cancel.
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
-                if (onFolderChosen != null && !atVolumeList) {
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { onFolderChosen(current!!.absolutePath) }) {
-                        Text(stringResource(R.string.browse_use_folder))
-                    }
+    // The path from the root: the root's name, then each folder below it.
+    val crumbs = remember(current.absolutePath, root) {
+        val below = current.absolutePath.removePrefix(root.dir.absolutePath).split('/').filter { it.isNotEmpty() }
+        listOf(root.label to root.dir) + below.runningFold(root.dir) { dir, name -> File(dir, name) }.drop(1).map { it.name to it }
+    }
+    val picksFile = onFileChosen != null && onFolderChosen == null
+    // The place is in the steps below the title; the subtitle says what to do.
+    XdSingleScreen(title = title ?: stringResource(if (picksFile) R.string.xd_br_title_file else R.string.fr_choose_folder),
+        subtitle = hint ?: stringResource(if (picksFile) R.string.xd_br_pick_note else R.string.xd_br_folder_note),
+        onBack = onCancel, headIcon = XdIcons.folder, scroll = false) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (roots.size > 1) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                roots.forEach { r -> XdChip(r.label, r == root, { current = r.dir }, icon = if (r.removable) XdIcons.sd else XdIcons.phone) }
+            }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                crumbs.forEachIndexed { i, (name, dir) ->
+                    if (i > 0) Icon(XdIcons.chevR, null, Modifier.size(14.dp), tint = c.fg3)
+                    val shape = RoundedCornerShape(8.dp)
+                    Text(name, style = XdText.labelSm, color = if (i == crumbs.lastIndex) c.fg else c.fg2, maxLines = 1,
+                        modifier = Modifier.focusRing(shape).clip(shape).clickable(role = Role.Button) { current = dir }
+                            .padding(horizontal = 8.dp, vertical = 6.dp))
                 }
             }
-
-            if (atVolumeList) {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    items(roots, key = { it.dir.absolutePath }) { root ->
-                        ListItem(
-                            headlineContent = {
-                                Text(root.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            },
-                            supportingContent = {
-                                Text(
-                                    root.dir.absolutePath,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            },
-                            trailingContent = {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = stringResource(R.string.browse_open),
-                                )
-                            },
-                            modifier = Modifier.clickable { current = root.dir },
-                        )
+            LazyColumn(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.s1)) {
+                if (!atRoot) item(key = "..") { BrowserRow(XdIcons.back, stringResource(R.string.browse_up), null, divider = true) { goUp() } }
+                items(subDirs, key = { it.absolutePath }) { dir ->
+                    val count = folderGameCount(dir)
+                    BrowserRow(XdIcons.folder, dir.name, divider = true, badge = count?.takeIf { it.games > 0 }?.let { n ->
+                        if (n.partial) stringResource(R.string.xd_fd_games_more, n.games) else pluralStringResource(R.plurals.xd_cm_games, n.games, n.games)
+                    }) { current = dir }
+                }
+                if (onFileChosen != null) items(files, key = { it.absolutePath }) { file ->
+                    BrowserRow(XdIcons.box, file.name, detail = Formatter.formatShortFileSize(context, file.length()), divider = true) {
+                        onFileChosen(file.absolutePath)
                     }
                 }
-            } else if (subDirs.isEmpty() && files.isEmpty()) {
-                Column(Modifier.fillMaxSize().padding(24.dp)) {
-                    Text(
-                        if (onFolderChosen != null)
-                            stringResource(R.string.browse_no_subfolders)
-                        else
-                            stringResource(R.string.browse_nothing),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                if (subDirs.isEmpty() && files.isEmpty()) item(key = "empty") {
+                    Text(stringResource(if (onFolderChosen != null) R.string.browse_no_subfolders else R.string.browse_nothing),
+                        style = XdText.note, color = c.fg3, modifier = Modifier.padding(16.dp))
                 }
-            } else {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    items(subDirs, key = { it.absolutePath }) { dir ->
-                        ListItem(
-                            headlineContent = {
-                                Text(dir.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            },
-                            trailingContent = {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = stringResource(R.string.browse_open),
-                                )
-                            },
-                            modifier = Modifier.clickable { current = dir },
-                        )
-                    }
-                    if (onFileChosen != null) {
-                        items(files, key = { it.absolutePath }) { file ->
-                            ListItem(
-                                headlineContent = {
-                                    Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                },
-                                modifier = Modifier.clickable { onFileChosen(file.absolutePath) },
-                            )
-                        }
-                    }
+            }
+            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // How many games this folder holds matters when choosing a games folder, not a package file.
+                if (picksFile) Box(Modifier.weight(1f)) else {
+                    val here = folderGameCount(current)
+                    Text(when {
+                        here == null -> stringResource(R.string.xd_fd_counting)
+                        here.games == 0 -> stringResource(R.string.xd_br_none_here)
+                        else -> stringResource(R.string.xd_br_here, if (here.partial) stringResource(R.string.xd_fd_games_more, here.games)
+                            else pluralStringResource(R.plurals.xd_cm_games, here.games, here.games))
+                    }, style = XdText.note, color = c.fg3, modifier = Modifier.weight(1f))
                 }
+                XdButton(stringResource(R.string.common_cancel), onCancel, kind = XdButtonKind.GHOST)
+                if (onFolderChosen != null) XdButton(stringResource(R.string.browse_use_folder), { onFolderChosen(current.absolutePath) },
+                    kind = XdButtonKind.PRIMARY, icon = XdIcons.check)
             }
         }
     }
 }
 
-/** Primary storage plus mounted removable volumes (API 30+; primary-only below). */
-private fun enumerateStorageRoots(context: Context): List<StorageRoot> {
-    val primary = Environment.getExternalStorageDirectory() ?: File("/")
-    val roots = mutableListOf(StorageRoot(context.getString(R.string.browse_internal), primary))
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        try {
-            val sm = context.getSystemService(Context.STORAGE_SERVICE) as StorageManager
-            for (volume in sm.storageVolumes) {
-                if (volume.isPrimary) continue
-                if (volume.state != Environment.MEDIA_MOUNTED &&
-                    volume.state != Environment.MEDIA_MOUNTED_READ_ONLY
-                ) {
-                    continue
-                }
-                val dir = volume.directory ?: continue
-                roots.add(StorageRoot(volume.getDescription(context) ?: dir.name, dir))
-            }
-        } catch (_: Exception) {
+@Composable
+private fun BrowserRow(icon: ImageVector, name: String, detail: String? = null, divider: Boolean, badge: String? = null, onClick: () -> Unit) {
+    val c = Xd.colors
+    Column {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = if (c.controller) 54.dp else 48.dp).focusRing(RoundedCornerShape(10.dp))
+                .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Icon(icon, null, Modifier.size(20.dp), tint = c.fg3)
+            Text(name, style = XdText.label, color = c.fg, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (badge != null) XdBadge(badge, tone = BadgeTone.ACCENT)
+            if (detail != null) Text(detail, style = XdText.small, color = c.fg3)
         }
+        if (divider) HorizontalDivider(Modifier.padding(start = 50.dp), thickness = 1.dp, color = c.line)
     }
-    return roots
 }

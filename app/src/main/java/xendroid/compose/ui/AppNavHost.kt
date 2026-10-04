@@ -83,6 +83,8 @@ object Routes {
     const val DRIVERS = "drivers"
     /** The Controls area (lote 3): its tools are the routes above. */
     const val CONTROLS = "controls"
+    /** Lote 6: app updates (channel, version, the offered update and its steps). */
+    const val UPDATES = "updates"
 }
 
 /** The game sheet's route for [game], opened at [section] (null: the overview). */
@@ -102,6 +104,8 @@ fun AppNavHost(container: AppContainer) {
     var collectionsArea by rememberSaveable { mutableStateOf(false) }
     var areaTick by remember { mutableStateOf(0) }
     var gamertag by remember { mutableStateOf<String?>(null) }
+    // About asks for the setup assistant again: the library opens it when this changes.
+    var assistantTick by remember { mutableStateOf(0) }
     val navigator = remember(nav, mode) {
         object : XdNavigator {
             /** A top-level area: one entry above the library, never a stack of them. */
@@ -152,6 +156,8 @@ fun AppNavHost(container: AppContainer) {
             }
             val profile by vm.activeProfile.collectAsStateWithLifecycle()
             LaunchedEffect(profile) { gamertag = profile }
+            // The first-run assistant creates the first profile through it.
+            val profiles: ProfileManagerViewModel = viewModel(factory = container.profileManagerViewModelFactory())
             GameLibraryScreen(
                 viewModel = vm,
                 compressVm = compressVm,
@@ -191,6 +197,12 @@ fun AppNavHost(container: AppContainer) {
                 onOpenPhoneController = { navigateOnce(Routes.PHONE_CONTROLLER) },
                 onOpenControllerTest = { navigateOnce(Routes.CONTROLLER_TEST) },
                 onOpenBenchmark = { navigateOnce(Routes.BENCHMARK) },
+                onOpenUpdates = { navigateOnce(Routes.UPDATES) },
+                onCreateProfile = { tag ->
+                    val locale = java.util.Locale.getDefault().let { xendroid.compose.ui.library.FirstRun.guestLocale(it.language, it.country) }
+                    profiles.create(tag, locale.languageValue?.toIntOrNull() ?: 1, locale.countryValue?.toIntOrNull() ?: 103, null, activate = true)
+                },
+                assistantTick = assistantTick,
             )
         }
         composable(
@@ -293,7 +305,15 @@ fun AppNavHost(container: AppContainer) {
             KeymapScreen(vm = vm, onBack = entry.backOnce(nav))
         }
         composable(Routes.ABOUT) { entry ->
-            AboutScreen(onBack = entry.backOnce(nav))
+            val go: (String) -> Unit = { route -> if (entry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) nav.navigate(route) }
+            AboutScreen(onBack = entry.backOnce(nav), onUpdates = { go(Routes.UPDATES) }, onDiagnostics = { go("${Routes.DIAGNOSTICS}?title=") },
+                onSetup = {
+                    assistantTick++
+                    nav.popBackStack(Routes.LIBRARY, inclusive = false)
+                })
+        }
+        composable(Routes.UPDATES) { entry ->
+            xendroid.compose.updater.UpdateScreen(onBack = entry.backOnce(nav))
         }
         composable(Routes.PROFILES) { entry ->
             val vm: ProfileManagerViewModel =

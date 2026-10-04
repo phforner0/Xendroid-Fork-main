@@ -36,13 +36,13 @@ import xendroid.compose.ui.library.FirstRun
 import xendroid.compose.ui.library.FirstRunStore
 
 /**
- * Roadmap item 17 (L01): the first-run assistant over the library of a fresh install (the test
- * package with its first-run and mode choices cleared and no game folder). It checks the phone
- * (GPU by name, 64-bit ARM, Android), shows "!" for the missing game folder with the button
- * that opens the folder flow (and the phone's back returns to it), proposes the games' language
- * and region from the phone's (pt-BR here) and saves them to the console settings, opens
- * Profiles and comes back, and "Done" without a mode leaves Player. Reopening the library does
- * not show it again; ⋮ → "Setup assistant" does.
+ * Roadmap item 17 (L01), in the steps of the redesign (lote 6): the first-run assistant over the
+ * library of a fresh install (the test package with its first-run and mode choices cleared and
+ * no game folder). Step 1 checks the phone (GPU by name, 64-bit ARM, Android) and says the game
+ * folder is not chosen; step 2's button opens the folder flow (and the phone's back returns to
+ * the same step); step 3 proposes the games' language and region from the phone's (pt-BR here)
+ * and saves them to the console settings; step 4 opens Profiles and comes back; "Start" without
+ * a mode leaves Player. Reopening the library does not show it again; ⋮ → "Setup assistant" does.
  */
 @RunWith(AndroidJUnit4::class)
 class Item17FirstRunAssistantTest {
@@ -88,45 +88,58 @@ class Item17FirstRunAssistantTest {
     /** A text inside the assistant's dialog (the library behind it may show the same words). */
     private fun inAssistant(text: String) = compose.onNode(hasText(text) and hasAnyAncestor(isDialog()))
 
+    private fun next() = inAssistant(Device.string(R.string.xd_fr_continue)).performClick()
+
+    private fun gone(text: String) = compose.waitUntil(10_000) {
+        compose.onAllNodes(hasText(text) and hasAnyAncestor(isDialog())).fetchSemanticsNodes().isEmpty()
+    }
+
     @Test fun checksProposesSavesAndRunsOnce() {
         Device.grantAllFilesAccess()
         val welcome = Device.string(R.string.fr_welcome)
         ActivityScenario.launch(MainActivity::class.java).use {
             waitFor(welcome)
-            EmulatorRuntime.gpuDeviceName?.let { compose.onNodeWithText(it).assertExists() }
-            compose.onNodeWithText("arm64-v8a").assertExists()
-            compose.onNodeWithText(Device.string(R.string.fr_check_android, "${Build.VERSION.SDK_INT}")).assertExists()
-            compose.onAllNodesWithText("✓").assertCountEquals(3)
-            compose.onNodeWithText(Device.string(R.string.fr_check_folder_unset)).assertExists()
-            compose.onNodeWithText("!").assertExists()
+            EmulatorRuntime.gpuDeviceName?.let { inAssistant(it).assertExists() }
+            inAssistant("arm64-v8a").assertExists()
+            inAssistant(Device.string(R.string.fr_check_android, "${Build.VERSION.SDK_INT}")).assertExists()
+            inAssistant(Device.string(R.string.fr_check_folder_unset)).assertExists()
 
-            // The folder button opens the folder browser; the phone's back returns to the assistant.
-            // The empty library behind the assistant has the same button: the assistant's is in its dialog.
+            // The folder button opens the folder browser; the phone's back returns to the same step.
+            next()
+            val gamesNote = Device.string(R.string.xd_fr_games_note)
+            waitFor(gamesNote)
             inAssistant(Device.string(R.string.fr_choose_folder)).performScrollTo().performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithText(welcome).fetchSemanticsNodes().isEmpty() }
+            gone(gamesNote)
             UiDevice.getInstance(Device.instrumentation).pressBack()
-            waitFor(welcome)
+            waitFor(gamesNote)
 
-            // Language and region proposed from the phone, saved for the games.
+            // Language and region proposed from the phone (named in its language), saved for the games.
+            next()
             val proposed = FirstRun.guestLocale("pt", "BR")
-            val from = listOf(Device.string(R.string.fr_language, proposed.languageLabel!!),
-                Device.string(R.string.fr_region, proposed.countryLabel!!)).joinToString(" · ")
-            compose.onNodeWithText(Device.string(R.string.fr_from_phone, from)).assertExists()
+            val shown = Locale.getDefault()
+            val language = Locale.forLanguageTag(proposed.languageLabel!!).getDisplayLanguage(shown).replaceFirstChar { it.titlecase(shown) }
+            val region = Locale("", proposed.countryLabel!!).getDisplayCountry(shown)
+            val from = listOf(Device.string(R.string.fr_language, language), Device.string(R.string.fr_region, region)).joinToString(" · ")
+            waitFor(Device.string(R.string.fr_from_phone, from))
             inAssistant(Device.string(R.string.fr_use_locale)).performScrollTo().performClick()
             waitFor(Device.string(R.string.fr_locale_saved))
             assertEquals(proposed.languageValue, live("Console", "user_language"))
             assertEquals(proposed.countryValue, live("Console", "user_country"))
 
-            // Profiles opens, and back comes to the assistant again.
+            // Profiles opens, and back comes to the assistant again, on the same step.
+            next()
+            val profileNote = Device.string(R.string.fr_profile_note)
+            waitFor(profileNote)
             inAssistant(Device.string(R.string.fr_open_profiles)).performScrollTo().performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithText(welcome).fetchSemanticsNodes().isEmpty() }
+            gone(profileNote)
             waitFor(Device.string(R.string.lib_menu_profiles))
             UiDevice.getInstance(Device.instrumentation).pressBack()
-            waitFor(welcome)
+            waitFor(profileNote)
 
-            // Done without choosing a mode: Player.
-            inAssistant(Device.string(R.string.common_done)).performScrollTo().performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithText(welcome).fetchSemanticsNodes().isEmpty() }
+            // "Start" without choosing a mode: Player.
+            next()
+            inAssistant(Device.string(R.string.xd_fr_start)).performClick()
+            gone(Device.string(R.string.xd_fr_start))
             assertEquals(UiMode.PLAYER, UiModeStore.read(context))
             assertTrue(FirstRunStore.done(context))
         }

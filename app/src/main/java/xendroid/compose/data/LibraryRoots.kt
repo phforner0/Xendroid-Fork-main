@@ -20,6 +20,9 @@ object LibraryRoots {
 
     fun remove(roots: List<String>, path: String): List<String> = roots - path
 
+    /** [path] first (it receives full-game installs), the others in their order. */
+    fun first(roots: List<String>, path: String): List<String> = if (path !in roots) roots else listOf(path) + (roots - path)
+
     /**
      * Which roots to walk: [scan] in the user's order; [covered] lie inside another root,
      * whose walk already reaches them (walking both would list their games twice);
