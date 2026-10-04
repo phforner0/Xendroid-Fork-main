@@ -313,6 +313,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var launchFailure: String? = null
     /** The game this single-shot process boots; a later launch intent cannot switch it. */
     private var launchedGame: String? = null
+
+    /** Lote 7: the disc mounted by the last swap (the launched one before any), marked in the next swap. */
+    private var discInDrive: String? = null
     private var surfaceView: SurfaceView? = null
     private var surfaceAvailable = false
     private var externalDisplay: ExternalGameDisplay? = null
@@ -1899,6 +1902,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
                                         modifier =
                                             Modifier.fillMaxSize(),
+
+                                        gameName = loadingName,
+                                        art = loadingArt.value,
                                     )
                                 }
                             }
@@ -1954,6 +1960,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
                                         modifier =
                                             Modifier.fillMaxSize(),
+
+                                        gameName = loadingName,
+                                        art = loadingArt.value,
                                     )
                                 }
                             }
@@ -1977,8 +1986,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                             .discRequest()
                                             ?.let { req ->
 
+                                                // The disc the game asks for first, by the number in its label.
                                                 panelSelectedState.intValue =
-                                                    0
+                                                    xendroid.compose.ui.disc.requestedDiscIndex(req)
 
                                                 discRequestState.value =
                                                     req
@@ -2013,6 +2023,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
                                         modifier =
                                             Modifier.fillMaxSize(),
+
+                                        gameName = loadingName,
+                                        art = loadingArt.value,
+                                        current = discInDrive ?: launchedGame,
                                     )
                                 }
                             }
@@ -3657,6 +3671,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             true,
             path
         )
+        discInDrive = path
 
         discRequestState.value =
             null

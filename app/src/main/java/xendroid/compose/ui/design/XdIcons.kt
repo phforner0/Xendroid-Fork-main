@@ -100,6 +100,8 @@ object XdIcons {
     val x get() = icon("x", """<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>""")
     val plus get() = icon("plus", """<path d="M12 5v14M5 12h14"/>""")
     val minus get() = icon("minus", """<path d="M5 12h14"/>""")
+    val shift get() = icon("shift", """<path d="M12 4.5l7 7.5h-4v7H9v-7H5z"/>""")
+    val capsLock get() = icon("capsLock", """<path d="M12 3.5l7 7.5h-4v5H9v-5H5z"/><path d="M9 20.5h6"/>""")
     val disc get() = icon("disc", """<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.3"/>""")
     val zip get() = icon("zip", """<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20V4a.5.5 0 0 1 .5-.5z"/><path d="M11 6h2M11 9h2M11 12h2M11 15v2.5h2V15z"/>""")
     val sliders get() = icon("sliders", """<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>""")

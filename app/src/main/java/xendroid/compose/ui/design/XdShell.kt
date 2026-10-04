@@ -430,12 +430,13 @@ fun defaultHints(sections: Boolean, onMenu: (() -> Unit)? = null): List<XdHint> 
 
 /** The hints bar along the bottom of controller screens. */
 @Composable
-fun CHints(hints: List<XdHint>, modifier: Modifier = Modifier, trailing: String? = null) {
+fun CHints(hints: List<XdHint>, modifier: Modifier = Modifier, trailing: String? = null, scrim: Boolean = true) {
     val c = Xd.colors
     Row(
         modifier.fillMaxWidth().height(42.dp)
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))))
-            .horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+            // [scrim] false: inside a panel, which has its own background and padding.
+            .then(if (scrim) Modifier.background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f)))) else Modifier)
+            .horizontalScroll(rememberScrollState()).padding(horizontal = if (scrim) 20.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         for (h in hints) {

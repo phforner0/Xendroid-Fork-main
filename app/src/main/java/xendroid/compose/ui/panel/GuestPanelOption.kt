@@ -50,6 +50,9 @@ fun GuestPanelOption(
     subtle: Boolean = false,
     /** Leaving or deleting: red text. */
     danger: Boolean = false,
+    /** Lote 7: an icon before the label, and a line under it (a disc's file, what Cancel does). */
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    subtitle: String? = null,
 ) {
     val c = Xd.colors
     val shape = RoundedCornerShape(12.dp)
@@ -77,14 +80,17 @@ fun GuestPanelOption(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(
-            text = title,
-            style = if (subtle) XdText.labelSm else XdText.label,
-            color = when { danger -> c.dangerText; checked -> c.acc; subtle -> c.fg2; else -> c.fg },
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+        if (icon != null) Icon(icon, null, Modifier.size(20.dp), tint = if (selected) c.acc else c.fg3)
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = if (subtle) XdText.labelSm else XdText.label,
+                color = when { danger -> c.dangerText; checked -> c.acc; subtle -> c.fg2; else -> c.fg },
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) Text(subtitle, style = XdText.small, color = c.fg3, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
         if (value != null) Text(value, style = XdText.labelSm, color = if (selected) c.fg else c.fg2, maxLines = 2,
             overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End, modifier = Modifier.widthIn(max = 210.dp))
         if (checked) Icon(XdIcons.check, null, Modifier.size(18.dp), tint = c.acc)
