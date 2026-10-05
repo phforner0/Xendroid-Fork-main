@@ -29,10 +29,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import xendroid.compose.R
 import kotlin.math.roundToInt
 
 @Composable
@@ -97,7 +99,7 @@ fun GuestSidePanel(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "XenDroid",
+                            text = stringResource(R.string.app_name),
                             fontSize = 24.sp,
                             color = Color.White
                         )
@@ -352,7 +354,7 @@ fun GuestSidePanel(
                     )
 
                     Text(
-                        text = "XenDroid Fork",
+                        text = stringResource(R.string.ab_creator),
                         fontSize = 11.sp,
                         color = Color.White.copy(
                             alpha = 0.45f

@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 #include "xe_aaudio_audio_driver.h"
+#include "audio_runtime.h"
 
 #include <algorithm>
 #include <atomic>
@@ -27,6 +28,12 @@ DEFINE_uint32(
     "Depth of the Android audio buffer, in device bursts. Higher rides out "
     "emulator slowdowns without dropping audio, at the cost of latency.",
     "APU");
+DEFINE_bool(apu_aaudio_adaptive_buffer, false,
+            "Grow the Android audio buffer one burst after underruns (up to three "
+            "times apu_aaudio_buffer_bursts) and shrink it back one burst after "
+            "30 s without any: fewer dropouts on a slow scene, the configured "
+            "latency otherwise.",
+            "APU");
 DEFINE_bool(apu_aaudio_dynamic_rate, true,
             "Slow playback toward 0.9x as the audio queue drains, so a guest "
             "that cannot keep real time bends pitch instead of popping.",
@@ -110,8 +117,11 @@ bool AAudioAudioDriver::BuildStream() {
     AAudioStreamBuilder_setSharingMode(builder_, mode);
     // A low-latency stream is otherwise granted the shallowest buffer the
     // device allows. AAudio requires capacity >= twice the callback size.
+    // 15j: room for the adaptive buffer to grow into, when it is on.
     AAudioStreamBuilder_setBufferCapacityInFrames(
-        builder_, channel_samples_ * cvars::apu_aaudio_buffer_bursts);
+        builder_, channel_samples_ * (cvars::apu_aaudio_adaptive_buffer
+                                          ? tuner_.max_bursts()
+                                          : cvars::apu_aaudio_buffer_bursts));
 
     result = AAudioStreamBuilder_openStream(builder_, &stream_);
     if (result != AAUDIO_OK) {
@@ -142,9 +152,13 @@ bool AAudioAudioDriver::BuildStream() {
     const int32_t drain = std::max(
         burst, callback_frames > 0 ? callback_frames
                                    : static_cast<int32_t>(channel_samples_));
+    drain_frames_ = drain;
     if (drain > 0) {
+      // A rebuilt stream keeps the depth the adaptive buffer had reached.
       AAudioStream_setBufferSizeInFrames(
-          stream_, drain * cvars::apu_aaudio_buffer_bursts);
+          stream_, drain * (cvars::apu_aaudio_adaptive_buffer
+                                ? tuner_.bursts()
+                                : cvars::apu_aaudio_buffer_bursts));
     }
 
     // Requested and granted config frequently differ.
@@ -160,6 +174,8 @@ bool AAudioAudioDriver::BuildStream() {
         AAudioStream_getPerformanceMode(stream_));
 
     stream_initialized_ = true;
+    xruns_published_ = 0;
+    ae::RunStats().backend.store(1, std::memory_order_relaxed);
     return true;
   }
   return false;
@@ -288,8 +304,16 @@ void AAudioAudioDriver::LoadNextBlock(uint32_t& releases, bool& gapped) {
   if (depth > stat_queue_depth_max_.load(std::memory_order_relaxed)) {
     stat_queue_depth_max_.store(depth, std::memory_order_relaxed);
   }
+  // Before the guest's first block the device only plays startup silence: not
+  // an underrun anyone hears, so the run summary starts counting after it.
+  if (played_once_) {
+    ae::RunStats().blocks.fetch_add(1, std::memory_order_relaxed);
+  }
   if (!buffer) {
     stat_gaps_.fetch_add(1, std::memory_order_relaxed);
+    if (played_once_) {
+      ae::RunStats().concealed.fetch_add(1, std::memory_order_relaxed);
+    }
     gapped = true;
     ConcealNextBlock();
     last_block_pos_ = 0;
@@ -302,6 +326,10 @@ void AAudioAudioDriver::LoadNextBlock(uint32_t& releases, bool& gapped) {
     // Media player: already interleaved host endian stereo.
     std::memcpy(last_block_.data(), buffer,
                 host_block_samples_ * sizeof(float));
+  }
+  if (!played_once_) {
+    played_once_ = true;
+    ae::RunStats().blocks.fetch_add(1, std::memory_order_relaxed);
   }
   ApplyGainAndClamp();
   ApplyFadeIn();
@@ -345,7 +373,7 @@ void AAudioAudioDriver::ConcealNextBlock() {
 }
 
 void AAudioAudioDriver::ApplyGainAndClamp() {
-  const uint32_t master = std::min<uint32_t>(cvars::volume, 100);
+  const uint32_t master = ae::EffectiveVolume();
   const float gain =
       driver_volume_.load(std::memory_order_relaxed) * (master / 100.0f);
 
@@ -455,6 +483,10 @@ void AAudioAudioDriver::RecoveryThreadMain() {
       }
       if (!restart_requested_) {
         lk.unlock();
+        const uint32_t fresh_xruns = PublishXRuns();
+        if (cvars::apu_aaudio_adaptive_buffer) {
+          AdaptBuffer(fresh_xruns);
+        }
         if (cvars::apu_aaudio_log_stats) {
           LogAndResetStats();
         }
@@ -462,8 +494,38 @@ void AAudioAudioDriver::RecoveryThreadMain() {
       }
       restart_requested_ = false;
     }
+    // The old stream's last xruns, before the rebuild resets its count.
+    PublishXRuns();
     retry_pending = !RestartStream();
   }
+}
+
+uint32_t AAudioAudioDriver::PublishXRuns() {
+  std::unique_lock<std::mutex> stream_guard(stream_mutex_);
+  if (!stream_initialized_ || !stream_) {
+    return 0;
+  }
+  const int32_t xruns = AAudioStream_getXRunCount(stream_);
+  if (xruns > xruns_published_) {
+    const uint32_t fresh = uint32_t(xruns - xruns_published_);
+    ae::RunStats().device_xruns.fetch_add(fresh, std::memory_order_relaxed);
+    xruns_published_ = xruns;
+    return fresh;
+  }
+  return 0;
+}
+
+void AAudioAudioDriver::AdaptBuffer(uint32_t fresh_xruns) {
+  std::unique_lock<std::mutex> stream_guard(stream_mutex_);
+  const uint32_t before = tuner_.bursts();
+  const uint32_t after = tuner_.Second(fresh_xruns);
+  if (after == before || !stream_initialized_ || !stream_ || drain_frames_ <= 0) {
+    return;
+  }
+  const int32_t granted =
+      AAudioStream_setBufferSizeInFrames(stream_, drain_frames_ * int32_t(after));
+  XELOGI("AAudio: buffer {} bursts ({} frames granted) after {}", after, granted,
+         fresh_xruns ? "underruns" : "30 s without one");
 }
 
 bool AAudioAudioDriver::RestartStream() {

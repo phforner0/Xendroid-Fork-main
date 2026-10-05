@@ -58,6 +58,8 @@ namespace xe {
 
                 std::queue<float*> frames_queued_ = {};
                 std::stack<float*> frames_unused_ = {};
+                // A guest block has been played (run summary counts); under frames_mutex_.
+                bool played_once_ = false;
 
             };
 

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The panels the game asks for: a message, a text, another disc (UI redesign, lote 7). -->
+    <string name="xd_gp_waiting">is waiting for your answer</string>
+    <string name="xd_gp_asks_text">asks for a text</string>
+    <string name="xd_gp_asks_disc">asks for another disc</string>
+    <string name="xd_gp_paused">The game stays paused until you choose.</string>
+    <string name="xd_gp_choose">Choose</string>
+    <string name="xd_kb_type">Type</string>
+    <string name="xd_kb_shift">Shift</string>
+    <string name="xd_kb_space">Space</string>
+    <string name="xd_kb_done">Done</string>
+    <string name="xd_kb_cancel">Cancel</string>
+    <string name="xd_kb_delete">Delete</string>
+    <string name="xd_kb_cursor">Cursor</string>
+    <string name="xd_kb_symbols">Symbols</string>
+    <string name="xd_ds_cancel_note">The game already ejected its disc: cancelling leaves it without one.</string>
+    <string name="xd_ds_before">%1$s · the one before</string>
+</resources>

@@ -8,6 +8,7 @@ private fun i(s: String, n: String, t: String, d: Int, lo: Int, hi: Int) =
     Setting.IntRange(s, n, t, d, lo, hi, desc(n))
 private fun l(s: String, n: String, t: String, d: String, vararg o: Pair<String, String>) =
     Setting.ListChoice(s, n, t, d, o.map { ListOption(it.first, it.second) }, desc(n))
+private fun t(s: String, n: String, t: String, d: String, placeholder: String) = Setting.Text(s, n, t, d, placeholder, desc(n))
 
 object SettingsSchema {
 
@@ -29,6 +30,12 @@ object SettingsSchema {
             i("Vulkan", "vulkan_pipeline_creation_threads", "Pipeline creation threads", 4, 0, 5),
             Action("Vulkan", "vulkan_lib_path", "Custom Vulkan driver", "", desc("vulkan_lib_path")),
             b("Vulkan", "adrenotools_force_max_clocks", "Force max GPU clocks (adrenotools)", false),
+            // Redesign: the core's own cvars the app now shows (vulkan_instance.cc, the Vulkan backend).
+            i("Vulkan", "adrenotools_turbo_reassert_seconds", "Request max GPU clocks again every (s)", 5, 0, 30),
+            b("Vulkan", "vulkan_allow_reverse_z", "Reverse depth ranges in the driver", true),
+            b("Vulkan", "vulkan_dynamic_rendering", "Dynamic rendering", true),
+            b("Vulkan", "vulkan_avoid_geometry_shaders", "Avoid geometry shaders", true),
+            b("Vulkan", "vulkan_depth_unorm24", "Native D24 depth", true),
             // 'sysmem' forces untiled rendering (much slower) but avoids a class of Adreno GPU
             // hangs. Applied at vkCreateInstance, so it takes effect on the next game launch.
             l("Vulkan", "turnip_debug", "Turnip debug mode", "sysmem",
@@ -54,7 +61,9 @@ object SettingsSchema {
                 "4" to "800x600", "5" to "848x480", "6" to "1024x768", "7" to "1152x864",
                 "8" to "1280x720", "9" to "1280x768", "10" to "1280x960", "11" to "1280x1024",
                 "12" to "1360x768", "13" to "1440x900", "14" to "1680x1050", "15" to "1920x540",
-                "16" to "1920x1080"),
+                "16" to "1920x1080", "17" to "Custom (width and height below)"),
+            i("Video", "internal_display_resolution_x", "Custom display width", 1280, 1, 1920),
+            i("Video", "internal_display_resolution_y", "Custom display height", 720, 1, 1080),
             b("Console", "use_50Hz_mode", "Use 50Hz mode", false),
             l("Video", "avpack", "AV pack", "8",
                 "0" to "PAL-60 Component (SD)", "1" to "Unused", "2" to "PAL-60 SCART",
@@ -66,6 +75,7 @@ object SettingsSchema {
 
         SettingsCategory("UI", listOf(
             b("UI", "show_achievement_notification", "Show achievement notification", true),
+            b("UI", "achievement_notification_position_by_game", "Achievement where the game places it", false),
             b("UI", "storage_selection_dialog", "Storage selection dialog", false),
             b("UI", "headless", "Headless", true),
             b("UI", "android_soft_keyboard", "Android keyboard for game text input", true),
@@ -75,6 +85,7 @@ object SettingsSchema {
         SettingsCategory("Storage", listOf(
             b("Storage", "mount_scratch", "Mount scratch", false),
             b("Storage", "mount_cache", "Mount cache", false),
+            b("Storage", "mount_memory_unit", "Mount memory unit (MU)", false),
         )),
 
         SettingsCategory("Kernel", listOf(
@@ -86,7 +97,14 @@ object SettingsSchema {
             b("Kernel", "guest_scheduler_stats", "Guest scheduler stats logging", false),
             b("Logging", "log_high_frequency_kernel_calls", "Log high-frequency kernel calls", false),
             l("Kernel", "kernel_display_gamma_type", "Display gamma type", "2",
-                "0" to "linear", "1" to "sRGB (CRT)", "2" to "BT.709 (HDTV)"),
+                "0" to "linear", "1" to "sRGB (CRT)", "2" to "BT.709 (HDTV)", "3" to "power (custom gamma below)"),
+            // A TOML double: every option keeps one '.'; the core's default is 2.22222233.
+            l("Kernel", "kernel_display_gamma_power", "Custom display gamma", "2.22222233",
+                "1.8" to "1.8", "2.0" to "2.0", "2.2" to "2.2", "2.22222233" to "2.22", "2.4" to "2.4", "2.6" to "2.6", "2.8" to "2.8"),
+            b("Kernel", "precise_guest_delays", "Precise guest delays", true),
+            i("Kernel", "stack_size_multiplier_hack", "Stack size multiplier (hack)", 1, 1, 8),
+            l("Kernel", "console_type", "Console type", "-1", "-1" to "Retail", "0" to "Development kit", "1" to "Test kit"),
+            t("Kernel", "cl", "Extra command line for the game", "", ""),
             b("Kernel", "ignore_thread_affinities", "Ignore thread affinities", true),
             b("Kernel", "kernel_pix", "Kernel PIX", false),
             b("Kernel", "kernel_cert_monitor", "Kernel cert monitor", false),
@@ -99,6 +117,12 @@ object SettingsSchema {
 
         SettingsCategory("Controller", listOf(
             b("HID", "show_touch_overlay", "Show on-screen controller", true),
+            b("HID", "vibration", "Controller vibration", true),
+            b("HID", "guide_button", "Send the Guide button to games", true),
+            // Applied by InputSystem::GetState to every player and input driver, on top of
+            // the app's own 8% cut per axis: raises the dead zone (a drifting stick).
+            l("HID", "left_stick_deadzone_percentage", "Left stick dead zone", "0.0", *DEAD_ZONES),
+            l("HID", "right_stick_deadzone_percentage", "Right stick dead zone", "0.0", *DEAD_ZONES),
         )),
 
         SettingsCategory("HID", listOf(
@@ -125,9 +149,22 @@ object SettingsSchema {
 
         SettingsCategory("Display", listOf(
             b("Display", "present_letterbox", "Present letterbox", true),
-            b("Display", "postprocess_dither", "Postprocess dither", true),
+            // The core's default (false): with no value saved, this is what applies.
+            b("Display", "postprocess_dither", "Postprocess dither", false),
             l("Display", "postprocess_scaling_and_sharpening", "Scaling & sharpening", "",
-                "bilinear" to "bilinear", "cas" to "cas", "fsr" to "fsr"),  // "" => bilinear (no selection)
+                "bilinear" to "bilinear", "cas" to "cas", "fsr" to "fsr",
+                "sgsr" to "sgsr (experimental)",
+                "lanczos" to "lanczos (sharp, no halos)",
+                "crt" to "crt (scanlines)"),  // "" => bilinear (no selection)
+            l("Display", "postprocess_ffx_cas_additional_sharpness", "CAS: extra sharpness", "0.0",
+                "0.0" to "0.0", "0.25" to "0.25", "0.5" to "0.5", "0.75" to "0.75", "1.0" to "1.0"),
+            l("Display", "postprocess_ffx_fsr_sharpness_reduction", "FSR: sharpness reduction", "0.2",
+                "0.0" to "0.0", "0.1" to "0.1", "0.2" to "0.2", "0.5" to "0.5", "1.0" to "1.0", "2.0" to "2.0"),
+            i("Display", "postprocess_ffx_fsr_max_upsampling_passes", "FSR: upsampling passes", 1, 1, 4),
+            // Letterboxed picture: how much of the width / height must stay; below 100 the
+            // edges may be cut instead of drawing bars (the presenter allows the cut-off).
+            i("Display", "present_safe_area_x", "Keep at least this much of the width (%)", 100, 50, 100),
+            i("Display", "present_safe_area_y", "Keep at least this much of the height (%)", 100, 50, 100),
             b("Display", "present_render_pass_clear", "Present render-pass clear", true),
             l("Display", "postprocess_antialiasing", "Antialiasing", "",
                 "none" to "none", "fxaa" to "fxaa", "fxaa_extreme" to "fxaa_extreme"), // "" => none
@@ -143,6 +180,14 @@ object SettingsSchema {
                 "60" to "60 FPS", "30" to "30 FPS", "45" to "45 FPS",
                 "90" to "90 FPS", "120" to "120 FPS", "0" to "Unlimited"),
             b("GPU", "guest_display_refresh_cap", "Cap guest display refresh (VSync)", true),
+            // vulkan_texture_cache: -1 leaves each sampler as the game set it.
+            l("GPU", "anisotropic_override", "Anisotropic filtering", "-1",
+                "-1" to "Game decides", "0" to "Off", "1" to "1x", "2" to "2x", "3" to "4x", "4" to "8x", "5" to "16x"),
+            // vulkan_pipeline_cache: off creates pipelines on the spot (stutter, no artifacts).
+            b("GPU", "async_shader_compilation", "Asynchronous shader compilation", true),
+            b("GPU", "async_shader_vs_interpreter", "Interpret vertex shaders while they compile", true),
+            b("GPU", "async_shader_skip_draws", "Skip draws until their shader is ready", true),
+            b("GPU", "pipeline_storage_precreate", "Create stored pipelines when a game starts", true),
             b("GPU", "store_shaders", "Store shaders", true),
             b("GPU", "resolve_resolution_scale_fill_half_pixel_offset", "Resolve scale: fill half-pixel offset", true),
             // uma = no copy, the CPU reads host-mapped shared memory directly; the only mode
@@ -151,6 +196,10 @@ object SettingsSchema {
                 "uma" to "UMA (direct map, no copy)",
                 "fast" to "Fast (copy CPU-read resolves)", "all" to "All (copy every resolve)",
                 "none" to "None (disabled)"),
+            b("GPU", "readback_resolve_sync", "Wait for resolve readbacks", true),
+            b("GPU", "precise_interpolation", "Precise interpolation", true),
+            b("GPU", "depth_bias_shader_offset", "Decal depth bias in the shader", false),
+            b("GPU", "memexport_enable", "Memory export visible to the CPU", false),
             // 'fake' fabricates a result (fastest; some effects may look slightly wrong);
             // 'fast'/'fast-alt' issue async queries without stalling; 'strict' stalls the
             // command thread until the GPU answers. Live (SetZPDMode) -- no relaunch needed.
@@ -184,7 +233,6 @@ object SettingsSchema {
             b("GPU", "execute_unclipped_draw_vs_on_cpu_with_scissor", "Unclipped draw VS on CPU (scissor)", false),
             b("GPU", "mrt_edram_used_range_clamp_to_min", "MRT EDRAM used-range clamp to min", true),
             b("GPU", "execute_unclipped_draw_vs_on_cpu", "Unclipped draw VS on CPU", true),
-            b("GPU", "readback_memexport", "Readback memexport", false),
             b("GPU", "force_convert_triangle_fans_to_lists", "Convert triangle fans to lists", false),
             b("GPU", "non_seamless_cube_map", "Non-seamless cube map", true),
             b("GPU", "depth_float24_round", "Depth float24 round", false),
@@ -195,6 +243,8 @@ object SettingsSchema {
                 "1" to "1x", "2" to "2x", "3" to "3x"),
             l("GPU", "draw_resolution_scale_y", "Resolution scale, height (real)", "1",
                 "1" to "1x", "2" to "2x", "3" to "3x"),
+            l("GPU", "draw_resolution_scale_threshold", "Keep narrow surfaces at native size", "0",
+                "0" to "Off", "80" to "up to 80 px", "160" to "up to 160 px", "320" to "up to 320 px", "640" to "up to 640 px"),
             b("GPU", "draw_resolution_scaled_texture_offsets", "Draw resolution-scaled texture offsets", true),
             l("GPU", "gpu", "GPU backend", "vulkan",
                 "vulkan" to "vulkan", "null" to "null"),
@@ -224,6 +274,11 @@ object SettingsSchema {
             b("Logging", "log_string_format_kernel_calls", "Log string-format kernel calls", false),
             l("Logging", "log_level", "Log level", "2",
                 "0" to "error", "1" to "warning", "2" to "info", "3" to "debug"),
+            // 15i: Xenia's log_mask turns categories off (kernel 1, audio 2, CPU 4, GPU 8); lines
+            // with no category always stay. "Only X" keeps one subsystem's lines.
+            l("Logging", "log_mask", "Log filter", "0",
+                "0" to "everything", "7" to "only the GPU", "13" to "only audio", "14" to "only the kernel",
+                "11" to "only the CPU", "1" to "all but the kernel", "8" to "all but the GPU"),
             b("Logging", "flush_log", "Flush log", true),
             i("Logging", "log_sessions_keep", "Shelved log sessions to keep", 4, 1, 16),
             Action("Logging", "dump_session_logs", "Export session logs to Downloads", "", desc("dump_session_logs")),
@@ -238,15 +293,20 @@ object SettingsSchema {
             i("General", "time_scalar", "Time scalar", 1, 1, 8),
             b("General", "allow_plugins", "Allow plugins", false),
             b("General", "apply_patches", "Apply patches", true),
+            t("General", "launch_module", "Executable to launch", "", "default.xex"),
+            b("General", "guest_crash_is_fatal", "End the game when a guest thread crashes", true),
         )),
 
         SettingsCategory("APU", listOf(
             b("APU", "apu_pump_topup", "Audio pump top-up", true),
+            i("APU", "volume", "Volume", 100, 0, 100),
+            b("APU", "apu_performance_hint", "Audio performance hint (ADPF)", true),
             i("Console", "xmp_default_volume", "XMP default volume", 70, 0, 100),
             b("APU", "ffmpeg_verbose", "FFmpeg verbose", false),
-            b("APU", "mute", "Mute", false),
             i("APU", "apu_max_queued_frames", "Max queued frames", 8, 4, 64),
             i("APU", "apu_aaudio_buffer_bursts", "Audio buffer depth", 4, 2, 8),
+            // 15j: grows after underruns, back to the depth above after quiet stretches.
+            b("APU", "apu_aaudio_adaptive_buffer", "Adaptive audio buffer", false),
             b("APU", "enable_xmp", "Enable XMP", true),
             l("APU", "xma_decoder", "XMA decoder", "new",
                 "new" to "new", "old" to "old", "master" to "master", "fake" to "fake"),
@@ -258,7 +318,38 @@ object SettingsSchema {
 
     val allSettings: List<Setting> = categories.flatMap { it.settings }
     val byKey: Map<String, Setting> = allSettings.associateBy { it.key }
+
+    /**
+     * L02, Player mode: the settings a player changes, in this order. Engine internals,
+     * accuracy hacks, logging and experiments stay in Developer mode; nothing is lost, the
+     * stored values of hidden settings are kept and still apply.
+     */
+    val playerKeys: List<String> = listOf(
+        "GPU|framerate_limit", "GPU|guest_display_refresh_cap",
+        "GPU|draw_resolution_scale_x", "GPU|draw_resolution_scale_y",
+        "Display|postprocess_scaling_and_sharpening", "Display|postprocess_antialiasing", "Display|present_letterbox",
+        "Display|postprocess_dither",
+        "GPU|anisotropic_override",
+        "Console|widescreen", "Console|internal_display_resolution",
+        "Vulkan|vulkan_lib_path",
+        "HID|show_touch_overlay", "HID|left_stick_deadzone_percentage", "HID|right_stick_deadzone_percentage",
+        "UI|android_soft_keyboard", "UI|android_message_box",
+        "UI|show_achievement_notification",
+        "Console|user_language", "Console|user_country",
+        "APU|volume", "General|apply_patches",
+        "Logging|dump_session_logs",
+    )
+
+    fun categoriesFor(mode: UiMode): List<SettingsCategory> = when (mode) {
+        UiMode.DEVELOPER -> categories
+        UiMode.PLAYER -> listOf(SettingsCategory("Essentials", playerKeys.mapNotNull(byKey::get)))
+    }
 }
+
+// Stick dead zones, a share of full deflection; stored as TOML doubles (one '.').
+private val DEAD_ZONES: Array<Pair<String, String>> = arrayOf(
+    "0.0" to "Off", "0.05" to "5%", "0.1" to "10%", "0.15" to "15%", "0.2" to "20%", "0.25" to "25%", "0.3" to "30%",
+)
 
 // user_country: values 1..109 with 17 and 94 skipped (107 entries). Order matches
 // arrays.xml (es_arr_xconfig_user_country). Default 103 = US.

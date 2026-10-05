@@ -2,6 +2,7 @@ package xendroid.compose.gamepad
 
 import android.content.Context
 import android.os.SystemClock
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,14 +18,26 @@ import kotlinx.coroutines.flow.first
 class GamepadController(appContext: Context) {
     private val store = GamepadLayoutStore(appContext)
     val config: Flow<GamepadConfigDto> = store.config
-    suspend fun save(cfg: GamepadConfigDto) = store.save(cfg)
-
-    /** Runtime controls for an orientation = defaults merged with persisted layout. */
-    fun controlsFor(cfg: GamepadConfigDto, landscape: Boolean): List<OnScreenControl> {
-        val base = defaultLayout(landscape)
-        val dto = if (landscape) cfg.landscape else cfg.portrait
-        return dto.applyTo(base)
+    suspend fun save(cfg: GamepadConfigDto) {
+        try { store.save(cfg) } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.w("GamepadController", "Layout write failed; previous file preserved", e)
+            throw e
+        }
     }
+
+    suspend fun update(transform: (GamepadConfigDto) -> GamepadConfigDto) {
+        try { store.update(transform) } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.w("GamepadController", "Layout update failed; previous file preserved", e)
+            throw e
+        }
+    }
+
+    /** Runtime controls for an orientation = defaults merged with the persisted layout:
+     *  [titleId]'s own when it has one (U06), else the shared one. */
+    fun controlsFor(cfg: GamepadConfigDto, landscape: Boolean, titleId: String? = null): List<OnScreenControl> =
+        cfg.layoutFor(titleId, landscape).applyTo(defaultLayout(landscape))
 }
 
 @Composable

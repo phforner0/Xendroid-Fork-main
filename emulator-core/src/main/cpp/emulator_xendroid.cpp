@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: WTFPL
+#include <vector>
 #include "emulator_xendroid.h"
+#include "emulator.h"
 #include "xendroid_emu.h"
+#include "xe_changed_settings_cvars.h"
 #include "xe_android_disc_swap.h"
 #include "xe_android_message_box.h"
 #include "xe_android_text_input.h"
 
 #include <atomic>   // single-xe::Memory-per-process guard in extract_xex_meta
+#include <mutex>    // one device report at a time (j_simple_device_info)
 #include <filesystem>  // std::filesystem::path/u8path for the zar extract/create JNI bridge
 
 #include "xenia/app/emulator_window.h"
@@ -18,6 +22,11 @@
 #include "xenia/base/mapped_memory.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/frame_stats.h"
+#include "xenia/ui/presentation_runtime.h"
+#include "third_party/lsfg/lsfg_dll.h"
+#include "xenia/apu/apu_flags.h"
+#include "audio_runtime.h"
+#include "xe_fatal_report.h"
 #include "xenia/base/shader_compile_counter.h"
 
 #include "xenia/cpu/xex_module.h"             // XexModule::GetOptHeader, kXEX2Signature/kXEX1Signature
@@ -78,6 +87,11 @@ static void j_setup_launch_args(JNIEnv* env,jobject self,jobjectArray args ){
 
 static jstring j_simple_device_info(JNIEnv* env, jobject thiz)
 {
+    // The report loads the Vulkan loader's entry points and unloads them when done: two reports
+    // at once (About asks for the device rows and the full report as it opens) had one unload the
+    // entry points while the other called vkCreateInstance through them, a jump to 0.
+    static std::mutex report_mutex;
+    std::lock_guard<std::mutex> report_lock(report_mutex);
     std::string info;
 
     auto get_gpu_info=[]()->std::string {
@@ -99,7 +113,7 @@ static jstring j_simple_device_info(JNIEnv* env, jobject thiz)
 
         std::optional<VkInstance> inst=vk_create_instance("compose-gpu_info");
         if(!inst) {
-            return "获取gpu信息失败";
+            return "GPU: no Vulkan instance\n";
         }
 
         clean.funcs.push_back([=](){
@@ -109,10 +123,10 @@ static jstring j_simple_device_info(JNIEnv* env, jobject thiz)
         if(int count=vk_get_physical_device_count(*inst);count!=1) {
 
             if(count<1){
-                return "获取gpu信息失败";
+                return "GPU: no Vulkan device\n";
             }
             if(count>1){
-                return "多个gpu!";
+                return "GPU: more than one Vulkan device\n";
             }
         }
         if(auto pdev=vk_get_physical_device(*inst);pdev) {
@@ -133,12 +147,16 @@ static jstring j_simple_device_info(JNIEnv* env, jobject thiz)
             return "GPU [" + gpu_name +"(Vulkan: "+gpu_vk_ver+ ")]:\n" + gpu_ext;
 
         }
-        return "获取gpu信息失败";
+        return "GPU: the Vulkan device could not be read\n";
     };
 
     auto get_cpu_info=[]()->std::string {
 
         std::vector<core_info_t> core_info=cpu_get_core_info();
+        // cpu_get_simple_info and the features below read the first core.
+        if(core_info.empty()) {
+            return "CPU: /proc/cpuinfo could not be read\n";
+        }
         std::string cpu_name=cpu_get_simple_info(core_info);
         std::string cpu_features=[&](){
             std::ostringstream oss;
@@ -1133,7 +1151,8 @@ static jstring j_debug_overlay_text(JNIEnv* env, jobject thiz) {
 }
 
 // Last presented guest-frame interval in ms (the raw present-to-present delta,
-// NOT the 120-frame average). 0 before the first present / right after a pause.
+// NOT the 120-frame average). 0 before the first present, right after a pause and
+// once a second passes without a guest frame (frame_stats.h).
 // Backed by the same lock-free atomic RecordGuestPresent() publishes; safe from
 // any thread. Independent of the show_debug_overlay cvar (the Compose overlay
 // owns its own visibility), unlike debug_overlay_text().
@@ -1152,11 +1171,242 @@ static jdouble j_instant_fps(JNIEnv* env, jobject thiz) {
     return instant_ms > 0.f ? (jdouble)(1000.0 / (double)instant_ms) : (jdouble)0.0;
 }
 
-// RenderDoc-style average fps over a ~1s window.
+// RenderDoc-style average fps over a ~1s window; 0 after a second without a guest frame.
 static jdouble j_average_fps(JNIEnv* env, jobject thiz) {
     float instant_ms = 0.f, avg_ms = 0.f, fps = 0.f;
     xe::GetFrameStats(instant_ms, avg_ms, fps);
     return (jdouble)fps;
+}
+
+// Number of Vulkan present submissions accepted in this process, including UI-only
+// repaints. A successful vkQueuePresentKHR is NOT proof of display scanout.
+static jlong j_host_present_submission_count(JNIEnv* env, jobject thiz) {
+    return static_cast<jlong>(xe::GetHostPresentSubmissionCount());
+}
+
+static void j_set_presentation_mode(JNIEnv* env, jobject thiz, jint mode) {
+    if (mode >= -1 && mode <= 3) xe::ui::RuntimePresentation().display_mode = mode;
+}
+static void j_set_scaling_effect(JNIEnv* env, jobject thiz, jint effect) {
+    if (effect >= -1 && effect <= 5) xe::ui::RuntimePresentation().scaling_effect = effect;
+}
+// The in-game menu's Image options (negative: the Settings value), from the next frame.
+static void j_set_image_tuning(JNIEnv* env, jobject thiz, jint antialiasing, jfloat cas_sharpness,
+                               jfloat fsr_sharpness_reduction, jint dither) {
+    auto& runtime = xe::ui::RuntimePresentation();
+    runtime.antialiasing = antialiasing >= 0 && antialiasing <= 2 ? int(antialiasing) : -1;
+    runtime.cas_sharpness = cas_sharpness >= 0.0f ? std::min(float(cas_sharpness), 1.0f) : -1.0f;
+    runtime.fsr_sharpness_reduction = fsr_sharpness_reduction >= 0.0f ? std::min(float(fsr_sharpness_reduction), 2.0f) : -1.0f;
+    runtime.dither = dither >= 0 ? (dither != 0 ? 1 : 0) : -1;
+}
+static void j_set_color_filter(JNIEnv* env, jobject thiz, jint mode) {
+    auto& runtime = xe::ui::RuntimePresentation();
+    runtime.color_filter_error = 0; runtime.color_filter = std::clamp(int(mode), 0, 4);
+}
+static jstring j_active_gpu_label(JNIEnv* env, jobject thiz) {
+    auto& runtime = xe::ui::RuntimePresentation();
+    std::lock_guard<std::mutex> lock(runtime.configuration_mutex);
+    return env->NewStringUTF(runtime.gpu_label.c_str());
+}
+// Cumulative per-frame guest frame-time counts (1 ms buckets, last = longer); the
+// caller takes deltas between snapshots.
+static jlongArray j_guest_frame_time_histogram(JNIEnv* env, jobject thiz) {
+    constexpr jsize kCount = jsize(xe::kFrameTimeBuckets);
+    jlong values[kCount];
+    const auto* buckets = xe::GuestFrameTimeHistogram();
+    for (jsize i = 0; i < kCount; ++i) values[i] = jlong(buckets[i].load(std::memory_order_relaxed));
+    auto array = env->NewLongArray(kCount);
+    if (array) env->SetLongArrayRegion(array, 0, kCount, values);
+    return array;
+}
+// Player slots P2-P4 (P1 stays on key_event): input of a controller assigned to a slot.
+static void j_key_event_slot(JNIEnv* env, jobject thiz, jint slot, jint key_code, jboolean pressed, jint value) {
+    ae::key_event_slot(slot, key_code, pressed, value);
+}
+// A controller took (or left) a slot; the guest sees the pad connect or disconnect.
+static void j_set_slot_connected(JNIEnv* env, jobject thiz, jint slot, jboolean connected, jstring name) {
+    std::string label;
+    if (name) {
+        if (const char* chars = env->GetStringUTFChars(name, nullptr)) {
+            label = chars;
+            env->ReleaseStringUTFChars(name, chars);
+        }
+    }
+    ae::set_slot_connected(slot, connected, label);
+}
+// Guest rumble per slot P1..P4: left motor << 16 | right motor (0..65535 each).
+static jlongArray j_rumble_state(JNIEnv* env, jobject thiz) {
+    const jlong values[] = {jlong(ae::slot_rumble(0)), jlong(ae::slot_rumble(1)),
+                            jlong(ae::slot_rumble(2)), jlong(ae::slot_rumble(3))};
+    auto array = env->NewLongArray(4);
+    if (array) env->SetLongArrayRegion(array, 0, 4, values);
+    return array;
+}
+// {backend (0 none yet, 1 AAudio, 2 OpenSL ES), blocks played, blocks concealed
+// because the emulator was late, device xruns} since the process started.
+static jlongArray j_audio_run_stats(JNIEnv* env, jobject thiz) {
+    auto& stats = ae::RunStats();
+    const jlong values[] = {
+        jlong(stats.backend.load(std::memory_order_relaxed)),
+        jlong(stats.blocks.load(std::memory_order_relaxed)),
+        jlong(stats.concealed.load(std::memory_order_relaxed)),
+        jlong(stats.device_xruns.load(std::memory_order_relaxed))};
+    auto array = env->NewLongArray(4);
+    if (array) env->SetLongArrayRegion(array, 0, 4, values);
+    return array;
+}
+// Where a fatal error's message goes before the abort (see xe_fatal_report.h).
+static void j_set_fatal_report_path(JNIEnv* env, jobject thiz, jstring path) {
+    if (!path) {
+        xe::SetFatalReportPath({});
+        return;
+    }
+    const char* chars = env->GetStringUTFChars(path, nullptr);
+    if (!chars) return;
+    xe::SetFatalReportPath(chars);
+    env->ReleaseStringUTFChars(path, chars);
+}
+// {pipeline creations so far, nanoseconds spent creating them, creations in flight}.
+static jlongArray j_shader_compile_stats(JNIEnv* env, jobject thiz) {
+    const jlong values[] = {
+        jlong(xe::shader_compiles_total().load(std::memory_order_relaxed)),
+        jlong(xe::shader_compile_ns_total().load(std::memory_order_relaxed)),
+        jlong(xe::shader_compiles_in_flight_count())};
+    auto array = env->NewLongArray(3);
+    if (array) env->SetLongArrayRegion(array, 0, 3, values);
+    return array;
+}
+// "key=value;..." identity of the Vulkan driver in use; empty before the presenter starts.
+static jstring j_active_driver_identity(JNIEnv* env, jobject thiz) {
+    auto& runtime = xe::ui::RuntimePresentation();
+    std::lock_guard<std::mutex> lock(runtime.configuration_mutex);
+    return env->NewStringUTF(runtime.driver_identity.c_str());
+}
+static jlongArray j_presenter_work(JNIEnv* env, jobject thiz) {
+    const auto& runtime = xe::ui::RuntimePresentation();
+    const jlong values[] = {runtime.presenter_tid.load(), runtime.presenter_work_ns.load(),
+        static_cast<jlong>(runtime.presenter_work_sequence.load(std::memory_order_acquire))};
+    auto array = env->NewLongArray(3);
+    if (array) env->SetLongArrayRegion(array, 0, 3, values);
+    return array;
+}
+static void j_set_audio_volume(JNIEnv* env, jobject thiz, jint percent) {
+    ae::SetSessionVolume(percent);
+}
+static jint j_audio_volume(JNIEnv* env, jobject thiz) { return ae::EffectiveVolume(); }
+static void j_set_frame_generation(JNIEnv* env, jobject thiz, jboolean enabled, jint preset, jfloat hz) {
+    auto& runtime = xe::ui::RuntimePresentation();
+    runtime.frame_generation_engine = 0;
+    runtime.frame_generation_multiplier = 2;
+    runtime.display_hz = std::clamp(float(hz), 24.0f, 360.0f);
+    runtime.frame_generation_preset = std::clamp(int(preset), 0, 2);
+    runtime.frame_generation_error = 0;
+    runtime.generation_gpu_ms = -1.0;
+    runtime.configuration_epoch.fetch_add(1);
+    runtime.frame_generation_state = enabled ? int(xe::ui::FrameGenerationState::kWarmingUp) : 0;
+    runtime.frame_generation_requested = enabled;
+}
+static jlongArray j_presentation_state(JNIEnv* env, jobject thiz) {
+    const auto& runtime = xe::ui::RuntimePresentation();
+    jlong values[] = {runtime.display_mode.load(), runtime.frame_generation_requested.load() ? 1 : 0,
+        runtime.frame_generation_state.load(), runtime.frame_generation_error.load(),
+        static_cast<jlong>(runtime.generated_submissions.load()),
+        static_cast<jlong>(runtime.generation_gpu_ms.load() * 1000000.0),
+        static_cast<jlong>(runtime.dropped_guest_notifications.load()),
+        static_cast<jlong>(runtime.display_hz.load() * 1000.0), runtime.frame_generation_engine.load(),
+        runtime.color_filter.load(), runtime.color_filter_error.load(), runtime.frame_generation_multiplier.load(),
+        static_cast<jlong>(runtime.late_synthetic_skips.load()),
+        static_cast<jlong>(runtime.synthetic_slots.load())};
+    constexpr jsize kCount = jsize(sizeof(values) / sizeof(values[0]));
+    auto array = env->NewLongArray(kCount);
+    if (array) env->SetLongArrayRegion(array, 0, kCount, values);
+    return array;
+}
+
+// F08: GPU time per measured frame-generation pass, 0.25 ms buckets (the last one is
+// 16 ms and more), then the passes that could not be timed. Cumulative per process.
+static jlongArray j_frame_generation_gpu_histogram(JNIEnv* env, jobject thiz) {
+    const auto& runtime = xe::ui::RuntimePresentation();
+    constexpr jsize kCount = jsize(xe::ui::kGenerationGpuBuckets) + 1;
+    jlong values[kCount];
+    for (size_t i = 0; i < xe::ui::kGenerationGpuBuckets; ++i) {
+        values[i] = jlong(runtime.generation_gpu_histogram[i].load(std::memory_order_relaxed));
+    }
+    values[kCount - 1] = jlong(runtime.generation_gpu_unavailable.load(std::memory_order_relaxed));
+    auto array = env->NewLongArray(kCount);
+    if (array) env->SetLongArrayRegion(array, 0, kCount, values);
+    return array;
+}
+
+static jstring j_active_title_id(JNIEnv* env, jobject thiz) {
+    const uint32_t id = ae::active_title_id();
+    if (!id) return nullptr;
+    char text[9];
+    std::snprintf(text, sizeof(text), "%08X", id);
+    return env->NewStringUTF(text);
+}
+
+// L10: the active title's module hashes as its patches were matched (main executable
+// first); empty before a title loads.
+static jlongArray j_module_hashes(JNIEnv* env, jobject thiz) {
+    const std::vector<uint64_t> hashes = ae::module_hashes();
+    auto array = env->NewLongArray(jsize(hashes.size()));
+    if (array && !hashes.empty()) {
+        const std::vector<jlong> values(hashes.begin(), hashes.end());
+        env->SetLongArrayRegion(array, 0, jsize(values.size()), values.data());
+    }
+    return array;
+}
+
+// C06: the settings away from the core's defaults as this run booted (game config
+// applied; no profiles, storage or paths), one line each; empty before boot.
+static jobjectArray j_changed_settings(JNIEnv* env, jobject thiz) {
+    const std::vector<std::string> lines = xendroid::BootSettings();
+    jclass string_class = env->FindClass("java/lang/String");
+    if (!string_class) return nullptr;
+    jobjectArray array = env->NewObjectArray(jsize(lines.size()), string_class, nullptr);
+    if (!array) return nullptr;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        jstring line = env->NewStringUTF(lines[i].c_str());
+        if (!line) return nullptr;
+        env->SetObjectArrayElement(array, jsize(i), line);
+        env->DeleteLocalRef(line);
+    }
+    return array;
+}
+
+static jint j_build_lsfg_cache(JNIEnv* env, jobject thiz, jstring dll, jstring cache) {
+    if (!dll || !cache) return int(lsfg::DllStatus::UnreadableFile);
+    const char* dll_chars = env->GetStringUTFChars(dll, nullptr);
+    const char* cache_chars = env->GetStringUTFChars(cache, nullptr);
+    if (!dll_chars || !cache_chars) {
+        if (dll_chars) env->ReleaseStringUTFChars(dll, dll_chars);
+        if (cache_chars) env->ReleaseStringUTFChars(cache, cache_chars);
+        return int(lsfg::DllStatus::UnreadableFile);
+    }
+    const std::string dll_path(dll_chars), cache_path(cache_chars);
+    env->ReleaseStringUTFChars(dll, dll_chars); env->ReleaseStringUTFChars(cache, cache_chars);
+    return int(lsfg::buildCache(dll_path, cache_path, true));
+}
+static void j_set_lsfg(JNIEnv* env, jobject thiz, jboolean enabled, jstring cache, jfloat hz, jint multiplier) {
+    if (!cache) return;
+    const char* chars = env->GetStringUTFChars(cache, nullptr);
+    if (!chars) return;
+    auto& runtime = xe::ui::RuntimePresentation();
+    {
+        std::lock_guard<std::mutex> lock(runtime.configuration_mutex);
+        runtime.lsfg_cache = chars;
+    }
+    env->ReleaseStringUTFChars(cache, chars);
+    runtime.frame_generation_requested = false;
+    runtime.frame_generation_engine = 1;
+    runtime.frame_generation_multiplier = std::clamp(int(multiplier), 2, 4);
+    runtime.display_hz = std::clamp(float(hz), 24.0f, 360.0f);
+    runtime.frame_generation_state = enabled ? int(xe::ui::FrameGenerationState::kWarmingUp) : 0;
+    runtime.frame_generation_error = 0;
+    runtime.generation_gpu_ms = -1.0;
+    runtime.configuration_epoch.fetch_add(1);
+    runtime.frame_generation_requested = enabled;
 }
 
 // EFFECTIVE Display|show_debug_overlay, i.e. the live cvar AFTER any per-game config
@@ -1799,6 +2049,31 @@ int register_xendroid_Emulator(JNIEnv* env){
             ,{"debug_overlay_text", "()Ljava/lang/String;", (void *) j_debug_overlay_text}
             ,{"instant_fps", "()D", (void *) j_instant_fps}
             ,{"average_fps", "()D", (void *) j_average_fps}
+            ,{"host_present_submission_count", "()J", (void *) j_host_present_submission_count}
+            ,{"active_title_id", "()Ljava/lang/String;", (void *) j_active_title_id}
+            ,{"module_hashes", "()[J", (void *) j_module_hashes}
+            ,{"changed_settings", "()[Ljava/lang/String;", (void *) j_changed_settings}
+            ,{"set_presentation_mode", "(I)V", (void *) j_set_presentation_mode}
+            ,{"set_scaling_effect", "(I)V", (void *) j_set_scaling_effect}
+            ,{"set_color_filter", "(I)V", (void *) j_set_color_filter}
+            ,{"set_image_tuning", "(IFFI)V", (void *) j_set_image_tuning}
+            ,{"active_gpu_label", "()Ljava/lang/String;", (void *) j_active_gpu_label}
+            ,{"active_driver_identity", "()Ljava/lang/String;", (void *) j_active_driver_identity}
+            ,{"guest_frame_time_histogram", "()[J", (void *) j_guest_frame_time_histogram}
+            ,{"shader_compile_stats", "()[J", (void *) j_shader_compile_stats}
+            ,{"audio_run_stats", "()[J", (void *) j_audio_run_stats}
+            ,{"key_event_slot", "(IIZI)V", (void *) j_key_event_slot}
+            ,{"set_slot_connected", "(IZLjava/lang/String;)V", (void *) j_set_slot_connected}
+            ,{"rumble_state", "()[J", (void *) j_rumble_state}
+            ,{"set_fatal_report_path", "(Ljava/lang/String;)V", (void *) j_set_fatal_report_path}
+            ,{"presenter_work", "()[J", (void *) j_presenter_work}
+            ,{"set_frame_generation", "(ZIF)V", (void *) j_set_frame_generation}
+            ,{"presentation_state", "()[J", (void *) j_presentation_state}
+            ,{"frame_generation_gpu_histogram", "()[J", (void *) j_frame_generation_gpu_histogram}
+            ,{"build_lsfg_cache", "(Ljava/lang/String;Ljava/lang/String;)I", (void *) j_build_lsfg_cache}
+            ,{"set_lsfg", "(ZLjava/lang/String;FI)V", (void *) j_set_lsfg}
+            ,{"set_audio_volume", "(I)V", (void *) j_set_audio_volume}
+            ,{"audio_volume", "()I", (void *) j_audio_volume}
             ,{"last_frame_time_ms", "()D", (void *) j_last_frame_time_ms}
             ,{"show_debug_overlay_enabled", "()Z", (void *) j_show_debug_overlay_enabled}
             ,{"show_touch_overlay_enabled", "()Z", (void *) j_show_touch_overlay_enabled}

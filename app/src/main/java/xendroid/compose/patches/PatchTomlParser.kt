@@ -11,6 +11,9 @@ object PatchTomlParser {
         var titleName = ""
         var titleId: String? = null
         var hashes: List<String> = emptyList()
+        // Round 2: what the header's comments say about the version ("# TU1" after a name or a hash).
+        val versionNotes = mutableListOf<String>()
+        var inHashes = false
 
         val entries = mutableListOf<PatchEntry>()
         var inPatch = false
@@ -30,6 +33,15 @@ object PatchTomlParser {
 
         for (raw in text.split("\n")) {
             val line = raw.trim()
+            // A hash array over several lines: one quoted hash per line, "]" closes it.
+            if (inHashes) {
+                if (!line.startsWith("#")) {
+                    hashes = hashes + Regex("\"([^\"]*)\"").findAll(line.substringBefore('#')).map { it.groupValues[1] }
+                    comment(line)?.let(versionNotes::add)
+                }
+                if (line.substringBefore('#').contains(']')) inHashes = false
+                continue
+            }
             // Prefix match: headers may carry a trailing comment; `[[patch.` sub-tables don't match.
             if (line.startsWith("[[patch]]")) {
                 flush()
@@ -42,9 +54,13 @@ object PatchTomlParser {
             val rhs = line.substringAfter('=').trim()
             if (!inPatch) {
                 when (key) {
-                    "title_name" -> titleName = parseString(rhs)
+                    "title_name" -> { titleName = parseString(rhs); comment(rhs)?.let(versionNotes::add) }
                     "title_id" -> titleId = parseString(rhs)
-                    "hash" -> hashes = parseStringOrArray(rhs)
+                    "hash" -> {
+                        hashes = parseStringOrArray(rhs)
+                        comment(rhs)?.let(versionNotes::add)
+                        if (rhs.startsWith("[") && !rhs.substringBefore('#').contains(']')) inHashes = true
+                    }
                 }
             } else {
                 when (key) {
@@ -65,8 +81,28 @@ object PatchTomlParser {
             hashes = hashes,
             variantLabel = variantLabel(fileName, titleName),
             entries = entries,
+            versionLabel = versionLabel(fileName, versionNotes),
         )
     }
+
+    /** The comment after a value (outside its quotes), or null. */
+    private fun comment(rhs: String): String? {
+        var quoted = false
+        rhs.forEachIndexed { i, ch ->
+            if (ch == '"') quoted = !quoted
+            if (ch == '#' && !quoted) return rhs.substring(i + 1).trim().ifEmpty { null }
+        }
+        return null
+    }
+
+    private val TU = Regex("""\bTU\s*#?\s*(\d+)\b""", RegexOption.IGNORE_CASE)
+    private val TITLE_UPDATE = Regex("""\btitle\s+update\s*#?\s*(\d+)\b""", RegexOption.IGNORE_CASE)
+
+    /** "TU 2" from the file name ("Undertow (TU2)") or the header's comments; null when none says. */
+    internal fun versionLabel(fileName: String, notes: List<String>): String? =
+        (listOf(fileName) + notes).firstNotNullOfOrNull { text ->
+            (TU.find(text) ?: TITLE_UPDATE.find(text))?.groupValues?.get(1)?.toIntOrNull()?.let { "TU $it" }
+        }
 
     /** `"foo"` -> `foo`; tolerates a trailing inline `# comment`. */
     private fun parseString(rhs: String): String {

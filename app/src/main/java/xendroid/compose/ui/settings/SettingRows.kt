@@ -1,5 +1,7 @@
 package xendroid.compose.ui.settings
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -24,17 +26,34 @@ import xendroid.compose.Utils
 import xendroid.compose.core.SessionLogs
 import xendroid.compose.driver.DriverInfo
 import xendroid.compose.driver.DriverRepository
+import xendroid.compose.driver.DriverPackageIO
+import xendroid.compose.driver.DriverPackageInstaller
 import xendroid.compose.settings.Setting
 import xendroid.compose.settings.SettingsHost
 
 @Composable
-fun SettingRow(host: SettingsHost, s: Setting, modified: Boolean, raw: String? = null) = when (s) {
+fun SettingRow(host: SettingsHost, s: Setting, modified: Boolean, raw: String? = null) {
+    val contract = host.contract(s)
+    Column(Modifier.fillMaxWidth()) {
+        if (!contract.available) {
+            // U03: an unavailable setting keeps its name and says why, instead of vanishing.
+            Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                RowTitle(settingTitle(s), modified = false, sub = contractText(contract))
+            }
+            return@Column
+        }
+        Text(contractText(contract), style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 6.dp))
+        when (s) {
     is Setting.Bool       -> BoolRow(host, s, modified)
     is Setting.IntRange   -> IntRow(host, s, modified)
-    is Setting.ListChoice -> ListRow(host, s, modified)
+    is Setting.ListChoice -> if (s.key == "Vulkan|turnip_debug") TurnipFlagsRow(host, s, modified) else ListRow(host, s, modified)
     is Setting.Action     ->
         if (s.name == "dump_session_logs") ExportLogsRow(s)
         else DriverActionRow(host, s, modified, raw)
+    is Setting.Text       -> TextRow(host, s, modified)
+        }
+    }
 }
 
 @Composable
@@ -72,6 +91,64 @@ private fun RowValue(value: String) {
     )
 }
 
+/** 15i: TU_DEBUG flag by flag, each with what it does ([TurnipFlags]); saved as the list it always was. */
+@Composable
+private fun TurnipFlagsRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean) {
+    var open by remember { mutableStateOf(false) }
+    val raw = host.currentListValue(s)
+    Row(
+        Modifier.fillMaxWidth().clickable { open = true }.padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f)) { RowTitle(settingTitle(s), modified, desc = settingDesc(s)) }
+        RowValue(raw.ifEmpty { stringResource(R.string.tu_none) })
+    }
+    if (!open) return
+    var draft by remember(raw) { mutableStateOf(raw) }
+    val chosen = xendroid.compose.settings.TurnipFlags.parse(draft)
+    AlertDialog(
+        onDismissRequest = { open = false },
+        title = { Text(settingTitle(s)) },
+        text = {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                item {
+                    Text(stringResource(R.string.tu_intro), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                items(xendroid.compose.settings.TurnipFlags.KNOWN, key = { it.name }) { flag ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .selectable(selected = flag.name in chosen,
+                                onClick = { draft = xendroid.compose.settings.TurnipFlags.toggle(draft, flag.name) })
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Checkbox(checked = flag.name in chosen, onCheckedChange = null)
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(flag.name, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                            Text(flag.help, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                val kept = xendroid.compose.settings.TurnipFlags.unknown(draft)
+                if (kept.isNotEmpty()) {
+                    item { Text(stringResource(R.string.tu_kept, kept.joinToString(", ")), style = MaterialTheme.typography.bodySmall) }
+                }
+                item {
+                    Text("TU_DEBUG=" + draft.ifEmpty { "—" }, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { host.onListChanged(s, draft); open = false }) { Text(stringResource(R.string.common_save)) }
+        },
+        dismissButton = { TextButton(onClick = { open = false }) { Text(stringResource(R.string.common_cancel)) } },
+    )
+}
+
 @Composable
 private fun BoolRow(host: SettingsHost, s: Setting.Bool, modified: Boolean) {
     val checked = remember(modified) { host.currentBool(s) }
@@ -88,7 +165,7 @@ private fun BoolRow(host: SettingsHost, s: Setting.Bool, modified: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f)) {
-            RowTitle(s.title, modified, desc = s.desc)
+            RowTitle(settingTitle(s), modified, desc = settingDesc(s))
         }
 
         Switch(
@@ -114,7 +191,7 @@ private fun IntRow(host: SettingsHost, s: Setting.IntRange, modified: Boolean) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.weight(1f)) {
-            RowTitle(s.title, modified, desc = s.desc)
+            RowTitle(settingTitle(s), modified, desc = settingDesc(s))
         }
 
         RowValue(current.toString())
@@ -129,7 +206,7 @@ private fun IntRow(host: SettingsHost, s: Setting.IntRange, modified: Boolean) {
 
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text(s.title) },
+            title = { Text(settingTitle(s)) },
             text = {
                 Column {
                     Text(
@@ -152,14 +229,14 @@ private fun IntRow(host: SettingsHost, s: Setting.IntRange, modified: Boolean) {
                         showDialog = false
                     }
                 ) {
-                    Text("OK")
+                    Text(stringResource(R.string.common_ok))
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = { showDialog = false }
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         )
@@ -172,8 +249,8 @@ private fun ListRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean
     val currentValue = host.currentListValue(s)
 
     val currentLabel =
-        s.options.firstOrNull { it.value == currentValue }?.label
-            ?: if (currentValue.isEmpty()) "(default)" else currentValue
+        s.options.firstOrNull { it.value == currentValue }?.let { optionLabel(s, it.value, it.label) }
+            ?: if (currentValue.isEmpty()) stringResource(R.string.set_default_paren) else currentValue
 
     Row(
         Modifier
@@ -183,7 +260,7 @@ private fun ListRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.weight(1f)) {
-            RowTitle(s.title, modified, desc = s.desc)
+            RowTitle(settingTitle(s), modified, desc = settingDesc(s))
         }
 
         RowValue(currentLabel)
@@ -201,7 +278,7 @@ private fun ListRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean
 
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text(s.title) },
+            title = { Text(settingTitle(s)) },
             text = {
                 LazyColumn(
                     state = listState,
@@ -232,7 +309,7 @@ private fun ListRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean
                             )
 
                             Spacer(Modifier.width(8.dp))
-                            Text(opt.label)
+                            Text(optionLabel(s, opt.value, opt.label))
                         }
                     }
                 }
@@ -240,7 +317,7 @@ private fun ListRow(host: SettingsHost, s: Setting.ListChoice, modified: Boolean
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         )
@@ -269,8 +346,8 @@ private fun ExportLogsRow(s: Setting.Action) {
                     Toast.makeText(
                         context,
                         dest?.let {
-                            "Logs exported to ${it.name} in Downloads"
-                        } ?: "No logs to export",
+                            context.getString(R.string.set_logs_exported, it.name)
+                        } ?: context.getString(R.string.set_logs_none),
                         Toast.LENGTH_LONG
                     ).show()
 
@@ -282,10 +359,10 @@ private fun ExportLogsRow(s: Setting.Action) {
     ) {
         Box(Modifier.weight(1f)) {
             RowTitle(
-                s.title,
+                settingTitle(s),
                 false,
-                sub = if (busy) "Exporting..." else "Shelved sessions + current run",
-                desc = s.desc
+                sub = if (busy) stringResource(R.string.set_logs_exporting) else stringResource(R.string.set_logs_note),
+                desc = settingDesc(s)
             )
         }
     }
@@ -314,16 +391,56 @@ private fun DriverActionRow(
 
     var showManager by remember { mutableStateOf(false) }
     var drivers by remember { mutableStateOf<List<DriverInfo>>(emptyList()) }
+    // 15p: the GitHub repositories the manager reads, and the driver suggested for this GPU.
+    var sources by remember { mutableStateOf(xendroid.compose.driver.DriverSources.decode(prefs.getString("sources", null))) }
+    var editingSources by remember { mutableStateOf(false) }
+    val adreno = remember { xendroid.compose.driver.DriverSuggestion.adrenoModel(xendroid.compose.core.EmulatorRuntime.gpuDeviceName) }
+    val suggested = remember(drivers) { xendroid.compose.driver.DriverSuggestion.suggest(drivers, xendroid.compose.core.EmulatorRuntime.gpuDeviceName) }
     var loading by remember { mutableStateOf(false) }
     var downloading by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableIntStateOf(0) }
+    val previousKey = "previous_${host.persistenceKey}_${s.key}"
+    val selectedAtKey = "selected_at_${host.persistenceKey}_${s.key}"
+    var previousDriver by remember(previousKey) { mutableStateOf(prefs.getString(previousKey, null)) }
+    var selectedAt by remember(selectedAtKey) { mutableStateOf(prefs.getLong(selectedAtKey, 0L).takeIf { it > 0 }) }
+
+    // U03: the driver the latest run of this scope actually loaded, against the selection.
+    var lastRun by remember { mutableStateOf<xendroid.compose.sessions.SessionRun?>(null) }
+    LaunchedEffect(host.persistenceKey) {
+        val title = host.persistenceKey.removePrefix("game:").takeIf { host.persistenceKey.startsWith("game:") }
+        lastRun = withContext(Dispatchers.IO) {
+            runCatching {
+                xendroid.compose.sessions.SessionRuns.store().runs()
+                    .firstOrNull { it.driver != null && (title == null || it.titleId.equals(title, ignoreCase = true)) }
+            }.getOrNull()
+        }
+    }
+
+    fun selectDriver(path: String) {
+        if (path == current) return
+        // History belongs to this global/title scope. Keep installed binaries untouched
+        // so undoing a selection does not require another download or unsafe deletion.
+        previousDriver = current
+        val now = System.currentTimeMillis()
+        selectedAt = now
+        prefs.edit().putString(previousKey, current).putLong(selectedAtKey, now).apply()
+        host.onDriverPathChanged(s, path)
+    }
 
     val pickZip = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri != null && activity != null) {
-            Utils.install_custom_driver_from_zip(activity, uri) { path ->
-                host.onDriverPathChanged(s, path)
+        if (uri != null && downloading == null) {
+            downloading = "import"
+            scope.launch {
+                try {
+                    val installed = DriverPackageIO.import(context, uri)
+                    selectDriver(installed.library.absolutePath)
+                    Toast.makeText(context, context.getString(R.string.drv_imported), Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    Toast.makeText(context, context.getString(R.string.drv_import_failed, e.message), Toast.LENGTH_LONG).show()
+                } finally { downloading = null }
             }
         }
     }
@@ -335,13 +452,16 @@ private fun DriverActionRow(
 
         scope.launch {
             runCatching {
-                DriverRepository.loadDrivers()
-            }.onSuccess {
-                drivers = it
+                DriverRepository.loadDrivers(sources)
+            }.onSuccess { listing ->
+                drivers = listing.drivers
+                listing.failures.forEach { (source, reason) ->
+                    Toast.makeText(context, context.getString(R.string.drv_source_failed, source, reason), Toast.LENGTH_LONG).show()
+                }
             }.onFailure {
                 Toast.makeText(
                     context,
-                    "Failed to load drivers: ${it.message}",
+                    context.getString(R.string.drv_load_failed, it.message),
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -360,12 +480,18 @@ private fun DriverActionRow(
         ) {
             Box(Modifier.weight(1f)) {
                 RowTitle(
-                    s.title,
+                    settingTitle(s),
                     modified,
-                    sub = current.ifEmpty { "Default" },
-                    desc = s.desc
+                    sub = stringResource(R.string.drv_next_launch, current.ifEmpty { stringResource(R.string.drv_system) }),
+                    desc = settingDesc(s)
                 )
             }
+        }
+
+        xendroid.compose.driver.DriverIdentity.describeEffective(current, lastRun?.driver, lastRun?.startedAt, selectedAt)?.let { note ->
+            Text(note, style = MaterialTheme.typography.bodySmall,
+                color = if ("did not load" in note) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp))
         }
 
         Row(
@@ -378,23 +504,34 @@ private fun DriverActionRow(
                     loadDrivers()
                 }
             ) {
-                Text("Driver Manager")
+                Text(stringResource(R.string.drv_manager))
             }
 
             TextButton(
+                enabled = downloading == null,
                 onClick = {
-                    host.onDriverPathChanged(s, "")
+                    selectDriver("")
                 }
             ) {
-                Text("Use default driver")
+                Text(stringResource(R.string.drv_use_default))
             }
 
             TextButton(
+                enabled = downloading == null,
                 onClick = {
                     pickZip.launch(arrayOf("application/zip"))
                 }
             ) {
-                Text("Import ZIP")
+                Text(stringResource(R.string.drv_import_zip))
+            }
+        }
+        previousDriver?.let { previous ->
+            val available = previous.isEmpty() || java.io.File(previous).isFile
+            TextButton(
+                enabled = available && downloading == null,
+                onClick = { selectDriver(previous) },
+            ) {
+                Text(if (available) stringResource(R.string.drv_use_previous) else stringResource(R.string.drv_previous_gone))
             }
         }
     }
@@ -407,7 +544,7 @@ private fun DriverActionRow(
                 }
             },
             title = {
-                Text("Custom GPU Drivers")
+                Text(stringResource(R.string.drv_title))
             },
             text = {
                 when {
@@ -421,7 +558,10 @@ private fun DriverActionRow(
                     }
 
                     drivers.isEmpty() -> {
-                        Text("No drivers available.")
+                        Column {
+                            DriverSourcesLine(sources) { editingSources = true }
+                            Text(stringResource(if (sources.isEmpty()) R.string.drv_sources_none else R.string.drv_none))
+                        }
                     }
 
                     else -> {
@@ -430,8 +570,16 @@ private fun DriverActionRow(
                                 .fillMaxWidth()
                                 .heightIn(max = 450.dp)
                         ) {
+                            item(key = "sources") {
+                                DriverSourcesLine(sources) { editingSources = true }
+                                if (suggested != null && adreno != null) {
+                                    Text(stringResource(R.string.drv_suggested_note), style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                HorizontalDivider()
+                            }
                             items(
-                                drivers,
+                                listOfNotNull(suggested) + drivers.filter { it != suggested },
                                 key = { "${it.name}_${it.url}" }
                             ) { driver ->
 
@@ -440,7 +588,9 @@ private fun DriverActionRow(
                                         "installed_${driver.url}",
                                         null
                                     )?.takeIf {
-                                        java.io.File(it).exists()
+                                        java.io.File(it).isFile &&
+                                            (driver.sha256.isEmpty() ||
+                                                prefs.getString("digest_${driver.url}", "") == driver.sha256.lowercase())
                                     }
 
                                 Column(
@@ -453,10 +603,27 @@ private fun DriverActionRow(
                                         style = MaterialTheme.typography.bodyLarge
                                     )
 
+                                    if (driver == suggested && adreno != null) {
+                                        Text(stringResource(R.string.drv_suggested, adreno),
+                                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                    }
+
                                     Text(
                                         driver.version,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    if (driver.source.isNotEmpty() && sources.size > 1) {
+                                        Text(stringResource(R.string.drv_from, driver.source), style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+
+                                    Text(
+                                        if (driver.sha256.isBlank()) stringResource(R.string.drv_no_checksum)
+                                        else stringResource(R.string.drv_checksum),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
 
                                     if (downloading == driver.url) {
@@ -477,14 +644,16 @@ private fun DriverActionRow(
                                                 }
 
                                                 if (installedPath != null) {
-                                                    host.onDriverPathChanged(
-                                                        s,
-                                                        installedPath
-                                                    )
+                                                    val valid = runCatching { DriverPackageInstaller.validateArm64Library(java.io.File(installedPath)) }.isSuccess
+                                                    if (!valid) {
+                                                        Toast.makeText(context, context.getString(R.string.drv_damaged), Toast.LENGTH_LONG).show()
+                                                        return@TextButton
+                                                    }
+                                                    selectDriver(installedPath)
 
                                                     Toast.makeText(
                                                         context,
-                                                        "Driver selected",
+                                                        context.getString(R.string.drv_selected),
                                                         Toast.LENGTH_SHORT
                                                     ).show()
 
@@ -504,36 +673,26 @@ private fun DriverActionRow(
                                                         }
                                                     }.onSuccess { file ->
 
-                                                        val installed =
-                                                            Utils.install_custom_driver_from_file(
-                                                                activity,
-                                                                file
-                                                            ) { path ->
-
-                                                                prefs.edit()
-                                                                    .putString(
-                                                                        "installed_${driver.url}",
-                                                                        path
-                                                                    )
-                                                                    .apply()
-
-                                                                host.onDriverPathChanged(
-                                                                    s,
-                                                                    path
-                                                                )
-                                                            }
-
-                                                        if (installed) {
+                                                        val installed = runCatching { DriverPackageIO.install(file, driver.sha256.takeIf { it.isNotBlank() }) }
+                                                        installed.onSuccess { result ->
+                                                            prefs.edit()
+                                                                .putString("installed_${driver.url}", result.library.absolutePath)
+                                                                .putString("digest_${driver.url}", result.sha256)
+                                                                .apply()
+                                                            selectDriver(result.library.absolutePath)
                                                             Toast.makeText(
                                                                 context,
-                                                                "Driver installed",
+                                                                if (result.verifiedDownload) context.getString(R.string.drv_installed_verified) else context.getString(R.string.drv_installed_unverified),
                                                                 Toast.LENGTH_SHORT
                                                             ).show()
+                                                        }.onFailure { error ->
+                                                            if (error is kotlinx.coroutines.CancellationException) throw error
+                                                            Toast.makeText(context, context.getString(R.string.drv_install_failed, error.message), Toast.LENGTH_LONG).show()
                                                         }
                                                     }.onFailure {
                                                         Toast.makeText(
                                                             context,
-                                                            "Download failed: ${it.message}",
+                                                            context.getString(R.string.drv_download_failed, it.message),
                                                             Toast.LENGTH_LONG
                                                         ).show()
                                                     }
@@ -545,9 +704,9 @@ private fun DriverActionRow(
                                         ) {
                                             Text(
                                                 if (installedPath != null) {
-                                                    "Use"
+                                                    stringResource(R.string.drv_use)
                                                 } else {
-                                                    "Download & Install"
+                                                    stringResource(R.string.drv_download_install)
                                                 }
                                             )
                                         }
@@ -567,11 +726,87 @@ private fun DriverActionRow(
                         showManager = false
                     }
                 ) {
-                    Text("Close")
+                    Text(stringResource(R.string.common_close))
                 }
             }
         )
     }
+    if (editingSources) {
+        DriverSourcesDialog(
+            sources = sources,
+            onChange = { next ->
+                sources = next
+                prefs.edit().putString("sources", xendroid.compose.driver.DriverSources.encode(next)).apply()
+                drivers = emptyList()   // read again from the new list
+                loadDrivers()
+            },
+            onDismiss = { editingSources = false },
+        )
+    }
+}
+
+/** 15p: the sources the manager reads, with the button that edits them. */
+@Composable
+private fun DriverSourcesLine(sources: List<String>, onEdit: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (sources.isEmpty()) stringResource(R.string.drv_sources_none)
+            else stringResource(R.string.drv_sources, sources.joinToString(", ")),
+            style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onEdit) { Text(stringResource(R.string.drv_sources_edit)) }
+    }
+}
+
+/** 15p: add or remove the GitHub repositories the driver manager reads. */
+@Composable
+internal fun DriverSourcesDialog(sources: List<String>, onChange: (List<String>) -> Unit, onDismiss: () -> Unit) {
+    var input by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val invalid = stringResource(R.string.drv_source_invalid)
+    val duplicate = stringResource(R.string.drv_source_duplicate)
+    val full = stringResource(R.string.drv_source_full, xendroid.compose.driver.DriverSources.MAX)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.drv_sources_title)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.drv_sources_note), style = MaterialTheme.typography.bodySmall)
+                sources.forEach { source ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(source, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { onChange(xendroid.compose.driver.DriverSources.remove(sources, source)) }) {
+                            Text(stringResource(R.string.common_remove))
+                        }
+                    }
+                }
+                if (sources.none { it.equals(xendroid.compose.driver.DriverSources.DEFAULT, ignoreCase = true) }) {
+                    TextButton(onClick = {
+                        onChange(xendroid.compose.driver.DriverSources.add(sources, xendroid.compose.driver.DriverSources.DEFAULT).first)
+                    }) { Text(stringResource(R.string.drv_source_default)) }
+                }
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it; problem = null },
+                    label = { Text(stringResource(R.string.drv_source_hint)) },
+                    singleLine = true,
+                    isError = problem != null,
+                    supportingText = problem?.let { { Text(it) } },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(onClick = {
+                    val (next, result) = xendroid.compose.driver.DriverSources.add(sources, input)
+                    problem = when (result) {
+                        xendroid.compose.driver.DriverSources.Added.ADDED -> { onChange(next); input = ""; null }
+                        xendroid.compose.driver.DriverSources.Added.INVALID -> invalid
+                        xendroid.compose.driver.DriverSources.Added.ALREADY_THERE -> duplicate
+                        xendroid.compose.driver.DriverSources.Added.FULL -> full
+                    }
+                }) { Text(stringResource(R.string.drv_source_add)) }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
+    )
 }
 
 @Composable
@@ -618,14 +853,14 @@ private fun InheritedPreview(host: SettingsHost, s: Setting) {
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    s.title,
+                    settingTitle(s),
                     color = grey,
                     style = MaterialTheme.typography.bodyLarge
                 )
 
-                if (s.desc.isNotEmpty()) {
+                if (settingDesc(s).isNotEmpty()) {
                     Text(
-                        s.desc,
+                        settingDesc(s),
                         color = grey,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -641,9 +876,9 @@ private fun InheritedPreview(host: SettingsHost, s: Setting) {
 
         is Setting.IntRange ->
             InheritedTextRow(
-                s.title,
+                settingTitle(s),
                 host.currentInt(s).toString(),
-                s.desc,
+                settingDesc(s),
                 grey
             )
 
@@ -651,22 +886,25 @@ private fun InheritedPreview(host: SettingsHost, s: Setting) {
             val v = host.currentListValue(s)
 
             val label =
-                s.options.firstOrNull { it.value == v }?.label
-                    ?: v.ifEmpty { "(default)" }
+                s.options.firstOrNull { it.value == v }?.let { optionLabel(s, it.value, it.label) }
+                    ?: v.ifEmpty { stringResource(R.string.set_default_paren) }
 
             InheritedTextRow(
-                s.title,
+                settingTitle(s),
                 label,
-                s.desc,
+                settingDesc(s),
                 grey
             )
         }
 
+        is Setting.Text ->
+            InheritedTextRow(settingTitle(s), host.currentText(s).ifEmpty { s.placeholder }, settingDesc(s), grey)
+
         is Setting.Action ->
             InheritedTextRow(
-                s.title,
-                host.currentDriverPath(s).ifEmpty { "Default" },
-                s.desc,
+                settingTitle(s),
+                host.currentDriverPath(s).ifEmpty { stringResource(R.string.drv_default) },
+                settingDesc(s),
                 grey
             )
     }
@@ -702,6 +940,21 @@ private fun InheritedTextRow(
             value,
             color = grey,
             style = MaterialTheme.typography.bodySmall
+        )
+    }
+}
+
+@Composable
+private fun TextRow(host: SettingsHost, s: Setting.Text, modified: Boolean) {
+    var text by remember(s.key) { mutableStateOf(host.currentText(s)) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        RowTitle(settingTitle(s), modified, desc = settingDesc(s))
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it; host.onTextChanged(s, it) },
+            singleLine = true,
+            placeholder = { Text(s.placeholder) },
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

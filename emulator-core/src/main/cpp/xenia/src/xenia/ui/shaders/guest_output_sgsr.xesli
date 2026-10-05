@@ -1,0 +1,140 @@
+/**
+ ******************************************************************************
+ * Snapdragon Game Super Resolution 1 (SGSR 1) as a guest output effect.      *
+ * Ported to XESL for XenDroid from sgsr1_shader_mobile.frag of               *
+ * SnapdragonStudios/snapdragon-gsr (d926f074, sgsr/v1/include/glsl):        *
+ *                                                                            *
+ *   Copyright (c) 2025, Qualcomm Innovation Center, Inc.                     *
+ *   All rights reserved.                                                     *
+ *   SPDX-License-Identifier: BSD-3-Clause                                    *
+ *                                                                            *
+ * License text: emulator-core/src/main/cpp/third_party/sgsr/LICENSE.         *
+ ******************************************************************************
+ */
+
+// One pass from the guest output to any larger size: a bilinear base, corrected
+// at edges by a Lanczos-like reconstruction of luma (green, operation mode RGBA)
+// from 12 gathered texels, clamped to the four nearest ones so nothing rings
+// past them. Same constants as the reference: edge threshold 8/255, the edge
+// sharpness from the push constants (2.0 there), luma steps limited to 23/255.
+
+#include "xesl.xesli"
+
+#ifdef XE_GUEST_OUTPUT_DITHER
+  #include "dither_8bpc.xesli"
+#endif  // XE_GUEST_OUTPUT_DITHER
+
+push_const_begin_xe(b0, space0)
+  // 16 used by the vertex shader (GLSL push constant offsets are across
+  // stages).
+  block_offset_member_xe(16, c0.x, int2_xe, xe_sgsr_output_offset)
+  block_offset_member_xe(24, c0.z, float2_xe, xe_sgsr_output_size_inv)
+  // 1 / input width, 1 / input height, input width, input height.
+  block_offset_member_xe(32, c1, float4_xe, xe_sgsr_viewport_info)
+  block_offset_member_xe(48, c2.x, float, xe_sgsr_edge_sharpness)
+push_const_end_xe
+
+float XeSgsrFastLanczos2(float x) {
+  float wA = x - 4.0f;
+  float wB = x * wA - wA;
+  wA *= wA;
+  return wB * wA;
+}
+
+float2_xe XeSgsrWeightY(float dx, float dy, float c, float std_dev) {
+  float x = (dx * dx + dy * dy) * 0.55f + clamp(abs(c) * std_dev, 0.0f, 1.0f);
+  float w = XeSgsrFastLanczos2(x);
+  return float2_xe(w, w * c);
+}
+
+entry_outputs_begin_xe
+  entry_out_target_xe(float4_xe, xe_sgsr_color, 0)
+entry_outputs_end_stage_inputs_begin_xe
+entry_stage_inputs_end_bindings_begin_pixel_xe
+  push_const_binding_xe(buffer(0))
+  entry_binding_next_xe
+  texture_xe(texture_2d_xe, xe_sgsr_source, 0, 0, t0, space0, texture(0))
+  entry_binding_next_xe
+  sampler_state_xe(xe_sgsr_sampler, 0, 1, s0, space0, sampler(0))
+entry_bindings_end_inputs_begin_xe
+  entry_in_pixel_coord_xe
+entry_inputs_end_code_begin_xe
+{
+  uint2_xe pixel_coord = uint2_xe(int2_xe(in_pixel_coord_xe.xy) -
+                                  push_const_xe(xe_sgsr_output_offset));
+  float2_xe uv = (float2_xe(pixel_coord) + 0.5f) *
+                 push_const_xe(xe_sgsr_output_size_inv);
+  float4_xe viewport_info = push_const_xe(xe_sgsr_viewport_info);
+  float4_xe color;
+  color.rgb =
+      sample_sep_lod_2d_xe(xe_sgsr_source, xe_sgsr_sampler, uv, 0.0f).rgb;
+  color.a = 0.0f;
+
+  float2_xe img_coord = uv * viewport_info.zw + float2_xe(-0.5f, 0.5f);
+  float2_xe img_coord_pixel = floor(img_coord);
+  float2_xe coord = img_coord_pixel * viewport_info.xy;
+  float2_xe pl = img_coord - img_coord_pixel;
+  float4_xe left = gather_sep_2d_g_xe(xe_sgsr_source, xe_sgsr_sampler, coord);
+
+  float edge_vote = abs(left.z - left.y) + abs(color.g - left.y) +
+                    abs(color.g - left.z);
+  if (edge_vote > 8.0f / 255.0f) {
+    coord.x += viewport_info.x;
+
+    float4_xe right = gather_sep_2d_g_xe(
+        xe_sgsr_source, xe_sgsr_sampler,
+        coord + float2_xe(viewport_info.x, 0.0f));
+    float4_xe up_down;
+    up_down.xy = gather_sep_2d_g_xe(xe_sgsr_source, xe_sgsr_sampler,
+                                    coord + float2_xe(0.0f, -viewport_info.y))
+                     .wz;
+    up_down.zw = gather_sep_2d_g_xe(xe_sgsr_source, xe_sgsr_sampler,
+                                    coord + float2_xe(0.0f, viewport_info.y))
+                     .yx;
+
+    float mean = (left.y + left.z + right.x + right.w) * 0.25f;
+    left -= float_x4_xe(mean);
+    right -= float_x4_xe(mean);
+    up_down -= float_x4_xe(mean);
+    color.a = color.g - mean;
+
+    float sum = abs(left.x) + abs(left.y) + abs(left.z) + abs(left.w) +
+                abs(right.x) + abs(right.y) + abs(right.z) + abs(right.w) +
+                abs(up_down.x) + abs(up_down.y) + abs(up_down.z) +
+                abs(up_down.w);
+    float std_dev = 2.181818f / sum;
+
+    float2_xe a_wy = XeSgsrWeightY(pl.x, pl.y + 1.0f, up_down.x, std_dev);
+    a_wy += XeSgsrWeightY(pl.x - 1.0f, pl.y + 1.0f, up_down.y, std_dev);
+    a_wy += XeSgsrWeightY(pl.x - 1.0f, pl.y - 2.0f, up_down.z, std_dev);
+    a_wy += XeSgsrWeightY(pl.x, pl.y - 2.0f, up_down.w, std_dev);
+    a_wy += XeSgsrWeightY(pl.x + 1.0f, pl.y - 1.0f, left.x, std_dev);
+    a_wy += XeSgsrWeightY(pl.x, pl.y - 1.0f, left.y, std_dev);
+    a_wy += XeSgsrWeightY(pl.x, pl.y, left.z, std_dev);
+    a_wy += XeSgsrWeightY(pl.x + 1.0f, pl.y, left.w, std_dev);
+    a_wy += XeSgsrWeightY(pl.x - 1.0f, pl.y - 1.0f, right.x, std_dev);
+    a_wy += XeSgsrWeightY(pl.x - 2.0f, pl.y - 1.0f, right.y, std_dev);
+    a_wy += XeSgsrWeightY(pl.x - 2.0f, pl.y, right.z, std_dev);
+    a_wy += XeSgsrWeightY(pl.x - 1.0f, pl.y, right.w, std_dev);
+
+    float final_y = a_wy.y / a_wy.x;
+    float max_y = max(max(left.y, left.z), max(right.x, right.w));
+    float min_y = min(min(left.y, left.z), min(right.x, right.w));
+    final_y = clamp(push_const_xe(xe_sgsr_edge_sharpness) * final_y, min_y,
+                    max_y);
+
+    // Smooths high-contrast input, as the reference does.
+    float delta_y =
+        clamp(final_y - color.a, -23.0f / 255.0f, 23.0f / 255.0f);
+    color.rgb = saturate_xe(color.rgb + delta_y);
+  }
+
+  #ifdef XE_GUEST_OUTPUT_DITHER
+    // Clamping because on Vulkan, the surface may specify any format, including
+    // floating-point.
+    color.rgb = saturate_xe(color.rgb + XeDitherOffset8bpc(pixel_coord));
+  #endif  // XE_GUEST_OUTPUT_DITHER
+  color.a = 1.0f;
+  out_xe(xe_sgsr_color) = color;
+}
+entry_code_end_xe

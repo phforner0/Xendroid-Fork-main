@@ -13,6 +13,15 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
+#include "xenia/base/frame_stats.h"
+#include "third_party/winfg/src/framegen.hpp"
+#include "third_party/lsfg/lsfg_engine.h"
+#include "third_party/lsfg/lsfg_vkd.h"
+#include <chrono>
+#if XE_PLATFORM_ANDROID || XE_PLATFORM_xendroid
+#include <unistd.h>
+#include <sys/syscall.h>
+#endif
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/platform.h"
@@ -61,6 +70,9 @@ namespace xe {
 namespace ui {
 namespace vulkan {
 
+#include "xenia/ui/vulkan/vulkan_framegen.inc"
+#include "xenia/ui/vulkan/vulkan_color_filter.inc"
+
 // Generated with `xb buildshaders`.
 namespace shaders {
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_bilinear_dither_ps.h"
@@ -70,6 +82,12 @@ namespace shaders {
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_cas_sharpen_dither_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_cas_sharpen_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_fsr_easu_ps.h"
+#include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_sgsr_dither_ps.h"
+#include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_sgsr_ps.h"
+#include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_lanczos_dither_ps.h"
+#include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_lanczos_ps.h"
+#include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_crt_dither_ps.h"
+#include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_crt_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_fsr_rcas_dither_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_ffx_fsr_rcas_ps.h"
 #include "xenia/ui/shaders/bytecode/vulkan_spirv/guest_output_triangle_strip_rect_vs.h"
@@ -136,6 +154,9 @@ bool VulkanPresenter::PaintContext::Submission::Initialize() {
 }
 
 VulkanPresenter::~VulkanPresenter() {
+  StopFrameGenerationThread();
+  ResetColorFilter();
+  ResetFrameGeneration();
   // Destroy the swapchain after its images are not used for drawing anymore.
   // This is a confusing part in Vulkan, as vkQueuePresentKHR doesn't signal a
   // fence clearly indicating when it's safe to destroy a swapchain, so we
@@ -899,10 +920,13 @@ VulkanPresenter::ConnectOrReconnectPaintingToSurfaceFromUIThread(
   }
 
   is_vsync_implicit_out = paint_context_.swapchain_is_fifo;
+  paint_context_.swapchain_frame_generation_policy = RuntimePresentation().frame_generation_requested.load();
   return SurfacePaintConnectResult::kSuccess;
 }
 
 void VulkanPresenter::DisconnectPaintingFromSurfaceFromUIThreadImpl() {
+  ResetColorFilter();
+  ResetFrameGeneration();
   paint_context_.DestroySwapchainAndVulkanSurface();
 }
 
@@ -1295,7 +1319,9 @@ VkSwapchainKHR VulkanPresenter::PaintContext::CreateSwapchainForVulkanSurface(
   // interfering with GPU command processing, and also to allow tearing so
   // variable refresh rate may be used where it's available.
   // Note: If the priorities here are changes, update the cvar descriptions.
-  if (cvars::vulkan_allow_present_mode_immediate &&
+  if (RuntimePresentation().frame_generation_requested.load()) {
+    swapchain_create_info.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+  } else if (cvars::vulkan_allow_present_mode_immediate &&
       std::find(present_modes.cbegin(), present_modes.cend(),
                 VK_PRESENT_MODE_IMMEDIATE_KHR) != present_modes.cend()) {
     // Allowing tearing to reduce latency, and possibly variable refresh rate
@@ -1421,7 +1447,7 @@ bool VulkanPresenter::GuestOutputImage::Initialize() {
   image_create_info.pNext = nullptr;
   image_create_info.flags = 0;
   image_create_info.imageType = VK_IMAGE_TYPE_2D;
-  image_create_info.format = kGuestOutputFormat;
+  image_create_info.format = format_;
   image_create_info.extent.width = extent_.width;
   image_create_info.extent.height = extent_.height;
   image_create_info.extent.depth = 1;
@@ -1431,7 +1457,7 @@ bool VulkanPresenter::GuestOutputImage::Initialize() {
   image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
   image_create_info.usage =
       VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT | extra_usage_;
   image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   image_create_info.queueFamilyIndexCount = 0;
   image_create_info.pQueueFamilyIndices = nullptr;
@@ -1452,7 +1478,7 @@ bool VulkanPresenter::GuestOutputImage::Initialize() {
   image_view_create_info.flags = 0;
   image_view_create_info.image = image_;
   image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-  image_view_create_info.format = kGuestOutputFormat;
+  image_view_create_info.format = format_;
   image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
   image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
   image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -1474,6 +1500,23 @@ bool VulkanPresenter::GuestOutputImage::Initialize() {
 
 Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
     bool execute_ui_drawers) {
+  fg_actual_synthetic_ = false;
+  struct WorkSample {
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+    WorkSample() {
+#if XE_PLATFORM_ANDROID || XE_PLATFORM_xendroid
+      RuntimePresentation().presenter_tid = int(syscall(SYS_gettid));
+#endif
+    }
+    ~WorkSample() {
+      RuntimePresentation().presenter_work_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - begin).count();
+      RuntimePresentation().presenter_work_sequence.fetch_add(1, std::memory_order_release);
+    }
+  } work_sample;
+  if (paint_context_.swapchain_frame_generation_policy != RuntimePresentation().frame_generation_requested.load()) {
+    return PaintResult::kNotPresentedConnectionOutdated;
+  }
   // Begin the submission in place of the one not currently potentially used on
   // the GPU.
   const uint64_t current_paint_submission_index =
@@ -1609,6 +1652,21 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
   }
 
   if (guest_output_image) {
+    if (fg_scheduled_paint_ && RuntimePresentation().frame_generation_requested.load()) {
+      if (!PrepareGeneratedFrame(draw_command_buffer, guest_output_image, guest_output_properties)) {
+        RuntimePresentation().frame_generation_requested = false;
+        RuntimePresentation().frame_generation_state = int(FrameGenerationState::kFailed);
+      }
+    } else if (!RuntimePresentation().frame_generation_requested.load() && fg_context_) {
+      ResetFrameGeneration();
+    }
+    fg_scheduled_paint_ = false;
+    if (RuntimePresentation().color_filter.load() != 0) {
+      if (!ApplyColorFilter(draw_command_buffer, guest_output_image)) {
+        RuntimePresentation().color_filter_error = 1;
+        RuntimePresentation().color_filter = 0;
+      }
+    } else if (color_context_) ResetColorFilter();
     VkExtent2D max_framebuffer_extent =
         util::GetMax2DFramebufferExtent(vulkan_device_->properties());
     GuestOutputPaintFlow guest_output_flow = GetGuestOutputPaintFlow(
@@ -1981,6 +2039,7 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
             CasResampleConstants cas_resample;
             FsrEasuConstants fsr_easu;
             FsrRcasConstants fsr_rcas;
+            SgsrConstants sgsr;
           } effect_constants;
           switch (guest_output_paint_pipeline_layout_index) {
             case kGuestOutputPaintPipelineLayoutIndexBilinear: {
@@ -2005,6 +2064,10 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
               effect_constants_size = sizeof(effect_constants.fsr_rcas);
               effect_constants.fsr_rcas.Initialize(guest_output_flow, i,
                                                    guest_output_paint_config);
+            } break;
+            case kGuestOutputPaintPipelineLayoutIndexSgsr: {
+              effect_constants_size = sizeof(effect_constants.sgsr);
+              effect_constants.sgsr.Initialize(guest_output_flow, i);
             } break;
             default:
               break;
@@ -2213,6 +2276,12 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
     present_result =
         dfn.vkQueuePresentKHR(queue_acquisition.queue(), &present_info);
   }
+  if (present_result == VK_SUCCESS || present_result == VK_SUBOPTIMAL_KHR) {
+    xe::RecordHostPresentSubmission();
+    if (fg_actual_synthetic_) {
+      RuntimePresentation().generated_submissions.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
   switch (present_result) {
     case VK_SUCCESS:
       return PaintResult::kPresented;
@@ -2252,6 +2321,59 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
 bool VulkanPresenter::InitializeSurfaceIndependent() {
   const VulkanDevice::Functions& dfn = vulkan_device_->functions();
   const VkDevice device = vulkan_device_->device();
+  {
+    const auto& device_properties = vulkan_device_->properties();
+    std::string label = device_properties.deviceName;
+    std::string driver_name, driver_info;
+    uint32_t driver_id = 0;
+    const auto& functions = vulkan_device_->vulkan_instance()->functions();
+    if (device_properties.apiVersion >= VK_API_VERSION_1_2 && functions.vkGetPhysicalDeviceProperties2) {
+      VkPhysicalDeviceDriverProperties driver{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+      VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+      properties.pNext = &driver;
+      functions.vkGetPhysicalDeviceProperties2(vulkan_device_->physical_device(), &properties);
+      if (driver.driverName[0]) label += std::string(" · ") + driver.driverName;
+      driver_id = uint32_t(driver.driverID);
+      driver_name = driver.driverName;
+      driver_info = driver.driverInfo;
+    }
+    // The driver build the guest actually runs on (DriverIdentity): a file name or a
+    // selection is not proof of what loaded. ';' and '=' are field separators; the
+    // line stays printable ASCII, so JNI NewStringUTF never sees invalid UTF-8.
+    auto clean = [](std::string text) {
+      for (char& c : text) {
+        const auto byte = static_cast<unsigned char>(c);
+        if (c == ';' || c == '=') {
+          c = ',';
+        } else if (byte < 0x20 || byte >= 0x7F) {
+          c = '?';
+        }
+      }
+      return text;
+    };
+    std::string uuid;
+    for (uint8_t byte : device_properties.pipelineCacheUUID) {
+      uuid += fmt::format("{:02x}", byte);
+    }
+    // The installed package (content-addressed directory) that loaded, if any.
+    const std::string& custom_driver =
+        vulkan_device_->vulkan_instance()->custom_driver_path();
+    std::string identity = fmt::format(
+        "vendor=0x{:04X};device=0x{:08X};driverVersion=0x{:08X};api={}.{}.{};"
+        "driverId={};driverName={};driverInfo={};gpu={};uuid={};loader={};"
+        "library={}",
+        device_properties.vendorID, device_properties.deviceID,
+        device_properties.driverVersion, VK_VERSION_MAJOR(device_properties.apiVersion),
+        VK_VERSION_MINOR(device_properties.apiVersion),
+        VK_VERSION_PATCH(device_properties.apiVersion), driver_id, clean(driver_name),
+        clean(driver_info), clean(device_properties.deviceName), uuid,
+        custom_driver.empty() ? "system" : "custom", clean(custom_driver));
+    XELOGI("Active Vulkan driver: {}", identity);
+    auto& runtime = RuntimePresentation();
+    std::lock_guard<std::mutex> lock(runtime.configuration_mutex);
+    runtime.gpu_label = label;
+    runtime.driver_identity = std::move(identity);
+  }
 
   VkDescriptorSetLayoutBinding guest_output_image_sampler_bindings[2];
   guest_output_image_sampler_bindings[0].binding = 0;
@@ -2337,6 +2459,9 @@ bool VulkanPresenter::InitializeSurfaceIndependent() {
       case kGuestOutputPaintPipelineLayoutIndexFsrRcas:
         guest_output_paint_push_constant_range_ffx.size =
             sizeof(FsrRcasConstants);
+        break;
+      case kGuestOutputPaintPipelineLayoutIndexSgsr:
+        guest_output_paint_push_constant_range_ffx.size = sizeof(SgsrConstants);
         break;
       default:
         assert_unhandled_case(GuestOutputPaintPipelineLayoutIndex(i));
@@ -2425,6 +2550,37 @@ bool VulkanPresenter::InitializeSurfaceIndependent() {
             sizeof(shaders::guest_output_ffx_fsr_rcas_dither_ps);
         shader_module_create_info.pCode =
             shaders::guest_output_ffx_fsr_rcas_dither_ps;
+        break;
+      case GuestOutputPaintEffect::kSgsr:
+        shader_module_create_info.codeSize =
+            sizeof(shaders::guest_output_sgsr_ps);
+        shader_module_create_info.pCode = shaders::guest_output_sgsr_ps;
+        break;
+      case GuestOutputPaintEffect::kSgsrDither:
+        shader_module_create_info.codeSize =
+            sizeof(shaders::guest_output_sgsr_dither_ps);
+        shader_module_create_info.pCode = shaders::guest_output_sgsr_dither_ps;
+        break;
+      case GuestOutputPaintEffect::kLanczos:
+        shader_module_create_info.codeSize =
+            sizeof(shaders::guest_output_lanczos_ps);
+        shader_module_create_info.pCode = shaders::guest_output_lanczos_ps;
+        break;
+      case GuestOutputPaintEffect::kLanczosDither:
+        shader_module_create_info.codeSize =
+            sizeof(shaders::guest_output_lanczos_dither_ps);
+        shader_module_create_info.pCode =
+            shaders::guest_output_lanczos_dither_ps;
+        break;
+      case GuestOutputPaintEffect::kCrt:
+        shader_module_create_info.codeSize =
+            sizeof(shaders::guest_output_crt_ps);
+        shader_module_create_info.pCode = shaders::guest_output_crt_ps;
+        break;
+      case GuestOutputPaintEffect::kCrtDither:
+        shader_module_create_info.codeSize =
+            sizeof(shaders::guest_output_crt_dither_ps);
+        shader_module_create_info.pCode = shaders::guest_output_crt_dither_ps;
         break;
       default:
         // Not supported by this implementation.

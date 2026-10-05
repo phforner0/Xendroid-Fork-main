@@ -18,6 +18,43 @@ def syncGamePatches = tasks.register('syncGamePatches', Copy) {
 // AGP doesn't honor the assets.srcDir(...).builtBy() hint, so wire the sync in explicitly.
 tasks.named('preBuild').configure { dependsOn(syncGamePatches) }
 
+// Build identity (tools/build-identity.sh): the base commit and a digest of the local
+// changes it was built with. A dirty tree is never presented as the clean commit.
+def buildIdentity = new Properties()
+def buildIdentityFile = rootProject.file('build-identity.properties')
+if (buildIdentityFile.isFile()) buildIdentityFile.withInputStream { buildIdentity.load(it) }
+// Without the file (the script was not run) the commit still comes from git, but the local
+// changes are unknown: "<commit>+local.unknown", never presented as the clean commit.
+def gitHeadCommit = {
+    try {
+        providers.exec {
+            commandLine 'git', '-C', rootProject.projectDir.absolutePath, 'rev-parse', '--short=8', 'HEAD'
+            ignoreExitValue = true
+        }.standardOutput.asText.get().trim() ?: null
+    } catch (Exception ignored) {
+        null
+    }
+}
+def buildBaseCommit = buildIdentity.getProperty('base') ?: (project.findProperty('gitHash') ?: gitHeadCommit() ?: 'unknown')
+def buildChangeset = buildIdentity.getProperty('changeset') ?: (buildIdentityFile.isFile() ? '' : 'unknown')
+def buildVersionName = project.findProperty('gitHash') ?:
+    (buildChangeset ? "${buildBaseCommit}+local.${buildChangeset}" : buildBaseCommit)
+
+def engineLicensesDir = layout.buildDirectory.dir('generated/engineLicenseAssets')
+def syncEngineLicenses = tasks.register('syncEngineLicenses', Sync) {
+    into engineLicensesDir
+    into('engine-licenses') {
+        from('../emulator-core/src/main/cpp/third_party/winfg/LICENSE') { rename { 'winfg-MIT.txt' } }
+        from('../emulator-core/src/main/cpp/third_party/winfg/THIRD-PARTY.md') { rename { 'winfg-third-party.txt' } }
+        from('../emulator-core/src/main/cpp/third_party/winfg/NOTICE_FIDELITYFX_OPTICALFLOW.md') { rename { 'fidelityfx-notice.txt' } }
+        from('../emulator-core/src/main/cpp/third_party/lsfg/LICENSE') { rename { 'lsfg-GPL-3.0.txt' } }
+        from('../emulator-core/src/main/cpp/third_party/lsfg-dxbc/LICENSE.md') { rename { 'dxbc-license.txt' } }
+        from('../emulator-core/src/main/cpp/third_party/sgsr/LICENSE') { rename { 'sgsr-BSD-3-Clause.txt' } }
+        from('../THIRD-PARTY-NOTICES.md') { rename { 'xendroid-notices.txt' } }
+    }
+}
+tasks.named('preBuild').configure { dependsOn(syncEngineLicenses) }
+
 android {
     namespace 'xendroid.compose'
     compileSdk 35
@@ -30,14 +67,34 @@ android {
         // 29+ matches :emulator-core (native ELF TLS in libe.so).
         minSdk 29
         targetSdk 35
-        versionCode 1
-        versionName project.findProperty("gitHash") ?: "unknown"
-        
+        // CI passes a monotonic number (-PxendroidVersionCode=<run number>); local builds
+        // stay 1, which the updater treats as "unordered, never offer an update".
+        versionCode((project.findProperty('xendroidVersionCode') ?: '1') as String as int)
+        versionName buildVersionName
+        buildConfigField 'String', 'BUILD_BASE_COMMIT', "\"${buildBaseCommit}\""
+        // Empty for a clean checkout (CI); otherwise the digest of uncommitted changes.
+        buildConfigField 'String', 'BUILD_CHANGESET', "\"${buildChangeset}\""
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        // The emulator core (libe.so) exists for arm64-v8a only. Without this filter the
+        // native helpers of AndroidX libraries made the APK claim armeabi-v7a/x86/x86_64
+        // too, so such devices installed it and crashed loading the core.
+        ndk { abiFilters 'arm64-v8a' }
+        // Release feed of the regular .fork package; "" disables the update check.
+        buildConfigField 'String', 'UPDATE_REPOSITORY',
+            "\"${project.findProperty('xendroidUpdateRepo') ?: 'phforner0/Xendroid-Fork-main'}\""
+        // C04: the read-only compatibility catalog. Off ("") until there is a publisher: an
+        // https URL and its P-256 public keys as "keyId:<base64 X.509>,..." (see the status doc).
+        buildConfigField 'String', 'CATALOG_URL', "\"${project.findProperty('xendroidCatalogUrl') ?: ''}\""
+        buildConfigField 'String', 'CATALOG_KEYS', "\"${project.findProperty('xendroidCatalogKeys') ?: ''}\""
+        // 15b: community configs. Off ("") until someone runs a server (tools/community-server,
+        // docs/community-configs.md); an https base URL turns the per-game "Community settings" on.
+        buildConfigField 'String', 'COMMUNITY_URL', "\"${project.findProperty('xendroidCommunityUrl') ?: ''}\""
     }
 
     sourceSets {
         main {
             assets.srcDir(files(gamePatchesGenDir).builtBy(syncGamePatches))
+            assets.srcDir(files(engineLicensesDir).builtBy(syncEngineLicenses))
         }
     }
 
@@ -76,12 +133,39 @@ android {
         }
     }
 
+    // Instrumented tests (app/src/androidTest) build and run against the uitest build type:
+    // its own package, so installing and running them never touches the games, saves or
+    // settings of the .debug app on the phone. `./gradlew :app:connectedUitestAndroidTest`.
+    testBuildType 'uitest'
+
+    testOptions {
+        unitTests {
+            // The screen tests (src/testUitest) render Compose on the JVM with Robolectric.
+            includeAndroidResources = true
+            all {
+                // `-Pscreenshots=<dir>` writes the prints of the screen tests there (docs/ui-redesign/
+                // prints/app); without it they still render every screen, as smoke tests.
+                def shots = project.findProperty('screenshots')
+                if (shots) systemProperty 'xendroid.screenshots', file(shots).absolutePath
+                maxHeapSize = '3g'
+            }
+        }
+    }
+
     buildTypes {
         // Own application id so a debug build installs alongside a release one.
         // The java namespace stays xendroid.compose, so JNI FindClass is unaffected.
         debug {
             applicationIdSuffix '.debug'
             versionNameSuffix '-debug'
+        }
+        // A debug build under xendroid.compose.uitest, only for the instrumented tests: data,
+        // providers (authorities follow the application id) and permissions are its own.
+        uitest {
+            initWith debug
+            applicationIdSuffix '.uitest'
+            versionNameSuffix '-uitest'
+            matchingFallbacks = ['debug']
         }
 release {
     // -PxendroidReleaseIdSuffix=.fork.opt installs a test build alongside the
@@ -114,6 +198,8 @@ dependencies {
     implementation libs.androidx.lifecycle.viewmodel.compose
     implementation libs.androidx.lifecycle.runtime.compose
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    // 15c: the fold of a foldable (tabletop posture), for the split screen.
+    implementation("androidx.window:window:1.3.0")
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
@@ -123,4 +209,26 @@ dependencies {
     implementation libs.androidx.datastore.preferences
     testImplementation libs.junit
     testImplementation libs.kotlinx.coroutines.test
+    // Screen tests on the JVM (`./gradlew :app:testUitestUnitTest`): only in the uitest variant,
+    // whose manifest has the empty activity Compose tests host their content in.
+    testUitestImplementation 'org.robolectric:robolectric:4.14.1'
+    testUitestImplementation 'io.github.takahirom.roborazzi:roborazzi:1.46.1'
+    testUitestImplementation 'io.github.takahirom.roborazzi:roborazzi-compose:1.46.1'
+    testUitestImplementation 'androidx.test.ext:junit:1.2.1'
+    testUitestImplementation platform(libs.compose.bom)
+    testUitestImplementation 'androidx.compose.ui:ui-test-junit4'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:rules:1.6.1'
+    androidTestImplementation 'androidx.test:core-ktx:1.6.1'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+    // 3.6+: older Espresso (pulled by the Compose test library) breaks on Android 14+.
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+    // Answers the system file pickers (export/import) with a test file, no picker UI.
+    androidTestImplementation 'androidx.test.espresso:espresso-intents:3.6.1'
+    androidTestImplementation platform(libs.compose.bom)
+    androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+    androidTestImplementation libs.kotlinx.coroutines.test
+    // The empty activity Compose tests host their content in; only in the test build type.
+    uitestImplementation 'androidx.compose.ui:ui-test-manifest'
 }

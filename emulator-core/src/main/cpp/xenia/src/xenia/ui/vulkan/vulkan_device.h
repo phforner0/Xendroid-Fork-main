@@ -54,6 +54,8 @@ class VulkanDevice {
     uint32_t vendorID = 0;
     uint32_t deviceID = 0;
     char deviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE] = {};
+    // Names the driver build a VkPipelineCache blob belongs to.
+    uint8_t pipelineCacheUUID[VK_UUID_SIZE] = {};
 
     uint32_t maxImageDimension2D = 4096;
     uint32_t maxImageDimension3D = 256;
@@ -143,6 +145,12 @@ class VulkanDevice {
     // VK_KHR_shader_float16_int8 (#83, promoted to 1.2)
 
     bool shaderFloat16 = false;
+    bool shaderStorageImageExtendedFormats = false;
+    bool shaderStorageImageReadWithoutFormat = false;
+    bool shaderStorageImageWriteWithoutFormat = false;
+    bool vulkanMemoryModel = false;
+    bool vulkanMemoryModelDeviceScope = false;
+    bool nullDescriptor = false;
 
     // VK_KHR_portability_subset (#164)
 

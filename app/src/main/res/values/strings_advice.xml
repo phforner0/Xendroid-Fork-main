@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- End-of-session suggestions (round 2) -->
+    <string name="adv_title">How did %1$s go</string>
+    <string name="adv_fps">%1$d FPS (low %2$d)</string>
+    <string name="adv_ended">ended normally</string>
+    <string name="adv_failed">failed: %1$s</string>
+    <string name="adv_interrupted">interrupted: %1$s</string>
+    <string name="adv_apply">Apply to this game</string>
+    <string name="adv_applied">Applied to this game</string>
+    <string name="adv_mute_here">Not for this game</string>
+    <string name="adv_mute_rule">Never suggest this</string>
+    <string name="adv_quiet">Not until the app opens again</string>
+    <string name="adv_mute_game">No suggestions for this game</string>
+    <string name="adv_never">Never show</string>
+    <string name="adv_settings_hint">When they show: Settings → Interface → Suggestions after a session.</string>
+    <string name="adv_t_system_driver">Try the phone\'s own driver</string>
+    <string name="adv_r_system_driver">The game closed with a native crash on %1$s. The phone\'s own driver is slower, but steadier.</string>
+    <string name="adv_t_reset_game">Back to the global settings</string>
+    <string name="adv_r_reset_game">It did not open, and it has %1$s settings of its own. Without them it uses the global ones.</string>
+    <string name="adv_t_pipelines">Create pipelines on more threads</string>
+    <string name="adv_r_pipelines">Stutters: 99%% of the frames under %1$s ms, with %2$s pipelines created. The pipeline cache also helps more in the next sessions.</string>
+    <string name="adv_t_scale">Resolution scale 1x</string>
+    <string name="adv_r_scale">A median of %1$s FPS for a limit of %2$s, at %3$s scale. At 1x the GPU draws a quarter of the pixels.</string>
+    <string name="adv_t_steady">A steady 30 FPS</string>
+    <string name="adv_r_steady">It swung between 30 and 60: a median of %1$s FPS, %2$s in the slowest 5%% of the seconds. A limit of 30 keeps an even pace.</string>
+    <string name="adv_t_audio">A deeper audio buffer</string>
+    <string name="adv_r_audio">%1$s%% of the audio blocks came late and were filled in (the crackle).</string>
+    <string name="adv_t_heat">A lower FPS limit</string>
+    <string name="adv_r_heat">The battery reached %1$s °C. At 30 FPS the phone stays cooler.</string>
+    <string name="adv_option">Suggestions after a session</string>
+    <string name="adv_option_sub">What to change, from the session’s log and numbers, when there is something to do.</string>
+    <string name="adv_mode_always">Always</string>
+    <string name="adv_mode_errors">After errors</string>
+    <string name="adv_mode_never">Never</string>
+    <string name="adv_r_heat_limit">The phone reached its heat limit and slowed the game down. At 30 FPS it stays cooler.</string>
+</resources>

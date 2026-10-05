@@ -119,6 +119,51 @@ class GameMetadataCacheTest {
         assertNull(cache.get("anything"))
     }
 
+    // ---- L09: moved files, instant list ----
+
+    @Test fun aMovedOrRenamedFolderReusesTheExtraction() {
+        val dir = tmp.newFolder()
+        GameMetadataCache(dir).apply {
+            load()
+            put("/g/Halo 3.iso", "Halo 3", "h.png", Signature(10, 20), "4D5307E6", null, GameFormat.ISO)
+            put("/g/Braid/default.xex", "Braid", null, Signature(5, 6), "58410A1A", null, GameFormat.XEX_FOLDER)
+            put("/g/Other/default.xex", "Other", null, Signature(7, 8), "11111111", null, GameFormat.XEX_FOLDER)
+            save()
+        }
+        val cache = GameMetadataCache(dir).apply { load() }
+        assertEquals("Halo 3", cache.movedFrom("/sd/Xbox/Halo 3.iso", Signature(10, 20))?.name)
+        assertEquals("Halo 3", cache.movedFrom("/sd/Xbox/halo 3.ISO", Signature(10, 20))?.name)
+        assertNull(cache.movedFrom("/sd/Xbox/Halo 3.iso", Signature(10, 21)))      // modified: read again
+        assertNull(cache.movedFrom("/sd/Xbox/Halo 3.iso", Signature(0, 20)))       // untrustworthy
+        assertEquals("Braid", cache.movedFrom("/sd/Braid/default.xex", Signature(5, 6))?.name)
+        assertNull(cache.movedFrom("/sd/Renamed/default.xex", Signature(5, 6)))    // can't tell which game
+        // The scan re-keys it to the new path; the old one goes with retainOnly.
+        cache.put("/sd/Xbox/Halo 3.iso", "Halo 3", "h.png", Signature(10, 20), "4D5307E6", null, GameFormat.ISO)
+        cache.retainOnly(setOf("/sd/Xbox/Halo 3.iso"))
+        assertNull(cache.get("/g/Halo 3.iso"))
+        assertEquals(Decision.Hit("Halo 3", "h.png", "4D5307E6", null, GameFormat.ISO),
+            GameMetadataCache.decide(cache.get("/sd/Xbox/Halo 3.iso"), Signature(10, 20), iconExists))
+    }
+
+    @Test fun lastTimesListIsReadWithoutDisturbingAScan() {
+        val dir = tmp.newFolder()
+        val cache = GameMetadataCache(dir).apply {
+            load()
+            put("/g/b.iso", "Banjo", null, Signature(1, 2), "11111111", null, GameFormat.ISO)
+            put("/g/A/default.xex", "Alan", "a.png", Signature(3, 4), "22222222", "M1", GameFormat.XEX_FOLDER, 1, 2)
+            put("/other/c.iso", "Crackdown", null, Signature(5, 6), null, null, GameFormat.ISO)
+            put("/g/legacy", "Legacy GOD", null, Signature(7, 8))
+            save()
+        }
+        cache.put("/g/new.iso", "Not saved yet", null, Signature(9, 9))   // a running scan's working set
+        val games = GameMetadataCache.gamesUnder(cache.peek(), listOf("/g/"))
+        assertEquals(listOf("Alan", "Banjo", "Legacy GOD"), games.map { it.name })
+        assertEquals(Game("/g/A/default.xex", "Alan", GameFormat.XEX_FOLDER, "a.png", "22222222", "M1", 1, 2), games[0])
+        assertEquals(GameFormat.GOD, games[2].format)
+        assertEquals("Not saved yet", cache.get("/g/new.iso")?.name)        // peek left it alone
+        assertEquals(emptyMap<String, Entry>(), GameMetadataCache(tmp.newFolder()).peek())
+    }
+
     @Test fun loadOnCorruptFileIsColdNotCrash() {
         val dir = tmp.newFolder()
         File(dir, GameMetadataCache.FILE_NAME).writeText("{ not valid json ]")

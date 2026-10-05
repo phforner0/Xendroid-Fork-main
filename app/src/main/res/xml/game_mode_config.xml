@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    What Android's GameManager (12+) and the game services keyed to it may do to XenDroid now that
+    the manifest declares it a game (appCategory). The Performance and Battery modes are left to
+    the device (its power HAL and game booster raise or lower clocks); the two interventions that
+    change the image or its pacing behind the emulator's back are refused: rendering at a lower
+    resolution (allowGameDownscaling) and capping the frame rate (allowGameFpsOverride), which
+    the emulator's own FPS limit and presentation already decide. As in DroidDeck 06e67cd/546c063.
+-->
+<game-mode-config xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:supportsPerformanceGameMode="true"
+    android:supportsBatteryGameMode="true"
+    android:allowGameDownscaling="false"
+    android:allowGameFpsOverride="false"
+    tools:targetApi="33" />

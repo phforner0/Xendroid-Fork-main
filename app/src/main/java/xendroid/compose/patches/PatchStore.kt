@@ -1,34 +1,178 @@
 package xendroid.compose.patches
 
 import java.io.File
+import xendroid.compose.archive.ArchiveFiles
 
 /**
  * Reads effective patch state and writes per-patch toggles. Effective state = the on-disk file
  * in [patchesDir] if present, else the bundled asset (which ships all-disabled). A toggle copies
  * the asset to disk on first edit, then flips one `is_enabled` line; the emulator reads
  * [patchesDir] on the next launch.
+ *
+ * L10: every write is atomic (a killed process never leaves a half-written file the emulator
+ * would fail to parse), and an on-disk copy follows the catalog of newer app versions instead
+ * of hiding it forever. Beside a copy, "<file>.base" is the catalog text it came from and
+ * "<file>.prev" the copy before the last catalog update (to undo); neither ends in
+ * ".patch.toml", so the emulator never loads them.
+ *  - Only switches changed since the base: the copy moves to the new catalog by itself, with
+ *    the same patches on (matched by name; see [PatchCatalog]).
+ *  - Changed by hand (or toggled by a version that kept no base): the update waits for the
+ *    user, with a preview; "keep mine" stops asking until the catalog changes again.
  */
 class PatchStore(
     private val assets: PatchAssets,
     private val patchesDir: File,
 ) {
-    /** Files whose 8-hex filename prefix matches [titleId] (case-insensitive). A title may have several. */
+    /** Files whose 8-hex filename prefix matches [titleId] (case-insensitive). A title may have
+     *  several: the bundled ones first, then the user's own (L11). */
     fun patchesForTitle(titleId: String): List<PatchFile> =
         assets.list()
             .filter { it.length >= 8 && it.substring(0, 8).equals(titleId, ignoreCase = true) }
             .sorted()
-            .mapNotNull { name -> PatchTomlParser.parse(name, effectiveText(name)) }
+            .mapNotNull { name ->
+                val text = sync(name)
+                PatchTomlParser.parse(name, text)?.copy(update = updateOf(name, text))
+            } +
+            userFiles(titleId).mapNotNull { file ->
+                runCatching { PatchTomlParser.parse(file.name, file.readText())?.copy(mine = true) }.getOrNull()
+            }
+
+    /** The text of each file of [titleId] as the emulator will read it, for conflict checks. */
+    fun textsForTitle(titleId: String): List<Pair<PatchFile, String>> = patchesForTitle(titleId).map { file ->
+        val onDisk = file(file.fileName)
+        file to (if (onDisk.isFile) onDisk.readText() else assets.read(file.fileName))
+    }
+
+    /**
+     * L11: adds the user's own patch file for [titleId], under its own name space
+     * ("<TITLE> - mine - <name>.patch.toml"), never over another file. [text] must pass
+     * [PatchFileCheck] (anything that would make the emulator misbehave is refused, with the
+     * line) and be for this title. It is stored with every patch off: each one is the user's
+     * explicit choice. Returns the stored file's name.
+     */
+    fun importUserPatch(titleId: String, name: String, text: String): String {
+        val title = titleId.uppercase()
+        require(title.matches(Regex("[0-9A-F]{8}"))) { "Invalid Title ID" }
+        require(text.length <= MAX_USER_PATCH_CHARS) { "The file is too large for a patch file" }
+        val spec = PatchFileCheck.read(text)
+        require(spec.titleId == title) { "This file is for title ${spec.titleId}, not this game ($title)" }
+        val clean = name.removeSuffix(".toml").removeSuffix(".patch").replace(Regex("[^A-Za-z0-9 _-]"), " ")
+            .replace(Regex("\\s+"), " ").trim().take(40).ifEmpty { "patch" }
+        patchesDir.mkdirs()
+        var target = File(patchesDir, "$title$MINE$clean.patch.toml")
+        var n = 1
+        while (target.exists()) target = File(patchesDir, "$title$MINE$clean (${n++}).patch.toml")
+        ArchiveFiles.atomicText(target, PatchCatalog.allOff(text))
+        return target.name
+    }
+
+    /** Removes one of the user's own patch files (never a catalog copy). */
+    fun removeUserPatch(fileName: String) {
+        require(isUserFile(fileName)) { "Only files you added can be removed" }
+        File(patchesDir, fileName).delete()
+    }
+
+    private fun isUserFile(name: String): Boolean =
+        name.contains(MINE) && name.endsWith(".patch.toml") && !name.contains('/') && name !in assets.list()
+
+    private fun userFiles(titleId: String): List<File> = patchesDir.listFiles { f ->
+        f.isFile && f.name.startsWith(titleId.uppercase() + MINE) && isUserFile(f.name)
+    }.orEmpty().sortedBy { it.name.lowercase() }
+
+    /** Brings every on-disk copy that only differs in switches to the bundled catalog (the
+     *  emulator reads only the copies, so this must not wait for the patches screen). Returns
+     *  how many were updated; a file that fails is left as it is. */
+    fun syncAll(): Int {
+        val bundled = assets.list().toHashSet()
+        return patchesDir.listFiles { f -> f.isFile && f.name.endsWith(".patch.toml") && f.name in bundled }.orEmpty()
+            .count { f -> runCatching { val before = f.readText(); sync(f.name) != before }.getOrDefault(false) }
+    }
 
     /** Toggle a single `[[patch]]` entry by its 0-based ordinal. */
     fun setEnabled(fileName: String, patchIndex: Int, enabled: Boolean) {
         patchesDir.mkdirs()
-        val onDisk = File(patchesDir, fileName)
-        val current = if (onDisk.exists()) onDisk.readText() else assets.read(fileName)
-        onDisk.writeText(PatchTomlEditor.setEnabled(current, patchIndex, enabled))
+        val onDisk = file(fileName)
+        val current = if (onDisk.exists()) {
+            onDisk.readText()
+        } else {
+            assets.read(fileName).also { ArchiveFiles.atomicText(base(fileName), it) }
+        }
+        ArchiveFiles.atomicText(onDisk, PatchTomlEditor.setEnabled(current, patchIndex, enabled))
     }
 
-    private fun effectiveText(fileName: String): String {
-        val onDisk = File(patchesDir, fileName)
-        return if (onDisk.exists()) onDisk.readText() else assets.read(fileName)
+    /** Applies a pending catalog update (the user saw the preview); the old copy can be restored. */
+    fun applyUpdate(fileName: String) {
+        val onDisk = file(fileName).takeIf { it.isFile } ?: return
+        apply(fileName, onDisk.readText(), assets.read(fileName))
+    }
+
+    /** Keeps the user's own copy; asks again only when the catalog changes again. */
+    fun keepMine(fileName: String) {
+        if (file(fileName).isFile) ArchiveFiles.atomicText(base(fileName), assets.read(fileName))
+    }
+
+    /** Back to the copy from before the last catalog update. */
+    fun undoUpdate(fileName: String) {
+        val previous = prev(fileName).takeIf { it.isFile } ?: return
+        ArchiveFiles.atomicText(file(fileName), previous.readText())
+        ArchiveFiles.atomicText(base(fileName), assets.read(fileName))   // do not re-apply it by itself
+        previous.delete()
+    }
+
+    /** The update was seen: the copy to undo it goes. */
+    fun dismissUpdate(fileName: String) {
+        prev(fileName).delete()
+    }
+
+    private companion object {
+        /** Marks the user's own files; the bundled catalog never uses it. */
+        const val MINE = " - mine - "
+        const val MAX_USER_PATCH_CHARS = 1024 * 1024
+    }
+
+    private fun file(name: String) = File(patchesDir, name)
+    private fun base(name: String) = File(patchesDir, "$name.base")
+    private fun prev(name: String) = File(patchesDir, "$name.prev")
+
+    /** The text the emulator will read, after moving a switches-only copy to the current catalog. */
+    private fun sync(name: String): String {
+        val catalog = assets.read(name)
+        val onDisk = file(name)
+        if (!onDisk.exists()) return catalog
+        val current = onDisk.readText()
+        val baseText = base(name).takeIf { it.isFile }?.readText()
+        if (baseText == catalog) return current
+        if (PatchCatalog.onlySwitchesDiffer(current, catalog)) {
+            // Already the current catalog with switches (an older copy without base, or a write
+            // interrupted before the base): only the base is missing.
+            ArchiveFiles.atomicText(base(name), catalog)
+            return current
+        }
+        if (baseText == null || !PatchCatalog.onlySwitchesDiffer(current, baseText)) return current
+        return apply(name, current, catalog)
+    }
+
+    /** Old copy first, then the new file, then its base: a kill in between is settled by [sync]. */
+    private fun apply(name: String, current: String, catalog: String): String {
+        val rebased = PatchCatalog.rebase(catalog, PatchCatalog.enabledKeys(current)).text
+        ArchiveFiles.atomicText(prev(name), current)
+        ArchiveFiles.atomicText(file(name), rebased)
+        ArchiveFiles.atomicText(base(name), catalog)
+        return rebased
+    }
+
+    private fun updateOf(name: String, text: String): PatchUpdate? {
+        val onDisk = file(name)
+        if (!onDisk.exists()) return null
+        val catalog = assets.read(name)
+        prev(name).takeIf { it.isFile }?.readText()?.let { before ->
+            val now = PatchCatalog.enabledKeys(text)
+            return PatchUpdate(pending = false, keptOn = now.toList(),
+                dropped = PatchCatalog.enabledKeys(before).filter { it !in now }, canUndo = true)
+        }
+        val baseText = base(name).takeIf { it.isFile }?.readText()
+        if (baseText == catalog || PatchCatalog.onlySwitchesDiffer(text, catalog)) return null
+        val preview = PatchCatalog.rebase(catalog, PatchCatalog.enabledKeys(text))
+        return PatchUpdate(pending = true, keptOn = preview.keptOn, dropped = preview.dropped, canUndo = false)
     }
 }

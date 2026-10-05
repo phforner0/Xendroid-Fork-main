@@ -25,6 +25,8 @@ public class Emulator {
 
         private native String[] native_load_config_entry_ty_arr(long n_handle,String tag);
         private native void native_save_config_entry(long n_handle,String tag,String val);
+        private native void native_remove_config_entry(long n_handle,String tag);
+        private native boolean native_config_empty(long n_handle);
 
         private native void native_save_config_entry_ty_arr(long n_handle,String tag,String[] val);
         private native void native_close_config_file(long n_handle,String config_path);
@@ -59,6 +61,14 @@ public class Emulator {
         public void save_config_entry(String tag,String val)
         {
             native_save_config_entry(n_handle,tag,val);
+        }
+
+        public void remove_config_entry(String tag) {
+            native_remove_config_entry(n_handle, tag);
+        }
+
+        public boolean is_empty() {
+            return native_config_empty(n_handle);
         }
 
         public void save_config_entry_ty_arr(String tag,String[] val)

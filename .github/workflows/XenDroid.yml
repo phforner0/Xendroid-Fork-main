@@ -1,4 +1,4 @@
-name: XenDroid
+name: Xendroid+
 
 # Android APK build (arm64-v8a).
 # - Pull requests into main (including the claude/* branches of cloud
@@ -162,9 +162,11 @@ jobs:
       run: |
         chmod +x gradlew
         # PACKAGE_ARGS holds several arguments (unquoted on purpose).
+        # The run number orders builds for the in-app updater (versionCode); the
+        # release tag below carries the same number.
         ./gradlew --console=plain --build-cache --parallel \
           -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
-          -PgitHash="$SHA" $PACKAGE_ARGS :app:assembleRelease
+          -PgitHash="$SHA" -PxendroidVersionCode="$GITHUB_RUN_NUMBER" $PACKAGE_ARGS :app:assembleRelease
         ccache -s || true
         df -h "$GITHUB_WORKSPACE" || true
 
@@ -228,6 +230,13 @@ jobs:
         echo "apk=$NAME.apk" >> "$GITHUB_OUTPUT"
         echo "signed_with=$signed_with" >> "$GITHUB_OUTPUT"
 
+    - name: Check APK packaging
+      env:
+        APK: ${{ steps.sign.outputs.apk }}
+      # arm64-only core with JNI_OnLoad, signed, license texts present, no DLL,
+      # shader cache, game image or profile data inside.
+      run: python3 tools/check-apk.py "$APK" --aapt2 "$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS_VERSION/aapt2"
+
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
@@ -256,8 +265,9 @@ jobs:
     - name: Create GitHub release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: XenDroid-${{ needs.apk.outputs.sha }}
-        name: XenDroid ${{ needs.apk.outputs.sha }}
+        # XenDroid-v<versionCode>-<sha>: parsed by updater/ReleaseTags.kt.
+        tag_name: XenDroid-v${{ github.run_number }}-${{ needs.apk.outputs.sha }}
+        name: Xendroid+ ${{ needs.apk.outputs.sha }} (build ${{ github.run_number }})
         target_commitish: ${{ github.sha }}
         generate_release_notes: true
         files: ${{ needs.apk.outputs.apk }}

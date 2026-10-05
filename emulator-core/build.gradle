@@ -8,8 +8,8 @@ plugins {
 //
 // namespace is xendroid.compose.core (NOT xendroid.compose) -- AGP forbids two modules sharing
 // a namespace. The moved JNI classes keep their own `package xendroid.compose[.*]` (the
-// native side binds by FQN, unaffected by the module namespace). DocumentsProvider's
-// unqualified R is resolved via `import xendroid.compose.core.R;`.
+// native side binds by FQN, unaffected by the module namespace). The DocumentsProvider
+// that used to live here moved to :app (L07).
 android {
     namespace 'xendroid.compose.core'
     compileSdk 35

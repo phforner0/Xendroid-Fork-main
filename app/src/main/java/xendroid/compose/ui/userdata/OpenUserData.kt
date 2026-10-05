@@ -1,5 +1,6 @@
 package xendroid.compose.ui.userdata
 
+import xendroid.compose.R
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -30,7 +31,7 @@ fun openUserData(context: Context) {
         }
         if (tryStart(context, files)) return
     }
-    Toast.makeText(context, "No file manager available", Toast.LENGTH_LONG).show()
+    Toast.makeText(context, context.getString(R.string.ud_no_file_manager), Toast.LENGTH_LONG).show()
 }
 
 private fun tryStart(context: Context, intent: Intent): Boolean =

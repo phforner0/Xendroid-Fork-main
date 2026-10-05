@@ -27,16 +27,17 @@ DEFINE_bool(full_optimization_even_with_debug, false,
             "CPU");
 
 DEFINE_bool(
-    context_promote_vec128, true,
+    context_promote_vec128, false,
     "Promote VMX (VEC128) context loads/stores to SSA values and strip dead "
     "VEC128 context stores, letting the backend keep vectors in host "
-    "registers. This restores upstream behavior from before 2026-01-25 "
-    "(upstream excluded VEC128 to work around undiagnosed instability in "
-    "some games; validity tracking is now range-keyed with overlap "
-    "invalidation, which removes the offset-aliasing hazard that plausibly "
-    "caused it). Disabling trades performance for current upstream's "
-    "conservative behavior: every vector register access round-trips "
-    "through guest context memory. Forced off by disable_context_promotion.",
+    "registers - upstream behavior from before 2026-01-25, when upstream "
+    "excluded VEC128 to work around undiagnosed instability in some games. "
+    "Off like upstream: with it on, Halo 4 (4D530919) poses the Chief's and "
+    "the enemies' bodies wrong in gameplay (legs bent up, ragdoll limbs), "
+    "the range-keyed validity tracking notwithstanding. It bought nothing "
+    "measurable either: Forza Horizon at the parked reference scene ran the "
+    "same 30 fps and the same instructions per frame on its busiest guest "
+    "thread with it off. Forced off by disable_context_promotion.",
     "CPU");
 
 DECLARE_bool(disable_context_promotion);

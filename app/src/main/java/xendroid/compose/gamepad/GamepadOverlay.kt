@@ -52,11 +52,12 @@ fun controlRadiusPx(c: OnScreenControl, density: Density): Float {
     }
 }
 
-/** Pure hit-test: first visible control whose center is within its radius of pos. */
+/** Pure hit-test: first visible control whose center is within its radius of pos; the editor
+ *  also finds the hidden ones ([includeHidden]), which it still draws. */
 fun hitTest(
-    controls: List<OnScreenControl>, pos: Offset, size: IntSize, density: Density,
+    controls: List<OnScreenControl>, pos: Offset, size: IntSize, density: Density, includeHidden: Boolean = false,
 ): OnScreenControl? = controls.firstOrNull { c ->
-    if (!c.visible) return@firstOrNull false
+    if (!c.visible && !includeHidden) return@firstOrNull false
     val center = controlCenterPx(c, size)
     hypot(pos.x - center.x, pos.y - center.y) <= controlRadiusPx(c, density)
 }
@@ -71,6 +72,12 @@ fun GamepadOverlay(
                                            // so the draw phase reads it: redraws without recomposing.
     onUserInteraction: () -> Unit = {},   // resets auto-hide timer
     editMode: Boolean = false,
+    adaptiveSticks: Boolean = false,      // opt-in: spawn near the saved stick anchor at touch-down
+    touchCamera: Boolean = false,         // U07 opt-in: free right side of the screen = right stick by finger speed
+    cameraSensitivity: Float = 1f,        // U07: 0.5–2, from the layout's globals
+    cameraAreaStart: Float = TouchCamera.DEFAULT_AREA_START,  // U07: where the area starts (fraction of the width)
+    slideButtons: Boolean = false,        // 15f: slide from button to button / onto the d-pad
+    slideSticks: Boolean = false,         // 15f: a free finger sliding onto a stick takes it
     gridStepsX: Int = 0,                  // editor: snap-grid cell count per axis (0 = no grid).
     gridStepsY: Int = 0,                  // x/y differ so the cells are square on a non-1:1 screen.
     selectedId: ControlId? = null,
@@ -78,6 +85,8 @@ fun GamepadOverlay(
     onTranslate: (ControlId, dxFrac: Float, dyFrac: Float) -> Unit = { _, _, _ -> },
     onScale: (ControlId, factor: Float) -> Unit = { _, _ -> },
     onDragEnd: (ControlId) -> Unit = {},
+    /** Round 2: dark glass buttons (modern, the default) or the coloured ones (classic). */
+    style: ControlStyle = ControlStyle.MODERN,
 ) {
     // Create the emitter ONCE. The host's onKeyEvent lambda is unstable (captures the
     // Activity), so remember(onKeyEvent) would recreate the emitter on every touch (poke
@@ -90,12 +99,19 @@ fun GamepadOverlay(
     // claim change -- plain maps record no snapshot read, so the knob would sit frozen.
     val claims = remember { mutableStateMapOf<Long, ControlId>() }
     val pointerPos = remember { mutableStateMapOf<Long, Offset>() }
+    val stickOrigins = remember { mutableStateMapOf<ControlId, Offset>() }
     // Rebuilding these per draw pass (display-refresh rate during a drag) was a GC-pause stutter storm.
     val drawCache = remember { GamepadDrawCache() }
+
     // per-dpad last-pressed sector set, for diffing.
     val dpadState = remember { mutableMapOf<ControlId, Set<Int>>() }
     val density = LocalDensity.current
+    // U07: full deflection at 1.2 dp per ms of finger travel (a brisk swipe), over the sensitivity.
+    val camera = remember(density, cameraSensitivity) {
+        TouchCamera(fullSpeedPxPerMs = TouchCamera.fullSpeed(with(density) { 1.2.dp.toPx() }, cameraSensitivity))
+    }
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
+    val slide = remember(slideButtons, slideSticks) { TouchSlide(slideButtons, slideSticks) }
     // Latest controls WITHOUT restarting the pointerInput: in edit mode every drag frame
     // produces a new `controls` list; if it keyed the pointerInput, the gesture would cancel
     // mid-drag (the button moves one frame then stutters/stops). Read this inside instead.
@@ -121,7 +137,7 @@ fun GamepadOverlay(
             // Keyed only on editMode+sizePx (stable during a gesture). controls is read live
             // via controlsState so a drag (which mutates controls every frame) never restarts
             // the gesture. selectedId is not needed here (only the draw uses it).
-            .pointerInput(editMode, sizePx) {
+            .pointerInput(editMode, sizePx, adaptiveSticks, touchCamera, camera, cameraAreaStart, slide) {
                 if (editMode) {
                     editPointerLoop(
                         controlsState, sizePx, density,
@@ -131,24 +147,61 @@ fun GamepadOverlay(
                         { id -> onDragEndState.value(id) },
                     )
                 } else {
+                    try {
                     awaitPointerEventScope {
                         while (true) {
-                            val ev = awaitPointerEvent()
+                            // While the camera finger is down, a quiet moment means it rests: stop turning.
+                            val ev = if (camera.active) withTimeoutOrNull(camera.idleMs) { awaitPointerEvent() } else awaitPointerEvent()
+                            if (ev == null) {
+                                camera.idle(android.os.SystemClock.uptimeMillis())?.let { emitter.stick(false, it.x, it.y) }
+                                continue
+                            }
                             onUserInteraction()
                             for (ch in ev.changes) {
                                 val pid = ch.id.value
                                 when {
                                     ch.changedToDownIgnoreConsumed() -> {
-                                        val hit = hitTest(controlsState.value, ch.position, sizePx, density)
+                                        val layout = controlsState.value
+                                        val hit = if (adaptiveSticks) {
+                                            // Buttons and D-pad win over a stick's expanded grab zone.
+                                            hitTest(layout.filterNot { it is OnScreenControl.AnalogStick },
+                                                ch.position, sizePx, density)
+                                                ?: layout.firstOrNull { c ->
+                                                    c is OnScreenControl.AnalogStick && c.visible &&
+                                                        !claims.containsValue(c.id) &&
+                                                        hypot(ch.position.x - controlCenterPx(c, sizePx).x,
+                                                            ch.position.y - controlCenterPx(c, sizePx).y) <=
+                                                        controlRadiusPx(c, density) * 1.65f
+                                                }
+                                        } else hitTest(layout, ch.position, sizePx, density)
+                                        // The on-screen right stick wins over the camera area.
+                                        if (hit is OnScreenControl.AnalogStick && !hit.isLeft && camera.active) camera.reset()
+                                        if (hit == null && touchCamera && TouchCamera.inArea(ch.position.x, sizePx.width, cameraAreaStart) &&
+                                            claims.values.none { id -> layout.any { it.id == id && it is OnScreenControl.AnalogStick && !it.isLeft } } &&
+                                            camera.down(pid, ch.position.x, ch.position.y, ch.uptimeMillis)
+                                        ) {
+                                            ch.consume()
+                                        }
                                         if (hit != null) {
+                                            if (adaptiveSticks && hit is OnScreenControl.AnalogStick) {
+                                                val r = with(density) { hit.baseSizeDp.dp.toPx() } / 2f * hit.scale
+                                                stickOrigins[hit.id] = Offset(
+                                                    ch.position.x.coerceIn(minOf(r, sizePx.width / 2f), maxOf(sizePx.width - r, sizePx.width / 2f)),
+                                                    ch.position.y.coerceIn(minOf(r, sizePx.height / 2f), maxOf(sizePx.height - r, sizePx.height / 2f)),
+                                                )
+                                            }
                                             claims[pid] = hit.id
                                             pointerPos[pid] = ch.position
-                                            dispatchDown(emitter, hit, ch.position, sizePx, density, dpadState)
+                                            dispatchDown(emitter, hit, ch.position, sizePx, density, dpadState, stickOrigins[hit.id])
                                             ch.consume()
                                         }
                                     }
                                     // up OR cancellation (Home/focus-loss sends ACTION_CANCEL,
                                     // which is !pressed but not changedToUp) -> release the claim.
+                                    !ch.pressed && camera.up(pid) != null -> {
+                                        emitter.releaseStick(false)
+                                        ch.consume()
+                                    }
                                     !ch.pressed -> {
                                         pointerPos.remove(pid)
                                         claims.remove(pid)?.let { id ->
@@ -156,6 +209,7 @@ fun GamepadOverlay(
                                             // control (two fingers on one stick: lifting one
                                             // must not zero the input the other is still driving).
                                             if (claims.none { it.value == id }) {
+                                                stickOrigins.remove(id)
                                                 controlsState.value.firstOrNull { it.id == id }?.let {
                                                     dispatchUp(emitter, it, dpadState)
                                                 }
@@ -163,17 +217,66 @@ fun GamepadOverlay(
                                             ch.consume()
                                         }
                                     }
-                                    ch.pressed -> {            // MOVE on a claimed pointer
-                                        val id = claims[pid] ?: continue
-                                        pointerPos[pid] = ch.position
-                                        controlsState.value.firstOrNull { it.id == id }?.let {
-                                            dispatchMove(emitter, it, ch.position, sizePx, density, dpadState)
+                                    ch.pressed && camera.active && claims[pid] == null -> {
+                                        camera.move(pid, ch.position.x, ch.position.y, ch.uptimeMillis)?.let { d ->
+                                            emitter.stick(false, d.x, d.y)
                                             ch.consume()
                                         }
+                                    }
+                                    ch.pressed -> {            // MOVE
+                                        val layout = controlsState.value
+                                        val id = claims[pid]
+                                        if (id == null) {
+                                            // 15f: a free finger sliding onto a control presses it.
+                                            if (!slide.any) continue
+                                            val target = TouchSlide.target(layout, ch.position, sizePx, density, slide,
+                                                leaving = null, held = claims.values) ?: continue
+                                            claims[pid] = target.id
+                                            pointerPos[pid] = ch.position
+                                            dispatchDown(emitter, target, ch.position, sizePx, density, dpadState, stickOrigins[target.id])
+                                            ch.consume()
+                                            continue
+                                        }
+                                        pointerPos[pid] = ch.position
+                                        val current = layout.firstOrNull { it.id == id } ?: continue
+                                        if ((slide.releasesOnExit(current) || slide.handsOver(current)) &&
+                                            TouchSlide.hasLeft(current, ch.position, sizePx, density)) {
+                                            // 15f: off a button (or off the d-pad onto another control):
+                                            // let go of it, and press what the finger is on now.
+                                            val target = TouchSlide.target(layout, ch.position, sizePx, density, slide,
+                                                leaving = id, held = claims.filterKeys { it != pid }.values)
+                                            if (target != null || slide.releasesOnExit(current)) {
+                                                claims.remove(pid)
+                                                if (claims.none { it.value == id }) {
+                                                    stickOrigins.remove(id)
+                                                    dispatchUp(emitter, current, dpadState)
+                                                }
+                                                if (target != null) {
+                                                    claims[pid] = target.id
+                                                    dispatchDown(emitter, target, ch.position, sizePx, density, dpadState, stickOrigins[target.id])
+                                                } else {
+                                                    pointerPos.remove(pid)
+                                                }
+                                                ch.consume()
+                                                continue
+                                            }
+                                        }
+                                        dispatchMove(emitter, current, ch.position, sizePx, density, dpadState, stickOrigins[id])
+                                        ch.consume()
                                     }
                                 }
                             }
                         }
+                    }
+                    } finally {
+                        // Resizing, switching mode or cancelling without a pointer-up must
+                        // release every claim and axis, including adaptive stick origins.
+                        emitter.releaseAll()
+                        claims.clear()
+                        pointerPos.clear()
+                        stickOrigins.clear()
+                        dpadState.clear()
+                        camera.reset()
                     }
                 }
             }
@@ -207,12 +310,17 @@ fun GamepadOverlay(
         }
         val contrastNow = contrast()   // draw-phase read: animation frames only re-draw
         for (c in controls) {
-            if (!c.visible) continue
+            // The editor still shows a hidden control, faint and ringed, so it can be shown again.
+            if (!c.visible && !editMode) continue
+            if (adaptiveSticks && !editMode && c is OnScreenControl.AnalogStick && stickOrigins[c.id] == null) continue
+            if (!c.visible) drawHiddenMark(c, sizePx, density)
             drawControl(
-                c, opacity, contrastNow, sizePx, density, drawCache,
+                c, if (c.visible) opacity else opacity * 0.3f, contrastNow, sizePx, density, drawCache,
                 pressed = claims.containsValue(c.id),
                 dpadDirs = if (c is OnScreenControl.Dpad) dpadState[c.id] ?: emptySet() else emptySet(),
                 activePos = activePos(c.id),
+                centerOverride = stickOrigins[c.id],
+                style = style,
             )
             if (editMode && c.id == selectedId) drawSelection(c, sizePx, density)
         }
@@ -243,7 +351,7 @@ private suspend fun PointerInputScope.editPointerLoop(
             val pressed = ev.changes.filter { it.pressed }
             // DOWN: hit-test + select + start a drag on the hit control.
             ev.changes.firstOrNull { it.changedToDownIgnoreConsumed() }?.let { ch ->
-                val hit = hitTest(controlsState.value, ch.position, size, density)
+                val hit = hitTest(controlsState.value, ch.position, size, density, includeHidden = true)
                 onSelect(hit?.id)
                 dragId = hit?.id
                 lastDrag = if (hit != null) ch.position else null
@@ -292,22 +400,24 @@ private suspend fun PointerInputScope.editPointerLoop(
 private fun dispatchDown(
     emitter: GamepadEmitter, c: OnScreenControl, pos: Offset,
     size: IntSize, density: Density, dpadState: MutableMap<ControlId, Set<Int>>,
+    stickOrigin: Offset? = null,
 ) {
     when (c) {
         is OnScreenControl.Button -> emitter.pressDigital(c.keyCode)
         is OnScreenControl.Dpad -> updateDpad(emitter, c, pos, size, density, dpadState)
-        is OnScreenControl.AnalogStick -> updateStick(emitter, c, pos, size, density)
+        is OnScreenControl.AnalogStick -> updateStick(emitter, c, pos, size, density, stickOrigin)
     }
 }
 
 private fun dispatchMove(
     emitter: GamepadEmitter, c: OnScreenControl, pos: Offset,
     size: IntSize, density: Density, dpadState: MutableMap<ControlId, Set<Int>>,
+    stickOrigin: Offset? = null,
 ) {
     when (c) {
         is OnScreenControl.Button -> Unit                 // sticky press while held
         is OnScreenControl.Dpad -> updateDpad(emitter, c, pos, size, density, dpadState)
-        is OnScreenControl.AnalogStick -> updateStick(emitter, c, pos, size, density)
+        is OnScreenControl.AnalogStick -> updateStick(emitter, c, pos, size, density, stickOrigin)
     }
 }
 
@@ -335,7 +445,7 @@ private fun updateDpad(
     val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
     val nx = (pos.x - center.x) / radius
     val ny = (pos.y - center.y) / radius
-    val now = emitter.dpadSectors(nx, ny)
+    val now = emitter.dpadSectors(nx, ny, c.deadZone)
     emitter.applyDpad(dpadState[c.id] ?: emptySet(), now)
     dpadState[c.id] = now
 }
@@ -343,16 +453,19 @@ private fun updateDpad(
 private fun updateStick(
     emitter: GamepadEmitter, c: OnScreenControl.AnalogStick, pos: Offset,
     size: IntSize, density: Density,
+    origin: Offset? = null,
 ) {
-    val center = controlCenterPx(c, size)
+    val center = origin ?: controlCenterPx(c, size)
     // Normalize by the VISUAL ring (matches drawControl), NOT the 1.15x grab radius, so
     // full deflection == reaching the drawn ring (and the knob == the emitted value).
     val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
     val dxN = (pos.x - center.x) / radius
     val dyN = (pos.y - center.y) / radius
-    // No source dead-zone (PPSSPP/legacy have none -- the emulator owns thumbstick
-    // dead-zone; a second one here double-dead-zones). Release happens only on touch-up.
-    emitter.stick(c.isLeft, dxN, dyN)        // emitter circular-clamps
+    // No source dead-zone by default (PPSSPP/legacy have none -- the emulator owns thumbstick
+    // dead-zone; a second one here double-dead-zones). 15f: a stick may have one of its own,
+    // which the player sets in the editor. Release happens only on touch-up.
+    val (x, y) = TouchSlide.stickDeadZone(dxN, dyN, c.deadZone)
+    emitter.stick(c.isLeft, x, y)            // emitter circular-clamps
 }
 
 // ---- Drawing ----
@@ -482,10 +595,21 @@ private fun DrawScope.drawControl(
     c: OnScreenControl, opacity: Float, contrast: Float, size: IntSize, density: Density,
     cache: GamepadDrawCache,
     pressed: Boolean, dpadDirs: Set<Int>, activePos: Offset?,
+    centerOverride: Offset? = null,
+    style: ControlStyle = ControlStyle.CLASSIC,
 ) {
-    val center = controlCenterPx(c, size)
+    val center = centerOverride ?: controlCenterPx(c, size)
     val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
     val strokeW = with(density) { 2.dp.toPx() }
+    if (style == ControlStyle.MODERN) {
+        val rim = with(density) { 1.5.dp.toPx() }
+        when (c) {
+            is OnScreenControl.Button -> drawGlassButton(c, center, radius, rim, opacity, pressed, cache)
+            is OnScreenControl.Dpad -> drawGlassDpad(center, radius, rim, opacity, dpadDirs, cache)
+            is OnScreenControl.AnalogStick -> drawGlassStick(center, radius, rim, opacity, activePos)
+        }
+        return
+    }
     // Coloured face buttons keep their face colour; only their light accents follow the ink.
     val ink = lerp(Color.White, OVERLAY_INK_BRIGHT, contrast)
     when (c) {
@@ -619,21 +743,123 @@ private fun DrawScope.drawStick(
     )) drawCircle(dot, dotR, p)
 }
 
+// ---- Round 2: the modern look (dark glass) ----
+
+// Glass: a dark translucent body with a light rim, readable over bright and dark scenes alike.
+private val GLASS = Color(0xFF0B0F0D)
+private val GLASS_PRESSED = Color(0xFF26302B)
+// The face letters keep the Xbox colours, lighter so they read on the dark glass.
+private val LETTER_A = Color(0xFF7BDA55)
+private val LETTER_B = Color(0xFFFF6A5F)
+private val LETTER_X = Color(0xFF5DA9FF)
+private val LETTER_Y = Color(0xFFFFD447)
+
+private fun DrawScope.glassDisc(center: Offset, radius: Float, rim: Float, opacity: Float, pressed: Boolean, rimColor: Color = Color.White) {
+    drawCircle((if (pressed) GLASS_PRESSED else GLASS).copy(alpha = (if (pressed) 0.72f else 0.46f) * opacity), radius, center)
+    drawCircle(rimColor.copy(alpha = (if (pressed) 0.85f else 0.32f) * opacity), radius - rim / 2f, center, style = Stroke(rim))
+}
+
+private fun DrawScope.drawGlassButton(
+    c: OnScreenControl.Button, center: Offset, radius: Float, rim: Float, opacity: Float, pressed: Boolean, cache: GamepadDrawCache,
+) {
+    val letter = when (c.id) {
+        ControlId.A -> LETTER_A; ControlId.B -> LETTER_B
+        ControlId.X -> LETTER_X; ControlId.Y -> LETTER_Y
+        else -> null
+    }
+    when {
+        letter != null -> {
+            glassDisc(center, radius, rim, opacity, pressed, rimColor = if (pressed) letter else Color.White)
+            drawLabel(cache, c.label, center, radius, letter.copy(alpha = 0.96f * opacity), bold = true, fill = 0.56f, tinted = true)
+        }
+        c.id in TRIGGER_IDS || c.id in PILL_IDS -> {
+            val trigger = c.id in TRIGGER_IDS
+            val w = radius * (if (trigger) 4.0f else 3.1f); val h = radius * (if (trigger) 1.5f else 1.1f)
+            val tl = Offset(center.x - w / 2f, center.y - h / 2f)
+            val cr = CornerRadius(h / 2f, h / 2f)
+            drawRoundRect((if (pressed) GLASS_PRESSED else GLASS).copy(alpha = (if (pressed) 0.72f else 0.46f) * opacity), tl, Size(w, h), cr)
+            drawRoundRect(Color.White.copy(alpha = (if (pressed) 0.85f else 0.32f) * opacity),
+                Offset(tl.x + rim / 2f, tl.y + rim / 2f), Size(w - rim, h - rim), cr, style = Stroke(rim))
+            drawLabel(cache, c.label, center, radius, Color.White.copy(alpha = 0.9f * opacity))
+        }
+        else -> {                                           // L3/R3/Back/Start: a small disc
+            val rr = radius * 0.8f
+            glassDisc(center, rr, rim, opacity, pressed)
+            drawLabel(cache, c.label, center, rr, Color.White.copy(alpha = 0.88f * opacity))
+        }
+    }
+}
+
+/** Four arrow pads around a hub, each lit while pressed. */
+private fun DrawScope.drawGlassDpad(center: Offset, radius: Float, rim: Float, opacity: Float, dirs: Set<Int>, cache: GamepadDrawCache) {
+    val g = cache.geom(center, radius)
+    drawCircle(GLASS.copy(alpha = 0.26f * opacity), radius, center)
+    clipPath(g.clipOval) {
+        drawPath(g.cross, GLASS.copy(alpha = 0.5f * opacity))
+        for (code in dirs) {
+            val clip = g.armClips.getOrNull(code) ?: continue
+            clipPath(clip) { drawPath(g.cross, Color.White.copy(alpha = 0.32f * opacity)) }
+        }
+        drawPath(g.cross, Color.White.copy(alpha = 0.3f * opacity), style = Stroke(rim))
+    }
+    // An arrow on each arm, pointing out.
+    val tip = radius * 0.86f; val base = radius * 0.6f; val half = radius * 0.13f
+    for (dir in 0..3) {
+        val (dx, dy) = when (dir) { 0 -> -1f to 0f; 1 -> 0f to -1f; 2 -> 1f to 0f; else -> 0f to 1f }
+        val path = Path().apply {
+            moveTo(center.x + dx * tip, center.y + dy * tip)
+            lineTo(center.x + dx * base - dy * half, center.y + dy * base + dx * half)
+            lineTo(center.x + dx * base + dy * half, center.y + dy * base - dx * half)
+            close()
+        }
+        drawPath(path, Color.White.copy(alpha = (if (dir in dirs) 0.95f else 0.6f) * opacity))
+    }
+}
+
+/** A dark well with a ring and a domed knob that lights its rim while held. */
+private fun DrawScope.drawGlassStick(center: Offset, radius: Float, rim: Float, opacity: Float, activePos: Offset?) {
+    drawCircle(GLASS.copy(alpha = 0.34f * opacity), radius, center)
+    drawCircle(Color.White.copy(alpha = 0.22f * opacity), radius - rim / 2f, center, style = Stroke(rim))
+    val knob = activePos?.let { p ->
+        var dx = p.x - center.x; var dy = p.y - center.y
+        val len = hypot(dx, dy)
+        if (len > radius) { dx = dx / len * radius; dy = dy / len * radius }
+        Offset(center.x + dx, center.y + dy)
+    } ?: center
+    val active = activePos != null
+    val knobR = radius * 0.56f
+    drawCircle(Brush.radialGradient(listOf(Color(0xFF3A443F), GLASS), center = Offset(knob.x, knob.y - knobR * 0.35f), radius = knobR * 1.3f),
+        knobR, knob, alpha = (if (active) 0.92f else 0.78f) * opacity)
+    drawCircle(Color.White.copy(alpha = (if (active) 0.8f else 0.4f) * opacity), knobR - rim / 2f, knob, style = Stroke(rim))
+}
+
 private fun DrawScope.drawSelection(c: OnScreenControl, size: IntSize, density: Density) {
     val center = controlCenterPx(c, size)
     val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
     val ring = with(density) { 3.dp.toPx() }
-    drawCircle(Color(0xFF4FC3F7), radius + ring, center, style = Stroke(ring))
+    drawCircle(Color(0xFF79DD5F), radius + ring, center, style = Stroke(ring))
+}
+
+/** A dashed ring around a control the player hid (editor only). */
+private fun DrawScope.drawHiddenMark(c: OnScreenControl, size: IntSize, density: Density) {
+    val center = controlCenterPx(c, size)
+    val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
+    val w = with(density) { 1.5.dp.toPx() }
+    val dash = with(density) { 5.dp.toPx() }
+    drawCircle(Color.White.copy(alpha = 0.55f), radius + w, center,
+        style = Stroke(w, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(dash, dash * 0.8f))))
 }
 
 private fun DrawScope.drawLabel(
     cache: GamepadDrawCache, label: String, center: Offset, radius: Float, color: Color,
-    bold: Boolean = false, fill: Float? = null,
+    bold: Boolean = false, fill: Float? = null, tinted: Boolean = false,
 ) {
     if (label.isEmpty()) return
-    // Only color.alpha varies per draw; label RGB stays white regardless of the bright-scene ink.
+    // Only color.alpha varies per draw; label RGB stays white regardless of the bright-scene ink,
+    // unless [tinted] (the modern look's coloured A/B/X/Y letters).
     val l = cache.label(label, radius, bold, fill)
     drawIntoCanvas { canvas ->
+        l.paint.color = if (tinted) color.copy(alpha = 1f).toArgb() else android.graphics.Color.WHITE
         l.paint.alpha = (color.alpha * 255).toInt()
         val nudgeX = if (fill != null) ABXY_LABEL_NUDGE_X * radius else 0f
         val baseline = center.y - l.cy                    // center the glyph itself, not the font line

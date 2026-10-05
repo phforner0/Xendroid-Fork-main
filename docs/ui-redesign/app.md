@@ -1,0 +1,334 @@
+# Redesign B + C no app
+
+**Estado:** implementado em Compose na branch `wip/ui-redesign`, do R0 ao lote 7. Os testes locais
+passam (unitários, telas no JVM e a compilação dos testes instrumentados); **a validação no
+aparelho está pendente em todos os lotes**. Sem PR, merge ou release.
+
+A direção é a escolhida no protótipo ([`bc/`](bc/README.md)): **B como padrão (toque)** e **C como
+modo controle**, ligado sozinho quando um controle está conectado (Configurações → App →
+Interface: Automático, Sempre toque ou Sempre controle).
+
+## Prints antes e depois
+
+- `prints/app/<lote>/antes-*.png`: as telas como eram, desenhadas a partir do commit anterior ao
+  redesenho (`545296bd3`).
+- `prints/app/<lote>/depois-*.png`: as telas de agora, desenhadas pelos testes de tela
+  (`app/src/testUitest/.../screens/BaseShots.kt`, `Lote1Shots.kt` … `Lote7Shots.kt`).
+- Telefone 20:9 (914 × 411 dp deitado, 411 × 914 dp em pé, densidade 1,5×), tema escuro,
+  português do Brasil. Os prints com `-controle` no nome estão no modo controle (cor da capa ao
+  fundo, dicas dos botões embaixo).
+- Os dados são de exemplo: biblioteca com arte gerada, núcleo nativo simulado (tabelas TOML,
+  perfis, conteúdo), telefone descrito como POCO F7 com Adreno 740.
+
+Para desenhar de novo (precisa do Android SDK, como no `BUILD.md`):
+
+```sh
+./gradlew :app:testUitestUnitTest -Pscreenshots="$PWD/docs/ui-redesign/prints/app"
+# um lote só:
+./gradlew :app:testUitestUnitTest --tests 'xendroid.compose.screens.Lote6Shots' -Pscreenshots="$PWD/docs/ui-redesign/prints/app"
+```
+
+Sem `-Pscreenshots` os mesmos testes desenham cada tela sem gravar arquivo (testes de fumaça).
+
+## O que mudou, lote por lote
+
+### R0: tema e peças base
+
+- `ui/design`: os tokens de B (toque) e C (controle) num `ColorScheme` escuro; Barlow, Barlow Semi
+  Condensed e JetBrains Mono (licenças OFL no APK, conferidas por `tools/check-apk.py`); os ícones
+  de linha do protótipo; botões, chips, controle segmentado, interruptor, busca, seleção, cartões,
+  linhas de lista, notas, selos, capas com a composição para jogos só com ícone, folhas, avisos e
+  as molduras de B e C (trilho, barra inferior, telas com seções, menu do controle, dicas, menu do
+  Start).
+- Modo controle automático, sempre toque ou sempre controle.
+- 29 cvars que o core já lê entraram no esquema de ajustes (mais o modo de vídeo personalizado e
+  a gama personalizada); níveis Essencial, Avançado e Tudo; ajustes rápidos fixados.
+
+### Base: biblioteca e ficha do jogo
+
+- Biblioteca para toque (trilho, busca, ordem, tamanho das capas, filtros, grade e o painel do
+  jogo escolhido com Jogar e ajustes rápidos) e para controle (abas por LB/RB, carrossel, cor da
+  capa ao fundo, dicas, menu do Start).
+- Ficha do jogo como tela: visão geral, cada grupo de ajustes do jogo com a troca para os valores
+  globais, desempenho (gráficos e linha do tempo da última sessão), patches e conteúdo, saves e
+  dados.
+- **Iniciar com…**: perfil, driver, executável, sem patches, sem os ajustes do jogo e linha de
+  comando extra, só para uma abertura (passados ao processo do jogo com o token desta abertura e
+  uma lista fechada do que é aceito).
+
+### Lote 1: Configurações e Drivers
+
+- Configurações com o resumo do que está fora do padrão e dos jogos com ajustes próprios, os mesmos
+  grupos da ficha (cada ajuste diz quantos jogos usam outro valor), interface, idioma, dados e
+  backup, atualizações, comunidade e diagnóstico.
+- Área Drivers: o escolhido e o que a última sessão carregou, pacotes instalados, downloads com
+  SHA-256 conferido, fontes e flags do Turnip.
+
+### Lote 2: jogo aberto
+
+- Carregamento com as etapas do boot e o tempo de cada uma, e com o que o jogo leva nesta abertura.
+- Falha ao abrir com o motivo numa frase e o próximo passo certo (tentar uma vez com o driver do
+  sistema, ir aos saves, tentar de novo).
+- Menu em jogo redesenhado, com a linha de estado e a navegação por controle de antes.
+
+### Lote 3: Controles
+
+- Controles virou uma área do app: quem joga como P1–P4, opções e layouts do toque, cada controle
+  físico com a própria vibração, ajustes do core para controles, telefones como controle e as
+  quatro ferramentas (o editor de toque e o celular como controle estavam sem caminho desde que o
+  menu antigo da biblioteca saiu).
+- Mapeamento de teclas com o controle desenhado, editor de toque com painel do controle escolhido
+  e desfazer, teste de controles que acende o que é apertado, celular como controle redesenhado.
+
+### Lote 4: Perfis e saves
+
+- Perfis como área: cartões (avatar, P1 ativo, idioma, região, saves por jogo), quem joga (P1–P4,
+  perguntar antes de jogar) e a lixeira de perfis; criar e editar numa folha só.
+- Jogar como numa folha; os saves de um jogo com gamertag e avatar em vez do XUID, os nomes dos
+  saves lidos dos cabeçalhos, exportar e importar, e a pasta de sincronização numa seção própria.
+
+### Lote 5: Conteúdo, Diagnóstico e Comparar execuções
+
+- Conteúdo como área: DLC e title updates de todos os jogos, a lixeira com a cota, instalar com os
+  pacotes achados em Downloads; pela ficha, só o daquele jogo.
+- Diagnóstico com as sessões guardadas, os jogos de cada uma e como terminou; o resumo antes de
+  compartilhar e o que sai do arquivo.
+- Comparar execuções com as execuções (A / – / B) ao lado do resultado e dos avisos.
+
+### Lote 6: primeira abertura e telas do app
+
+- **Primeira abertura** (`FirstRunAssistant.kt`): cinco passos com Pular e Voltar sempre à mão:
+  este telefone (GPU Vulkan, ARM de 64 bits, Android, pasta), seus jogos (a pasta escolhida, a busca
+  com quantos jogos e as capas, adicionar outra), idioma e região dos jogos, o perfil criado ali
+  mesmo (vira P1) e como usar (modo da interface, ajustes mostrados, driver opcional). Volta ao
+  mesmo passo depois do navegador de pastas; com controle, cada passo começa no botão principal;
+  reabre pelo menu da biblioteca ou por Sobre.
+- **Pastas de jogos** (`GameFoldersScreen.kt`, no lugar do `GameFoldersDialog.kt`): quantos jogos
+  cada pasta tem, a que recebe as instalações ("Instalar aqui" troca), as indisponíveis agora com o
+  motivo, adicionar, procurar de novo e remover com Desfazer (os arquivos nunca são tocados).
+- **Navegador de pastas** (`FolderBrowserScreen.kt`): armazenamento interno e cartões SD/USB como
+  chips, o caminho em passos clicáveis, quantos jogos há em cada pasta antes de entrar
+  (`FolderGames.kt`, contado em segundo plano e com limite; um ISO só conta com a assinatura de
+  disco do Xbox onde o núcleo a procura, então o ISO de outro console não vira "1 jogo") e na
+  pasta atual; também escolhe um arquivo (pacote a instalar, jogo que mudou de lugar).
+- Caminhos ditos como o app Arquivos diz: "Armazenamento interno › Games › Xbox 360"
+  (`StoragePaths.kt`).
+- **Jogos que saíram** (`MissingGamesScreen.kt`, no lugar do `MissingGamesDialog.kt`): capa
+  guardada, motivo (arquivo sumiu, pasta indisponível, fora das pastas), tempo jogado, Title ID e o
+  caminho de antes; "Onde ele está agora?" abre o navegador perto do caminho antigo e adiciona a
+  pasta do arquivo escolhido; adicionar a pasta; remover só da lista.
+- **Sem Vulkan** (`NoVulkanScreen.kt`): o porquê, as verificações, Sair e copiar os dados do
+  aparelho.
+- **Atualizações do app** (`UpdateScreen.kt`): versão, canal e última procura com "Procurar
+  agora", o canal, e o cartão da atualização (notas, tamanho, SHA-256) com as etapas baixar →
+  conferir o SHA-256 → instalar, progresso e cancelar, pular esta versão e os erros numa frase. O
+  mesmo cartão aparece na folha da procura automática ao abrir o app e em Configurações. Um build
+  sem canal diz de onde vêm as atualizações.
+- **Sobre** (`AboutScreen.kt`, `DeviceInfo.kt`): versão, o aparelho em tabela com copiar tudo,
+  atalhos (atualizações, diagnóstico, assistente) e créditos e licenças.
+
+### Lote 7: os painéis que o jogo pede
+
+- Moldura comum (`GuestPanelFrame.kt`): painel no topo sobre o jogo parado, dizendo qual jogo
+  pergunta (capa e nome) e o que ele pede; as dicas do controle embaixo no modo controle; compacto
+  num telefone deitado. Continua sem ser um `Dialog`, que tiraria o foco da janela e pausaria o
+  jogo.
+- **Mensagem** (`GuestMessageBoxPanel.kt`): título, texto que rola quando é longo com as opções
+  sempre à vista, opções em linhas inteiras e "O jogo fica parado até você escolher".
+- **Teclado** (`GuestKeyboardPanel.kt`): o pedido do jogo, o campo com o limite contado como o jogo
+  conta, as teclas de comando em português (Shift, Espaço, Pronto, Cancelar; ícones quando a
+  grade é estreita), o cursor do controle só no modo controle e os atalhos do Xbox 360 à vista (A
+  digita, X apaga, Y espaço, LB/RB cursor, L3 Shift, R3 símbolos, ≡ pronto). Por toque, o teclado
+  do telefone digita no campo.
+- **Troca de disco** (`DiscSwapPanel.kt`): o disco pedido no título e já escolhido na lista, os
+  discos achados com o arquivo de cada um, o que estava no drive marcado "o de antes" (a escolha
+  fica à vista quando a lista rola) e Cancelar por último, avisando que o jogo já ejetou o disco.
+
+### Ajustes 1: o que veio do aparelho
+
+Retorno de um Xiaomi com Android 16 e Adreno 825. Os "antes" são as capturas do próprio aparelho,
+que não entram no repositório (mostram a barra de status de quem testou).
+
+- **Botões de baixo fora da tela** em folhas e diálogos: no Android 15+ o Compose 1.7 dimensiona a
+  janela de um diálogo de largura total pela altura da tela *com* as barras do sistema, e a janela
+  ainda respeitava as barras, então o rodapé caía para fora. `XdDialogEdgeToEdge()` (em
+  `XdSheet.kt`) tira os insets da janela do diálogo; a folha, o guia do controle e o assistente já
+  aplicam os insets eles mesmos.
+- **Drivers com texto quebrado letra por letra** (retrato): os selos e os botões espremiam o título.
+  `XdListRow` ganhou selos que quebram de linha ao lado do título e `actionsBelow`, que põe as
+  ações embaixo do texto quando a tela é estreita (menos de 520 dp).
+- **HUD de desempenho no visual novo** (`FpsOverlay.kt`): linhas de rótulo e valor na fonte mono,
+  FPS em verde, calor perto ou acima do limite em amarelo ou vermelho, métricas que o aparelho não
+  informa ficam de fora (em vez de "N/A") e o painel com títulos por grupo (Agora, Ritmo, Trabalho,
+  Ajustes em vigor). Números no formato do idioma do aparelho.
+- **Opções de Imagem no menu em jogo, aplicadas na hora**: Suavização (FXAA, FXAA extremo),
+  Nitidez (CAS ou FSR, cinco níveis) e Pontilhado, além do efeito de escala que já existia. O núcleo
+  recebe os valores por `set_image_tuning` e o apresentador os usa no quadro seguinte; "Guardar esta
+  imagem para o jogo" grava efeito, suavização, nitidez e pontilhado na config do jogo.
+
+### Ajustes 2: segunda rodada
+
+Segundo retorno do aparelho, com capturas de referência de um front-end de PC no Android. A
+análise, o que mudou entre a primeira ideia e a aplicada, e a ordem estão em
+[ajustes-2.md](ajustes-2.md).
+
+- **Bugs** (causas na análise):
+  - modo console na primeira abertura sem controle: uma conferência de controle só, estrita
+    (`XdInput.kt`);
+  - "Jogos" reabrindo o assistente: o estado da biblioteca vem antes de qualquer `return` e os
+    pedidos de Sobre e do trilho são de uma vez só;
+  - Sobre: o relato do núcleo resumido (`CoreReport`), o completo numa folha;
+  - `APU|mute` e `GPU|readback_memexport` saem: não existem no núcleo.
+- **Menu em jogo reorganizado** (`InGameMenu.kt`, `InGameMenuState.kt`):
+  - trilho de categorias (Imagem, Desempenho, HUD, Controles, Sessão) e grupos dentro delas;
+  - cada linha mostra o valor e muda ali mesmo: pílulas, interruptor, ‹ valor › ou controle
+    deslizante;
+  - no controle, ↑↓ entre as linhas e ←→ muda o valor (numa linha de caixas de seleção, move o
+    cursor entre elas); A aciona e LB/RB trocam de categoria.
+- **Guardado por jogo** (`InGameChanges.kt`):
+  - o que muda no menu vai na hora para a config do jogo: FPS, tela, imagem, filtro de cor,
+    controles de toque, analógicos adaptativos e giroscópio;
+  - "N guardadas" leva à Sessão, com Desfazer as mudanças desta sessão e Usar em todos os jogos;
+  - as linhas com valor próprio do jogo dizem "deste jogo".
+- **Pausar ao abrir o menu:** interruptor na Sessão, ligado por padrão e valendo para todos os
+  jogos; muda na hora.
+- **Sem o botão ☰:**
+  - o menu abre pelo Voltar, pelo Guia do controle ou arrastando da borda esquerda
+    (`InGameMenuEdge`);
+  - na primeira sessão, um aviso diz como.
+- **HUD horizontal** (`FpsOverlay.kt`, `HudPlacement.kt`):
+  - uma barra no topo ou na base, com rótulos coloridos por métrica e um gráfico do FPS;
+  - a categoria HUD tem formato, posição, detalhe, métricas, tamanho, opacidade, intensidade das
+    cores e estilo, com uma prévia ao vivo.
+- **Controles na tela, visual Moderno** (`GamepadOverlay.kt`):
+  - vidro escuro com contorno fino e letras A/B/X/Y coloridas;
+  - direcional em setas, gatilhos e bumpers em pílulas, analógicos discretos.
+  - O Clássico continua como opção, em Controles → toque e no menu em jogo.
+  - No retrato, LT sobre LB e RT sobre RB no layout padrão: lado a lado, eles se sobrepunham no
+    desenho e no toque.
+- **Configurações: contagens, busca e links** (`XdSettings.kt`, `XdShell.kt`):
+  - cada nível diz quantos ajustes lista na aba aberta ("Essencial 4 · Avançado 6 · Tudo 8"), e
+    no total em Interface;
+  - a busca de uma aba procura só nela ("Buscar em Imagem"); embaixo, "Em outras abas" com até
+    cinco resultados de outras abas, cada um com o nome da aba, e um toque leva até lá;
+  - uma busca ou filtro diz quantos resultados o nível esconde, com "Mostrar";
+  - o Resumo tem a sua busca, em todas as abas, com os resultados por aba e "Abrir a aba";
+  - depois de um link ("Todos os ajustes", "Ver os patches", uma sugestão), a lista de seções
+    rola até a escolhida e o conteúdo começa com "‹ Voltar para …"; o Voltar do sistema e o B do
+    controle voltam também (`XdSectionHistory`); escolher na lista recomeça o histórico;
+  - na ficha do jogo, "Todos os ajustes" é uma seção com todos os grupos (antes levava a Imagem);
+  - o navegador de pastas não mostra mais o trilho das áreas: é um passo de um fluxo.
+- **Ficha do jogo: desempenho por sessão** (`GameCards.kt`):
+  - no topo de Desempenho, a sessão mostrada ("05/10, 01:34 · 52 min · 30 FPS") e quantas há; um
+    toque lista as sessões do jogo com data, como terminou, FPS mediano e baixo, p99 e driver;
+  - a sessão inicial é a mais recente com números, com um aviso quando a última não tem;
+  - o cartão mostra os números, a linha do tempo e os "Ajustes em vigor" daquela sessão (já eram
+    gravados, nunca apareciam);
+  - "Nunca jogado" ao lado de números: a ficha passa a ler o histórico do jogo ao abrir.
+- **Patches e conteúdo por TU**:
+  - os patches da ficha vêm em grupos: "Para a sua versão", "Para outras versões" (não valem para
+    a versão jogada) e "Sem versão indicada", com o rótulo da TU que o nome ou os comentários do
+    arquivo dizem ("TU 2");
+  - o leitor de patches lê hashes em várias linhas (antes, arquivos com mais de um hash ficavam
+    sem versão);
+  - a TU instalada mostra a sua versão, lida do executável de atualização ("versão 1.0.4.0";
+    `ContentVersion`), na ficha e em Conteúdo; num pacote ainda por instalar, do cabeçalho.
+- **Pastas de TU e DLC, com busca profunda** (Conteúdo → Instalar):
+  - "Pastas de conteúdo", além de Downloads, procuradas com todas as pastas dentro delas
+    (`ContentCatalog.packagesUnder`), cada uma com quantos pacotes tem;
+  - os pacotes achados mostram a pasta, a versão (TU) e "Instalado" quando já estão.
+- **Criar pastas**: "Nova pasta" no navegador (cria e abre); em Pastas de jogos, "Criar pastas
+  padrão" cria XenDroid/Jogos, XenDroid/TU e XenDroid/DLC e já adiciona as três.
+- **Sugestões ao fim da sessão** (`SessionAdvice`, `SessionAdviceHost.kt`):
+  - de volta ao app depois de uma sessão (encerrada, com falha ou travamento), a folha "Como foi
+    Halo 3" resume a sessão e traz até três sugestões, cada uma com o motivo em números e
+    "Aplicar neste jogo" (com Desfazer), gravada na config do jogo;
+  - só aparece quando há algo a fazer, uma vez por sessão; a sessão precisa ter passado de um
+    minuto, a menos que tenha falhado;
+  - regras, com o que o app já grava: travamento nativo com driver personalizado → driver do
+    sistema; falha ao abrir com ajustes próprios → voltar ao global; engasgos com muitos
+    pipelines → mais threads de criação; FPS bem abaixo do limite com escala acima de 1× → 1×;
+    oscilando entre 30 e 60 com limite 60 → 30; áudio atrasado acima de 1% → buffer maior;
+    bateria a 45 °C ou mais, ou o aviso de calor do telefone no limite (no log da sessão) →
+    limite de 30;
+  - silenciar: em cada sugestão, "Não sugerir para este jogo" e "Nunca sugerir isto"; na folha,
+    "Não mostrar até reabrir o app", "Sem sugestões para este jogo" e "Nunca mostrar"; em
+    Configurações → Interface, "Sugestões ao fim da sessão": Sempre, Só depois de erros ou Nunca;
+  - as de desempenho aparecem no máximo uma vez por dia por jogo; as de erro, sempre.
+  - A regra da geração de quadros ficou de fora: ela é ligada por sessão no menu em jogo (modo
+    desenvolvedor) e não fica gravada no jogo, então não há o que desligar depois.
+- **Navegação por controle** (passada no sistema de design, vale para todas as telas):
+  - LT/RT andam uma página (seis linhas) para cima ou para baixo em qualquer tela de controle,
+    com a lista acompanhando; na estante de jogos, LT/RT pulam cinco capas;
+  - as folhas abrem com o foco no primeiro controle (antes, o primeiro toque do direcional só
+    acordava o foco); com controle, o "X" das folhas sai, porque B fecha;
+  - B volta pelos links dentro de uma tela (histórico das seções) antes de sair dela;
+  - a barra de dicas mostra LT/RT;
+  - o assistente da primeira abertura também oferece "Criar pastas padrão".
+  - O Robolectric não dá foco à janela de teste, então o foco não tem teste automático: está na
+    lista de validação no aparelho.
+
+## Testes
+
+Rodados em 2026-10-05, no fim dos ajustes 2:
+
+- `./gradlew :app:testDebugUnitTest`: 609 testes, nenhuma falha. Os novos da rodada 2:
+  `InGameChangesTest`, `InGameMenuStateTest` (categorias e grupos), `CoreReportTest`,
+  `PanelResultsTest`, `SectionHistoryTest`, `ContentVersionTest`, `StandardFoldersTest`,
+  `PatchTomlParserTest` e `SessionAdviceTest`.
+- `./gradlew :app:testUitestUnitTest`: 761 testes de tela, nenhuma falha (`Ajustes2Shots`, com 32
+  prints, e `FirstRunReturnTest` são os novos).
+- `./gradlew :app:compileUitestAndroidTestKotlin`: os testes instrumentados compilam.
+
+Rodados em 2026-10-04, no fim do lote 7:
+
+- `./gradlew :app:testDebugUnitTest`: 570 testes, nenhuma falha. Inclui os novos do redesenho
+  (`FolderGamesTest`, `LibraryRootsTest`, `RequestedDiscTest`, `ContentCatalogTest`,
+  `DiagnosticsSessionsTest`, `KeyboardGridTest`) e a paridade de textos en/pt-BR
+  (`StringResourcesTest`).
+- `./gradlew :app:testUitestUnitTest`: 681 testes de tela no JVM (Robolectric + Roborazzi),
+  nenhuma falha.
+- `./gradlew :app:compileUitestAndroidTestKotlin`: os testes instrumentados compilam
+  (`Item38TouchLayoutsTest` foi ajustado ao `onMessage` do diálogo de layouts, do lote 3). Rodá-los
+  exige um aparelho (`./gradlew :app:connectedUitestAndroidTest`) e não foi feito.
+
+## Validação no aparelho (pendente)
+
+| Lote | O que conferir |
+|---|---|
+| R0 / Base | Modo controle ligando e desligando sozinho ao conectar um controle; capas reais; Jogar e Iniciar com… abrindo o jogo |
+| 1 | Ajustes gravados no TOML global e do jogo; download de driver com SHA-256 |
+| 2 | Etapas do carregamento com um jogo real; falha ao abrir com o driver do sistema; menu em jogo com controle |
+| 3 | Captura de tecla com controle real; arrastar no editor de toque; teste de controles; celular como controle na rede |
+| 4 | Criar, editar e apagar perfis; Jogar como; exportar, importar e sincronizar saves |
+| 5 | Instalar conteúdo de Downloads; lixeira; sessões do diagnóstico com jogos reais; comparar execuções |
+| 6 | Assistente numa instalação limpa (acesso a todos os arquivos, Android 10 e 14); navegador com cartão SD e USB (nome do volume); "Onde ele está agora?"; atualização num build `.fork` com canal (baixar, conferir, permissão do instalador); copiar os dados em Sobre |
+| 7 | Mensagem, teclado e troca de disco em jogos reais: seleção pelo direcional vinda do host, teclado do telefone sem cobrir o campo, atalhos do Xbox 360, troca num jogo de vários discos |
+| Ajustes 1 | Rodapé das folhas visível no Android 15 e 16; Suavização, Nitidez e Pontilhado mudando a imagem na hora num jogo real; "Guardar esta imagem para o jogo" valendo na sessão seguinte |
+| Ajustes 2 | Primeira abertura sem controle em modo toque; "Jogos" sem reabrir o assistente; mudanças do menu em jogo valendo na sessão seguinte, com Desfazer e Usar em todos os jogos; abrir o menu pela borda esquerda e pelo Guia; pausa ao abrir desligada; HUD horizontal no topo e na base; controles no visual Moderno; busca e "Voltar" nas Configurações (também com B); versão da TU instalada; pastas de conteúdo num cartão SD; "Criar pastas padrão" com e sem acesso a todos os arquivos; sugestões depois de um travamento real e "Aplicar neste jogo" valendo na sessão seguinte; LT/RT e o foco inicial das folhas com um controle |
+
+## Propostas do protótipo que ficaram de fora
+
+- **Mapa de teclas por controle** (lote 3): o host aplica um mapa só a todos os controles; um mapa
+  por aparelho precisa da identidade do controle no caminho da entrada.
+- **Achar o jogo na rede e ler o QR code** (celular como controle, lote 3): precisa de descoberta
+  na rede local (NSD/mDNS) dos dois lados e de câmera, uma permissão nova.
+- **Procurar o arquivo do disco** quando nenhum é achado (troca de disco, lote 7): o painel roda
+  dentro do jogo; entregar ao core um caminho escolhido ali exige conferir no host que o arquivo é
+  um disco daquele título. Ficou de fora para não abrir esse caminho sem a conferência; hoje
+  Cancelar continua sendo a saída, e o disco aparece depois de colocado numa pasta de jogos.
+
+## Índice dos prints
+
+| Lote | Antes | Depois |
+|---|---|---|
+| Base: biblioteca e ficha | [biblioteca paisagem](prints/app/base/antes-biblioteca-paisagem.png), [biblioteca retrato](prints/app/base/antes-biblioteca-retrato.png), [carrossel paisagem](prints/app/base/antes-carrossel-paisagem.png), [ficha paisagem](prints/app/base/antes-ficha-paisagem.png), [ficha retrato](prints/app/base/antes-ficha-retrato.png) | [biblioteca controle retrato](prints/app/base/depois-biblioteca-controle-retrato.png), [biblioteca controle](prints/app/base/depois-biblioteca-controle.png), [biblioteca paisagem](prints/app/base/depois-biblioteca-paisagem.png), [biblioteca retrato](prints/app/base/depois-biblioteca-retrato.png), [ficha ajustes](prints/app/base/depois-ficha-ajustes.png), [ficha conteúdo](prints/app/base/depois-ficha-conteudo.png), [ficha controle ajustes](prints/app/base/depois-ficha-controle-ajustes.png), [ficha controle](prints/app/base/depois-ficha-controle.png), [ficha dados](prints/app/base/depois-ficha-dados.png), [ficha desempenho](prints/app/base/depois-ficha-desempenho.png), [ficha paisagem](prints/app/base/depois-ficha-paisagem.png), [ficha retrato](prints/app/base/depois-ficha-retrato.png), [iniciar com…](prints/app/base/depois-iniciar-com.png) |
+| Lote 1: Configurações e Drivers | [ajustes do jogo](prints/app/lote1/antes-ajustes-do-jogo.png), [configurações](prints/app/lote1/antes-configuracoes.png), [drivers](prints/app/lote1/antes-drivers.png) | [configurações controle](prints/app/lote1/depois-configuracoes-controle.png), [configurações imagem](prints/app/lote1/depois-configuracoes-imagem.png), [configurações interface](prints/app/lote1/depois-configuracoes-interface.png), [configurações retrato](prints/app/lote1/depois-configuracoes-retrato.png), [configurações](prints/app/lote1/depois-configuracoes.png), [drivers controle](prints/app/lote1/depois-drivers-controle.png), [drivers retrato](prints/app/lote1/depois-drivers-retrato.png), [drivers](prints/app/lote1/depois-drivers.png) |
+| Lote 2: jogo aberto | [carregamento](prints/app/lote2/antes-carregamento.png), [menu em jogo](prints/app/lote2/antes-menu-em-jogo.png) | [carregamento controle](prints/app/lote2/depois-carregamento-controle.png), [carregamento retrato](prints/app/lote2/depois-carregamento-retrato.png), [carregamento](prints/app/lote2/depois-carregamento.png), [falha ao abrir](prints/app/lote2/depois-falha-ao-abrir.png), [menu desempenho](prints/app/lote2/depois-menu-desempenho.png), [menu em jogo controle](prints/app/lote2/depois-menu-em-jogo-controle.png), [menu em jogo retrato](prints/app/lote2/depois-menu-em-jogo-retrato.png), [menu em jogo](prints/app/lote2/depois-menu-em-jogo.png) |
+| Lote 3: Controles | [celular como controle](prints/app/lote3/antes-celular-como-controle.png), [editor de toque](prints/app/lote3/antes-editor-de-toque.png), [mapeamento](prints/app/lote3/antes-mapeamento.png), [testar controles](prints/app/lote3/antes-testar-controles.png) | [celular como controle](prints/app/lote3/depois-celular-como-controle.png), [celular jogando](prints/app/lote3/depois-celular-jogando.png), [controles controle](prints/app/lote3/depois-controles-controle.png), [controles fisicos](prints/app/lote3/depois-controles-fisicos.png), [controles movimento](prints/app/lote3/depois-controles-movimento.png), [controles retrato](prints/app/lote3/depois-controles-retrato.png), [controles telefones](prints/app/lote3/depois-controles-telefones.png), [controles toque](prints/app/lote3/depois-controles-toque.png), [controles](prints/app/lote3/depois-controles.png), [editor de toque controle](prints/app/lote3/depois-editor-de-toque-controle.png), [editor de toque gerais](prints/app/lote3/depois-editor-de-toque-gerais.png), [editor de toque](prints/app/lote3/depois-editor-de-toque.png), [mapeamento captura](prints/app/lote3/depois-mapeamento-captura.png), [mapeamento controle](prints/app/lote3/depois-mapeamento-controle.png), [mapeamento retrato](prints/app/lote3/depois-mapeamento-retrato.png), [mapeamento](prints/app/lote3/depois-mapeamento.png), [testar controles retrato](prints/app/lote3/depois-testar-controles-retrato.png), [testar controles](prints/app/lote3/depois-testar-controles.png) |
+| Lote 4: Perfis e saves | [jogar como](prints/app/lote4/antes-jogar-como.png), [perfis](prints/app/lote4/antes-perfis.png), [saves](prints/app/lote4/antes-saves.png) | [editar perfil](prints/app/lote4/depois-editar-perfil.png), [jogar como](prints/app/lote4/depois-jogar-como.png), [lixeira de perfis](prints/app/lote4/depois-lixeira-de-perfis.png), [perfis controle](prints/app/lote4/depois-perfis-controle.png), [perfis retrato](prints/app/lote4/depois-perfis-retrato.png), [perfis](prints/app/lote4/depois-perfis.png), [quem joga](prints/app/lote4/depois-quem-joga.png), [saves controle](prints/app/lote4/depois-saves-controle.png), [saves do perfil](prints/app/lote4/depois-saves-do-perfil.png), [saves retrato](prints/app/lote4/depois-saves-retrato.png), [saves sincronização](prints/app/lote4/depois-saves-sincronizacao.png), [saves](prints/app/lote4/depois-saves.png) |
+| Lote 5: Conteúdo, Diagnóstico e Comparar | [comparar execuções](prints/app/lote5/antes-comparar-execucoes.png), [conteúdo](prints/app/lote5/antes-conteudo.png), [diagnóstico](prints/app/lote5/antes-diagnostico.png), [instalar conteúdo](prints/app/lote5/antes-instalar-conteudo.png) | [como medir](prints/app/lote5/depois-como-medir.png), [comparar execuções controle](prints/app/lote5/depois-comparar-execucoes-controle.png), [comparar execuções retrato](prints/app/lote5/depois-comparar-execucoes-retrato.png), [comparar execuções](prints/app/lote5/depois-comparar-execucoes.png), [comparar sem marcar](prints/app/lote5/depois-comparar-sem-marcar.png), [conteúdo controle](prints/app/lote5/depois-conteudo-controle.png), [conteúdo do jogo atualizacoes](prints/app/lote5/depois-conteudo-do-jogo-atualizacoes.png), [conteúdo do jogo controle](prints/app/lote5/depois-conteudo-do-jogo-controle.png), [conteúdo do jogo](prints/app/lote5/depois-conteudo-do-jogo.png), [conteúdo lixeira](prints/app/lote5/depois-conteudo-lixeira.png), [conteúdo retrato](prints/app/lote5/depois-conteudo-retrato.png), [conteúdo](prints/app/lote5/depois-conteudo.png), [diagnóstico controle](prints/app/lote5/depois-diagnostico-controle.png), [diagnóstico do jogo](prints/app/lote5/depois-diagnostico-do-jogo.png), [diagnóstico resumo](prints/app/lote5/depois-diagnostico-resumo.png), [diagnóstico retrato](prints/app/lote5/depois-diagnostico-retrato.png), [diagnóstico](prints/app/lote5/depois-diagnostico.png), [instalar conteúdo retrato](prints/app/lote5/depois-instalar-conteudo-retrato.png), [instalar conteúdo](prints/app/lote5/depois-instalar-conteudo.png), [remover conteúdo](prints/app/lote5/depois-remover-conteudo.png) |
+| Lote 6: primeira abertura e telas do app | [atualizador](prints/app/lote6/antes-atualizador.png), [jogos que saíram](prints/app/lote6/antes-jogos-que-sairam.png), [navegador de pastas](prints/app/lote6/antes-navegador-de-pastas.png), [pastas](prints/app/lote6/antes-pastas.png), [primeira abertura](prints/app/lote6/antes-primeira-abertura.png), [sem vulkan](prints/app/lote6/antes-sem-vulkan.png), [sobre](prints/app/lote6/antes-sobre.png) | [atualizador baixando](prints/app/lote6/depois-atualizador-baixando.png), [atualizador controle](prints/app/lote6/depois-atualizador-controle.png), [atualizador retrato](prints/app/lote6/depois-atualizador-retrato.png), [atualizador](prints/app/lote6/depois-atualizador.png), [jogos que saíram](prints/app/lote6/depois-jogos-que-sairam.png), [navegador arquivo retrato](prints/app/lote6/depois-navegador-arquivo-retrato.png), [navegador de pastas controle](prints/app/lote6/depois-navegador-de-pastas-controle.png), [navegador de pastas](prints/app/lote6/depois-navegador-de-pastas.png), [pastas retrato](prints/app/lote6/depois-pastas-retrato.png), [pastas](prints/app/lote6/depois-pastas.png), [primeira abertura como usar](prints/app/lote6/depois-primeira-abertura-como-usar.png), [primeira abertura idioma](prints/app/lote6/depois-primeira-abertura-idioma.png), [primeira abertura jogos](prints/app/lote6/depois-primeira-abertura-jogos.png), [primeira abertura perfil](prints/app/lote6/depois-primeira-abertura-perfil.png), [primeira abertura retrato](prints/app/lote6/depois-primeira-abertura-retrato.png), [primeira abertura](prints/app/lote6/depois-primeira-abertura.png), [sem vulkan retrato](prints/app/lote6/depois-sem-vulkan-retrato.png), [sem vulkan](prints/app/lote6/depois-sem-vulkan.png), [sobre controle](prints/app/lote6/depois-sobre-controle.png), [sobre retrato](prints/app/lote6/depois-sobre-retrato.png), [sobre](prints/app/lote6/depois-sobre.png) |
+| Lote 7: painéis do jogo | [mensagem](prints/app/lote7/antes-mensagem.png), [troca de disco](prints/app/lote7/antes-troca-de-disco.png) | [mensagem controle](prints/app/lote7/depois-mensagem-controle.png), [mensagem longa retrato](prints/app/lote7/depois-mensagem-longa-retrato.png), [mensagem](prints/app/lote7/depois-mensagem.png), [teclado controle](prints/app/lote7/depois-teclado-controle.png), [teclado símbolos retrato](prints/app/lote7/depois-teclado-simbolos-retrato.png), [teclado](prints/app/lote7/depois-teclado.png), [troca de disco controle](prints/app/lote7/depois-troca-de-disco-controle.png), [troca de disco sem disco retrato](prints/app/lote7/depois-troca-de-disco-sem-disco-retrato.png), [troca de disco](prints/app/lote7/depois-troca-de-disco.png) |
+| Ajustes 1: retorno do aparelho | — | [drivers para baixar retrato](prints/app/ajustes-1/depois-drivers-para-baixar-retrato.png), [drivers para baixar](prints/app/ajustes-1/depois-drivers-para-baixar.png), [hud](prints/app/ajustes-1/depois-hud.png), [menu imagem controle](prints/app/ajustes-1/depois-menu-imagem-controle.png), [menu imagem retrato](prints/app/ajustes-1/depois-menu-imagem-retrato.png), [menu imagem](prints/app/ajustes-1/depois-menu-imagem.png) |
+| Ajustes 2: segunda rodada | — | [configurações busca controle](prints/app/ajustes-2/depois-configuracoes-busca-controle.png), [configurações busca na aba retrato](prints/app/ajustes-2/depois-configuracoes-busca-na-aba-retrato.png), [configurações busca na aba](prints/app/ajustes-2/depois-configuracoes-busca-na-aba.png), [configurações busca no resumo](prints/app/ajustes-2/depois-configuracoes-busca-no-resumo.png), [configurações busca outras abas](prints/app/ajustes-2/depois-configuracoes-busca-outras-abas.png), [configurações niveis](prints/app/ajustes-2/depois-configuracoes-niveis.png), [configurações voltar](prints/app/ajustes-2/depois-configuracoes-voltar.png), [conteúdo pacotes encontrados](prints/app/ajustes-2/depois-conteudo-pacotes-encontrados.png), [conteúdo pastas retrato](prints/app/ajustes-2/depois-conteudo-pastas-retrato.png), [conteúdo pastas](prints/app/ajustes-2/depois-conteudo-pastas.png), [controles classico](prints/app/ajustes-2/depois-controles-classico.png), [controles moderno retrato](prints/app/ajustes-2/depois-controles-moderno-retrato.png), [controles moderno](prints/app/ajustes-2/depois-controles-moderno.png), [ficha desempenho sessoes](prints/app/ajustes-2/depois-ficha-desempenho-sessoes.png), [ficha patches por versao](prints/app/ajustes-2/depois-ficha-patches-por-versao.png), [ficha sessoes lista](prints/app/ajustes-2/depois-ficha-sessoes-lista.png), [ficha todos os ajustes](prints/app/ajustes-2/depois-ficha-todos-os-ajustes.png), [hud horizontal](prints/app/ajustes-2/depois-hud-horizontal.png), [menu controles](prints/app/ajustes-2/depois-menu-controles.png), [menu desempenho](prints/app/ajustes-2/depois-menu-desempenho.png), [menu hud controle](prints/app/ajustes-2/depois-menu-hud-controle.png), [menu hud retrato](prints/app/ajustes-2/depois-menu-hud-retrato.png), [menu hud](prints/app/ajustes-2/depois-menu-hud.png), [menu imagem](prints/app/ajustes-2/depois-menu-imagem.png), [menu sessao](prints/app/ajustes-2/depois-menu-sessao.png), [navegador nova pasta](prints/app/ajustes-2/depois-navegador-nova-pasta.png), [pastas de jogos padrao](prints/app/ajustes-2/depois-pastas-de-jogos-padrao.png), [sobre relato completo](prints/app/ajustes-2/depois-sobre-relato-completo.png), [sobre retrato](prints/app/ajustes-2/depois-sobre-retrato.png), [sobre](prints/app/ajustes-2/depois-sobre.png), [sugestoes fim da sessao](prints/app/ajustes-2/depois-sugestoes-fim-da-sessao.png), [sugestoes travamento retrato](prints/app/ajustes-2/depois-sugestoes-travamento-retrato.png) |

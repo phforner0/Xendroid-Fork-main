@@ -19,6 +19,7 @@
 #include "xenia/config.h"
 #include "xenia/gpu/command_processor.h"
 #include "xenia/gpu/gpu_flags.h"
+#include "xenia/gpu/vblank_pacer.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/ui/graphics_provider.h"
 #include "xenia/ui/window.h"
@@ -157,12 +158,15 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
       kernel::object_ref<kernel::XHostThread>(new kernel::XHostThread(
           kernel_state_, 128 * 1024, 0,
           [this]() {
-            uint64_t last_frame_time = Clock::QueryGuestTickCount();
     // Sleep for 90% of the vblank duration on Windows/macOS, spin for 10%
     // Linux uses full sleep duration due to scheduler quantum issues
 #if XE_PLATFORM_WIN32 || XE_PLATFORM_MAC
+            uint64_t last_frame_time = Clock::QueryGuestTickCount();
             constexpr double duration_scalar = 0.90;
 #elif XE_PLATFORM_LINUX
+            // K11: absolute deadlines on the guest clock, tested on the host.
+            VblankPacer pacer;
+            pacer.Start(Clock::QueryGuestTickCount());
             constexpr double duration_scalar = 1.0;
 #endif
 
@@ -210,33 +214,32 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
 #endif
                 }
 #elif XE_PLATFORM_LINUX
-                // Absolute-deadline pacing: carry the anchor forward and
-                // sleep only the remainder. Sleeping a full period let
-                // oversleep accumulate, sagging the vblank rate toward half
-                // on a loaded device.
+                // Absolute-deadline pacing: the anchor moves by whole
+                // intervals and only the remainder is slept. Sleeping a full
+                // period let oversleep accumulate, sagging the vblank rate
+                // toward half on a loaded device. More than one interval
+                // behind, it resyncs instead of firing a burst of catch-up
+                // vblanks (VblankPacer).
                 const uint64_t tick_freq = Clock::guest_tick_frequency();
-                const uint64_t target_duration_ticks = tick_freq / vblank_hz;
-                const uint64_t current_time = Clock::QueryGuestTickCount();
-                const uint64_t time_delta = current_time - last_frame_time;
-
-                if (time_delta >= target_duration_ticks) {
-                  // More than 2 periods behind: resync instead of firing a
-                  // burst of catch-up vblanks.
-                  if (time_delta > target_duration_ticks * 2) {
-                    last_frame_time = current_time;
-                  } else {
-                    last_frame_time += target_duration_ticks;
-                  }
+                const VblankPacer::Step step = pacer.Advance(
+                    Clock::QueryGuestTickCount(), tick_freq, vblank_hz);
+                if (step.fire) {
                   MarkVblank();
+                }
+                if (step.rebased &&
+                    (pacer.rebases() & (pacer.rebases() - 1)) == 0) {
+                  XELOGI(
+                      "Guest vblank resynced after a stall ({} so far, {} "
+                      "vblanks not raised)",
+                      pacer.rebases(), pacer.dropped());
                 }
                 // Sleep only until the next deadline, precisely: the plain
                 // NanoSleep quantum overshoot is exactly what starved the
                 // cadence.
                 {
                   const uint64_t now = Clock::QueryGuestTickCount();
-                  const uint64_t next = last_frame_time + target_duration_ticks;
-                  if (next > now) {
-                    const uint64_t remain_ticks = next - now;
+                  if (step.next_deadline > now) {
+                    const uint64_t remain_ticks = step.next_deadline - now;
                     const uint64_t remain_ns = static_cast<uint64_t>(
                         remain_ticks * (1000000000.0 / tick_freq));
                     threading::NanoSleepPrecise(remain_ns);

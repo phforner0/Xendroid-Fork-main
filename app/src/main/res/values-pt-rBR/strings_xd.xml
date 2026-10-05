@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign da UI (docs/ui-redesign/bc): moldura, áreas e peças comuns. -->
+    <string name="xd_area_games">Jogos</string>
+    <string name="xd_area_collections">Coleções</string>
+    <string name="xd_area_content">Conteúdo</string>
+    <string name="xd_area_profiles">Perfis</string>
+    <string name="xd_area_controls">Controles</string>
+    <string name="xd_area_drivers">Drivers</string>
+    <string name="xd_area_settings">Ajustes</string>
+    <string name="xd_back">Voltar</string>
+    <string name="xd_close">Fechar</string>
+    <string name="xd_hint_select">Selecionar</string>
+    <string name="xd_hint_back">Voltar</string>
+    <string name="xd_hint_sections">Seções</string>
+    <string name="xd_hint_menu">Menu</string>
+    <string name="xd_guide_no_profile">Sem perfil</string>
+    <string name="xd_guide_active">Ativo · P1</string>
+    <string name="xd_guide_library">Biblioteca</string>
+    <string name="xd_guide_settings">Configurações</string>
+    <string name="xd_guide_diagnostics">Diagnóstico</string>
+    <string name="xd_guide_compare">Comparar execuções</string>
+    <string name="xd_guide_about">Sobre</string>
+    <string name="xd_guide_use_touch">Usar o modo toque</string>
+    <string name="xd_undo">Desfazer</string>
+    <string name="xd_hint_page">Página</string>
+    <string name="xd_hint_jump">Pular 5</string>
+</resources>

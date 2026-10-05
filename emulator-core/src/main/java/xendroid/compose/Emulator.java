@@ -39,6 +39,48 @@ public class Emulator extends xendroid.emulator.Emulator{
     public native double instant_fps();
     // RenderDoc-style average fps over a ~1s sliding window (0 before first present).
     public native double average_fps();
+    // Accepted vkQueuePresentKHR submissions (not measured scanout or generated FPS).
+    public native long host_present_submission_count();
+    // Authoritative currently open title, or null while booting/no title is active.
+    public native String active_title_id();
+    // L10: the active title's module hashes as its patches were matched (main executable
+    // first); empty before a title loads.
+    public native long[] module_hashes();
+    // C06: settings away from the core's defaults as the run booted (game config applied;
+    // no profiles, storage or paths), one "Section|name = value (default x)" line each.
+    public native String[] changed_settings();
+    public native void set_presentation_mode(int mode);
+    public native void set_scaling_effect(int effect);
+    public native void set_color_filter(int mode);
+    /** The in-game menu's Image options; a negative value leaves the Settings value. */
+    public native void set_image_tuning(int antialiasing, float casSharpness, float fsrSharpnessReduction, int dither);
+    public native String active_gpu_label();
+    // "key=value;..." identity of the Vulkan driver in use (DriverIdentity); "" before boot.
+    public native String active_driver_identity();
+    // Cumulative guest frame-time counts per 1 ms bucket (last bucket = longer); take deltas.
+    public native long[] guest_frame_time_histogram();
+    // {pipeline creations so far, ns spent in them, creations in flight}; take deltas.
+    public native long[] shader_compile_stats();
+    // {backend 0 none/1 AAudio/2 OpenSL ES, blocks played, blocks concealed (late emulator),
+    // device xruns} since the process started; take deltas.
+    public native long[] audio_run_stats();
+    // File that receives a fatal error's message before the process aborts; null turns it off.
+    public native void set_fatal_report_path(String path);
+    // Player slots P2-P4 (P1 keeps key_event): input, controller connect/disconnect, and the
+    // guest's rumble per slot P1..P4 (left motor << 16 | right motor).
+    public native void key_event_slot(int slot, int key_code, boolean pressed, int value);
+    public native void set_slot_connected(int slot, boolean connected, String name);
+    public native long[] rumble_state();
+    public native long[] presenter_work();
+    public native void set_frame_generation(boolean enabled, int preset, float displayHz);
+    public native long[] presentation_state();
+    // GPU time per measured frame-generation pass: 0.25 ms buckets (last = 16 ms and more),
+    // then the count of passes that could not be timed. Cumulative; take deltas.
+    public native long[] frame_generation_gpu_histogram();
+    public native int build_lsfg_cache(String dll, String cache);
+    public native void set_lsfg(boolean enabled, String cache, float displayHz, int multiplier);
+    public native void set_audio_volume(int percent);
+    public native int audio_volume();
     // Effective Display|show_debug_overlay (the live cvar, with any per-game config
     // overlay applied by LoadGameConfig at boot). Poll post-boot: the per-game override
     // lands on the detached boot thread, so this only reflects it after the game loads.

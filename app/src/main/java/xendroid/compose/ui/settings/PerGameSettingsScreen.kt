@@ -1,5 +1,8 @@
 package xendroid.compose.ui.settings
 
+import androidx.compose.ui.res.pluralStringResource
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,13 +22,16 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import xendroid.compose.settings.GameSettingsViewModel
 import xendroid.compose.settings.SettingsCategory
+import xendroid.compose.settings.SettingsSchema
+import xendroid.compose.settings.UiModeStore
+import androidx.compose.ui.platform.LocalContext
 
 /**
  * The per-game override editor: the same two-level INDEX -> DETAIL shape as
  * [SettingsScreen], but each detail row is an [OverrideRow] (a leading switch that
  * overrides/inherits the key), the index "changed" count is the overridden count, and
  * the header shows the game name. The override config is SPARSE — only toggled-on keys
- * are written, and the file is rebuilt/deleted on flush (no native key-erase exists).
+ * are patched into the file on flush, leaving non-schema overrides intact.
  * A title id is keyed PER GAME (not per file), so this applies to every copy of the game.
  */
 @Composable
@@ -35,6 +41,13 @@ fun PerGameSettingsScreen(
     onBack: () -> Unit,
 ) {
     val overrides by vm.overrides.collectAsStateWithLifecycle()
+    val ready by vm.ready.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val profiles by vm.profilesState.collectAsStateWithLifecycle()
+    val preview by vm.profilePreview.collectAsStateWithLifecycle()
+    val profileMessage by vm.profileMessage.collectAsStateWithLifecycle()
+    val community by vm.communityState.collectAsStateWithLifecycle()
+    val shareStart by vm.shareStart.collectAsStateWithLifecycle()
 
     // Durable flush on pause; re-open on resume. Dispose flush = backstop. (Mirrors SettingsScreen.)
     val owner = LocalLifecycleOwner.current
@@ -51,14 +64,54 @@ fun PerGameSettingsScreen(
     }
 
     var selected by remember { mutableStateOf<SettingsCategory?>(null) }
+    if (!ready) {
+        ConfigLoadNotice(error?.let { stringResource(R.string.set_game_config_failed) }, vm::onResume, onBack)
+        return
+    }
+    if (error != null) {
+        AlertDialog(
+            onDismissRequest = vm::clearError,
+            text = { Text(stringResource(R.string.set_game_config_failed)) },
+            confirmButton = { TextButton(onClick = { vm.clearError(); vm.flush() }) { Text(stringResource(R.string.set_retry_save)) } },
+            dismissButton = { TextButton(onClick = vm::clearError) { Text(stringResource(R.string.common_close)) } },
+        )
+    }
+    preview?.let { ProfilePreviewDialog(it, onConfirm = vm::confirmPreview, onDismiss = vm::dismissPreview) }
+    val communityNow = community
+    if (shareStart != null && communityNow != null) {
+        CommunityShareDialog(communityNow.server, draftOf = vm::draftShare, onShare = vm::share, onDismiss = vm::dismissShare)
+    }
+    profileMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = vm::clearProfileMessage,
+            text = { Text(profileMessageText(message)) },
+            confirmButton = { TextButton(onClick = vm::clearProfileMessage) { Text(stringResource(R.string.common_ok)) } },
+        )
+    }
     val section = selected
     if (section == null) {
         PerGameIndex(
             gameName = gameName,
-            categories = vm.categories,
+            categories = SettingsSchema.categoriesFor(UiModeStore.read(LocalContext.current)),
             overriddenCountOf = { cat -> cat.settings.count { overrides.containsKey(it.key) } },
             onOpen = { selected = it },
             onBack = { vm.flush(); onBack() },
+            header = if (profiles.isEmpty && communityNow == null) null else {
+                {
+                    Column {
+                        if (!profiles.isEmpty) {
+                            RecommendedProfilesCard(profiles, vm::previewProfile, vm::previewRestore,
+                                Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                        }
+                        // 15b: shown in builds that name a community server; it asks nothing until searched.
+                        communityNow?.let { state ->
+                            CommunityConfigsCard(state, canApply = profiles.applied == null, onSearch = vm::searchCommunity,
+                                onPreview = vm::previewProfile, onVote = vm::voteCommunity, onDelete = vm::deleteShared,
+                                onShare = vm::prepareShare, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                        }
+                    }
+                }
+            },
         )
     } else {
         BackHandler { selected = null }
@@ -79,14 +132,15 @@ private fun PerGameIndex(
     overriddenCountOf: (SettingsCategory) -> Int,
     onOpen: (SettingsCategory) -> Unit,
     onBack: () -> Unit,
+    header: (@Composable () -> Unit)? = null,
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (gameName.isNotEmpty()) "$gameName settings" else "Per-game settings") },
+                title = { Text(if (gameName.isNotEmpty()) stringResource(R.string.set_game_title, gameName) else stringResource(R.string.lib_per_game_settings)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
@@ -96,25 +150,26 @@ private fun PerGameIndex(
             // Header note: title id is keyed per game, so overrides apply to every copy.
             item {
                 Text(
-                    "Overrides apply to all copies of this game.",
+                    stringResource(R.string.set_game_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 HorizontalDivider()
             }
+            header?.let { item(key = "recommended") { it() } }
             items(categories, key = { it.title }) { cat ->
                 val overridden = overriddenCountOf(cat)
                 ListItem(
-                    headlineContent = { Text(cat.title) },
+                    headlineContent = { Text(categoryTitle(cat)) },
                     supportingContent = {
                         Text(buildString {
-                            append("${cat.settings.size} settings")
-                            if (overridden > 0) append("  ·  $overridden overridden")
+                            append(pluralStringResource(R.plurals.set_count, cat.settings.size, cat.settings.size))
+                            if (overridden > 0) append("  ·  " + pluralStringResource(R.plurals.set_overridden, overridden, overridden))
                         })
                     },
                     trailingContent = {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open")
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.browse_open))
                     },
                     modifier = Modifier.clickable { onOpen(cat) },
                 )
@@ -135,10 +190,10 @@ private fun PerGameCategoryDetail(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(category.title) },
+                title = { Text(categoryTitle(category)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to sections")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.set_back_sections))
                     }
                 },
             )
@@ -156,4 +211,17 @@ private fun PerGameCategoryDetail(
             }
         }
     }
+}
+
+/** U02: what a recommended-settings action did, in the shown language. */
+@Composable
+internal fun profileMessageText(message: GameSettingsViewModel.ProfileMessage): String = when (message) {
+    GameSettingsViewModel.ProfileMessage.RestoreFirst -> stringResource(R.string.prof_msg_restore_first)
+    is GameSettingsViewModel.ProfileMessage.Applied ->
+        pluralStringResource(R.plurals.prof_msg_applied, message.count, message.name, message.count)
+    is GameSettingsViewModel.ProfileMessage.Restored -> stringResource(
+        if (message.changedSince) R.string.prof_msg_restored_kept else R.string.prof_msg_restored, message.name)
+    GameSettingsViewModel.ProfileMessage.Stale -> stringResource(R.string.prof_msg_stale)
+    is GameSettingsViewModel.ProfileMessage.Shared -> stringResource(R.string.comm_msg_shared, message.name)
+    GameSettingsViewModel.ProfileMessage.Deleted -> stringResource(R.string.comm_msg_deleted)
 }

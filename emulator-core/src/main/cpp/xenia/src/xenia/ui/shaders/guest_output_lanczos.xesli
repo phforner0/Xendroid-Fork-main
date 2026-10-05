@@ -1,0 +1,86 @@
+// XenDroid (15k): Lanczos-2 resampling as a guest output effect, written from the kernel's
+// definition, L(x) = sinc(x) * sinc(x / 2) for |x| < 2. One pass from the guest output to any
+// larger size: the 4x4 texels around the output pixel's center, weighted per axis and normalized,
+// then clamped to the four nearest texels, so edges come out sharper than bilinear filtering
+// without the halos the kernel's negative lobes ring with. The push constants are SGSR's layout
+// (the last float is unused here).
+
+#include "xesl.xesli"
+
+#ifdef XE_GUEST_OUTPUT_DITHER
+  #include "dither_8bpc.xesli"
+#endif  // XE_GUEST_OUTPUT_DITHER
+
+push_const_begin_xe(b0, space0)
+  // 16 used by the vertex shader (GLSL push constant offsets are across
+  // stages).
+  block_offset_member_xe(16, c0.x, int2_xe, xe_lanczos_output_offset)
+  block_offset_member_xe(24, c0.z, float2_xe, xe_lanczos_output_size_inv)
+  // 1 / input width, 1 / input height, input width, input height.
+  block_offset_member_xe(32, c1, float4_xe, xe_lanczos_input_info)
+push_const_end_xe
+
+// The weight of a texel [x] texels away from the sample position.
+float XeLanczos2(float x) {
+  x = abs(x);
+  if (x < 1.0e-5f) {
+    return 1.0f;
+  }
+  if (x >= 2.0f) {
+    return 0.0f;
+  }
+  float pi_x = 3.14159265f * x;
+  return 2.0f * sin(pi_x) * sin(0.5f * pi_x) / (pi_x * pi_x);
+}
+
+entry_outputs_begin_xe
+  entry_out_target_xe(float4_xe, xe_lanczos_color, 0)
+entry_outputs_end_stage_inputs_begin_xe
+entry_stage_inputs_end_bindings_begin_pixel_xe
+  push_const_binding_xe(buffer(0))
+  entry_binding_next_xe
+  texture_xe(texture_2d_xe, xe_lanczos_source, 0, 0, t0, space0, texture(0))
+entry_bindings_end_inputs_begin_xe
+  entry_in_pixel_coord_xe
+entry_inputs_end_code_begin_xe
+{
+  uint2_xe pixel_coord = uint2_xe(int2_xe(in_pixel_coord_xe.xy) -
+                                  push_const_xe(xe_lanczos_output_offset));
+  float4_xe input_info = push_const_xe(xe_lanczos_input_info);
+  // The output pixel's center in input texels (texel centers at .5).
+  float2_xe position = (float2_xe(pixel_coord) + 0.5f) *
+                           push_const_xe(xe_lanczos_output_size_inv) *
+                           input_info.zw -
+                       0.5f;
+  float2_xe base = floor(position);
+  float2_xe fraction = position - base;
+  int2_xe last = int2_xe(input_info.zw) - int2_xe(1, 1);
+  float3_xe sum = float3_xe(0.0f, 0.0f, 0.0f);
+  float weight_sum = 0.0f;
+  float3_xe nearest_min = float3_xe(1.0f, 1.0f, 1.0f);
+  float3_xe nearest_max = float3_xe(0.0f, 0.0f, 0.0f);
+  for (int y = -1; y <= 2; ++y) {
+    float weight_y = XeLanczos2(float(y) - fraction.y);
+    for (int x = -1; x <= 2; ++x) {
+      float weight = XeLanczos2(float(x) - fraction.x) * weight_y;
+      int2_xe texel = clamp(int2_xe(base) + int2_xe(x, y), int2_xe(0, 0), last);
+      float3_xe texel_color = texel_fetch_2d_xe(xe_lanczos_source, texel, 0).rgb;
+      sum += texel_color * weight;
+      weight_sum += weight;
+      if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+        nearest_min = min(nearest_min, texel_color);
+        nearest_max = max(nearest_max, texel_color);
+      }
+    }
+  }
+  float4_xe color;
+  color.rgb = clamp(sum / weight_sum, nearest_min, nearest_max);
+  #ifdef XE_GUEST_OUTPUT_DITHER
+    // Clamping because on Vulkan, the surface may specify any format, including
+    // floating-point.
+    color.rgb = saturate_xe(color.rgb + XeDitherOffset8bpc(pixel_coord));
+  #endif  // XE_GUEST_OUTPUT_DITHER
+  color.a = 1.0f;
+  out_xe(xe_lanczos_color) = color;
+}
+entry_code_end_xe

@@ -17,4 +17,23 @@ data class PatchFile(
     val hashes: List<String>,
     val variantLabel: String,
     val entries: List<PatchEntry>,
+    /** L10: this file against the catalog bundled with this app version, when there is news. */
+    val update: PatchUpdate? = null,
+    /** L11: a file the user added (not from the bundled catalog); it can be removed. */
+    val mine: Boolean = false,
+    /** Round 2: the game version the file says it is for ("TU 2"), from its name or comments. */
+    val versionLabel: String? = null,
+)
+
+/**
+ * L10: [pending] = this app bundles a newer catalog for the file, but the file was changed by
+ * hand, so updating waits for the user (it keeps a copy to undo). Otherwise the update was
+ * applied by itself (only switches had changed) and can be undone while [canUndo].
+ * [keptOn]: patches still on after the update; [dropped]: ones that were on and are gone.
+ */
+data class PatchUpdate(
+    val pending: Boolean,
+    val keptOn: List<String>,
+    val dropped: List<String>,
+    val canUndo: Boolean,
 )

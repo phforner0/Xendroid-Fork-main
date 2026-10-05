@@ -10,13 +10,17 @@
 #include "config.h"
 
 #include <algorithm>
+#include <chrono>
+#include <fstream>
 #include <sstream>
+#include <thread>
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/platform.h"
 #include "xenia/base/string.h"
 #include "xenia/base/string_buffer.h"
 #include "xenia/base/system.h"
@@ -363,21 +367,49 @@ uint32_t LoadGameConfigForFile(const std::filesystem::path& game_path) {
   return title_id;
 }
 
+// Writes a temporary file next to the target and renames it over the target, so
+// a concurrent reader (the Android frontend's editor, the next launch) sees the
+// old or the new file, never a truncated one. A failure leaves the old file.
+static void WriteConfigFileAtomically(const std::filesystem::path& path,
+                                      const std::string& text) {
+  xe::filesystem::CreateParentFolder(path);
+  std::filesystem::path temp = path;
+  temp += fmt::format(
+      ".{:x}-{:x}.tmp",
+      std::hash<std::thread::id>()(std::this_thread::get_id()),
+      uint64_t(std::chrono::steady_clock::now().time_since_epoch().count()));
+  std::error_code ignored;
+  {
+    std::ofstream file(temp, std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) {
+      throw std::runtime_error("Failed to open file for writing");
+    }
+    file << text;
+    file.flush();
+    if (!file) {
+      file.close();
+      std::filesystem::remove(temp, ignored);
+      throw std::runtime_error("Failed to write the file");
+    }
+  }
+  std::error_code ec;
+  std::filesystem::rename(temp, path, ec);
+  if (ec) {
+    std::filesystem::remove(temp, ignored);
+    throw std::runtime_error("Failed to replace the file: " + ec.message());
+  }
+}
+
 void SaveGameConfig(uint32_t title_id, const toml::table& config_table) {
   const auto game_config_path =
       GetGameConfigPath(fmt::format("{:08X}", title_id));
 
   try {
-    xe::filesystem::CreateParentFolder(game_config_path);
-    std::ofstream file(game_config_path);
-    if (!file.is_open()) {
-      throw std::runtime_error("Failed to open file for writing");
-    }
-
-    file << "# Game-specific config overrides\n";
-    file << "# Title ID: " << fmt::format("{:08X}", title_id) << "\n\n";
-    file << config_table << "\n";
-    file.close();
+    std::ostringstream text;
+    text << "# Game-specific config overrides\n";
+    text << "# Title ID: " << fmt::format("{:08X}", title_id) << "\n\n";
+    text << config_table << "\n";
+    WriteConfigFileAtomically(game_config_path, text.str());
 
     XELOGI("Saved game config for title {:08X}", title_id);
   } catch (const std::exception& e) {
@@ -523,6 +555,15 @@ void SaveConfig() {
   if (config_path.empty()) {
     return;
   }
+#if XE_PLATFORM_xendroid
+  // The Android frontend owns the global config: it edits single keys under a
+  // cross-process lock and replaces the file atomically. A full cvar dump from
+  // this process (profile sign-in calls this on every boot of a title without
+  // a per-game config) would race with those edits, drop the ones made since
+  // boot and write the file non-atomically. See config.cc:57-64.
+  XELOGI("SaveConfig skipped: the Android frontend owns the config file");
+  return;
+#endif
   // A per-game overlay is active -> the live cvars are not the pure global config;
   // persisting them would pollute the global file with this game's overrides. Skip.
   if (game_config_loaded) {

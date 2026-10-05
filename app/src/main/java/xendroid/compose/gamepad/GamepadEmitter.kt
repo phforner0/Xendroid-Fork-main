@@ -45,9 +45,10 @@ class GamepadEmitter(private val sink: (Int, Boolean, Int) -> Unit) {
      *  give diagonals. Outside the pad box (|n|>1) releases. This matches the old d-pad feel
      *  far better than radial sectoring -- the center is a real dead spot and each arm is a
      *  flat third, not an angle. */
-    fun dpadSectors(nx: Float, ny: Float): Set<Int> {
+    fun dpadSectors(nx: Float, ny: Float, neutral: Float = OnScreenControl.Dpad.DEFAULT_DEAD_ZONE): Set<Int> {
         if (abs(nx) > 1f || abs(ny) > 1f) return emptySet()
-        val third = 1f / 3f
+        // 15f: the middle band is the pad's own dead zone (a third by default).
+        val third = neutral
         val out = mutableSetOf<Int>()
         if (nx <= -third) out.add(Kc.DPAD_LEFT) else if (nx >= third) out.add(Kc.DPAD_RIGHT)
         if (ny <= -third) out.add(Kc.DPAD_UP) else if (ny >= third) out.add(Kc.DPAD_DOWN)

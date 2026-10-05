@@ -85,6 +85,13 @@ void COMMAND_PROCESSOR::ExecuteIndirectBuffer(uint32_t ptr,
 
   trace_writer_.WriteIndirectBufferStart(ptr, count * sizeof(uint32_t));
   if (count != 0) {
+    // merge_tiling_bands_call_sites: where this buffer is called from (the
+    // reader is still the caller's, right past the INDIRECT_BUFFER packet).
+    const uint32_t call_depth = ib_call_depth_;
+    if (call_depth < kTilingBandMaxCallDepth) {
+      ib_call_sites_[call_depth] = COMMAND_PROCESSOR::GuestReadPtrOffset();
+    }
+    ib_call_depth_ = call_depth + 1;
     RingBuffer old_reader = reader_;
 
     // Execute commands!
@@ -109,6 +116,7 @@ void COMMAND_PROCESSOR::ExecuteIndirectBuffer(uint32_t ptr,
 
     trace_writer_.WriteIndirectBufferEnd();
     reader_ = old_reader;
+    ib_call_depth_ = call_depth;
   } else {
     // rare, but i've seen it happen! (and then a division by 0 occurs)
     return;

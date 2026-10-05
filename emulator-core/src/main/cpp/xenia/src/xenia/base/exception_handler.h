@@ -257,6 +257,14 @@ class ExceptionHandler {
 
   // Uninstalls a previously-installed exception handler.
   static void Uninstall(Handler fn, void* data);
+
+  // XenDroid (C01): called when no installed handler resolved a fault, right
+  // before the handler that was there before ours runs (on Android, debuggerd:
+  // the process dies). Runs inside the signal handler, so it must be
+  // async-signal-safe. Null (the default) turns it off. POSIX only.
+  typedef void (*UnhandledFaultHook)(int signal_number, int code,
+                                     uintptr_t fault_address, uintptr_t pc);
+  static void SetUnhandledFaultHook(UnhandledFaultHook hook);
 };
 
 }  // namespace xe

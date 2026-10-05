@@ -14,6 +14,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 #include "xenia/ui/window.h"
+#include "xenia/ui/presentation_runtime.h"
 
 #if XE_PLATFORM_WIN32
 #include "xenia/ui/surface_win.h"
@@ -439,6 +440,8 @@ bool Presenter::RefreshGuestOutput(
   // paint cadence and UI drawers don't request extra repaints on top of it.
   guest_output_refresh_count_.fetch_add(1, std::memory_order_relaxed);
 
+  if (ScheduleGuestOutput()) return is_active;
+
   // Trigger the presentation on the host.
   PaintResult paint_result = PaintResult::kNotPresented;
   {
@@ -526,6 +529,30 @@ void Presenter::SetGuestOutputPaintConfigFromUIThread(
       }
     }
   }
+}
+
+bool Presenter::CanScheduleGuestOutput() {
+  std::lock_guard<std::mutex> lock(paint_mode_mutex_);
+  return paint_mode_ == PaintMode::kGuestOutputThreadImmediately;
+}
+
+Presenter::PaintResult Presenter::PaintGuestFromScheduledThread(int phase) {
+  PaintResult result = PaintResult::kNotPresented;
+  {
+    std::lock_guard<std::mutex> lock(paint_mode_mutex_);
+    if (paint_mode_ != PaintMode::kGuestOutputThreadImmediately ||
+        surface_paint_connection_state_ != SurfacePaintConnectionState::kConnectedPaintable) return result;
+    SetScheduledPaintPhase(phase);
+    result = PaintAndPresent(false);
+    SetScheduledPaintPhase(-1);
+    if (surface_paint_connection_state_ == SurfacePaintConnectionState::kConnectedOutdated) {
+      RequestPaintOrConnectionRecoveryViaWindow(true);
+    }
+  }
+  if (host_gpu_loss_callback_ && (result == PaintResult::kGpuLostResponsible || result == PaintResult::kGpuLostExternally)) {
+    host_gpu_loss_callback_(result == PaintResult::kGpuLostResponsible, false);
+  }
+  return result;
 }
 
 void Presenter::AddUIDrawerFromUIThread(UIDrawer* drawer, size_t z_order) {
@@ -622,6 +649,16 @@ std::unique_lock<std::mutex> Presenter::ConsumeGuestOutput(
     // UI thread.
     std::unique_lock<std::mutex> config_lock(guest_output_paint_config_mutex_);
     *paint_config_out = guest_output_paint_config_;
+    const int effect = RuntimePresentation().scaling_effect.load(std::memory_order_relaxed);
+    if (effect >= 0 && effect <= 5) paint_config_out->SetEffect(GuestOutputPaintConfig::Effect(effect));
+    // The in-game menu's sharpness and dither win over the Settings values while set
+    // (the setters clamp to their ranges).
+    const float cas = RuntimePresentation().cas_sharpness.load(std::memory_order_relaxed);
+    if (cas >= 0.0f) paint_config_out->SetCasAdditionalSharpness(cas);
+    const float fsr = RuntimePresentation().fsr_sharpness_reduction.load(std::memory_order_relaxed);
+    if (fsr >= 0.0f) paint_config_out->SetFsrSharpnessReduction(fsr);
+    const int dither = RuntimePresentation().dither.load(std::memory_order_relaxed);
+    if (dither >= 0) paint_config_out->SetDither(dither != 0);
   }
 
   // Lock the mutex to make sure the image that will be acquired now is owned
@@ -813,6 +850,16 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
         2;
   }
 
+  const int runtime_mode = RuntimePresentation().display_mode.load(std::memory_order_relaxed);
+  if (runtime_mode >= 0 && runtime_mode <= 3) {
+    const auto rectangle = CalculateOutputRectangle(DisplayMode(runtime_mode),
+        properties.frontbuffer_width, properties.frontbuffer_height,
+        properties.display_aspect_ratio_x, properties.display_aspect_ratio_y,
+        surface_width_in_paint_connection_, surface_height_in_paint_connection_);
+    flow.output_x = rectangle.x; flow.output_y = rectangle.y;
+    output_width = rectangle.width; output_height = rectangle.height;
+  }
+
   // Convert the location from surface pixels (which have 1:1 aspect ratio
   // relatively to the physical display) to render target pixels (the render
   // target size may be arbitrary with any aspect ratio, but if it's different
@@ -853,8 +900,30 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
   uint32_t output_width_clamped = std::min(output_width, max_rt_width);
   uint32_t output_height_clamped = std::min(output_height, max_rt_height);
 
-  if (config.GetEffect() == GuestOutputPaintConfig::Effect::kCas ||
-      config.GetEffect() == GuestOutputPaintConfig::Effect::kFsr) {
+  if (config.GetEffect() == GuestOutputPaintConfig::Effect::kCrt) {
+    // The CRT look is drawn at the screen's size whatever the ratio (the
+    // scanlines are in screen pixels), so it is always its own pass.
+    assert_true(flow.effect_count < flow.effects.size());
+    flow.effect_output_sizes[flow.effect_count] =
+        std::make_pair(output_width_clamped, output_height_clamped);
+    flow.effects[flow.effect_count++] = GuestOutputPaintEffect::kCrt;
+  } else if (config.GetEffect() == GuestOutputPaintConfig::Effect::kSgsr ||
+             config.GetEffect() == GuestOutputPaintConfig::Effect::kLanczos) {
+    // Snapdragon Game Super Resolution 1 and Lanczos-2 upsample in one pass at
+    // any ratio; with nothing to upsample, the bilinear pass below is all that
+    // is needed.
+    if (properties.frontbuffer_width < output_width_clamped ||
+        properties.frontbuffer_height < output_height_clamped) {
+      assert_true(flow.effect_count < flow.effects.size());
+      flow.effect_output_sizes[flow.effect_count] =
+          std::make_pair(output_width_clamped, output_height_clamped);
+      flow.effects[flow.effect_count++] =
+          config.GetEffect() == GuestOutputPaintConfig::Effect::kSgsr
+              ? GuestOutputPaintEffect::kSgsr
+              : GuestOutputPaintEffect::kLanczos;
+    }
+  } else if (config.GetEffect() == GuestOutputPaintConfig::Effect::kCas ||
+             config.GetEffect() == GuestOutputPaintConfig::Effect::kFsr) {
     // FidelityFX Super Resolution and Contrast Adaptive Sharpening only work
     // good for up to 2x2 upscaling due to the way they fetch texels.
     // CAS is primarily a sharpening filter, not an upscaling one (its upscaling
@@ -971,6 +1040,15 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
         break;
       case GuestOutputPaintEffect::kFsrRcas:
         last_effect = GuestOutputPaintEffect::kFsrRcasDither;
+        break;
+      case GuestOutputPaintEffect::kSgsr:
+        last_effect = GuestOutputPaintEffect::kSgsrDither;
+        break;
+      case GuestOutputPaintEffect::kLanczos:
+        last_effect = GuestOutputPaintEffect::kLanczosDither;
+        break;
+      case GuestOutputPaintEffect::kCrt:
+        last_effect = GuestOutputPaintEffect::kCrtDither;
         break;
       default:
         break;
@@ -1105,7 +1183,7 @@ Presenter::PaintMode Presenter::GetDesiredPaintModeFromUIThread(
     // dispatches the same display) concurrently.
     return PaintMode::kUIThreadOnRequest;
   }
-  if (surface_paint_connection_has_implicit_vsync_) {
+  if (surface_paint_connection_has_implicit_vsync_ && !RuntimePresentation().frame_generation_requested.load()) {
     // Don't be causing host vertical sync CPU waits in the thread generating
     // the guest output.
     return PaintMode::kUIThreadOnRequest;

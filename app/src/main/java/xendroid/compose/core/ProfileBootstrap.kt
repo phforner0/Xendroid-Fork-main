@@ -1,6 +1,7 @@
 package xendroid.compose.core
 
 import android.content.Context
+import android.util.Log
 import xendroid.compose.settings.ConfigStore
 import xendroid.compose.settings.Setting
 import xendroid.compose.settings.SettingsSchema
@@ -15,13 +16,20 @@ object ProfileBootstrap {
         val emu = EmulatorRuntime.emulator ?: return
         val root = ContentPaths.contentRoot().absolutePath
         if (emu.list_profiles(root)?.isNotEmpty() == true) { ensured = true; return }
-        val xuid = emu.create_profile(root, DEFAULT_GAMERTAG, defaultLanguage(), defaultCountry())
-            ?: return
-        val h = ConfigStore(appContext).openLive()
-        try {
+        // Same storage lease as every other profile/save mutation: a running game or a
+        // backup/restore owns the content tree. Retry on a later library visit.
+        val xuid = runCatching {
+            StorageAccess.acquire().use {
+                if (emu.list_profiles(root)?.isNotEmpty() == true) return@use null
+                emu.create_profile(root, DEFAULT_GAMERTAG, defaultLanguage(), defaultCountry())
+            }
+        }.onFailure { Log.w("ProfileBootstrap", "Default profile not created now", it) }
+            .getOrNull() ?: run {
+                ensured = emu.list_profiles(root)?.isNotEmpty() == true
+                return
+            }
+        ConfigStore(appContext).editLiveConfig { h ->
             h.putString("Profiles", "logged_profile_slot_0_xuid", xuid.uppercase())
-        } finally {
-            h.closeFile()
         }
         ensured = true
     }

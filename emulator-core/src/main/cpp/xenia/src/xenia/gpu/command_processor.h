@@ -21,6 +21,7 @@
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
+#include <array>
 #include <vector>
 
 #include "xenia/base/guest_gpu_progress.h"
@@ -32,6 +33,7 @@
 #include "xenia/gpu/xenos_zpd_report.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/memory.h"
+#include "xenia/ui/presentation_runtime.h"
 #include "xenia/ui/presenter.h"
 
 namespace xe {
@@ -152,16 +154,52 @@ class CommandProcessor {
   bool tiling_band_merge_ok_ = false;
   // The current draw is first executed in tiling_band_ > 0.
   bool tiling_band_draw_from_later_band_ = false;
-  // The draw packets of the current band sequence, by the guest address right
-  // past each packet: open addressing with the sequence's epoch in each slot,
-  // so a new sequence clears it in O(1) (an unordered_set allocated a node per
-  // draw, ~2% of this thread's instructions at ~2900 draws per frame).
-  std::vector<uint64_t> tiling_band_draw_slots_;
-  uint32_t tiling_band_draw_count_ = 0;
-  uint32_t tiling_band_draw_epoch_ = 0;
-  // Returns whether the key wasn't in the current sequence yet.
-  bool InsertTilingBandDraw(uint32_t key);
+  // The draws of the current band sequence: open addressing with the
+  // sequence's epoch beside each key, so a new sequence clears it in O(1) (an
+  // unordered_set allocated a node per draw, ~2% of this thread's instructions
+  // at ~2900 draws per frame).
+  struct TilingBandDrawSet {
+    std::vector<uint64_t> keys;
+    std::vector<uint32_t> epochs;
+    uint32_t count = 0;
+    uint32_t epoch = 0;
+    // Returns whether the key wasn't in the current sequence yet.
+    bool Insert(uint64_t key);
+    void Clear();
+  };
+  // By the guest address right past each draw packet, and with
+  // merge_tiling_bands_call_sites the indirect buffer calls made inside the
+  // replayed scene on the way to it.
+  TilingBandDrawSet tiling_band_draws_;
+  // merge_tiling_bands_log: by the key the setting doesn't use (the address
+  // alone, or with the calls), to count where the two differ.
+  TilingBandDrawSet tiling_band_draw_other_keys_;
   void ClearTilingBandDraws();
+  // The indirect buffer calls being executed, outermost first: the guest
+  // address right past each INDIRECT_BUFFER packet. A draw packet in a buffer
+  // called from several places draws a different object from each place (a
+  // routine the game runs per object, each call predicated into its own
+  // bands) - with the address alone, an object only in a later band was taken
+  // for one drawn in an earlier band and never drawn (whole blocks of scenery
+  // missing in Forza Horizon 2 until they came close). The calls made at the
+  // depth the first band's bin select was written at - each band calling the
+  // scene again - are left out, so a band still matches the earlier ones.
+  static constexpr uint32_t kTilingBandMaxCallDepth = 16;
+  std::array<uint32_t, kTilingBandMaxCallDepth> ib_call_sites_{};
+  uint32_t ib_call_depth_ = 0;
+  uint32_t tiling_band_call_depth_ = 0;
+  // merge_tiling_bands_log: per band sequence, the draws looked at, the ones
+  // skipped as drawn in an earlier band, and the ones in a later band the
+  // address alone takes for an earlier band's draw while the calls tell apart
+  // (drawn with merge_tiling_bands_call_sites, lost without); and their sums
+  // over the sequences since the last report.
+  uint32_t tiling_band_stat_draws_ = 0;
+  uint32_t tiling_band_stat_skipped_ = 0;
+  uint32_t tiling_band_stat_rescued_ = 0;
+  uint64_t tiling_band_stat_sum_draws_ = 0;
+  uint64_t tiling_band_stat_sum_skipped_ = 0;
+  uint64_t tiling_band_stat_sum_rescued_ = 0;
+  uint32_t tiling_band_stat_sequences_ = 0;
 
  public:
   bool tiling_band_merge_active() const {
@@ -698,6 +736,13 @@ class CommandProcessor {
   // "Actual" is for the command processor thread, to be read by the
   // implementations.
   SwapPostEffect GetActualSwapPostEffect() const {
+    // The in-game menu's antialiasing wins over the Settings value while set; the
+    // FXAA pipelines exist from setup, so it can change between two swaps.
+    const int antialiasing =
+        ui::RuntimePresentation().antialiasing.load(std::memory_order_relaxed);
+    if (antialiasing >= 0 && antialiasing <= 2) {
+      return SwapPostEffect(antialiasing);
+    }
     return swap_post_effect_actual_;
   }
 

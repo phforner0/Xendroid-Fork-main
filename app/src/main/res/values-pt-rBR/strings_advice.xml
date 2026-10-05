@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sugestões ao fim da sessão (rodada 2) -->
+    <string name="adv_title">Como foi %1$s</string>
+    <string name="adv_fps">%1$d FPS (baixo %2$d)</string>
+    <string name="adv_ended">encerrada normalmente</string>
+    <string name="adv_failed">falhou: %1$s</string>
+    <string name="adv_interrupted">interrompida: %1$s</string>
+    <string name="adv_apply">Aplicar neste jogo</string>
+    <string name="adv_applied">Aplicado neste jogo</string>
+    <string name="adv_mute_here">Não sugerir para este jogo</string>
+    <string name="adv_mute_rule">Nunca sugerir isto</string>
+    <string name="adv_quiet">Não mostrar até reabrir o app</string>
+    <string name="adv_mute_game">Sem sugestões para este jogo</string>
+    <string name="adv_never">Nunca mostrar</string>
+    <string name="adv_settings_hint">Quando aparecem: Configurações → Interface → Sugestões ao fim da sessão.</string>
+    <string name="adv_t_system_driver">Testar o driver do sistema</string>
+    <string name="adv_r_system_driver">O jogo fechou com um travamento nativo no %1$s. O driver do sistema é mais lento, porém mais estável.</string>
+    <string name="adv_t_reset_game">Voltar aos ajustes globais</string>
+    <string name="adv_r_reset_game">Não abriu, e ele tem %1$s ajustes próprios. Sem eles, usa os globais.</string>
+    <string name="adv_t_pipelines">Criar pipelines em mais threads</string>
+    <string name="adv_r_pipelines">Engasgos: 99%% dos quadros abaixo de %1$s ms, com %2$s pipelines criados. O cache de pipelines também ajuda mais nas próximas sessões.</string>
+    <string name="adv_t_scale">Escala de resolução 1x</string>
+    <string name="adv_r_scale">Mediana de %1$s FPS para um limite de %2$s, na escala %3$s. Em 1x a GPU desenha um quarto dos pixels.</string>
+    <string name="adv_t_steady">30 FPS estáveis</string>
+    <string name="adv_r_steady">Oscilou entre 30 e 60: mediana de %1$s FPS, %2$s nos 5%% mais lentos. Um limite de 30 dá um ritmo regular.</string>
+    <string name="adv_t_audio">Buffer de áudio maior</string>
+    <string name="adv_r_audio">%1$s%% dos blocos de áudio chegaram atrasados e foram preenchidos (os estalos).</string>
+    <string name="adv_t_heat">Limite de FPS menor</string>
+    <string name="adv_r_heat">A bateria chegou a %1$s °C. A 30 FPS o telefone esquenta menos.</string>
+    <string name="adv_option">Sugestões ao fim da sessão</string>
+    <string name="adv_option_sub">O que mudar, com base no log e nos números da sessão, quando há algo a fazer.</string>
+    <string name="adv_mode_always">Sempre</string>
+    <string name="adv_mode_errors">Só depois de erros</string>
+    <string name="adv_mode_never">Nunca</string>
+    <string name="adv_r_heat_limit">O telefone chegou ao limite de calor e reduziu o desempenho do jogo. A 30 FPS ele esquenta menos.</string>
+</resources>

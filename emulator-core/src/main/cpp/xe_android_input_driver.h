@@ -10,8 +10,11 @@
 #ifndef xendroid_XE_ANDROID_INPUT_DRIVER_H
 #define xendroid_XE_ANDROID_INPUT_DRIVER_H
 
+#include <array>
+#include <atomic>
 #include <mutex>
 #include <queue>
+#include <string>
 #include <vector>
 
 #include "xenia/base/mutex.h"
@@ -24,22 +27,32 @@ namespace xe {
 
             class AndroidInputDriver final : public InputDriver {
             public:
+                // Player slots P1..P4 (I01-I03). Slot 0 is always present: the
+                // on-screen pad and the first physical controller feed it. The
+                // frontend connects slots 1-3 as more controllers appear.
+                static constexpr size_t kSlotCount = 4;
+
                 struct KeyStatus{
                     ui::VirtualKey id;
                     bool pressed;
                     int value;
                 };
 
+                struct Slot {
+                    std::array<KeyStatus, 24> keys;
+                    std::array<KeyStatus, 24> prev_keys;
+                    uint32_t mask = 0;
+                    uint32_t packet_number = 1;
+                    bool connected = false;
+                    std::string name;
+                };
+
                 // Deliberately not the global critical region: analog axes push a
                 // sample per motion event and nothing here needs its semantics.
                 std::mutex key_status_mutex_;
-
-                std::array<KeyStatus, 24> key_status_;
-                std::array<KeyStatus, 24> prev_key_status_;
-
-                uint32_t key_status_mask_ = 0;
-
-                uint32_t packet_number_ = 1;
+                std::array<Slot, kSlotCount> slots_;
+                // Guest rumble per slot (I04): left << 16 | right motor speed.
+                std::array<std::atomic<uint32_t>, kSlotCount> rumble_{};
 
                 explicit AndroidInputDriver(xe::ui::Window* window, size_t window_z_order);
                 ~AndroidInputDriver() override;
@@ -53,11 +66,18 @@ namespace xe {
 
                 InputType GetInputType() const override;
                 // XenDroid: edge's InputSystem builds guest controller-slot
-                // bindings from each driver's EnumerateDevices(). Advertise the
-                // always-present Android controller so it auto-binds to a slot.
+                // bindings from each driver's EnumerateDevices(): one device per
+                // connected slot, preferring the same guest slot.
                 std::vector<InputDeviceInfo> EnumerateDevices() override;
-                void OnKey(int key_index, bool pressed, short value);
+                void OnKey(int key_index, bool pressed, short value) { OnKey(0, key_index, pressed, value); }
+                void OnKey(size_t slot, int key_index, bool pressed, short value);
+                // Slots 1-3 come and go with physical controllers; slot 0 stays.
+                // A change releases the slot's keys and re-binds guest slots.
+                void SetSlotConnected(size_t slot, bool connected, const std::string& name);
+                uint32_t Rumble(size_t slot) const;
 
+            private:
+                bool SlotConnected(uint32_t slot);
             };
         }
     }

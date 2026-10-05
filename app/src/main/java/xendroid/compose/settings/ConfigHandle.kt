@@ -6,14 +6,14 @@ import xendroid.emulator.Emulator
 fun tag(section: String, name: String): String = "$section|$name"
 
 /**
- * Single-use wrapper over [Emulator.Config]. A file handle persists to disk on
- * [closeFile]; a string/template handle returns serialized TOML on [closeString].
- * Closing deletes the native table — the handle is dangling afterwards, so this
- * class guards against reuse and double-close.
+ * Single-use wrapper over [Emulator.Config], parsed from TOML text. [closeString]
+ * returns the serialized TOML; [closeDiscard] only frees it. Closing deletes the
+ * native table — the handle is dangling afterwards, so this class guards against
+ * reuse and double-close. Disk writes belong to [ConfigStore]'s locked, atomic
+ * edits, never to a handle.
  */
 class ConfigHandle private constructor(
     private val config: Emulator.Config,
-    private val isFile: Boolean,
 ) {
     @Volatile private var closed = false
 
@@ -51,22 +51,31 @@ class ConfigHandle private constructor(
     /** Enums / paths / list values: stored verbatim as a string. */
     fun putString(section: String, name: String, v: String) = save(section, name, v)
 
+    fun remove(section: String, name: String) {
+        checkOpen()
+        config.remove_config_entry(tag(section, name))
+    }
+
+    fun isEmpty(): Boolean {
+        checkOpen()
+        return config.is_empty()
+    }
+
+    fun putSetting(s: Setting, raw: String) = when (s) {
+        is Setting.Bool -> putBool(s.section, s.name, ConfigValueShape.parseBool(raw, s.default))
+        is Setting.IntRange -> putInt(s.section, s.name, ConfigValueShape.parseInt(raw, s.default))
+        is Setting.ListChoice -> putString(s.section, s.name, raw)
+        is Setting.Action -> putString(s.section, s.name, raw)
+        is Setting.Text -> putString(s.section, s.name, raw)
+    }
+
     private fun save(section: String, name: String, value: String) {
         checkOpen()
         config.save_config_entry(tag(section, name), value)
     }
 
-    /** Persist to disk (file handle only). Idempotent: subsequent calls no-op. */
-    fun closeFile() {
-        if (closed) return
-        require(isFile) { "closeFile() on a string handle" }
-        closed = true
-        config.close_config_file()   // the ONLY disk write
-    }
-
-    /** Serialize + free (string/template handle only). Returns TOML text. */
+    /** Serialize + free. Returns TOML text. */
     fun closeString(): String {
-        check(!isFile) { "closeString() on a file handle" }
         check(!closed) { "already closed" }
         closed = true
         return config.close_config()
@@ -80,13 +89,9 @@ class ConfigHandle private constructor(
     }
 
     companion object {
-        /** @throws Emulator.ConfigFileException on parse error / missing file. */
-        @Throws(Emulator.ConfigFileException::class)
-        fun openFile(path: String): ConfigHandle =
-            ConfigHandle(Emulator.Config.open_config_file(path), isFile = true)
-
+        /** @throws Emulator.ConfigFileException on a parse error. */
         @Throws(Emulator.ConfigFileException::class)
         fun openString(tomlText: String): ConfigHandle =
-            ConfigHandle(Emulator.Config.open_config_from_string(tomlText), isFile = false)
+            ConfigHandle(Emulator.Config.open_config_from_string(tomlText))
     }
 }

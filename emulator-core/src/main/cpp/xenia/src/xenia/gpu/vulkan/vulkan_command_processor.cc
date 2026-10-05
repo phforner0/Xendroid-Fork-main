@@ -62,6 +62,9 @@ DECLARE_bool(spirv_specialize_no_alpha);
 DECLARE_bool(vulkan_texture_load_coalesced);
 DECLARE_bool(vulkan_texture_load_to_image);
 DECLARE_bool(vulkan_direct_host_resolve);
+DECLARE_bool(merge_tiling_bands);
+DECLARE_bool(merge_tiling_bands_call_sites);
+DECLARE_bool(merge_tiling_bands_log);
 DECLARE_bool(vulkan_direct_host_resolve_4px);
 DECLARE_bool(vulkan_direct_host_resolve_to_texture);
 DECLARE_bool(vulkan_direct_host_resolve_storage_format);
@@ -350,6 +353,14 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.resolve_clear_in_guest_pass",
                             "vulkan_resolve_clear_in_guest_pass",
                             cvars::vulkan_resolve_clear_in_guest_pass);
+  // Read per frame (merge_tiling_bands) and per draw (the other two).
+  PollDebugPropertyOverride("debug.xendroid.merge_bands", "merge_tiling_bands",
+                            cvars::merge_tiling_bands);
+  PollDebugPropertyOverride("debug.xendroid.band_call_sites",
+                            "merge_tiling_bands_call_sites",
+                            cvars::merge_tiling_bands_call_sites);
+  PollDebugPropertyOverride("debug.xendroid.band_log", "merge_tiling_bands_log",
+                            cvars::merge_tiling_bands_log);
   // Selects the pixel shader variant per draw, so switching it creates the
   // other variant's pipelines on the fly (async, like a new area would).
   PollDebugPropertyOverride("debug.xendroid.spirv_specialize_no_alpha",

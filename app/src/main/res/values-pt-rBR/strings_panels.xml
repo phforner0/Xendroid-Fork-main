@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Os painéis que o jogo pede: mensagem, texto, outro disco (redesenho da UI, lote 7). -->
+    <string name="xd_gp_waiting">está esperando a sua resposta</string>
+    <string name="xd_gp_asks_text">pede um texto</string>
+    <string name="xd_gp_asks_disc">pede outro disco</string>
+    <string name="xd_gp_paused">O jogo fica parado até você escolher.</string>
+    <string name="xd_gp_choose">Escolher</string>
+    <string name="xd_kb_type">Digitar</string>
+    <string name="xd_kb_shift">Shift</string>
+    <string name="xd_kb_space">Espaço</string>
+    <string name="xd_kb_done">Pronto</string>
+    <string name="xd_kb_cancel">Cancelar</string>
+    <string name="xd_kb_delete">Apagar</string>
+    <string name="xd_kb_cursor">Cursor</string>
+    <string name="xd_kb_symbols">Símbolos</string>
+    <string name="xd_ds_cancel_note">O jogo já ejetou o disco: cancelar o deixa sem disco.</string>
+    <string name="xd_ds_before">%1$s · o de antes</string>
+</resources>

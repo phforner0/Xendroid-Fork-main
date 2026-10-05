@@ -201,6 +201,15 @@ class Presenter {
       // AMD FidelityFX Super Resolution upsampling, Contrast Adaptive
       // Sharpening otherwise.
       kFsr,
+      // XenDroid: Snapdragon Game Super Resolution 1 - one edge-adaptive
+      // upsampling pass (shaders/guest_output_sgsr.xesli), bilinear otherwise.
+      kSgsr,
+      // XenDroid (15k): Lanczos-2 - one upsampling pass clamped to the nearest
+      // texels (shaders/guest_output_lanczos.xesli), bilinear otherwise.
+      kLanczos,
+      // XenDroid (15m): a CRT look - one pass at any ratio, bilinear picture
+      // with scanlines and darker corners (shaders/guest_output_crt.xesli).
+      kCrt,
     };
 
     // This value is used as a lerp factor.
@@ -404,6 +413,12 @@ class Presenter {
     kFsrEasu,
     kFsrRcas,
     kFsrRcasDither,
+    kSgsr,
+    kSgsrDither,
+    kLanczos,
+    kLanczosDither,
+    kCrt,
+    kCrtDither,
 
     kCount,
   };
@@ -418,6 +433,9 @@ class Presenter {
       case GuestOutputPaintEffect::kCasSharpenDither:
       case GuestOutputPaintEffect::kCasResampleDither:
       case GuestOutputPaintEffect::kFsrRcasDither:
+      case GuestOutputPaintEffect::kSgsrDither:
+      case GuestOutputPaintEffect::kLanczosDither:
+      case GuestOutputPaintEffect::kCrtDither:
         return false;
       default:
         // The result of any other effect can be stretched with bilinear
@@ -593,12 +611,45 @@ class Presenter {
     }
   };
 
+  struct SgsrConstants {
+    int32_t output_offset[2];
+    float output_size_inv[2];
+    // 1 / input width, 1 / input height, input width, input height.
+    float viewport_info[4];
+    float edge_sharpness;
+
+    // The reference's default (sgsr1_shader_mobile.frag EdgeSharpness).
+    static constexpr float kEdgeSharpness = 2.0f;
+
+    void Initialize(const GuestOutputPaintFlow& flow, size_t effect_index) {
+      flow.GetEffectOutputOffset(effect_index, output_offset[0],
+                                 output_offset[1]);
+      const std::pair<uint32_t, uint32_t>& output_size =
+          flow.effect_output_sizes[effect_index];
+      output_size_inv[0] = 1.0f / float(output_size.first);
+      output_size_inv[1] = 1.0f / float(output_size.second);
+      uint32_t input_width, input_height;
+      flow.GetEffectInputSize(effect_index, input_width, input_height);
+      viewport_info[0] = 1.0f / float(input_width);
+      viewport_info[1] = 1.0f / float(input_height);
+      viewport_info[2] = float(input_width);
+      viewport_info[3] = float(input_height);
+      edge_sharpness = kEdgeSharpness;
+    }
+  };
+
   explicit Presenter(HostGpuLossCallback host_gpu_loss_callback)
       : host_gpu_loss_callback_(host_gpu_loss_callback) {}
 
   // Must be called by the implementation's initialization, before the presenter
   // is used for anything.
   bool InitializeCommonSurfaceIndependent();
+  // Optional host-side FG presenter. The default path remains synchronous and
+  // unchanged; scheduled painting still uses the surface ownership mutex.
+  virtual bool ScheduleGuestOutput() { return false; }
+  virtual void SetScheduledPaintPhase(int phase) {}
+  PaintResult PaintGuestFromScheduledThread(int phase);
+  bool CanScheduleGuestOutput();
 
   // ConnectOrReconnect and Disconnect are callable only by the UI thread and
   // only when it has access to painting (PaintMode is not

@@ -1,51 +1,72 @@
 package xendroid.compose.ui.library
 
 import android.app.Activity
-import android.content.Context
-import android.util.Log
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
+import xendroid.compose.R
 import xendroid.compose.core.AllFilesAccess
-import xendroid.compose.core.EmuProcessLink
 import xendroid.compose.data.Game
 import xendroid.compose.data.GameFormat
+import xendroid.compose.settings.GameSettingsViewModel
+import xendroid.compose.settings.PinnedSettings
 import xendroid.compose.ui.compress.GameCompressViewModel
-import xendroid.compose.ui.compress.GameCompressViewModel.CompressState
+import xendroid.compose.ui.design.NoteTone
+import xendroid.compose.ui.design.Xd
+import xendroid.compose.ui.design.XdArea
+import xendroid.compose.ui.design.XdButton
+import xendroid.compose.ui.design.XdButtonKind
+import xendroid.compose.ui.design.XdIcons
+import xendroid.compose.ui.design.XdLink
+import xendroid.compose.ui.design.XdMenuItem
+import xendroid.compose.ui.design.XdNote
+import xendroid.compose.ui.design.XdSheet
+import xendroid.compose.ui.design.XdSingleScreen
+import xendroid.compose.ui.design.XdText
+import xendroid.compose.ui.settings.GameSettingsEditing
+import xendroid.compose.ui.settings.XdQuickSettings
 import xendroid.compose.ui.userdata.openUserData
-import xendroid.compose.updater.CooldownDialog
-import xendroid.compose.updater.getRemainingCooldown
-import xendroid.compose.updater.LatestVersionDialog
-import xendroid.compose.updater.UpdateDialog
-import xendroid.compose.updater.UpdateResult
-import xendroid.compose.updater.checkForUpdates
-import xendroid.compose.updater.shouldCheckForUpdates
-import xendroid.compose.updater.saveLastCheck
+import xendroid.compose.ui.design.LocalXdToast
 
+/** A scan shorter than this shows no progress row. */
+private const val SCAN_PROGRESS_DELAY_MS = 700L
 
+/**
+ * The library (docs/ui-redesign/bc, Base): for touch, the rail, filters and a grid of covers with
+ * the chosen game's panel; for a controller, the carousel with tabs. The game sheet is its own
+ * screen ([onOpenGame]); what used to be the ⋮ menu lives in the rail's areas, except what is the
+ * library's own (folders, missing games, the assistant).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameLibraryScreen(
@@ -58,24 +79,70 @@ fun GameLibraryScreen(
     onOpenPerGameSettings: (titleId: String, gameName: String, format: GameFormat, launchUri: String) -> Unit,
     onOpenGamePatches: (titleId: String, gameName: String) -> Unit,
     onOpenContentManager: (titleId: String, gameName: String) -> Unit,
+    onOpenSaves: (titleId: String, gameName: String) -> Unit,
+    onOpenDiagnostics: (String?) -> Unit,
     onOpenInstallContent: () -> Unit,
     onInstallFromDisc: (String) -> Unit,
     compressVm: GameCompressViewModel,
+    onOpenPhoneController: () -> Unit = {},
+    onOpenControllerTest: () -> Unit = {},
+    onOpenBenchmark: () -> Unit = {},
+    /** The game sheet, at a section ("settings") or its overview (null). */
+    onOpenGame: (Game, String?) -> Unit = { _, _ -> },
+    /** This game's settings view model (the panel's quick settings); null hides them. */
+    gameSettings: (@Composable (String) -> GameSettingsViewModel)? = null,
+    /** Opened as the Collections area: the first collection is shown. */
+    collectionsArea: Boolean = false,
+    /** The rail asked for Games or Collections: the filter starts over, once ([onAreaHandled]). */
+    areaReset: Boolean = false,
+    onAreaHandled: () -> Unit = {},
+    /** The app updates screen (lote 6). */
+    onOpenUpdates: () -> Unit = {},
+    /** The first-run assistant creates a profile here and makes it P1; null: only "Open Profiles". */
+    onCreateProfile: ((String) -> Unit)? = null,
+    /** About asked for the setup assistant again: it opens at its first step, once ([onAssistantHandled]). */
+    assistantRequested: Boolean = false,
+    onAssistantHandled: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var updateResult by remember { mutableStateOf<UpdateResult?>(null) }
-
-    var pendingGame by remember { mutableStateOf<Game?>(null) }
-    // A disc whose content is not installed yet; the launch waits on the answer.
-    var pendingDiscInstall by remember { mutableStateOf<Pair<Game, Int>?>(null) }
-    var compressConfirmFor by remember { mutableStateOf<Game?>(null) }
-    val compressState by compressVm.state.collectAsStateWithLifecycle()
-    val titleIdState by viewModel.titleIdState.collectAsStateWithLifecycle()
+    val toast = LocalXdToast.current
+    val actions = rememberGameActions(viewModel, compressVm, onInstallFromDisc)
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
+    val sort by viewModel.sort.collectAsStateWithLifecycle()
+    val activity by viewModel.activity.collectAsStateWithLifecycle()
+    val compat by viewModel.compat.collectAsStateWithLifecycle()
+    val coverRevision by viewModel.coverRevision.collectAsStateWithLifecycle()
+    val collections by viewModel.collections.collectAsStateWithLifecycle()
+    val activeProfile by viewModel.activeProfile.collectAsStateWithLifecycle()
+    val details by viewModel.details.collectAsStateWithLifecycle()
+    val missing by viewModel.missing.collectAsStateWithLifecycle()
 
-    var showBrowser by remember { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var filterKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var tabKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var density by remember { mutableStateOf(CoverDensityStore.read(context)) }
+    var pinned by remember { mutableStateOf(PinnedSettings.read(context)) }
+    var menuOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(areaReset) { if (areaReset) { filterKey = null; query = ""; onAreaHandled() } }
+    val gridState = rememberLazyGridState()
+
+    var showBrowser by rememberSaveable { mutableStateOf(false) }
+    // Declared before the browser's early return below: while the browser shows, flags declared
+    // after it leave the composition and would start over (the assistant at its first step).
+    var foldersOpen by rememberSaveable { mutableStateOf(false) }
+    var missingOpen by rememberSaveable { mutableStateOf(false) }
+    // L01: once, until finished or skipped; reopened from the menu or About. Not over the
+    // no-Vulkan gate, which already explains why games cannot run.
+    var assistantOpen by rememberSaveable { mutableStateOf(!FirstRunStore.done(context)) }
+    var assistantStep by rememberSaveable { mutableStateOf(FirstRunStep.PHONE) }
+    LaunchedEffect(assistantRequested) {
+        if (assistantRequested) { assistantStep = FirstRunStep.PHONE; assistantOpen = true; onAssistantHandled() }
+    }
+    // Lote 6: a missing game's file chosen in the browser: its folder joins the game folders.
+    var findingFile by remember { mutableStateOf<xendroid.compose.data.MissingTitle?>(null) }
     var allFilesGranted by remember { mutableStateOf(AllFilesAccess.isGranted()) }
     // Not-yet-granted sends the user to Settings; the grant returns no result, so it is
     // observed on the next ON_START.
@@ -92,6 +159,7 @@ fun GameLibraryScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) {
                 allFilesGranted = AllFilesAccess.isGranted()
+                pinned = PinnedSettings.read(context)
                 if (firstStart) firstStart = false else viewModel.refresh()
             }
         }
@@ -99,508 +167,347 @@ fun GameLibraryScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // Folders in toasts are named as the phone's Files app names them.
+    val storageRoots = rememberStorageRoots()
+    // Round 2: XenDroid/<Games>, /TU and /DLC made and added in one go (the folders screen and
+    // the first-run assistant offer it).
+    val createStandard: (() -> Unit)? = if (!AllFilesAccess.isSupported) null else ({
+        if (!AllFilesAccess.isGranted()) AllFilesAccess.requestAccess(context)
+        else {
+            val gamesName = context.getString(R.string.xd_fd_std_games)
+            val made = xendroid.compose.data.StandardFolders.create(android.os.Environment.getExternalStorageDirectory(), gamesName)
+            if (made == null) toast.show(context.getString(R.string.xd_fd_std_failed))
+            else {
+                viewModel.onRealPathFolderPicked(made.games.absolutePath)
+                xendroid.compose.ui.content.ContentFolders.add(context, made.updates.absolutePath)
+                xendroid.compose.ui.content.ContentFolders.add(context, made.dlc.absolutePath)
+                toast.show(context.getString(R.string.xd_fd_std_done, gamesName))
+            }
+        }
+    })
     if (showBrowser) {
         FolderBrowserScreen(
-            onFolderChosen = { path ->
-                showBrowser = false
-                viewModel.onRealPathFolderPicked(path)
-            },
+            onFolderChosen = { path -> showBrowser = false; viewModel.onRealPathFolderPicked(path) },
             onCancel = { showBrowser = false },
         )
         return
     }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Library") },
-                actions = {
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                    var menuOpen by remember { mutableStateOf(false) }
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "More")
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        // Only offered where All Files Access exists (API 30+); on API 29 the
-                        // empty state explains why.
-                        if (AllFilesAccess.isSupported) {
-                            DropdownMenuItem(
-                                text = { Text("Set game folder") },
-                                onClick = { menuOpen = false; startRealPathMode() },
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text("Install content") },
-                            onClick = { menuOpen = false; onOpenInstallContent() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Profiles") },
-                            onClick = { menuOpen = false; onOpenProfiles() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Key mapping") },
-                            onClick = { menuOpen = false; onOpenKeymap() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Touch controls") },
-                            onClick = { menuOpen = false; onOpenTouchControls() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Open user data") },
-                            onClick = {
-                                menuOpen = false
-                                openUserData(context)
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("About") },
-                            onClick = { menuOpen = false; onOpenAbout() },
-                        )
-
-                        DropdownMenuItem(
-                            text = { Text("Check for Updates") },
-                            onClick = {
-                                menuOpen = false
-
-                                checkForUpdatesClicked(
-                                    context = context,
-                                    scope = scope,
-                                    onResult = { updateResult = it }
-                                )
-                            }
-                        )
-                    }
+    findingFile?.let { title ->
+        FolderBrowserScreen(
+            onFileChosen = { path ->
+                findingFile = null
+                java.io.File(path).parent?.let { folder ->
+                    viewModel.onRealPathFolderPicked(folder)
+                    toast.show(context.getString(R.string.xd_ms_added, StoragePaths.display(folder, storageRoots)))
                 }
-            )
-        }
-    ) { padding ->
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = { viewModel.refresh() },
-            modifier = Modifier.fillMaxSize().padding(padding),
-        ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            val setFolderLabel = if (allFilesGranted) "Set game folder" else "Grant All Files Access"
-            when (val s = state) {
-                LibraryUiState.NoVulkan ->
-                    NoVulkanDialog(onQuit = { (context as? Activity)?.finish() })
-                LibraryUiState.Loading -> CircularProgressIndicator()
-                // All Files Access is API 30+; on API 29 there is no games path at all.
-                LibraryUiState.NoFolder ->
-                    if (AllFilesAccess.isSupported)
-                        EmptyMessage("No game folder set", setFolderLabel,
-                            onAction = startRealPathMode)
-                    else
-                        EmptyMessage(
-                            "Setting a game folder requires Android 11 or newer.",
-                            "OK", onAction = {})
-                LibraryUiState.PermissionLost ->
-                    EmptyMessage("Folder access lost", setFolderLabel,
-                        onAction = startRealPathMode)
-                is LibraryUiState.Error ->
-                    EmptyMessage(s.message, "Retry", onAction = { viewModel.refresh() })
-                is LibraryUiState.Loaded ->
-                    if (s.games.isEmpty())
-                        EmptyMessage("No games in this folder", "Choose another",
-                            onAction = startRealPathMode)
-                    else GameGrid(
-                        games = s.games,
-                        viewModel = viewModel,
-                        onLaunch = { game ->
-                            scope.launch {
-                                // A mandatory-install disc is still bootable, so this asks
-                                // rather than diverting the launch on its own.
-                                val pending = viewModel.uninstalledDiscContent(game)
-                                if (pending.isNotEmpty()) {
-                                    pendingDiscInstall = game to pending.size
-                                } else {
-                                    launchGame(context, viewModel, game)
-                                }
-                            }
-                        },
-                        onLongPress = { pendingGame = it },
-                    )
-            }
-        }
-        }
+            },
+            onCancel = { findingFile = null },
+            start = generateSequence(java.io.File(title.lastPath).parentFile) { it.parentFile }.firstOrNull { it.isDirectory },
+            title = stringResource(R.string.xd_ms_find_title, title.name),
+            hint = stringResource(R.string.xd_ms_find_note),
+        )
+        return
     }
 
-   when (val result = updateResult) {
-        is UpdateResult.Available -> {
-            UpdateDialog(
-                release = result.release,
-                onDismiss = { updateResult = null }
-            )
-        }
-
-        is UpdateResult.Latest -> {
-            LatestVersionDialog(
-                commitHash = result.commitHash,
-                onDismiss = { updateResult = null }
-            )
-        }
-
-        is UpdateResult.Cooldown -> {
-            CooldownDialog(
-                remainingMillis = result.remainingMillis,
-                onDismiss = { updateResult = null }
-            )
-        }
-
-        null -> {}
+    // L03, lote 6: the library's game folders (add, remove, where installs go; files are never touched).
+    val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val scanProgress by viewModel.scanProgress.collectAsStateWithLifecycle()
+    val openFolders = { viewModel.loadFolders(); foldersOpen = true }
+    if (foldersOpen) {
+        GameFoldersScreen(
+            folders = folders,
+            unavailable = (state as? LibraryUiState.Loaded)?.unavailableRoots.orEmpty(),
+            games = (state as? LibraryUiState.Loaded)?.games.orEmpty(),
+            scanning = scanProgress != null || isRefreshing,
+            onAdd = startRealPathMode,
+            onCreateStandard = createStandard,
+            standardGames = remember { xendroid.compose.data.StandardFolders.under(android.os.Environment.getExternalStorageDirectory(),
+                context.getString(R.string.xd_fd_std_games)).games.absolutePath },
+            onRemove = { folder ->
+                val before = folders
+                viewModel.removeFolder(folder)
+                toast.show(context.getString(R.string.xd_fd_removed, StoragePaths.display(folder, storageRoots)),
+                    context.getString(R.string.xd_undo)) { viewModel.restoreFolders(before) }
+            },
+            onMakeInstallFolder = { folder ->
+                viewModel.makeInstallFolder(folder)
+                toast.show(context.getString(R.string.xd_fd_install_moved))
+            },
+            onRescan = { viewModel.refresh() },
+            onBack = { foldersOpen = false },
+        )
+        return
     }
 
-    pendingDiscInstall?.let { (game, count) ->
-        AlertDialog(
-            onDismissRequest = { pendingDiscInstall = null },
-            title = { Text("Install disc") },
-            text = {
-                Text("This disc carries $count content package(s) the game installs before " +
-                     "it will run. Install them now, or boot the disc anyway?")
+    // L06, lote 6: games played or seen before that this scan did not list.
+    if (missingOpen) {
+        MissingGamesScreen(
+            missing = missing, activity = activity, coverOf = viewModel::coverOfTitle,
+            onRemove = { title ->
+                viewModel.hideMissing(title)
+                toast.show(context.getString(R.string.xd_ms_removed, title.name))
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    pendingDiscInstall = null
-                    onInstallFromDisc(game.launchUri)
-                }) { Text("Install") }
+            onAddFolderOf = { title ->
+                java.io.File(title.lastPath).parent?.let { folder ->
+                    viewModel.onRealPathFolderPicked(folder)
+                    toast.show(context.getString(R.string.xd_ms_added, StoragePaths.display(folder, storageRoots)))
+                }
             },
-            dismissButton = {
-                TextButton(onClick = {
-                    pendingDiscInstall = null
-                    launchGame(context, viewModel, game)
-                }) { Text("Boot anyway") }
+            onFind = { title -> findingFile = title },
+            onFolders = { missingOpen = false; openFolders() },
+            onBack = { missingOpen = false },
+        )
+        return
+    }
+
+    // The assistant (state above): the folder browser replaces it for a while, and it comes back on the same step.
+    if (assistantOpen && state != LibraryUiState.NoVulkan) {
+        LaunchedEffect(Unit) { viewModel.loadFolders() }
+        val found = (state as? LibraryUiState.Loaded)?.games
+        FirstRunAssistant(
+            folderReady = state is LibraryUiState.Loaded,
+            onChooseFolder = startRealPathMode,
+            onCreateStandard = createStandard,
+            onOpenProfiles = onOpenProfiles,
+            onClose = {
+                FirstRunStore.markDone(context)
+                assistantOpen = false
+                toast.show(context.getString(R.string.xd_fr_done))
             },
+            folders = folders,
+            gamesFound = found?.size,
+            scanning = state == LibraryUiState.Loading || scanProgress != null,
+            covers = remember(found) { found.orEmpty().take(10).map { viewModel.iconFileOrFallback(it) } },
+            activeProfile = activeProfile,
+            onCreateProfile = onCreateProfile,
+            step = assistantStep,
+            onStep = { assistantStep = it },
         )
     }
 
-    pendingGame?.let { game ->
-        val dismiss = { pendingGame = null; viewModel.clearTitleIdRequest() }
-        val sheetState = rememberModalBottomSheetState()
-        ModalBottomSheet(
-            onDismissRequest = dismiss,
-            sheetState = sheetState,
-        ) {
-            Column {
-                // The title-id status line shows ONLY while resolving or on error.
-                val statusContent: (@Composable () -> Unit)? = when (val st = titleIdState) {
-                    is TitleIdState.Loading -> ({
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(Modifier.size(16.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Reading title id…")
-                        }
-                    })
-                    is TitleIdState.Error -> ({ Text(st.message) })
-                    else -> null
-                }
-                ListItem(
-                    headlineContent = {
-                        Text(game.name, style = MaterialTheme.typography.titleLarge)
-                        if (game.isMultiDisc) {
-                            Text(
-                                "Disc ${game.discNumber} of ${game.discCount}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    supportingContent = if (game.titleId != null || game.mediaId != null || statusContent != null) {
-                        {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                game.titleId?.let { Text("Title ID: $it") }
-                                game.mediaId?.let { Text("Media ID: $it") }
-                                statusContent?.invoke()
-                            }
-                        }
-                    } else {
-                        null
-                    },
-                )
-
-                val perGameEnabled = titleIdState !is TitleIdState.Loading
-                ListItem(
-                    headlineContent = { Text("Per-game settings") },
-                    colors = if (perGameEnabled) {
-                        ListItemDefaults.colors()
-                    } else {
-                        ListItemDefaults.colors(
-                            headlineColor =
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+    val loaded = state as? LibraryUiState.Loaded
+    if (loaded == null || loaded.games.isEmpty()) {
+        LibraryEmpty(state, viewModel, allFilesGranted, startRealPathMode, missing, openFolders, onMenu = { menuOpen = true }) { missingOpen = true }
+    } else {
+        val data = remember(loaded.games, favorites, activity, compat, collections, sort) {
+            LibraryData(loaded.games, favorites, activity, compat, collections, sort)
+        }
+        val artOf: (Game) -> CoverArt = { game ->
+            CoverArt(viewModel.iconFileOrFallback(game), !viewModel.hasCustomCover(game))
+        }
+        val cachedArt = remember(coverRevision, loaded.games) { HashMap<String, CoverArt>() }
+        val art: (Game) -> CoverArt = { game -> cachedArt.getOrPut(game.stableId) { artOf(game) } }
+        // The last run's FPS once its details are read; a run without frames says so in the panel.
+        val lastFps: (Game) -> String? = { game ->
+            details?.takeIf { it.identityKey == game.identityKey }?.lastRun?.performance?.let { perf ->
+                val median = perf.fpsPercentile(0.5); val low = perf.fpsPercentile(0.05)
+                if (median != null && low != null) context.getString(R.string.xd_lib_fps_line, median, low) else null
+            }
+        }
+        val lastSession: (Game) -> String? = { game ->
+            lastFps(game) ?: details?.takeIf { it.identityKey == game.identityKey }?.lastRun?.let { context.getString(R.string.xd_lib_no_frames) }
+        }
+        val patchesOf: (Game) -> String? = { game ->
+            details?.takeIf { it.identityKey == game.identityKey }?.let { d ->
+                d.patchesTotal?.let { total -> context.getString(R.string.xd_of, d.patchesEnabled ?: 0, total) }
+            }
+        }
+        if (Xd.controller) {
+            val tab = LibraryFilter.parse(tabKey ?: if (activity.isEmpty()) "all" else "recent")
+            val shown = data.shown(tab, "")
+            val focused = shown.firstOrNull { it.stableId == selectedId } ?: shown.firstOrNull()
+            LaunchedEffect(focused?.identityKey) { focused?.let { viewModel.loadDetails(it) } }
+            LibraryController(
+                data, tab, { tabKey = it.key }, focused?.stableId, { selectedId = it }, art, lastFps, patchesOf,
+                onPlay = actions::play, onOpen = { onOpenGame(it, null) }, onFavorite = actions::toggleFavorite,
+                gamertag = activeProfile, preparing = actions.preparing,
+            )
+        } else {
+            val defaultFilter = if (collectionsArea) collections.firstOrNull()?.let { LibraryFilter.Collection(it.name) } ?: LibraryFilter.All else LibraryFilter.All
+            val filter = filterKey?.let(LibraryFilter::parse) ?: defaultFilter
+            val shown = data.shown(filter, query)
+            val selected = shown.firstOrNull { it.stableId == selectedId } ?: shown.firstOrNull()
+            LaunchedEffect(selected?.identityKey) { selected?.let { viewModel.loadDetails(it) } }
+            PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { viewModel.refresh() }, modifier = Modifier.fillMaxSize()) {
+                LibraryTouch(
+                    data, filter, { filterKey = it.key }, query, { query = it }, density,
+                    { density = it; CoverDensityStore.write(context, it) }, viewModel::setSort,
+                    selected, { selectedId = it.stableId }, art, onOpen = { onOpenGame(it, null) }, onFavorite = actions::toggleFavorite,
+                    onMenu = { menuOpen = true }, gridState = gridState,
+                    notices = { LibraryNotices(loaded, missing, viewModel, openFolders) { missingOpen = true } },
+                    detail = { game ->
+                        LibraryDetailPanel(
+                            game, data, art(game), lastSession(game), patchesOf(game), activeProfile,
+                            onPlay = { actions.play(game) }, onOpen = { onOpenGame(game, null) },
+                            onFavorite = { actions.toggleFavorite(game) }, onAllSettings = { onOpenGame(game, "settings") },
+                            preparing = actions.preparing,
+                            quickSettings = game.titleId?.let { id -> gameSettings?.let { factory -> { PanelQuickSettings(factory(id), pinned) } } },
                         )
                     },
-                    modifier = Modifier.clickable(enabled = perGameEnabled) {
-                        viewModel.requestPerGameSettings(game)
-                    },
+                    area = if (filter is LibraryFilter.Collection) XdArea.COLLECTIONS else XdArea.GAMES,
                 )
-
-                ListItem(
-                    headlineContent = { Text("Game patches") },
-                    colors = if (perGameEnabled) {
-                        ListItemDefaults.colors()
-                    } else {
-                        ListItemDefaults.colors(
-                            headlineColor =
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                        )
-                    },
-                    modifier = Modifier.clickable(enabled = perGameEnabled) {
-                        viewModel.requestGamePatches(game)
-                    },
-                )
-
-                ListItem(
-                    headlineContent = { Text("Manage content") },
-                    colors = if (perGameEnabled) {
-                        ListItemDefaults.colors()
-                    } else {
-                        ListItemDefaults.colors(
-                            headlineColor =
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                        )
-                    },
-                    modifier = Modifier.clickable(enabled = perGameEnabled) {
-                        viewModel.requestContentManager(game)
-                    },
-                )
-
-                if (game.format == GameFormat.ISO) {
-                    ListItem(
-                        headlineContent = { Text("Compress to .zar") },
-                        modifier = Modifier.clickable {
-                            compressConfirmFor = game
-                            pendingGame = null
-                            viewModel.clearTitleIdRequest()
-                        },
-                    )
-                }
-
-                if (viewModel.canLaunchGames && viewModel.isPinShortcutSupported) {
-                    ListItem(
-                        headlineContent = { Text("Create shortcut") },
-                        modifier = Modifier.clickable {
-                            viewModel.createShortcut(game)
-                            dismiss()
-                        },
-                    )
-                }
             }
         }
     }
 
-    LaunchedEffect(titleIdState) {
-        (titleIdState as? TitleIdState.Resolved)?.let { r ->
-            when (r.action) {
-                GameAction.PER_GAME_SETTINGS ->
-                    onOpenPerGameSettings(r.titleId, r.game.name, r.game.format, r.game.launchUri)
-                GameAction.GAME_PATCHES ->
-                    onOpenGamePatches(r.titleId, r.game.name)
-                GameAction.MANAGE_CONTENT ->
-                    onOpenContentManager(r.titleId, r.game.name)
-            }
-            pendingGame = null
-            viewModel.clearTitleIdRequest()
-        }
-    }
-
-    compressConfirmFor?.let { game ->
-        AlertDialog(
-            onDismissRequest = { compressConfirmFor = null },
-            title = { Text("Compress to .zar?") },
-            text = {
-                Text(
-                    "This packs the disc into a smaller .zar. The original .iso is left alone " +
-                        "until the .zar is created and verified, and you are asked before it is " +
-                        "deleted. The game stays in your library.")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    compressConfirmFor = null
-                    compressVm.compress(game.launchUri)
-                }) { Text("Compress") }
-            },
-            dismissButton = {
-                TextButton(onClick = { compressConfirmFor = null }) { Text("Cancel") }
-            },
-        )
-    }
-
-    when (val s = compressState) {
-        is CompressState.Busy -> AlertDialog(
-            onDismissRequest = {},   // not cancelable while running
-            title = { Text(s.message) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (s.progress >= 0f) {
-                        LinearProgressIndicator(
-                            progress = { s.progress },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text("${(s.progress * 100).toInt()}%  ·  this may take a while.")
-                    } else {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        Text("This may take a while.")
-                    }
-                }
-            },
-            confirmButton = {},
-        )
-        is CompressState.ConfirmDelete -> AlertDialog(
-            // Dismissing keeps it: a stray tap outside must never delete the .iso.
-            onDismissRequest = compressVm::keepIso,
-            title = { Text("Delete the original .iso?") },
-            text = {
-                Text(
-                    "“${s.zarName}” was created and verified. Deleting “${s.isoName}” " +
-                        "frees ${formatBytes(s.isoBytes)}.")
-            },
-            confirmButton = {
-                TextButton(onClick = compressVm::deleteIso) { Text("Delete .iso") }
-            },
-            dismissButton = { TextButton(onClick = compressVm::keepIso) { Text("Keep it") } },
-        )
-        is CompressState.Done -> AlertDialog(
-            onDismissRequest = { compressVm.dismiss(); viewModel.refresh() },
-            title = { Text("Done") },
-            text = { Text(s.message) },
-            confirmButton = {
-                TextButton(onClick = { compressVm.dismiss(); viewModel.refresh() }) { Text("OK") }
-            },
-        )
-        is CompressState.Failed -> AlertDialog(
-            onDismissRequest = compressVm::dismiss,
-            title = { Text("Failed") },
-            text = { Text(s.message) },
-            confirmButton = { TextButton(onClick = compressVm::dismiss) { Text("OK") } },
-        )
-        else -> {}
-    }
+    if (menuOpen) LibraryMenu(
+        onDismiss = { menuOpen = false },
+        missingCount = missing.size,
+        onAddFolder = { menuOpen = false; startRealPathMode() },
+        onFolders = { menuOpen = false; openFolders() },
+        onMissing = { menuOpen = false; missingOpen = true },
+        onRescan = { menuOpen = false; viewModel.refresh() },
+        onSetup = { menuOpen = false; assistantOpen = true },
+        onUserData = { menuOpen = false; openUserData(context) },
+        onUpdates = { menuOpen = false; onOpenUpdates() },
+    )
+    GameActionDialogs(actions)
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun GameGrid(
-    games: List<Game>,
-    viewModel: GameLibraryViewModel,
-    onLaunch: (Game) -> Unit,
-    onLongPress: (Game) -> Unit,
+private fun PanelQuickSettings(vm: GameSettingsViewModel, pinned: List<String>) {
+    val overrides by vm.overrides.collectAsStateWithLifecycle()
+    val ready by vm.ready.collectAsStateWithLifecycle()
+    if (!ready) return
+    XdQuickSettings(GameSettingsEditing(vm, overrides), pinned.filter { it != "Vulkan|vulkan_lib_path" })
+    DisposableEffect(vm) { onDispose { vm.flush() } }
+}
+
+/** The library's own actions (folders, missing games, rescan, assistant, user data, updates). */
+@Composable
+private fun LibraryMenu(
+    onDismiss: () -> Unit,
+    missingCount: Int,
+    onAddFolder: () -> Unit,
+    onFolders: () -> Unit,
+    onMissing: () -> Unit,
+    onRescan: () -> Unit,
+    onSetup: () -> Unit,
+    onUserData: () -> Unit,
+    onUpdates: () -> Unit,
 ) {
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 120.dp),
-        contentPadding = PaddingValues(12.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        items(games, key = { it.stableId }) { game ->
-            GameCell(game, viewModel, onLaunch, onLongPress)
+    XdSheet(onDismiss = onDismiss, title = stringResource(R.string.lib_title)) {
+        Column {
+            if (AllFilesAccess.isSupported) {
+                XdMenuItem(stringResource(R.string.lib_menu_add_folder), onAddFolder, icon = XdIcons.plus)
+                XdMenuItem(stringResource(R.string.lib_menu_folders), onFolders, icon = XdIcons.folder)
+            }
+            if (missingCount > 0) XdMenuItem(stringResource(R.string.lib_menu_missing, missingCount), onMissing, icon = XdIcons.inbox)
+            XdMenuItem(stringResource(R.string.xd_lib_rescan), onRescan, icon = XdIcons.refresh)
+            XdMenuItem(stringResource(R.string.lib_menu_setup), onSetup, icon = XdIcons.wand)
+            XdMenuItem(stringResource(R.string.lib_menu_user_data), onUserData, icon = XdIcons.folder)
+            XdMenuItem(stringResource(R.string.lib_menu_updates), onUpdates, icon = XdIcons.download)
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+/** No list to show: no folder, no access, scanning, an error, or a folder without games. */
 @Composable
-private fun GameCell(
-    game: Game,
+private fun LibraryEmpty(
+    state: LibraryUiState,
     viewModel: GameLibraryViewModel,
-    onLaunch: (Game) -> Unit,
-    onLongPress: (Game) -> Unit,
+    allFilesGranted: Boolean,
+    startRealPathMode: () -> Unit,
+    missing: List<xendroid.compose.data.MissingTitle>,
+    onFolders: () -> Unit,
+    onMenu: () -> Unit,
+    onMissing: () -> Unit,
 ) {
     val context = LocalContext.current
-    // Once per cell: the File.exists() stat must not run on every recomposition while
-    // scrolling.
-    val iconModel = remember(game.stableId) { viewModel.iconFileOrFallback(game) }
-    Column(
-        Modifier
-            .padding(8.dp)
-            .combinedClickable(onClick = { onLaunch(game) }, onLongClick = { onLongPress(game) }),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(iconModel)
-                .build(),
-            contentDescription = game.name,
-            modifier = Modifier.size(96.dp),
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            game.name,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        // A set shares one title, so the tiles would otherwise be identical.
-        if (game.isMultiDisc) {
-            Text(
-                "Disc ${game.discNumber} of ${game.discCount}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
+    if (state == LibraryUiState.NoVulkan) {
+        NoVulkanScreen(onQuit = { (context as? Activity)?.finish() })
+        return
+    }
+    val c = Xd.colors
+    // The library's own menu (folders, assistant, updates) stays at hand while it is empty.
+    XdSingleScreen(title = stringResource(R.string.lib_title), area = XdArea.GAMES, headIcon = XdIcons.grid, scroll = false,
+        actions = { xendroid.compose.ui.design.XdIconButton(XdIcons.more, stringResource(R.string.lib_more), onMenu) }) {
+        Box(Modifier.fillMaxSize().background(c.bg), contentAlignment = Alignment.Center) {
+            Column(Modifier.widthIn(max = 520.dp).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                val setFolder = stringResource(if (allFilesGranted) R.string.lib_set_folder else R.string.lib_grant_access)
+                when (state) {
+                    LibraryUiState.Loading -> {
+                        CircularProgressIndicator(color = c.acc)
+                        ScanProgressRow(viewModel)
+                    }
+                    LibraryUiState.NoFolder ->
+                        if (AllFilesAccess.isSupported) EmptyAction(stringResource(R.string.lib_no_folder), setFolder, startRealPathMode)
+                        else EmptyAction(stringResource(R.string.lib_needs_android11), null) {}
+                    LibraryUiState.PermissionLost -> EmptyAction(stringResource(R.string.lib_access_lost), setFolder, startRealPathMode)
+                    is LibraryUiState.Error -> EmptyAction(state.message, stringResource(R.string.common_retry)) { viewModel.refresh() }
+                    is LibraryUiState.Loaded -> {
+                        LibraryNotices(state, missing, viewModel, onFolders, onMissing)
+                        EmptyAction(stringResource(R.string.lib_no_games), stringResource(R.string.lib_choose_another), startRealPathMode)
+                    }
+                    else -> {}
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun EmptyMessage(
-    text: String,
-    action: String,
-    onAction: () -> Unit,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text, style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = onAction) { Text(action) }
-    }
+private fun EmptyAction(text: String, action: String?, onAction: () -> Unit) {
+    val c = Xd.colors
+    Text(text, style = XdText.body, color = c.fg2, textAlign = TextAlign.Center)
+    if (action != null) XdButton(action, onAction, kind = XdButtonKind.PRIMARY)
 }
 
+/** L09: what the scan is doing, with "Stop"; nothing for the first moments of a scan, so a quick
+ *  rescan on return to the app does not shift the grid. */
 @Composable
-private fun NoVulkanDialog(onQuit: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onQuit,
-        confirmButton = { TextButton(onClick = onQuit) { Text("Quit") } },
-        title = { Text("Unsupported device") },
-        text = { Text("This device has no Vulkan GPU; the emulator cannot run.") },
-    )
+private fun ScanProgressRow(viewModel: GameLibraryViewModel) {
+    val progress by viewModel.scanProgress.collectAsStateWithLifecycle()
+    val scanning = progress != null
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(scanning) {
+        shown = false
+        if (scanning) { kotlinx.coroutines.delay(SCAN_PROGRESS_DELAY_MS); shown = true }
+    }
+    val p = progress?.takeIf { shown } ?: return
+    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        XdNote(
+            when {
+                p.reading != null -> stringResource(R.string.lib_scan_reading, p.reading, p.checked + 1, p.candidates)
+                p.candidates > 0 -> pluralStringResource(R.plurals.lib_scan_checking, p.candidates, p.checked, p.candidates)
+                else -> pluralStringResource(R.plurals.lib_scan_looking, p.entries, p.entries)
+            },
+            tone = NoteTone.INFO, icon = XdIcons.refresh, modifier = Modifier.weight(1f, fill = false),
+        )
+        XdLink(stringResource(R.string.lib_stop), viewModel::stopScan)
+    }
 }
 
-fun checkForUpdatesClicked(
-    context: Context,
-    scope: CoroutineScope,
-    onResult: (UpdateResult) -> Unit
+/** Scan progress, a partial scan, game folders not available now (L03), games no longer there (L06). */
+@Composable
+private fun LibraryNotices(
+    s: LibraryUiState.Loaded,
+    missing: List<xendroid.compose.data.MissingTitle>,
+    viewModel: GameLibraryViewModel,
+    onFolders: () -> Unit,
+    onMissing: () -> Unit,
 ) {
-    scope.launch {
-        if (!shouldCheckForUpdates(context)) {
-            Log.d("Updater", "Skipping update check")
-            onResult(UpdateResult.Cooldown(getRemainingCooldown(context)))
-            return@launch
-        }
-
-        try {
-            val result = checkForUpdates()
-            saveLastCheck(context)
-            onResult(result)
-        } catch (e: Exception) {
-            Log.e("Updater", "Failed to check updates", e)
-        }
+    ScanProgressRow(viewModel)
+    val pad = Modifier.padding(horizontal = 14.dp, vertical = 2.dp)
+    if (s.truncated) Row(pad) { XdLink(stringResource(R.string.lib_scan_truncated), onFolders) }
+    if (s.unavailableRoots.isNotEmpty()) Row(pad, verticalAlignment = Alignment.CenterVertically) {
+        XdNote(pluralStringResource(R.plurals.lib_folders_unavailable, s.unavailableRoots.size, s.unavailableRoots.size), tone = NoteTone.WARN,
+            modifier = Modifier.weight(1f, fill = false))
+        XdLink(stringResource(R.string.lib_menu_folders), onFolders, modifier = Modifier.padding(start = 10.dp))
     }
+    val gone = missing.count { it.reason != xendroid.compose.data.MissingTitles.Reason.FOLDER_AWAY }
+    if (gone > 0) Row(pad) { XdLink(pluralStringResource(R.plurals.lib_games_gone, gone, gone), onMissing) }
 }
 
-/** Same shape as the content-install formatter, which is private to that file. */
-private fun formatBytes(b: Long): String {
-    if (b < 1024) return "$b B"
-    val u = arrayOf("KB", "MB", "GB", "TB")
-    var v = b.toDouble()
-    var i = -1
-    do { v /= 1024.0; i++ } while (v >= 1024.0 && i < u.lastIndex)
-    return "%.1f %s".format(v, u[i])
-}
 
-/** Reap any stale/orphaned :emu first (single-shot core). The new :emu links itself to the
- *  launcher by binding MainAliveService, so nothing rides on the Intent. */
-private fun launchGame(context: Context, viewModel: GameLibraryViewModel, game: Game) {
-    runCatching {
-        EmuProcessLink.killStaleEmu(context)
-        context.startActivity(viewModel.buildLaunchIntent(game))
-    }
+/** U02: a compatibility result as shown; reports keep the English label. */
+@Composable
+fun compatStatusText(status: xendroid.compose.compatibility.CompatStatus): String = when (status) {
+    xendroid.compose.compatibility.CompatStatus.NOTHING -> stringResource(R.string.compat_nothing)
+    xendroid.compose.compatibility.CompatStatus.BOOTS -> stringResource(R.string.compat_boots)
+    xendroid.compose.compatibility.CompatStatus.INTRO -> stringResource(R.string.compat_intro)
+    xendroid.compose.compatibility.CompatStatus.IN_GAME -> stringResource(R.string.compat_in_game)
+    xendroid.compose.compatibility.CompatStatus.PLAYABLE -> stringResource(R.string.compat_playable)
 }

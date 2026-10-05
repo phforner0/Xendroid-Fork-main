@@ -3,17 +3,10 @@ package xendroid.compose.settings
 import android.content.Context
 import android.preference.PreferenceManager
 import android.util.Log
-import android.view.InputDevice
 
-/** A gamepad or joystick is attached right now (virtual devices excluded, since the
- *  emulator's own injected device advertises gamepad sources). */
-fun hasPhysicalController(): Boolean = InputDevice.getDeviceIds().any { id ->
-    val device = InputDevice.getDevice(id) ?: return@any false
-    val sources = device.sources
-    !device.isVirtual &&
-        (sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
-            sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK)
-}
+/** A controller is attached right now, as the app's controller mode counts one
+ *  ([xendroid.compose.ui.design.Gamepads]: virtual devices and the phone's own keys excluded). */
+fun hasPhysicalController(): Boolean = xendroid.compose.ui.design.Gamepads.anyConnected()
 
 /**
  * Writes HID|show_touch_overlay once per install, from whether a controller was attached:
@@ -26,10 +19,14 @@ fun seedTouchOverlayDefault(context: Context, store: ConfigStore) {
     val prefs = PreferenceManager.getDefaultSharedPreferences(context)
     if (prefs.getBoolean(KEY_SEEDED, false)) return
     val show = !hasPhysicalController()
+    // Seeded before by the old check, which took a phone's own keys for a controller and hid the
+    // overlay: with no controller attached now, the overlay is shown again, once.
+    if (prefs.getBoolean(KEY_SEEDED_V1, false) && !show) {
+        prefs.edit().putBoolean(KEY_SEEDED, true).apply()
+        return
+    }
     runCatching {
-        val handle = store.openLive()
-        handle.putBool("HID", "show_touch_overlay", show)
-        handle.closeFile()
+        store.editLiveConfig { it.putBool("HID", "show_touch_overlay", show) }
     }.onFailure {
         // Leave the flag unset so the next launch retries rather than silently keeping
         // the cvar default.
@@ -39,4 +36,5 @@ fun seedTouchOverlayDefault(context: Context, store: ConfigStore) {
     prefs.edit().putBoolean(KEY_SEEDED, true).apply()
 }
 
-private const val KEY_SEEDED = "touch_overlay_default_seeded"
+private const val KEY_SEEDED = "touch_overlay_default_seeded_v2"
+private const val KEY_SEEDED_V1 = "touch_overlay_default_seeded"

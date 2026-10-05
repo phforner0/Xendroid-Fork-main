@@ -31,6 +31,13 @@ sealed interface Setting {
         override val desc: String = "",
     ) : Setting
 
+    /** Free text stored verbatim (an executable name, guest command-line arguments). */
+    data class Text(
+        override val section: String, override val name: String,
+        override val title: String, val default: String, val placeholder: String = "",
+        override val desc: String = "",
+    ) : Setting
+
     /** Custom Vulkan driver picker (.zip), gated on support_custom_driver. No typed value. */
     data class Action(
         override val section: String, override val name: String,

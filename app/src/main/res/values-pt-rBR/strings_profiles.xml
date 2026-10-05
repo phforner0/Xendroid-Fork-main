@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Perfis, Jogar como e os saves de um jogo (redesign, lote 4) -->
+    <string name="xd_pf_active_is">ativo: %1$s</string>
+    <string name="xd_pf_no_active">nenhum perfil ativo</string>
+    <string name="xd_pf_sec_list">Perfis</string>
+    <string name="xd_pf_sec_players">Quem joga</string>
+    <string name="xd_pf_players_lead">O perfil ativo é o P1. Os outros jogadores entram com o perfil escolhido aqui.</string>
+    <string name="xd_pf_sec_trash">Lixeira</string>
+    <string name="xd_pf_trash_heading">Lixeira de perfis</string>
+    <string name="xd_pf_lang_region">Idioma · região</string>
+    <string name="xd_pf_saves">Saves</string>
+    <string name="xd_pf_no_saves">nenhum neste aparelho</string>
+    <string name="xd_pf_make_active">Tornar ativo</string>
+    <string name="xd_pf_make_active_sub">Entra como P1 na próxima abertura</string>
+    <string name="xd_pf_edit_sub">Gamertag, avatar, idioma e região</string>
+    <string name="xd_pf_to_trash_cd">Mandar %1$s para a lixeira</string>
+    <string name="xd_pf_note">Cada perfil mantém os próprios saves. O ativo entra como P1 em todos os jogos.</string>
+    <string name="xd_pf_c_note">A abre as opções do perfil. Cada perfil mantém os próprios saves.</string>
+    <string name="xd_pf_new_sub">Gamertag e avatar</string>
+    <string name="xd_pf_change_active">Trocar o ativo</string>
+    <string name="xd_pf_change">Trocar</string>
+    <string name="xd_pf_choose">Escolher</string>
+    <string name="xd_pf_slot_p1_title">Quem é o ativo (P1)</string>
+    <string name="xd_pf_slot_p1_note">O ativo entra como P1. Se ele era de outro jogador, essa vaga fica sem ninguém.</string>
+    <string name="xd_pf_trash_empty">A lixeira está vazia.</string>
+    <string name="xd_pf_trash_note">Tudo fica na lixeira deste aparelho até você remover de vez, e pode ser restaurado com os saves.</string>
+    <string name="xd_pf_form_note">1 a 15 letras ou dígitos, começando com uma letra. O idioma e a região deste perfil valem nos jogos em que ele entrar.</string>
+    <string name="xd_pf_avatar_new">Novo avatar escolhido</string>
+    <string name="xd_pf_saves_of">Saves de %1$s</string>
+    <string name="xd_pf_busy">Trabalhando…</string>
+    <string name="xd_sv_sec_here">Neste aparelho</string>
+    <string name="xd_sv_here_title">Saves neste aparelho</string>
+    <string name="xd_sv_sec_sync">Sincronização</string>
+    <string name="xd_sv_unknown_profile">Perfil que não está neste aparelho</string>
+    <string name="xd_sv_in_trash">na lixeira</string>
+    <string name="xd_sv_last_save">último save %1$s</string>
+    <string name="xd_sv_show">Ver saves</string>
+    <string name="xd_sv_hide">Fechar</string>
+    <string name="xd_sv_choose">Escolher %1$s</string>
+    <string name="xd_sv_export_n">Exportar (%1$d)</string>
+    <string name="xd_sv_folder">Pasta</string>
+    <string name="xd_sv_no_folder">Nenhuma pasta escolhida.</string>
+    <string name="xd_sv_last_sync">Última sincronização</string>
+    <string name="xd_sv_never">nunca</string>
+    <string name="xd_sv_change_folder">Trocar a pasta</string>
+    <string name="xd_sv_auto">Fazer backup ao voltar para a biblioteca</string>
+    <string name="xd_sv_auto_desc">Com o jogo fechado, um backup verificado vai para a pasta.</string>
+    <string name="xd_sv_backups">Backups na pasta</string>
+    <string name="xd_sv_list_backups">Ver os backups</string>
+    <string name="xd_sv_restore_ellipsis">Restaurar…</string>
+    <string name="xd_sv_restore_from">Restaurar saves de %1$s?</string>
+    <string name="xd_sv_folder_chosen">Pasta escolhida.</string>
+    <string name="xd_sv_kb">%1$s KB</string>
+    <string name="xd_playas_sub">%1$s · quem entra nesta abertura</string>
+    <plurals name="xd_pf_count">
+        <item quantity="one">%1$d perfil</item>
+        <item quantity="other">%1$d perfis</item>
+    </plurals>
+    <plurals name="xd_pf_games">
+        <item quantity="one">%1$d jogo</item>
+        <item quantity="other">%1$d jogos</item>
+    </plurals>
+    <plurals name="xd_pf_files">
+        <item quantity="one">%1$d arquivo</item>
+        <item quantity="other">%1$d arquivos</item>
+    </plurals>
+    <plurals name="xd_pf_games_here">
+        <item quantity="one">%1$d jogo neste aparelho</item>
+        <item quantity="other">%1$d jogos neste aparelho</item>
+    </plurals>
+    <plurals name="xd_sv_profiles">
+        <item quantity="one">%1$d perfil com saves</item>
+        <item quantity="other">%1$d perfis com saves</item>
+    </plurals>
+    <string name="xd_sv_trashed_profile">Perfil na lixeira</string>
+</resources>

@@ -16,13 +16,43 @@ concluída. Quando o usuário trouxer APK, logs, capturas ou medições, analise
 corrija o que falhou, repita a verificação e avance ao próximo gate. Não pare
 após somente desenhar a UI ou escrever um relatório.
 
+**Retomada após a implementação de 2026-09-30:** consultar primeiro a seção
+"Estado atual" de `docs/experiencia-em-jogo-status.md`. Existem agora backends
+Win-FG/LSFG e testes de síntese em Vulkan por software; isso não satisfaz os gates
+de scanout/latência/A/B em hardware. As opções FG ativas ficam nos builds
+debug/developer e continuam off no boot. Não repetir a implementação existente
+nem anunciar ganho de desempenho com base nos testes de pixels sintéticos.
+
+**Auditoria S0 em 2026-10-01:** ler primeiro
+[auditoria-s0-2026-10-01.md](auditoria-s0-2026-10-01.md) (achados com evidência,
+correções feitas e roteiro de validação no aparelho) e a seção 6.1 do plano mestre
+(estado por item: Impl./Local/Aparelho/Release). Ferramentas novas:
+`tools/test-native-logic.sh` (testes C++ de lógica; em host sem compilador use
+`XENDROID_NDK=<ndk>` para gerar executáveis estáticos que o WSL roda) e
+`tools/build-identity.sh` (versionName `<commit>+local.<digest>` em builds de árvore
+suja). Integrar `origin/main` (A13) é decisão do usuário.
+
+**Retomada na nuvem em 2026-10-02:** o trabalho dos lotes 1–7 está na branch
+`wip/experiencia-em-jogo` (publicada a pedido do usuário, a partir de `77011a0c`). Ler
+a seção "Retomada" de `docs/experiencia-em-jogo-status.md`: o primeiro passo é compilar
+e testar o companion LAN (lote 7, escrito mas ainda não compilado) e então integrá-lo
+ao app. Na nuvem não há o pod de build do usuário nem telefone.
+
+**Planejamento consolidado em 2026-10-01:** o
+[plano mestre das cinco referências](plano-evolucao-cinco-referencias.md) organiza
+as próximas entregas S0–S10, incluindo estabilização da base, compatibilidade,
+portabilidade, updater, slots e companion. Consultar esse backlog junto do status
+antes de escolher a próxima fatia; as fases iniciais abaixo preservam os contratos
+da implementação anterior e não devem ser reiniciadas por estarem listadas aqui.
+
 ## 1. Início de cada sessão: estado antes da ação
 
-1. Leia este arquivo e `docs/plano-experiencia-em-jogo.md` (especialmente as
+1. Leia este arquivo e `docs/plano-evolucao-cinco-referencias.md`; consulte também
+   `docs/plano-experiencia-em-jogo.md` (especialmente as
    seções 2, 5, 6, 6.1, 6.2, 7 e 8). Leia `BUILD.md`,
    `docs/frontend-integration.md` e, para mudanças nativas/FG,
    `performance-tests/plano-proximos-passos.md` e `docs/cloud-goal.md`.
-   Referências Bannerlator/DroidDeck e os commits fixos estão no final do plano;
+   Referências dos cinco projetos e revisões fixas estão no final do plano mestre;
    consulte **as implementações de referência** antes de adaptar uma feature.
 2. Inspecione `git status --short`, `git log -10 --oneline` e diffs dos arquivos
    envolvidos; descubra o que já foi implementado/medido desde a última sessão.
@@ -54,6 +84,10 @@ o pacote release de testes usa o sufixo `.fork.opt`. Há apenas um guest ativo p
 processo. Não configure CMake nativo diretamente fora do Gradle.
 
 ```bash
+# Locale UTF-8 obrigatório para o Gradle: há patch com nome não ASCII
+# ("Viva Piñata") e, com o locale POSIX, :app:syncGamePatches falha.
+export LC_ALL=C.UTF-8
+
 # Para alterações Kotlin/testáveis:
 ./gradlew --no-daemon --console=plain :app:testDebugUnitTest
 
@@ -67,6 +101,19 @@ processo. Não configure CMake nativo diretamente fora do Gradle.
 # Checagem nativa rápida após configurar a variante Release:
 ./gradlew ':emulator-core:configureCMakeRelease[arm64-v8a]'
 tools/native_syntax_check.sh --changed
+
+# Testes C++ de lógica pura (política de apresentação, agenda de FG, arquivo do cache
+# Vulkan). Sem compilador do host, XENDROID_NDK gera executáveis estáticos:
+XENDROID_NDK=$ANDROID_SDK/ndk/29.0.14206865 bash tools/test-native-logic.sh
+
+# APK dos testes instrumentados (pacote próprio xendroid.compose.uitest) e análise de APIs
+# Android; rodar os testes exige o telefone: :app:connectedUitestAndroidTest
+./gradlew --no-daemon --console=plain :app:assembleUitestAndroidTest :app:lintDebug
+
+# Síntese/readback em um host com C++20, loader Vulkan e ICD por software:
+bash tools/test-presentation-host.sh
+# Para incluir LSFG, fornecer caminho LOCAL à sua DLL:
+XENDROID_LSFG_DLL=/caminho/privado/Lossless.dll bash tools/test-presentation-host.sh
 ```
 
 `tools/native_syntax_check.sh --changed` verifica fontes `.cc/.cpp` alterados
@@ -77,6 +124,14 @@ erro, cobertura obtida e validação faltante. Não declare o APK ou o dispositi
 testados se houve somente compilação/syntax check. Não repita toda a suíte após
 cada ajuste documental; teste a fatia e rode o build apropriado antes de fechar
 uma implementação.
+
+O script de testes host compila somente os testes/motores isolados, **não** o
+projeto CMake Android standalone. Requer Vulkan 1.3/robustness2 para o teste LSFG
+atual e não representa o driver do telefone. Aceita `CXX`, `GLSLANG`,
+`XENDROID_VULKAN_LIBRARY` e, em hosts com toolchain extraído,
+`XENDROID_CXX_WRAPPER`/`XENDROID_HOST_TEST_BUILD`. A DLL não vai para o APK e o
+cache temporário é removido ao sair. Use JDK em armazenamento persistente;
+symlinks para `/tmp` podem quebrar quando o WSL reinicia.
 
 ## 3. Invariantes: preservar ao longo das fases
 

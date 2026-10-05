@@ -13,22 +13,55 @@ class SettingsSchemaTest {
 
     private val all = SettingsSchema.allSettings
 
-    // 101 Bool + 12 IntRange + 21 ListChoice + 2 Action = 136. Display|host_present_from_non_ui_thread
-    // is intentionally absent (forced true natively; not a valid user choice).
-    @Test fun total_entry_count_is_136() {
-        assertEquals(136, all.size)
+    // 146 before the redesign, plus the 29 cvars of the core it shows now (docs/ui-redesign/README.md),
+    // less APU|mute and GPU|readback_memexport, which the core never defined (ajustes-2.md).
+    // Display|host_present_from_non_ui_thread is intentionally absent (forced true natively).
+    @Test fun total_entry_count_is_173() {
+        assertEquals(173, all.size)
         assertEquals(
-            136,
+            173,
             all.count { it is Setting.Bool } + all.count { it is Setting.IntRange } +
-                all.count { it is Setting.ListChoice } + all.count { it is Setting.Action },
+                all.count { it is Setting.ListChoice } + all.count { it is Setting.Action } + all.count { it is Setting.Text },
         )
     }
 
     @Test fun counts_by_type_match_verified_inventory() {
-        assertEquals(101, all.count { it is Setting.Bool })
-        assertEquals(12, all.count { it is Setting.IntRange })
-        assertEquals(21, all.count { it is Setting.ListChoice })
+        assertEquals(119, all.count { it is Setting.Bool })        // 103 + 18 new - 2 the core never had
+        assertEquals(20, all.count { it is Setting.IntRange })     // 14 + 6 new
+        assertEquals(30, all.count { it is Setting.ListChoice })   // 27 + 3 new
         assertEquals(2, all.count { it is Setting.Action })
+        assertEquals(2, all.count { it is Setting.Text })          // launch_module, cl
+    }
+
+    /** The cvars the redesign shows, with the section, type and default the core defines them with. */
+    @Test fun new_cvars_match_the_core_definitions() {
+        fun b(key: String, def: Boolean) = assertEquals(key, def, (SettingsSchema.byKey[key] as Setting.Bool).default)
+        fun i(key: String, def: Int, min: Int, max: Int) = (SettingsSchema.byKey[key] as Setting.IntRange).let {
+            assertEquals(key, def, it.default); assertEquals(key, min, it.min); assertEquals(key, max, it.max)
+        }
+        i("Video|internal_display_resolution_x", 1280, 1, 1920)
+        i("Video|internal_display_resolution_y", 720, 1, 1080)
+        i("Display|postprocess_ffx_fsr_max_upsampling_passes", 1, 1, 4)
+        i("Vulkan|adrenotools_turbo_reassert_seconds", 5, 0, 30)
+        i("APU|volume", 100, 0, 100)
+        i("Kernel|stack_size_multiplier_hack", 1, 1, 8)
+        listOf("GPU|async_shader_vs_interpreter", "GPU|async_shader_skip_draws", "GPU|pipeline_storage_precreate",
+            "Kernel|precise_guest_delays", "APU|apu_performance_hint", "HID|vibration", "HID|guide_button",
+            "GPU|readback_resolve_sync", "GPU|precise_interpolation", "Vulkan|vulkan_allow_reverse_z",
+            "Vulkan|vulkan_dynamic_rendering", "Vulkan|vulkan_avoid_geometry_shaders", "Vulkan|vulkan_depth_unorm24",
+            "General|guest_crash_is_fatal").forEach { b(it, true) }
+        listOf("GPU|depth_bias_shader_offset", "GPU|memexport_enable", "UI|achievement_notification_position_by_game",
+            "Storage|mount_memory_unit").forEach { b(it, false) }
+        assertEquals("0", (SettingsSchema.byKey["GPU|draw_resolution_scale_threshold"] as Setting.ListChoice).default)
+        assertEquals("-1", (SettingsSchema.byKey["Kernel|console_type"] as Setting.ListChoice).default)
+        val gamma = SettingsSchema.byKey["Kernel|kernel_display_gamma_power"] as Setting.ListChoice
+        assertEquals("2.22222233", gamma.default)
+        gamma.options.forEach { assertEquals("one '.' keeps it a TOML double: ${it.value}", 1, it.value.count { c -> c == '.' }) }
+        assertEquals("", (SettingsSchema.byKey["General|launch_module"] as Setting.Text).default)
+        assertEquals("", (SettingsSchema.byKey["Kernel|cl"] as Setting.Text).default)
+        // The two values the lists did not offer: the custom display mode and the custom gamma.
+        assertTrue((SettingsSchema.byKey["Console|internal_display_resolution"] as Setting.ListChoice).options.any { it.value == "17" })
+        assertTrue((SettingsSchema.byKey["Kernel|kernel_display_gamma_type"] as Setting.ListChoice).options.any { it.value == "3" })
     }
 
     /** These keys are looked up by string with a hard cast, so a section move that changes
@@ -115,6 +148,47 @@ class SettingsSchemaTest {
         ir("APU|apu_max_queued_frames").let {
             assertEquals(4, it.min); assertEquals(64, it.max)
         }
+    }
+
+    /** Lists of TOML doubles: the native side stores a value with exactly one '.' as a
+     *  double, so every option must have one, or the cvar would be written as an int. */
+    @Test fun double_lists_keep_one_dot_in_every_option() {
+        listOf("HID|left_stick_deadzone_percentage", "HID|right_stick_deadzone_percentage",
+            "Display|postprocess_ffx_cas_additional_sharpness", "Display|postprocess_ffx_fsr_sharpness_reduction")
+            .map { SettingsSchema.byKey[it] as Setting.ListChoice }
+            .forEach { s -> s.options.forEach { assertEquals("${s.key} ${it.value}", 1, it.value.count { c -> c == '.' }) } }
+    }
+
+    /** vulkan_texture_cache reads -1 (no override) and 0..5 (off, 1x..16x). */
+    @Test fun anisotropic_override_offers_the_core_values() {
+        val s = SettingsSchema.byKey["GPU|anisotropic_override"] as Setting.ListChoice
+        assertEquals(listOf("-1", "0", "1", "2", "3", "4", "5"), s.options.map { it.value })
+        assertEquals("-1", s.default)
+        assertTrue(s.key in SettingsSchema.playerKeys)
+    }
+
+    /** 14j: the core's effects by their cvar names (emulator_window.cc), and the dither that
+     *  reduces banding reachable without Developer mode. */
+    @Test fun scaling_offers_the_core_effects_and_players_can_reduce_banding() {
+        val s = SettingsSchema.byKey["Display|postprocess_scaling_and_sharpening"] as Setting.ListChoice
+        assertEquals(listOf("bilinear", "cas", "fsr", "sgsr", "lanczos", "crt"), s.options.map { it.value })
+        assertTrue("Display|postprocess_dither" in SettingsSchema.playerKeys)
+        assertEquals(false, (SettingsSchema.byKey["Display|postprocess_dither"] as Setting.Bool).default)
+    }
+
+    /** L02: Player mode shows exactly the curated keys, all real settings, none twice. */
+    @Test fun player_mode_shows_only_the_curated_settings() {
+        val player = SettingsSchema.categoriesFor(UiMode.PLAYER)
+        assertEquals(1, player.size)
+        val keys = player.single().settings.map { it.key }
+        assertEquals(SettingsSchema.playerKeys, keys)
+        assertEquals(keys.toSet().size, keys.size)
+        assertEquals(SettingsSchema.categories, SettingsSchema.categoriesFor(UiMode.DEVELOPER))
+        // Engine internals and experiments stay in Developer.
+        listOf("Vulkan|vulkan_validation", "CPU|validate_hir", "Kernel|guest_scheduler", "GPU|readback_resolve")
+            .forEach { assert(it !in keys) { "$it should be Developer-only" } }
+        assertEquals(UiMode.PLAYER, UiMode.parse("PLAYER"))
+        assertEquals(null, UiMode.parse("player"))
     }
 
     /** Every IntRange default must be in [min, max], else the slider silently coerces the

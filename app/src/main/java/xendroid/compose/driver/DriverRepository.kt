@@ -3,26 +3,51 @@ package xendroid.compose.driver
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 data class DriverInfo(
     val name: String,
     val version: String,
     val url: String,
-    val sha256: String = ""
+    val sha256: String = "",
+    /** 15p: the GitHub repository ("owner/repo") the release came from, and when it was published (ISO). */
+    val source: String = "",
+    val publishedAt: String = "",
 )
 
+/** 15p: what the sources gave, and the ones that could not be read (source to reason). */
+data class DriverListing(val drivers: List<DriverInfo>, val failures: List<Pair<String, String>>)
+
+/** GitHub release assets may publish a digest; absent/malformed values are not verified. */
+fun githubAssetSha256(digest: String?): String? =
+    digest?.takeIf { it.matches(Regex("(?i)sha256:[0-9a-f]{64}")) }
+        ?.substringAfter(':')
+
 object DriverRepository {
+    /** Screen tests: answers a releases API URL instead of the network. */
+    @androidx.annotation.VisibleForTesting
+    internal var fetchForTests: ((String) -> String)? = null
 
-    private const val RELEASES_API =
-        "https://api.github.com/repos/K11MCH1/AdrenoToolsDrivers/releases"
+    /** 15p: every source's releases, in the order of [sources]; one that fails does not stop the others. */
+    suspend fun loadDrivers(sources: List<String> = listOf(DriverSources.DEFAULT)): DriverListing = withContext(Dispatchers.IO) {
+        val drivers = mutableListOf<DriverInfo>()
+        val failures = mutableListOf<Pair<String, String>>()
+        for (source in sources) {
+            currentCoroutineContext().ensureActive()
+            runCatching { DriverReleases.parse((fetchForTests ?: ::fetch)(DriverSources.releasesApi(source)), source) }
+                .onSuccess { drivers += it }
+                .onFailure { failures += source to (it.message ?: it.javaClass.simpleName) }
+        }
+        DriverListing(drivers, failures)
+    }
 
-    suspend fun loadDrivers(): List<DriverInfo> = withContext(Dispatchers.IO) {
-        val connection = URL(RELEASES_API).openConnection() as HttpURLConnection
+    private fun fetch(api: String): String {
+        val connection = URL(api).openConnection() as HttpURLConnection
 
         connection.connectTimeout = 10000
         connection.readTimeout = 15000
@@ -34,51 +59,19 @@ object DriverRepository {
             if (connection.responseCode != HttpURLConnection.HTTP_OK) {
                 throw Exception("GitHub API HTTP ${connection.responseCode}")
             }
-
-            val json = connection.inputStream.bufferedReader().use { it.readText() }
-            val releases = JSONArray(json)
-
-            buildList {
-                for (i in 0 until releases.length()) {
-                    val release = releases.getJSONObject(i)
-
-                    if (release.optBoolean("draft", false) ||
-                        release.optBoolean("prerelease", false)
-                    ) {
-                        continue
-                    }
-
-                    val releaseName = release.optString("name").ifBlank {
-                        release.optString("tag_name")
-                    }
-
-                    val tagName = release.optString("tag_name")
-                    val assets = release.optJSONArray("assets") ?: continue
-
-                    for (j in 0 until assets.length()) {
-                        val asset = assets.getJSONObject(j)
-
-                        val assetName = asset.optString("name")
-                        val downloadUrl = asset.optString("browser_download_url")
-
-                        if (!assetName.endsWith(".zip", ignoreCase = true)) {
-                            continue
-                        }
-
-                        if (downloadUrl.isBlank()) {
-                            continue
-                        }
-
-                        add(
-                            DriverInfo(
-                                name = assetName,
-                                version = "$releaseName ($tagName)",
-                                url = downloadUrl
-                            )
-                        )
-                    }
+            // A releases page is small; a source that answers with megabytes is not one.
+            val bytes = connection.inputStream.use { input ->
+                val out = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(16384)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count == -1) break
+                    out.write(buffer, 0, count)
+                    require(out.size() <= 4 * 1024 * 1024) { "release list over 4 MB" }
                 }
+                out.toByteArray()
             }
+            return String(bytes, Charsets.UTF_8)
         } finally {
             connection.disconnect()
         }
@@ -96,12 +89,14 @@ object DriverRepository {
             throw Exception("Unable to create download directory")
         }
 
-        val safeName = driver.name.replace(
+        val safeName = "${driver.version}-${driver.name}".replace(
             Regex("[^A-Za-z0-9._-]"),
             "_"
-        )
+        ).take(140)
 
         val file = File(directory, safeName)
+        val tmp = File.createTempFile(".download-", ".zip", directory)
+        val coroutine = currentCoroutineContext()
 
         val connection = URL(driver.url).openConnection() as HttpURLConnection
 
@@ -118,11 +113,12 @@ object DriverRepository {
             val total = connection.contentLengthLong
 
             connection.inputStream.use { input ->
-                file.outputStream().use { output ->
+                tmp.outputStream().use { output ->
                     val buffer = ByteArray(16384)
                     var downloaded = 0L
 
                     while (true) {
+                        coroutine.ensureActive()
                         val count = input.read(buffer)
 
                         if (count == -1) {
@@ -131,10 +127,11 @@ object DriverRepository {
 
                         output.write(buffer, 0, count)
                         downloaded += count
+                        require(downloaded <= 64L * 1024 * 1024) { "Driver download exceeds 64 MB" }
 
                         if (total > 0) {
                             onProgress(
-                                ((downloaded * 100L) / total).toInt()
+                                ((downloaded * 100L) / total).toInt().coerceIn(0, 100)
                             )
                         }
                     }
@@ -142,16 +139,18 @@ object DriverRepository {
             }
 
             if (driver.sha256.isNotBlank()) {
-                val actualHash = sha256(file)
+                val actualHash = sha256(tmp)
 
                 if (!actualHash.equals(driver.sha256, ignoreCase = true)) {
-                    file.delete()
                     throw Exception("SHA-256 verification failed")
                 }
             }
 
+            java.nio.file.Files.move(tmp.toPath(), file.toPath(),
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
             file
         } finally {
+            tmp.delete()
             connection.disconnect()
         }
     }

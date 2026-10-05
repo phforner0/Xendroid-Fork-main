@@ -8,6 +8,7 @@
  */
 
 #include "xe_opensles_audio_driver.h"
+#include "audio_runtime.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/assert.h"
 #include "xenia/apu/conversion.h"
@@ -190,19 +191,35 @@ void OpenSLESAudioDriver::PlayerCallback(SLAndroidSimpleBufferQueueItf buffer_qu
   constexpr size_t output_frame_size=OpenSLESAudioDriver::host_frame_channels_ * OpenSLESAudioDriver::channel_samples_;
   static float output_frame[output_frame_size]={0};
 
+  // Run summary (C02): startup silence before the guest's first block is not
+  // an underrun; every empty queue after it is one.
+  auto& run_stats = ae::RunStats();
+  run_stats.backend.store(2, std::memory_order_relaxed);
+  if (driver->played_once_) {
+    run_stats.blocks.fetch_add(1, std::memory_order_relaxed);
+  }
   if (driver->frames_queued_.empty()) {
+    if (driver->played_once_) {
+      run_stats.concealed.fetch_add(1, std::memory_order_relaxed);
+    }
     std::memset(output_frame, 0, sizeof(output_frame));
     (*buffer_queue)->Enqueue(buffer_queue, output_frame, sizeof(output_frame));
     return;
   } else {
+    if (!driver->played_once_) {
+      driver->played_once_ = true;
+      run_stats.blocks.fetch_add(1, std::memory_order_relaxed);
+    }
     auto buffer = driver->frames_queued_.front();
     driver->frames_queued_.pop();
 
-    if (cvars::volume == 0) {  // XenDroid: edge replaced cvars::mute with volume (0 == mute)
+    if (ae::EffectiveVolume() == 0) {
       std::memset(output_frame, 0, sizeof(output_frame));
     } else {
       conversion::sequential_6_BE_to_interleaved_2_LE(
           output_frame, buffer, driver->channel_samples_);
+      const float gain = ae::EffectiveVolume() / 100.0f;
+      for (float& sample : output_frame) sample *= gain;
     }
 
     driver->frames_unused_.push(buffer);

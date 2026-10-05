@@ -1,5 +1,7 @@
 package xendroid.compose.ui.pause
 
+import xendroid.compose.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -61,23 +63,23 @@ fun PauseMenuPanel(
             tonalElevation = 6.dp,
         ) {
             Column(Modifier.padding(innerPadding)) {
-                Text("Paused", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.pause_title), style = MaterialTheme.typography.titleMedium)
 
                 GuestPanelOption(
-                    label = if (touchOverlayShown) "Hide controls" else "Show controls",
+                    label = if (touchOverlayShown) stringResource(R.string.pause_hide_controls) else stringResource(R.string.pause_show_controls),
                     selected = selected == PAUSE_OPTION_TOUCH_OVERLAY,
                     onClick = onToggleTouchOverlay,
                     modifier = Modifier.padding(top = if (compact) 8.dp else 16.dp),
                 )
                 GuestPanelOptionsRow(Modifier.padding(top = 8.dp)) {
                     GuestPanelOption(
-                        label = "Resume",
+                        label = stringResource(R.string.pause_resume),
                         selected = selected == PAUSE_OPTION_RESUME,
                         onClick = onResume,
                         modifier = Modifier.weight(1f),
                     )
                     GuestPanelOption(
-                        label = "Quit to library",
+                        label = stringResource(R.string.pause_quit),
                         selected = selected == PAUSE_OPTION_QUIT,
                         onClick = onQuit,
                         modifier = Modifier.weight(1f),

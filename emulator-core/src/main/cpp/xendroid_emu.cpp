@@ -26,6 +26,7 @@
 #include "xenia/base/profiling.h"
 #include "xenia/config.h"
 #include "xenia/emulator.h"
+#include "xenia/patcher/patcher.h"
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/gpu/null/null_graphics_system.h"
 #include "xenia/gpu/vulkan/vulkan_graphics_system.h"
@@ -45,6 +46,7 @@
 #include "xe_aaudio_audio_system.h"
 
 #include "xendroid_emu.h"
+#include "xe_changed_settings_cvars.h"
 //#include "nlohmann/json.hpp"
 
 #define LOG_TAG "xendroid_native"
@@ -327,6 +329,17 @@ bool EmulatorApp::OnInitialize() {
         std::string game_path = cvars::target;
         config::LoadGameConfigForFile(
             std::filesystem::absolute(std::filesystem::u8path(game_path)));
+    }
+
+    // The settings away from the core's defaults, first in the log (global config
+    // and this game's own), so a log alone says what the run was set to; the run
+    // record gets the same list (Emulator.changed_settings).
+    {
+        const auto changed = xendroid::RecordBootSettings();
+        XELOGI("Settings changed from defaults: {}", changed.size());
+        for (const auto& line : changed) {
+            XELOGI("  {}", line);
+        }
     }
 
     // Android has no UI-thread paint pump that the kUIThreadOnRequest present mode
@@ -804,19 +817,40 @@ namespace ae{
 
     }
 
-    void key_event(int key_code,bool pressed,int value){
+    // The Android input driver, or null while the detached boot thread is still building
+    // the emulator: input arrives in that window (a controller press on the boot splash,
+    // the touch overlay releasing its keys as it leaves composition).
+    static xe::hid::android::AndroidInputDriver* android_input_driver(){
         static const bool is_android=cvars::hid=="android";
-        if(!is_android) return;
-        // Every hop can still be null while the detached boot thread builds the emulator,
-        // and input arrives in that window: a controller press on the boot splash, or the
-        // touch overlay releasing its keys as it leaves composition.
-        if(!g_windowed_app_ref || !g_windowed_app_ref->emu) return;
+        if(!is_android) return nullptr;
+        if(!g_windowed_app_ref || !g_windowed_app_ref->emu) return nullptr;
         xe::hid::InputSystem* input_system=g_windowed_app_ref->emu->input_system();
         // driver(0) indexes the vector, so the count must be checked, not the pointer.
-        if(!input_system || input_system->driver_count()==0) return;
-        auto* driver=reinterpret_cast<xe::hid::android::AndroidInputDriver*>(input_system->driver(0));
-        if(!driver) return;
-        driver->OnKey(key_code,pressed,value);
+        if(!input_system || input_system->driver_count()==0) return nullptr;
+        return reinterpret_cast<xe::hid::android::AndroidInputDriver*>(input_system->driver(0));
+    }
+
+    void key_event(int key_code,bool pressed,int value){
+        key_event_slot(0,key_code,pressed,value);
+    }
+
+    void key_event_slot(int slot,int key_code,bool pressed,int value){
+        // The index comes from Java (keymaps, editable touch layouts) and indexes the
+        // driver's fixed key table.
+        if(key_code<0 || key_code>=static_cast<int>(key_maps.size())) return;
+        if(slot<0 || slot>=static_cast<int>(xe::hid::android::AndroidInputDriver::kSlotCount)) return;
+        if(auto* driver=android_input_driver()) driver->OnKey(size_t(slot),key_code,pressed,value);
+    }
+
+    void set_slot_connected(int slot,bool connected,const std::string& name){
+        if(slot<0 || slot>=static_cast<int>(xe::hid::android::AndroidInputDriver::kSlotCount)) return;
+        if(auto* driver=android_input_driver()) driver->SetSlotConnected(size_t(slot),connected,name);
+    }
+
+    uint32_t slot_rumble(int slot){
+        if(slot<0) return 0;
+        auto* driver=android_input_driver();
+        return driver ? driver->Rumble(size_t(slot)) : 0;
     }
     bool is_running(){
         if(!g_windowed_app_ref || !g_windowed_app_ref->emu) return false;
@@ -836,6 +870,21 @@ namespace ae{
     bool is_paused(){
         if(!g_windowed_app_ref || !g_windowed_app_ref->emu) return false;
         return g_windowed_app_ref->emu->is_paused();
+    }
+    uint32_t active_title_id() {
+        // Same single-session lifetime as pause/is_paused: the host only queries
+        // after boot; destruction terminates this process instead of freeing a
+        // live emulator underneath a JNI call. Do not trust launch-intent extras.
+        if (!g_windowed_app_ref || !g_windowed_app_ref->emu) return 0;
+        const auto* emulator = g_windowed_app_ref->emu.get();
+        return emulator->is_title_open() ? emulator->title_id() : 0;
+    }
+    std::vector<uint64_t> module_hashes() {
+        // Same lifetime rule as active_title_id.
+        if (!g_windowed_app_ref || !g_windowed_app_ref->emu) return {};
+        auto* emulator = g_windowed_app_ref->emu.get();
+        if (!emulator->is_title_open() || !emulator->patcher()) return {};
+        return emulator->patcher()->ModuleHashes(emulator->title_id());
     }
     void pause(){
         // DIRECT call on the calling (Android main) thread. Emulator::Pause() is

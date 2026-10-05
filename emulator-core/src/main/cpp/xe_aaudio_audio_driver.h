@@ -20,6 +20,10 @@
 #include <aaudio/AAudio.h>
 
 #include "xenia/apu/audio_driver.h"
+#include "xenia/base/cvar.h"
+#include "xe_audio_buffer_tuner.h"
+
+DECLARE_uint32(apu_aaudio_buffer_bursts);
 #include "xenia/base/threading.h"
 
 namespace xe {
@@ -70,6 +74,8 @@ class AAudioAudioDriver : public AudioDriver {
   bool RestartStream();
   // Performs rebuild requests from the error callback, retrying on failure.
   void RecoveryThreadMain();
+  // 15j: one second's underruns into the adaptive buffer (apu_aaudio_adaptive_buffer).
+  void AdaptBuffer(uint32_t fresh_xruns);
 
   xe::threading::Semaphore* semaphore_ = nullptr;
 
@@ -110,6 +116,8 @@ class AAudioAudioDriver : public AudioDriver {
   // is not exactly channel_samples_ would otherwise drop or duplicate audio.
   uint32_t last_block_pos_ = channel_samples_;
   uint32_t gap_blocks_ = 0;
+  // A guest block has reached the device at least once (run summary counts).
+  bool played_once_ = false;
 
   bool fade_in_pending_ = false;
 
@@ -136,6 +144,14 @@ class AAudioAudioDriver : public AudioDriver {
   std::atomic<uint64_t> stat_clipped_{0};
   std::atomic<uint32_t> stat_rate_milli_{1000};
   void LogAndResetStats();
+  // Adds the stream's new xruns to ae::RunStats(); AAudio counts per stream, so
+  // the count seen so far restarts with every rebuild. recovery_thread_ only.
+  // The underruns since the last call, also added to the run's count.
+  uint32_t PublishXRuns();
+  int32_t xruns_published_ = 0;
+  // 15j: the adaptive buffer's depth in bursts, and the frames one burst drains.
+  AudioBufferTuner tuner_{cvars::apu_aaudio_buffer_bursts};
+  int32_t drain_frames_ = 0;
 
   // Per-driver volume (XMP): written by other threads, read by the callback.
   std::atomic<float> driver_volume_{1.0f};

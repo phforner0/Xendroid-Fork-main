@@ -1,0 +1,98 @@
+package xendroid.compose.screens
+
+import androidx.compose.runtime.remember
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performClick
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import xendroid.compose.AppContainer
+import xendroid.compose.patches.GamePatchesViewModel
+import xendroid.compose.settings.ConfigStore
+import xendroid.compose.settings.GameSettingsViewModel
+import xendroid.compose.settings.SettingsViewModel
+import xendroid.compose.shots.Fixture
+import xendroid.compose.shots.Phone
+import xendroid.compose.shots.ShotApp
+import xendroid.compose.shots.app
+import xendroid.compose.shots.screen
+import xendroid.compose.shots.shot
+import xendroid.compose.ui.compress.GameCompressViewModel
+import xendroid.compose.ui.design.InputMode
+import xendroid.compose.ui.game.GameScreen
+import xendroid.compose.ui.game.GameScreenLinks
+import xendroid.compose.ui.library.GameLibraryScreen
+
+/** Base batch "depois": the library (grid and panel, carousel) and the game sheet, as the app draws them. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], application = ShotApp::class)
+class BaseShots {
+    @get:Rule val compose = createComposeRule()
+
+    private fun library(mode: InputMode, pick: String? = null) {
+        val container = AppContainer(Fixture.context)
+        val vm = Fixture.library(container)
+        val compress = container.gameCompressViewModelFactory().create(GameCompressViewModel::class.java)
+        compose.app(mode) {
+            GameLibraryScreen(vm, {}, {}, {}, {}, {}, { _, _, _, _ -> }, { _, _ -> }, { _, _ -> }, { _, _ -> }, {}, {}, {}, compress,
+                gameSettings = { id -> remember(id) { container.gameSettingsViewModelFactory(id).create(GameSettingsViewModel::class.java) } })
+        }
+        if (pick != null) {
+            compose.onAllNodesWithContentDescription(pick, useUnmergedTree = true).onFirst().performClick()
+            // The pick recomposes first; only then does the panel ask for the game's details.
+            compose.waitForIdle()
+            Fixture.settleUntil { vm.details.value?.lastRun != null }
+        }
+        Fixture.settle()
+        compose.waitForIdle()
+    }
+
+    private fun game(mode: InputMode, section: String? = null, titleId: String = "4D5307E6") {
+        val container = AppContainer(Fixture.context)
+        ConfigStore(Fixture.context).editGameConfig(titleId) { h ->
+            h.putInt("GPU", "framerate_limit", 30)
+            h.putString("Display", "postprocess_scaling_and_sharpening", "fsr")
+            h.putInt("GPU", "anisotropic_override", 4)
+        }
+        val vm = Fixture.library(container)
+        val game = Fixture.game(vm, titleId)
+        val settings = container.gameSettingsViewModelFactory(titleId).create(GameSettingsViewModel::class.java)
+        val global = container.settingsViewModelFactory().create(SettingsViewModel::class.java)
+        val patches = container.gamePatchesViewModelFactory(titleId).create(GamePatchesViewModel::class.java)
+        val compress = container.gameCompressViewModelFactory().create(GameCompressViewModel::class.java)
+        vm.loadDetails(game)
+        Fixture.settle()
+        compose.app(mode) {
+            GameScreen(game, vm, compress, settings, global, patches, GameScreenLinks(onBack = {}), initialSection = section)
+        }
+        Fixture.settle(30)
+        compose.waitForIdle()
+    }
+
+    @Config(qualifiers = Phone.LAND) @Test fun libraryLand() { library(InputMode.TOUCH, pick = "Forza Horizon"); compose.shot("base/depois-biblioteca-paisagem") }
+    @Config(qualifiers = Phone.PORT) @Test fun libraryPort() { library(InputMode.TOUCH); compose.shot("base/depois-biblioteca-retrato") }
+    @Config(qualifiers = Phone.LAND) @Test fun libraryController() { library(InputMode.CONTROLLER); compose.shot("base/depois-biblioteca-controle") }
+    @Config(qualifiers = Phone.PORT) @Test fun libraryControllerPort() { library(InputMode.CONTROLLER); compose.shot("base/depois-biblioteca-controle-retrato") }
+
+    @Config(qualifiers = Phone.LAND) @Test fun sheetLand() { game(InputMode.TOUCH); compose.shot("base/depois-ficha-paisagem") }
+    @Config(qualifiers = Phone.PORT) @Test fun sheetPort() { game(InputMode.TOUCH); compose.shot("base/depois-ficha-retrato") }
+    @Config(qualifiers = Phone.LAND) @Test fun sheetSettings() { game(InputMode.TOUCH, section = "set:IMAGE"); compose.shot("base/depois-ficha-ajustes") }
+    @Config(qualifiers = Phone.LAND) @Test fun sheetPerformance() { game(InputMode.TOUCH, section = "perf"); compose.shot("base/depois-ficha-desempenho") }
+    @Config(qualifiers = Phone.LAND) @Test fun sheetContent() { game(InputMode.TOUCH, section = "cont"); compose.shot("base/depois-ficha-conteudo") }
+    @Config(qualifiers = Phone.LAND) @Test fun sheetData() { game(InputMode.TOUCH, section = "data"); compose.shot("base/depois-ficha-dados") }
+    @Config(qualifiers = Phone.LAND) @Test fun sheetController() { game(InputMode.CONTROLLER); compose.shot("base/depois-ficha-controle") }
+    @Config(qualifiers = Phone.LAND) @Test fun sheetControllerSettings() { game(InputMode.CONTROLLER, section = "set"); compose.shot("base/depois-ficha-controle-ajustes") }
+    @Config(qualifiers = Phone.LAND) @Test fun launchWith() {
+        game(InputMode.TOUCH)
+        compose.onAllNodesWithText("Iniciar com…").onFirst().performClick()
+        Fixture.settle()
+        compose.screen("base/depois-iniciar-com")
+    }
+}

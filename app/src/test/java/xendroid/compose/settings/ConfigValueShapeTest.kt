@@ -26,6 +26,19 @@ class ConfigValueShapeTest {
         assertTrue(ConfigValueShape.double(2.0).contains('.'))
     }
 
+    /** Doubles come back from the native side as std::to_string ("0.100000"); a list
+     *  must still show the option the value came from. */
+    @Test fun listOption_maps_a_round_tripped_number_to_its_option() {
+        val options = listOf("0.0", "0.05", "0.1", "0.15")
+        assertEquals("0.1", ConfigValueShape.listOption(options, "0.100000"))
+        assertEquals("0.0", ConfigValueShape.listOption(options, "0.000000"))
+        assertEquals("0.05", ConfigValueShape.listOption(options, "0.05"))
+        assertEquals("0.7", ConfigValueShape.listOption(options, "0.7"))   // unknown stays
+        assertEquals("fsr", ConfigValueShape.listOption(listOf("bilinear", "fsr"), "fsr"))
+        assertEquals("-1", ConfigValueShape.listOption(listOf("-1", "0", "5"), "-1"))
+        assertEquals(null, ConfigValueShape.listOption(options, null))
+    }
+
     @Test fun parseBool_round_trips_and_defaults() {
         assertTrue(ConfigValueShape.parseBool("true", false))
         assertFalse(ConfigValueShape.parseBool("false", true))

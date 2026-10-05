@@ -93,6 +93,13 @@ if [ -n "$REPO" ] && [ -f "$REPO/emulator-core/build.gradle" ]; then
   ./gradlew --version >/dev/null 2>&1 || log "WARN: Gradle wrapper download failed"
 fi
 
+# Gradle reads file names in the JVM's locale: a non-ASCII patch name
+# ("Viva Piñata") is unreadable under POSIX and :app:syncGamePatches fails.
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+  *UTF-8*|*utf8*|*UTF8*|*utf-8*) ;;
+  *) log "WARN: run Gradle with LC_ALL=C.UTF-8 (non-ASCII patch file names)" ;;
+esac
+
 log "done: JAVA_HOME=$JAVA_HOME ANDROID_SDK_ROOT=$SDK" \
   "java=$("$JAVA_HOME/bin/java" -version 2>&1 | head -1)" \
   "ndk=$([ -d "$SDK/ndk/$NDK_VERSION" ] && echo ok || echo MISSING)" \
