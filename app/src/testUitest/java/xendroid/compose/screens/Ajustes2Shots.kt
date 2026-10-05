@@ -393,6 +393,12 @@ class Ajustes2Shots {
         compose.waitForIdle()
         compose.shot("ajustes-2/depois-conteudo-pastas")
     }
+    @Config(qualifiers = Phone.LAND) @Test fun contentFoldersFound() {
+        contentInstall(InputMode.TOUCH)
+        compose.onNodeWithText(Fixture.context.getString(R.string.xd_cm_install_again)).performScrollTo()
+        compose.waitForIdle()
+        compose.shot("ajustes-2/depois-conteudo-pacotes-encontrados")
+    }
     @Config(qualifiers = Phone.PORT) @Test fun contentFoldersInstallPort() {
         contentInstall(InputMode.TOUCH); compose.shot("ajustes-2/depois-conteudo-pastas-retrato")
     }
@@ -415,6 +421,45 @@ class Ajustes2Shots {
         }
         compose.waitForIdle()
         compose.shot("ajustes-2/depois-pastas-de-jogos-padrao")
+    }
+
+    // ------------------------------------------------------------------ after a session
+
+    private fun session(state: xendroid.compose.sessions.RunState, minutes: Long, reason: String?, perf: xendroid.compose.sessions.RunPerformance?) =
+        xendroid.compose.sessions.SessionRun(runId = "r", state = state, launchSource = "library", gamePath = halo.path, buildVersion = "v412",
+            pid = 1, startedAt = 0, titleId = "4D5307E6", runningAt = 1_000, lastSeenAt = 1_000 + minutes * 60_000,
+            endedAt = 1_000 + minutes * 60_000, endReason = reason, performance = perf)
+
+    private fun advice(run: xendroid.compose.sessions.SessionRun, vararg settings: Pair<String, String>) {
+        val values = mapOf(*settings)
+        val review = xendroid.compose.ui.advice.SessionReview(run, "4D5307E6", "Halo 3",
+            xendroid.compose.sessions.SessionAdvice.of(run, values::get, emptySet()))
+        compose.app(InputMode.TOUCH) {
+            Scene {
+                xendroid.compose.ui.advice.SessionAdviceSheet(review, onDismiss = {}, apply = { emptyMap() }, undo = {})
+            }
+        }
+        compose.waitForIdle()
+    }
+
+    /** A session that swung between 30 and 60, stuttered while making pipelines and crackled. */
+    @Config(qualifiers = Phone.LAND) @Test fun adviceAfterASession() {
+        val seconds = mapOf(60 to 900, 45 to 1100, 33 to 900, 30 to 300)
+        val perf = xendroid.compose.sessions.RunPerformance(fpsHistogram = List(61) { seconds[it] ?: 0 },
+            frameTimeHistogramMs = List(121) { ms -> when (ms) { 22 -> 90_000L; 33 -> 30_000L; 120 -> 2_000L; else -> 0L } },
+            pipelineCreations = 1830, pipelineCreationMs = 6400, audioBlocks = 300_000, audioConcealedBlocks = 5_400,
+            batteryMaxC = 41f, fpsLimits = listOf(60), firstFrameSeconds = 7)
+        advice(session(xendroid.compose.sessions.RunState.ENDED, 53, "exited from the menu", perf),
+            xendroid.compose.sessions.SessionAdvice.FPS_LIMIT to "60")
+        compose.screen("ajustes-2/depois-sugestoes-fim-da-sessao")
+    }
+    @Config(qualifiers = Phone.PORT) @Test fun adviceAfterACrash() {
+        val perf = xendroid.compose.sessions.RunPerformance(fpsHistogram = List(31) { if (it == 30) 600 else 0 },
+            frameTimeHistogramMs = List(40) { if (it == 33) 18_000L else 0L }, batteryMaxC = 46.5f, fpsLimits = listOf(0), firstFrameSeconds = 8)
+        advice(session(xendroid.compose.sessions.RunState.FAILED, 10, "native crash: SIGSEGV in libvulkan_freedreno.so", perf),
+            xendroid.compose.sessions.SessionAdvice.DRIVER to "/data/drivers/turnip-25.3/libvulkan_freedreno.so",
+            xendroid.compose.sessions.SessionAdvice.FPS_LIMIT to "0")
+        compose.screen("ajustes-2/depois-sugestoes-travamento-retrato")
     }
 
     @Config(qualifiers = Phone.LAND) @Test fun aboutLand() { about(InputMode.TOUCH); compose.shot("ajustes-2/depois-sobre") }

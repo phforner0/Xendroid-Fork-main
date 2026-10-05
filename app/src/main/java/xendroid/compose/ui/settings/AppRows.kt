@@ -76,6 +76,20 @@ private fun XdSettingLevelRow(level: SettingLevel, count: Int, onLevel: (Setting
     }
 }
 
+/** Round 2: when the suggestions after a session show: always, only after errors, or never. */
+@Composable
+fun SessionAdviceOption() {
+    val context = LocalContext.current
+    var mode by remember { mutableStateOf(xendroid.compose.ui.advice.SessionAdvicePrefs.mode(context)) }
+    XdSheetOption(stringResource(R.string.adv_option), subtitle = stringResource(R.string.adv_option_sub)) {
+        XdSegmented(listOf(
+            xendroid.compose.sessions.SessionAdvice.Mode.ALWAYS to stringResource(R.string.adv_mode_always),
+            xendroid.compose.sessions.SessionAdvice.Mode.ERRORS to stringResource(R.string.adv_mode_errors),
+            xendroid.compose.sessions.SessionAdvice.Mode.NEVER to stringResource(R.string.adv_mode_never),
+        ), mode, { mode = it; xendroid.compose.ui.advice.SessionAdvicePrefs.setMode(context, it) })
+    }
+}
+
 /** U04: which controller button confirms in the app's menus (never in the game). */
 @Composable
 fun MenuButtonsOption() {

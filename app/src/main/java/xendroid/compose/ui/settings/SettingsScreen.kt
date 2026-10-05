@@ -172,6 +172,7 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, links: SettingsLin
                 InputModeOption()
                 SettingLevelOption(panel.level) { panel.level = it }
                 MenuButtonsOption()
+                SessionAdviceOption()
                 UiScaleOptions()
             }
         })

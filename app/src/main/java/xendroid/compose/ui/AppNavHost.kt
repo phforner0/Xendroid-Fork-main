@@ -143,6 +143,12 @@ fun AppNavHost(container: AppContainer) {
         }
     }
     ProvideXdNavigation(navigator, remember { xendroid.compose.gamepad.MenuButtonPrefs.swapConfirm(context) }) {
+    // Round 2: back from a session, what it suggests changing (when there is something).
+    xendroid.compose.ui.advice.SessionAdviceHost { titleId, path ->
+        val games = runCatching { container.repository.cachedGames() }.getOrDefault(emptyList())
+        val game = games.firstOrNull { titleId != null && it.titleId.equals(titleId, ignoreCase = true) } ?: games.firstOrNull { it.launchUri == path }
+        game?.titleId to game?.name
+    }
     NavHost(navController = nav, startDestination = Routes.LIBRARY) {
         composable(Routes.LIBRARY) { libraryEntry ->
             val vm: GameLibraryViewModel =
