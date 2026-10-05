@@ -46,10 +46,12 @@ DEFINE_bool(
     "CPU");
 
 DEFINE_uint32(
-    inline_leaf_max_instructions, 16,
+    inline_leaf_max_instructions, 32,
     "Largest leaf, in guest instructions, that inline_leaf_calls will expand. "
-    "Raising it trades code cache size and translation time for fewer calls.",
+    "Raising it trades code cache size and translation time for fewer calls "
+    "(32 since 2026-10-05, the Forza Horizon setting, for every title).",
     "CPU");
+UPDATE_from_uint32(inline_leaf_max_instructions, 2026, 10, 5, 12, 16);
 
 namespace xe {
 namespace cpu {

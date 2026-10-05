@@ -140,12 +140,16 @@ DEFINE_string(
     "Vulkan");
 
 DEFINE_string(
-    ir3_debug, "",
+    ir3_debug, "noearlypreamble",
     "Comma-separated IR3_SHADER_DEBUG flags for the Turnip shader compiler, "
     "e.g. nopreamble or noearlypreamble to keep uniform math out of the shader "
     "preamble, nouboopt, nocache. Each value has its own Vulkan pipeline "
-    "cache file. Empty leaves the variable unset.",
+    "cache file. Empty leaves the variable unset. noearlypreamble by default "
+    "since 2026-10-05: Turnip's early preamble costs every small draw ~1.6 us "
+    "of GPU time (Forza Horizon -0.8 ms a frame without it); other drivers "
+    "ignore the variable.",
     "Vulkan");
+UPDATE_from_string(ir3_debug, 2026, 10, 5, 11, "");
 
 DEFINE_string(
     turnip_perf_sampler, "",

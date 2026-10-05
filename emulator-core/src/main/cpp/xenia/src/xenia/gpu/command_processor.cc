@@ -88,6 +88,23 @@ DEFINE_bool(clear_memory_page_state, false,
 UPDATE_from_bool(clear_memory_page_state, 2026, 8, 1, 12, true);
 
 DEFINE_bool(
+    merge_tiling_bands_call_sites, true,
+    "With merge_tiling_bands: tell the draws apart by the indirect buffer calls "
+    "made inside the replayed scene on the way to the draw packet as well as "
+    "by its address, so the objects a game draws by calling one routine each "
+    "are not taken for each other - one only in a later band was skipped as "
+    "drawn in an earlier band. Read per draw (debug.xendroid.band_call_sites).",
+    "GPU");
+
+DEFINE_bool(
+    merge_tiling_bands_log, false,
+    "With merge_tiling_bands: log every 150 band sequences the draws per "
+    "sequence, the ones skipped as drawn in an earlier band, and the ones "
+    "telling the draws apart by the address alone would have skipped "
+    "(debug.xendroid.band_log).",
+    "GPU");
+
+DEFINE_bool(
     merge_tiling_bands, false,
     "Draw the bands of predicated tiling (the scene split into horizontal "
     "bands that fit the EDRAM, each drawn by replaying the same command "
@@ -903,9 +920,32 @@ void CommandProcessor::OnBinSelectWritten() {
     return;
   }
   if (tiling_band_ < 0) {
+    if (cvars::merge_tiling_bands_log && tiling_band_stat_draws_) {
+      tiling_band_stat_sum_draws_ += tiling_band_stat_draws_;
+      tiling_band_stat_sum_skipped_ += tiling_band_stat_skipped_;
+      tiling_band_stat_sum_rescued_ += tiling_band_stat_rescued_;
+      if (++tiling_band_stat_sequences_ >= 150) {
+        const double n = double(tiling_band_stat_sequences_);
+        XELOGI(
+            "TilingBands: {} sequences | per sequence draws={:.1f} "
+            "skipped={:.1f} rescued_by_call_sites={:.1f} (call sites {})",
+            tiling_band_stat_sequences_, tiling_band_stat_sum_draws_ / n,
+            tiling_band_stat_sum_skipped_ / n,
+            tiling_band_stat_sum_rescued_ / n,
+            cvars::merge_tiling_bands_call_sites ? "on" : "off");
+        tiling_band_stat_sum_draws_ = 0;
+        tiling_band_stat_sum_skipped_ = 0;
+        tiling_band_stat_sum_rescued_ = 0;
+        tiling_band_stat_sequences_ = 0;
+      }
+    }
+    tiling_band_stat_draws_ = 0;
+    tiling_band_stat_skipped_ = 0;
+    tiling_band_stat_rescued_ = 0;
     tiling_band_ = 0;
     ++tiling_band_sequence_;
     tiling_band_merge_ok_ = true;
+    tiling_band_call_depth_ = ib_call_depth_;
     ClearTilingBandDraws();
   } else if (select != tiling_band_select_) {
     ++tiling_band_;
@@ -914,47 +954,51 @@ void CommandProcessor::OnBinSelectWritten() {
 }
 
 void CommandProcessor::ClearTilingBandDraws() {
-  tiling_band_draw_count_ = 0;
-  // Slots of older epochs read as empty; epoch 0 is the zero fill.
-  if (++tiling_band_draw_epoch_ == 0) {
-    std::fill(tiling_band_draw_slots_.begin(), tiling_band_draw_slots_.end(),
-              uint64_t(0));
-    tiling_band_draw_epoch_ = 1;
+  tiling_band_draws_.Clear();
+  tiling_band_draw_other_keys_.Clear();
+}
+
+void CommandProcessor::TilingBandDrawSet::Clear() {
+  count = 0;
+  // Keys of older epochs read as empty; epoch 0 is the zero fill.
+  if (++epoch == 0) {
+    std::fill(epochs.begin(), epochs.end(), uint32_t(0));
+    epoch = 1;
   }
 }
 
-bool CommandProcessor::InsertTilingBandDraw(uint32_t key) {
-  if (!tiling_band_draw_epoch_) {
-    tiling_band_draw_epoch_ = 1;
+bool CommandProcessor::TilingBandDrawSet::Insert(uint64_t key) {
+  if (!epoch) {
+    epoch = 1;
   }
-  const uint64_t epoch = tiling_band_draw_epoch_;
-  if ((size_t(tiling_band_draw_count_) + 1) * 2 >
-      tiling_band_draw_slots_.size()) {
+  if ((size_t(count) + 1) * 2 > keys.size()) {
     // Grow at half load, keeping the current epoch's keys.
-    std::vector<uint64_t> old_slots;
-    old_slots.swap(tiling_band_draw_slots_);
-    tiling_band_draw_slots_.assign(
-        std::max(size_t(8192), old_slots.size() * 2), uint64_t(0));
-    tiling_band_draw_count_ = 0;
-    for (uint64_t slot : old_slots) {
-      if ((slot >> 32) == epoch) {
-        InsertTilingBandDraw(uint32_t(slot));
+    std::vector<uint64_t> old_keys;
+    std::vector<uint32_t> old_epochs;
+    old_keys.swap(keys);
+    old_epochs.swap(epochs);
+    const size_t size = std::max(size_t(8192), old_keys.size() * 2);
+    keys.assign(size, uint64_t(0));
+    epochs.assign(size, uint32_t(0));
+    count = 0;
+    for (size_t i = 0; i < old_keys.size(); ++i) {
+      if (old_epochs[i] == epoch) {
+        Insert(old_keys[i]);
       }
     }
   }
-  const size_t mask = tiling_band_draw_slots_.size() - 1;
-  // The top bits of a multiplicative hash (the keys are dword addresses, so
-  // the low bits of the product carry little).
-  size_t index =
-      size_t((uint64_t(key) * UINT64_C(0x9E3779B97F4A7C15)) >> 40) & mask;
+  const size_t mask = keys.size() - 1;
+  // The top bits of a multiplicative hash (the address keys are dword
+  // addresses, so the low bits of the product carry little).
+  size_t index = size_t((key * UINT64_C(0x9E3779B97F4A7C15)) >> 40) & mask;
   for (;;) {
-    const uint64_t slot = tiling_band_draw_slots_[index];
-    if ((slot >> 32) != epoch) {
-      tiling_band_draw_slots_[index] = (epoch << 32) | key;
-      ++tiling_band_draw_count_;
+    if (epochs[index] != epoch) {
+      keys[index] = key;
+      epochs[index] = epoch;
+      ++count;
       return true;
     }
-    if (uint32_t(slot) == key) {
+    if (keys[index] == key) {
       return false;
     }
     index = (index + 1) & mask;
@@ -969,10 +1013,38 @@ bool CommandProcessor::PrepareTilingBandDraw() {
     return true;
   }
   // The address right past the packet tells the draw apart (the bands replay
-  // the same command buffers).
-  if (!InsertTilingBandDraw(GuestReadPtrOffset())) {
+  // the same command buffers), with the calls made inside the scene on the
+  // way to it (beyond 32 bits, so never equal to an address alone).
+  const uint32_t address = GuestReadPtrOffset();
+  const bool call_sites = cvars::merge_tiling_bands_call_sites;
+  const bool log = cvars::merge_tiling_bands_log;
+  uint64_t call_key = address;
+  if (call_sites || log) {
+    const uint32_t depth = std::min(ib_call_depth_, kTilingBandMaxCallDepth);
+    for (uint32_t i = tiling_band_call_depth_ + 1; i < depth; ++i) {
+      call_key =
+          ((call_key ^ ib_call_sites_[i]) * UINT64_C(0x9E3779B97F4A7C15)) |
+          (UINT64_C(1) << 63);
+    }
+  }
+  const bool new_draw =
+      tiling_band_draws_.Insert(call_sites ? call_key : uint64_t(address));
+  if (log) {
+    ++tiling_band_stat_draws_;
+    const bool new_other = tiling_band_draw_other_keys_.Insert(
+        call_sites ? uint64_t(address) : call_key);
+    const bool new_by_calls = call_sites ? new_draw : new_other;
+    const bool new_by_address = call_sites ? new_other : new_draw;
+    if (new_by_calls && !new_by_address && tiling_band_ > 0) {
+      ++tiling_band_stat_rescued_;
+    }
+  }
+  if (!new_draw) {
     // Executed again within the first band (a buffer it replays itself) -
     // drawn, otherwise drawn in an earlier band.
+    if (tiling_band_ != 0 && log) {
+      ++tiling_band_stat_skipped_;
+    }
     return tiling_band_ == 0;
   }
   tiling_band_draw_from_later_band_ = tiling_band_ > 0;

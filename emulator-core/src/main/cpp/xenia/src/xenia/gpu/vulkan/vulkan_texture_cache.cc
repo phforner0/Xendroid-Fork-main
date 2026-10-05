@@ -12,7 +12,10 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <cstddef>
+#include <cstdlib>
+#include <cstring>
 #include <utility>
 
 #include "xenia/base/assert.h"
@@ -73,6 +76,13 @@ DEFINE_bool(
     "compression (unlike Turnip on Adreno 7xx gen 3 and 8xx), sampling it may "
     "get slower.",
     "Vulkan");
+DEFINE_bool(
+    vulkan_texture_load_to_image_auto, true,
+    "Turn vulkan_texture_load_to_image on at startup on Turnip with an Adreno "
+    "750 or newer, where the storage usage it needs keeps the textures' "
+    "compression (exact; Forza Horizon +4.5% fps on an Adreno 825). Elsewhere "
+    "vulkan_texture_load_to_image decides alone.",
+    "Vulkan");
 
 DEFINE_bool(
     vulkan_fast_sampler_filterability, true,
@@ -85,6 +95,26 @@ DEFINE_bool(
 namespace xe {
 namespace gpu {
 namespace vulkan {
+
+namespace {
+// vulkan_texture_load_to_image_auto: Turnip keeps the compression of images
+// with the storage usage from the Adreno 750 on (older Adreno and other drivers
+// may drop it, which slows sampling down).
+bool LoadToImageKeepsCompression(
+    const ui::vulkan::VulkanDevice::Properties& properties) {
+  if (properties.driverID != VK_DRIVER_ID_MESA_TURNIP) {
+    return false;
+  }
+  const char* name = std::strstr(properties.deviceName, "Adreno");
+  if (!name) {
+    return false;
+  }
+  while (*name && !std::isdigit(static_cast<unsigned char>(*name))) {
+    ++name;
+  }
+  return std::atoi(name) >= 750;
+}
+}  // namespace
 
 // Generated with `xb buildshaders`.
 namespace shaders {
@@ -3720,6 +3750,15 @@ bool VulkanTextureCache::Initialize() {
     return false;
   }
   // The same with a storage image destination (optional).
+  if (!cvars::vulkan_texture_load_to_image &&
+      cvars::vulkan_texture_load_to_image_auto &&
+      LoadToImageKeepsCompression(
+          command_processor_.GetVulkanDevice()->properties())) {
+    cvars::vulkan_texture_load_to_image = true;
+    XELOGI(
+        "VulkanTexture: texture loads straight into the images (Turnip on an "
+        "Adreno 750 or newer)");
+  }
   load_to_image_storage_ = cvars::vulkan_texture_load_to_image;
   load_descriptor_set_layouts[kLoadDescriptorSetIndexDestination] =
       command_processor_.GetSingleTransientDescriptorLayout(
