@@ -33,4 +33,5 @@
     <string name="adv_mode_always">Always</string>
     <string name="adv_mode_errors">After errors</string>
     <string name="adv_mode_never">Never</string>
+    <string name="adv_r_heat_limit">The phone reached its heat limit and slowed the game down. At 30 FPS it stays cooler.</string>
 </resources>

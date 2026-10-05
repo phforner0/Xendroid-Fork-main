@@ -41,11 +41,15 @@ object SessionAdvice {
     /** Worth a look: a session that failed (to open or later), or one that ran over a minute. */
     fun worthALook(run: SessionRun): Boolean = run.state == RunState.FAILED || (run.playedMs ?: 0L) >= 60_000L
 
+    /** Thermal statuses at which the phone slows down (PowerManager: severe and above). */
+    private val AT_THE_LIMIT = setOf("severe", "critical", "emergency", "shutdown")
+
     /**
      * What [run] suggests, errors first, at most [max]. [setting] answers a key's value as the
-     * game ran it next time (its own or the global one); [gameOwn], the keys the game has values of.
+     * game ran it next time (its own or the global one); [gameOwn], the keys the game has values
+     * of; [events], the run's flight recorder (the phone's heat warnings are there).
      */
-    fun of(run: SessionRun, setting: (String) -> String?, gameOwn: Set<String>, max: Int = 3): List<Advice> {
+    fun of(run: SessionRun, setting: (String) -> String?, gameOwn: Set<String>, max: Int = 3, events: RunEventLog? = null): List<Advice> {
         val out = mutableListOf<Advice>()
         val failed = run.state == RunState.FAILED
         val crashed = failed && (run.nativeBacktrace != null || run.endReason.orEmpty().contains("native crash", ignoreCase = true))
@@ -82,9 +86,11 @@ object SessionAdvice {
                 out += Advice(Rule.AUDIO_BUFFER, mapOf(AUDIO_BURSTS to minOf(bursts + 2, MAX_AUDIO_BURSTS).toString()),
                     listOf("%.1f".format(java.util.Locale.ROOT, concealed * 100.0 / blocks)))
             }
-            val hottest = p.batteryMaxC
-            if (hottest != null && hottest >= HOT_BATTERY_C && (limit == 0 || limit > 30) && out.none { it.values[FPS_LIMIT] != null }) {
-                out += Advice(Rule.HEAT, mapOf(FPS_LIMIT to "30"), listOf("%.0f".format(java.util.Locale.ROOT, hottest)))
+            val hottest = p.batteryMaxC?.takeIf { it >= HOT_BATTERY_C }
+            val throttled = events?.events.orEmpty().any { it.kind == "thermal" && it.detail in AT_THE_LIMIT }
+            if ((hottest != null || throttled) && (limit == 0 || limit > 30) && out.none { it.values[FPS_LIMIT] != null }) {
+                // The battery's temperature when it was hot; none when only the phone's heat warning says so.
+                out += Advice(Rule.HEAT, mapOf(FPS_LIMIT to "30"), listOfNotNull(hottest?.let { "%.0f".format(java.util.Locale.ROOT, it) }))
             }
         }
         return out.sortedBy { if (it.rule.error) 0 else 1 }.take(max)

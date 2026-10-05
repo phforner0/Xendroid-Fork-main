@@ -83,6 +83,16 @@ class SessionAdviceTest {
         assertEquals(listOf(Rule.STEADY_30), SessionAdvice.of(hotSwinging, settings(SessionAdvice.FPS_LIMIT to "60"), emptySet()).map { it.rule })
     }
 
+    @Test fun thePhonesHeatWarningCountsToo() {
+        val warm = run(perf = perf(mapOf(60 to 1800), hottest = 39f))
+        val log = RunEventLog(events = listOf(RunEvent(600_000, "thermal", "moderate"), RunEvent(1_200_000, "thermal", "severe")))
+        val advice = SessionAdvice.of(warm, settings(SessionAdvice.FPS_LIMIT to "60"), emptySet(), events = log)
+        assertEquals(listOf(Rule.HEAT), advice.map { it.rule })
+        assertEquals("no temperature to quote: the warning says it", emptyList<String>(), advice.single().numbers)
+        val mild = RunEventLog(events = listOf(RunEvent(600_000, "thermal", "moderate")))
+        assertTrue(SessionAdvice.of(warm, settings(SessionAdvice.FPS_LIMIT to "60"), emptySet(), events = mild).isEmpty())
+    }
+
     @Test fun errorsComeFirstAndAtMostThree() {
         val bad = run(RunState.FAILED, reason = "native crash: SIGSEGV", perf = perf(mapOf(38 to 900, 42 to 600, 30 to 300),
             frameMs = mapOf(25 to 9000L, 120 to 200L), pipelines = 900, audio = 10_000L to 400L, hottest = 48f))

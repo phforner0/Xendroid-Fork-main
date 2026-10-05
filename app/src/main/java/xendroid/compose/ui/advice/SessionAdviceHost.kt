@@ -134,7 +134,9 @@ object SessionReviews {
             fun read(h: xendroid.compose.settings.ConfigHandle?, key: String) =
                 h?.getString(key.substringBefore('|'), key.substringAfter('|'))
             val own = SettingsSchema.allSettings.map { it.key }.filter { read(game, it) != null }.toSet()
-            return SessionAdvice.of(run, { key -> read(game, key) ?: read(global, key) ?: SettingsSchema.byKey[key]?.let(::defaultRaw) }, own)
+            val events = runCatching { xendroid.compose.sessions.SessionRuns.store().events(run.runId) }.getOrNull()
+            return SessionAdvice.of(run, { key -> read(game, key) ?: read(global, key) ?: SettingsSchema.byKey[key]?.let(::defaultRaw) }, own,
+                events = events)
         } finally {
             game.closeDiscard()
             global?.closeDiscard()
@@ -271,6 +273,6 @@ private fun adviceReason(a: SessionAdvice.Advice): String {
         SessionAdvice.Rule.SCALE_DOWN -> stringResource(R.string.adv_r_scale, n.getOrElse(0) { "?" }, n.getOrElse(1) { "?" }, n.getOrElse(2) { "?" })
         SessionAdvice.Rule.STEADY_30 -> stringResource(R.string.adv_r_steady, n.getOrElse(0) { "?" }, n.getOrElse(1) { "?" })
         SessionAdvice.Rule.AUDIO_BUFFER -> stringResource(R.string.adv_r_audio, n.getOrElse(0) { "?" })
-        SessionAdvice.Rule.HEAT -> stringResource(R.string.adv_r_heat, n.getOrElse(0) { "?" })
+        SessionAdvice.Rule.HEAT -> if (n.isEmpty()) stringResource(R.string.adv_r_heat_limit) else stringResource(R.string.adv_r_heat, n[0])
     }
 }

@@ -55,6 +55,8 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -496,9 +498,13 @@ fun defaultHints(sections: Boolean, onMenu: (() -> Unit)? = null): List<XdHint> 
         XdHint(if (swap) "A" else "B", stringResource(R.string.xd_hint_back)),
     )
     if (sections) list += XdHint("LB/RB", stringResource(R.string.xd_hint_sections))
+    list += XdHint("LT/RT", stringResource(R.string.xd_hint_page))
     list += XdHint("≡", stringResource(R.string.xd_hint_menu), onMenu)
     return list
 }
+
+/** Rows LT/RT move the focus by: about a screen of list rows. */
+private const val PAGE_STEPS = 6
 
 /** The hints bar along the bottom of controller screens. */
 @Composable
@@ -593,6 +599,7 @@ fun CFrame(
     var guide by remember { mutableStateOf(false) }
     val openGuide = { guide = true }
     val withMenu = hints.map { if (it.buttons == "≡" && it.onClick == null) XdHint(it.buttons, it.label, openGuide) else it }
+    val focus = LocalFocusManager.current
     BoxWithConstraints(
         modifier.fillMaxSize()
             .onPreviewKeyEvent { e ->
@@ -603,6 +610,9 @@ fun CFrame(
                         b == PadButton.START -> { guide = !guide; true }
                         b == PadButton.LB && onShoulder != null -> { onShoulder(-1); true }
                         b == PadButton.RB && onShoulder != null -> { onShoulder(1); true }
+                        // Round 2: LT/RT go a page up or down, several rows at once (the list follows).
+                        b == PadButton.LT -> { repeat(PAGE_STEPS) { focus.moveFocus(FocusDirection.Up) }; true }
+                        b == PadButton.RT -> { repeat(PAGE_STEPS) { focus.moveFocus(FocusDirection.Down) }; true }
                         else -> false
                     }
                 }

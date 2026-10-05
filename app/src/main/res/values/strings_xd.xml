@@ -23,4 +23,6 @@
     <string name="xd_guide_about">About</string>
     <string name="xd_guide_use_touch">Use touch mode</string>
     <string name="xd_undo">Undo</string>
+    <string name="xd_hint_page">Page</string>
+    <string name="xd_hint_jump">Jump 5</string>
 </resources>

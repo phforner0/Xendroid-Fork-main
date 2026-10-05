@@ -138,6 +138,8 @@ fun LibraryController(
         val i = tabs.indexOf(current)
         onTab(tabs[Math.floorMod(i + d, tabs.size)])
     }
+    // Round 2: LT/RT move five covers at once in a long shelf.
+    val jump: (Int) -> Unit = { d -> if (games.isNotEmpty()) onFocusedId(games[(index + d).coerceIn(0, games.lastIndex)].stableId) }
     WithCoverColors(colors?.dyn, colors?.accent) {
         val c = Xd.colors
         CFrame(
@@ -147,6 +149,7 @@ fun LibraryController(
                 XdHint("X", stringResource(R.string.xd_lib_sheet)) { game?.let(onOpen) },
                 XdHint("Y", stringResource(if (game != null && data.favorite(game)) R.string.xd_lib_unfavorite else R.string.xd_lib_favorite)) { game?.let(onFavorite) },
                 XdHint("LB/RB", stringResource(R.string.xd_hint_tabs)) { shiftTab(1) },
+                XdHint("LT/RT", stringResource(R.string.xd_hint_jump)) { jump(5) },
                 XdHint("≡", stringResource(R.string.xd_hint_menu)),
             ),
             onShoulder = shiftTab,
@@ -155,6 +158,8 @@ fun LibraryController(
                     PadButton.X -> { game?.let(onOpen); true }
                     PadButton.Y -> { game?.let(onFavorite); true }
                     PadButton.SELECT -> { searching = true; true }
+                    PadButton.LT -> { jump(-5); true }
+                    PadButton.RT -> { jump(5); true }
                     else -> false
                 }
             },

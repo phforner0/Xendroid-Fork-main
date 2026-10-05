@@ -23,4 +23,6 @@
     <string name="xd_guide_about">Sobre</string>
     <string name="xd_guide_use_touch">Usar o modo toque</string>
     <string name="xd_undo">Desfazer</string>
+    <string name="xd_hint_page">Página</string>
+    <string name="xd_hint_jump">Pular 5</string>
 </resources>

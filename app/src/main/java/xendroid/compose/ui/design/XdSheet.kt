@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
@@ -84,6 +85,16 @@ fun XdSheet(
         (LocalView.current.parent as? DialogWindowProvider)?.window?.setDimAmount(0f)
         XdDialogEdgeToEdge()
         val c = Xd.colors
+        // Round 2: with a controller the sheet's first control has the focus as it opens, so A
+        // works at once (nothing had it, and the first press only woke the focus up). A sheet
+        // that gives the focus itself (the key capture) keeps it.
+        val focus = androidx.compose.ui.platform.LocalFocusManager.current
+        val inside = androidx.compose.runtime.remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+        if (c.controller) androidx.compose.runtime.LaunchedEffect(Unit) {
+            androidx.compose.runtime.withFrameNanos { }
+            androidx.compose.runtime.withFrameNanos { }
+            if (!inside.get()) focus.moveFocus(androidx.compose.ui.focus.FocusDirection.Next)
+        }
         BoxWithConstraints(
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f))
                 .clickable(remember = MutableInteractionSource(), indication = null) { if (dismissible) onDismiss() },
@@ -102,6 +113,7 @@ fun XdSheet(
                     .background(c.solid(c.sheet))
                     .border(1.dp, Color.White.copy(alpha = 0.06f), shape)
                     .clickable(remember = MutableInteractionSource(), indication = null) {}
+                    .onFocusChanged { inside.set(it.hasFocus) }
                     // Used by touch, nothing takes the focus as the sheet opens (a text field would
                     // pop the keyboard up); with a controller the first control does.
                     .then(if (c.controller) Modifier else Modifier.noInitialFocus())
@@ -114,7 +126,8 @@ fun XdSheet(
                 if (title != null) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(title, style = XdText.sheetTitle, color = c.fg, modifier = Modifier.weight(1f))
-                        if (closeButton && dismissible) XdIconButton(XdIcons.x, null, onDismiss)
+                        // With a controller, B closes: the X would only be the first stop of the focus.
+                        if (closeButton && dismissible && !c.controller) XdIconButton(XdIcons.x, null, onDismiss)
                     }
                     if (subtitle != null) Text(subtitle, style = XdText.note, color = c.fg3, modifier = Modifier.padding(top = 0.dp))
                 }

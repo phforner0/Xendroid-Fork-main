@@ -244,3 +244,10 @@ Depois disso, uma passada tela a tela.
 4. Ficha do jogo (sessões, TU) e pastas de conteúdo.
 5. Sugestões ao fim da sessão.
 6. Navegação por controle, passada final em todas as telas.
+
+## 4. Estado
+
+Tudo da seção 2 foi aplicado, na ordem da seção 3; o que mudou em cada parte, os prints e o que
+falta conferir no aparelho estão em [app.md](app.md), seção "Ajustes 2". Ficou de fora só a regra
+de sugestão da geração de quadros: ela é ligada por sessão no menu em jogo e não fica gravada no
+jogo, então não há o que desligar ao fim da sessão.

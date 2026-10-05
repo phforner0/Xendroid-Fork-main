@@ -169,6 +169,22 @@ fun GameLibraryScreen(
 
     // Folders in toasts are named as the phone's Files app names them.
     val storageRoots = rememberStorageRoots()
+    // Round 2: XenDroid/<Games>, /TU and /DLC made and added in one go (the folders screen and
+    // the first-run assistant offer it).
+    val createStandard: (() -> Unit)? = if (!AllFilesAccess.isSupported) null else ({
+        if (!AllFilesAccess.isGranted()) AllFilesAccess.requestAccess(context)
+        else {
+            val gamesName = context.getString(R.string.xd_fd_std_games)
+            val made = xendroid.compose.data.StandardFolders.create(android.os.Environment.getExternalStorageDirectory(), gamesName)
+            if (made == null) toast.show(context.getString(R.string.xd_fd_std_failed))
+            else {
+                viewModel.onRealPathFolderPicked(made.games.absolutePath)
+                xendroid.compose.ui.content.ContentFolders.add(context, made.updates.absolutePath)
+                xendroid.compose.ui.content.ContentFolders.add(context, made.dlc.absolutePath)
+                toast.show(context.getString(R.string.xd_fd_std_done, gamesName))
+            }
+        }
+    })
     if (showBrowser) {
         FolderBrowserScreen(
             onFolderChosen = { path -> showBrowser = false; viewModel.onRealPathFolderPicked(path) },
@@ -204,20 +220,7 @@ fun GameLibraryScreen(
             games = (state as? LibraryUiState.Loaded)?.games.orEmpty(),
             scanning = scanProgress != null || isRefreshing,
             onAdd = startRealPathMode,
-            onCreateStandard = if (!AllFilesAccess.isSupported) null else ({
-                if (!AllFilesAccess.isGranted()) AllFilesAccess.requestAccess(context)
-                else {
-                    val gamesName = context.getString(R.string.xd_fd_std_games)
-                    val made = xendroid.compose.data.StandardFolders.create(android.os.Environment.getExternalStorageDirectory(), gamesName)
-                    if (made == null) toast.show(context.getString(R.string.xd_fd_std_failed))
-                    else {
-                        viewModel.onRealPathFolderPicked(made.games.absolutePath)
-                        xendroid.compose.ui.content.ContentFolders.add(context, made.updates.absolutePath)
-                        xendroid.compose.ui.content.ContentFolders.add(context, made.dlc.absolutePath)
-                        toast.show(context.getString(R.string.xd_fd_std_done, gamesName))
-                    }
-                }
-            }),
+            onCreateStandard = createStandard,
             standardGames = remember { xendroid.compose.data.StandardFolders.under(android.os.Environment.getExternalStorageDirectory(),
                 context.getString(R.string.xd_fd_std_games)).games.absolutePath },
             onRemove = { folder ->
@@ -264,6 +267,7 @@ fun GameLibraryScreen(
         FirstRunAssistant(
             folderReady = state is LibraryUiState.Loaded,
             onChooseFolder = startRealPathMode,
+            onCreateStandard = createStandard,
             onOpenProfiles = onOpenProfiles,
             onClose = {
                 FirstRunStore.markDone(context)

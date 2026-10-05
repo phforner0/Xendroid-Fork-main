@@ -33,4 +33,5 @@
     <string name="adv_mode_always">Sempre</string>
     <string name="adv_mode_errors">Só depois de erros</string>
     <string name="adv_mode_never">Nunca</string>
+    <string name="adv_r_heat_limit">O telefone chegou ao limite de calor e reduziu o desempenho do jogo. A 30 FPS ele esquenta menos.</string>
 </resources>

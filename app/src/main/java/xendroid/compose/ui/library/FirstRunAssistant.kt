@@ -114,6 +114,8 @@ fun FirstRunAssistant(
     covers: List<Any> = emptyList(),
     activeProfile: String? = null,
     onCreateProfile: ((String) -> Unit)? = null,
+    /** Round 2: makes XenDroid/<Games>, /TU and /DLC and adds them. */
+    onCreateStandard: (() -> Unit)? = null,
     step: FirstRunStep = FirstRunStep.PHONE,
     onStep: (FirstRunStep) -> Unit = {},
 ) {
@@ -145,7 +147,7 @@ fun FirstRunAssistant(
                     Column(Modifier.widthIn(max = 680.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         when (step) {
                             FirstRunStep.PHONE -> PhoneStep(folderReady)
-                            FirstRunStep.GAMES -> GamesStep(folderReady, folders, gamesFound, scanning, covers, onChooseFolder)
+                            FirstRunStep.GAMES -> GamesStep(folderReady, folders, gamesFound, scanning, covers, onChooseFolder, onCreateStandard)
                             FirstRunStep.LOCALE -> LocaleStep()
                             FirstRunStep.PROFILE -> ProfileStep(activeProfile, onCreateProfile, onOpenProfiles)
                             FirstRunStep.USE -> UseStep()
@@ -261,7 +263,8 @@ private fun PhoneStep(folderReady: Boolean) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun GamesStep(folderReady: Boolean, folders: List<String>, gamesFound: Int?, scanning: Boolean, covers: List<Any>, onChooseFolder: () -> Unit) {
+private fun GamesStep(folderReady: Boolean, folders: List<String>, gamesFound: Int?, scanning: Boolean, covers: List<Any>, onChooseFolder: () -> Unit,
+                      onCreateStandard: (() -> Unit)?) {
     val c = Xd.colors
     StepHead(stringResource(R.string.fr_your_games))
     if (!AllFilesAccess.isSupported) {
@@ -270,7 +273,14 @@ private fun GamesStep(folderReady: Boolean, folders: List<String>, gamesFound: I
     }
     Text(stringResource(R.string.xd_fr_games_note), style = XdText.body, color = c.fg2)
     if (!folderReady && folders.isEmpty()) {
-        XdButton(stringResource(R.string.fr_choose_folder), onChooseFolder, kind = XdButtonKind.PRIMARY, size = XdButtonSize.LG, icon = XdIcons.folder)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            XdButton(stringResource(R.string.fr_choose_folder), onChooseFolder, kind = XdButtonKind.PRIMARY, size = XdButtonSize.LG, icon = XdIcons.folder)
+            // Round 2: no folder yet? The app's own, ready to fill.
+            if (onCreateStandard != null) XdButton(stringResource(R.string.xd_fd_std), onCreateStandard, kind = XdButtonKind.SECONDARY,
+                size = XdButtonSize.LG, icon = XdIcons.plus)
+        }
+        if (onCreateStandard != null) Text(stringResource(R.string.xd_fd_std_note, stringResource(R.string.xd_fd_std_games)),
+            style = XdText.note, color = c.fg3)
         return
     }
     XdCard(Modifier.fillMaxWidth()) {
