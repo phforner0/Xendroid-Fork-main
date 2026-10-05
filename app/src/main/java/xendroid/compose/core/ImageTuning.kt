@@ -34,7 +34,21 @@ data class ImageTuning(val antialiasing: Int = -1, val sharpness: Int = -1, val 
         if (dither >= 0) add("Display|postprocess_dither" to (dither == 1).toString())
     }
 
+    /**
+     * Round 2: every key the Image options write, each with its value or null where the option
+     * follows the Settings (the game's own value goes), as the menu keeps them for the game.
+     */
+    fun cvarValues(): Map<String, String?> = mapOf(
+        "Display|postprocess_antialiasing" to AA.getOrNull(antialiasing),
+        "Display|postprocess_ffx_cas_additional_sharpness" to CAS.getOrNull(sharpness),
+        "Display|postprocess_ffx_fsr_sharpness_reduction" to FSR.getOrNull(sharpness),
+        "Display|postprocess_dither" to if (dither >= 0) (dither == 1).toString() else null,
+    )
+
     companion object {
+        /** The scaling effect [effect] (-1: the Settings one) as the config writes it; null = the Settings'. */
+        fun scalingValue(effect: Int): String? = EFFECTS.getOrNull(effect)
+
         /** The core's scaling effects in the menu's order (Presenter's Effect). */
         val EFFECTS = listOf("bilinear", "cas", "fsr", "sgsr", "lanczos", "crt")
         private val AA = listOf("none", "fxaa", "fxaa_extreme")

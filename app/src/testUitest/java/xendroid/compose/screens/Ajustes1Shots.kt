@@ -34,26 +34,23 @@ import xendroid.compose.core.HudDetail
 import xendroid.compose.core.HudLook
 import xendroid.compose.core.HudMetric
 import xendroid.compose.core.PerformancePanel
-import xendroid.compose.core.PresentationState
 import xendroid.compose.core.ThermalWatch
 import xendroid.compose.driver.CustomDrivers
 import xendroid.compose.driver.DriverRepository
-import xendroid.compose.settings.FpsConfigSnapshot
 import xendroid.compose.settings.SettingsViewModel
 import xendroid.compose.shots.Fixture
 import xendroid.compose.shots.Phone
 import xendroid.compose.shots.SampleArt
 import xendroid.compose.shots.SampleLibrary
+import xendroid.compose.shots.SampleMenu
 import xendroid.compose.shots.ShotApp
 import xendroid.compose.shots.app
 import xendroid.compose.shots.shot
 import xendroid.compose.ui.design.InputMode
 import xendroid.compose.ui.drivers.DriversScreen
-import xendroid.compose.ui.ingame.InGameAction
 import xendroid.compose.ui.ingame.InGameMenu
 import xendroid.compose.ui.ingame.InGameMenuState
 import xendroid.compose.ui.ingame.InGamePage
-import xendroid.compose.ui.ingame.MenuStat
 import xendroid.compose.ui.ingame.performancePanelSections
 
 /**
@@ -120,22 +117,10 @@ class Ajustes1Shots {
         compose.app(mode) {
             Scene {
                 InGameMenu(
-                    state = InGameMenuState(open = true, page = InGamePage.GRAPHICS, developer = false, selections = listOf(selected, 0, 0, 0)),
-                    paused = true, fpsLimit = 30,
-                    fpsConfig = FpsConfigSnapshot(titleId = "4D5307E6", globalLimit = 60, gameLimit = 30),
-                    presentation = PresentationState(displayMode = 0), fgPreset = 1, lsfgAvailable = false,
-                    extensionLabels = mapOf(
-                        InGameAction.SCALING_EFFECT to "Efeito de escala: FSR",
-                        InGameAction.ANTIALIASING to "Suavização: FXAA",
-                        InGameAction.SHARPNESS to "Nitidez: alta",
-                        InGameAction.DITHER to "Pontilhado: das configurações",
-                    ),
-                    performanceHud = true, compactHud = true, hudMetrics = HudMetric.entries.toSet(),
-                    touchControls = true, adaptiveSticks = false, stretch = false, volume = 80,
-                    sessionInfo = "v412 · 7bb3409\nAdreno (TM) 825", phoneControllers = null,
-                    logSessions = emptyList(), onLogChoice = {}, onPage = {}, onSelect = {}, onAction = {}, onQuitChoice = {},
-                    gameName = "Halo 3", art = art,
-                    status = listOf(MenuStat("30", "FPS"), MenuStat("34", "ms", "p99"), MenuStat("41", "°C"), MenuStat("72%", label = "bateria")),
+                    state = InGameMenuState(open = true, page = InGamePage.GRAPHICS, developer = false).select(selected),
+                    model = SampleMenu.model(art),
+                    onPage = {}, onSelect = {}, onAction = {}, onAdjust = { _, _ -> }, onChoose = { _, _ -> }, onSet = { _, _ -> },
+                    onLogChoice = {}, onQuitChoice = {},
                 )
             }
         }
@@ -161,9 +146,9 @@ class Ajustes1Shots {
     }
 
     @Config(qualifiers = Phone.LAND) @Test fun hudLooks() { hud(); compose.shot("ajustes-1/depois-hud") }
-    @Config(qualifiers = Phone.LAND) @Test fun menuImage() { menu(InputMode.TOUCH, 5); compose.shot("ajustes-1/depois-menu-imagem") }
-    @Config(qualifiers = Phone.PORT) @Test fun menuImagePort() { menu(InputMode.TOUCH, 6); compose.shot("ajustes-1/depois-menu-imagem-retrato") }
-    @Config(qualifiers = Phone.LAND) @Test fun menuImageController() { menu(InputMode.CONTROLLER, 5); compose.shot("ajustes-1/depois-menu-imagem-controle") }
+    @Config(qualifiers = Phone.LAND) @Test fun menuImage() { menu(InputMode.TOUCH, 2); compose.shot("ajustes-1/depois-menu-imagem") }
+    @Config(qualifiers = Phone.PORT) @Test fun menuImagePort() { menu(InputMode.TOUCH, 3); compose.shot("ajustes-1/depois-menu-imagem-retrato") }
+    @Config(qualifiers = Phone.LAND) @Test fun menuImageController() { menu(InputMode.CONTROLLER, 2); compose.shot("ajustes-1/depois-menu-imagem-controle") }
     @Config(qualifiers = Phone.PORT) @Test fun driversAvailablePort() { available(InputMode.TOUCH); compose.shot("ajustes-1/depois-drivers-para-baixar-retrato") }
     @Config(qualifiers = Phone.LAND) @Test fun driversAvailable() { available(InputMode.TOUCH); compose.shot("ajustes-1/depois-drivers-para-baixar") }
 

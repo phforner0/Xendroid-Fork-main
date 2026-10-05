@@ -85,6 +85,8 @@ fun GamepadOverlay(
     onTranslate: (ControlId, dxFrac: Float, dyFrac: Float) -> Unit = { _, _, _ -> },
     onScale: (ControlId, factor: Float) -> Unit = { _, _ -> },
     onDragEnd: (ControlId) -> Unit = {},
+    /** Round 2: dark glass buttons (modern, the default) or the coloured ones (classic). */
+    style: ControlStyle = ControlStyle.MODERN,
 ) {
     // Create the emitter ONCE. The host's onKeyEvent lambda is unstable (captures the
     // Activity), so remember(onKeyEvent) would recreate the emitter on every touch (poke
@@ -318,6 +320,7 @@ fun GamepadOverlay(
                 dpadDirs = if (c is OnScreenControl.Dpad) dpadState[c.id] ?: emptySet() else emptySet(),
                 activePos = activePos(c.id),
                 centerOverride = stickOrigins[c.id],
+                style = style,
             )
             if (editMode && c.id == selectedId) drawSelection(c, sizePx, density)
         }
@@ -593,10 +596,20 @@ private fun DrawScope.drawControl(
     cache: GamepadDrawCache,
     pressed: Boolean, dpadDirs: Set<Int>, activePos: Offset?,
     centerOverride: Offset? = null,
+    style: ControlStyle = ControlStyle.CLASSIC,
 ) {
     val center = centerOverride ?: controlCenterPx(c, size)
     val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
     val strokeW = with(density) { 2.dp.toPx() }
+    if (style == ControlStyle.MODERN) {
+        val rim = with(density) { 1.5.dp.toPx() }
+        when (c) {
+            is OnScreenControl.Button -> drawGlassButton(c, center, radius, rim, opacity, pressed, cache)
+            is OnScreenControl.Dpad -> drawGlassDpad(center, radius, rim, opacity, dpadDirs, cache)
+            is OnScreenControl.AnalogStick -> drawGlassStick(center, radius, rim, opacity, activePos)
+        }
+        return
+    }
     // Coloured face buttons keep their face colour; only their light accents follow the ink.
     val ink = lerp(Color.White, OVERLAY_INK_BRIGHT, contrast)
     when (c) {
@@ -730,6 +743,96 @@ private fun DrawScope.drawStick(
     )) drawCircle(dot, dotR, p)
 }
 
+// ---- Round 2: the modern look (dark glass) ----
+
+// Glass: a dark translucent body with a light rim, readable over bright and dark scenes alike.
+private val GLASS = Color(0xFF0B0F0D)
+private val GLASS_PRESSED = Color(0xFF26302B)
+// The face letters keep the Xbox colours, lighter so they read on the dark glass.
+private val LETTER_A = Color(0xFF7BDA55)
+private val LETTER_B = Color(0xFFFF6A5F)
+private val LETTER_X = Color(0xFF5DA9FF)
+private val LETTER_Y = Color(0xFFFFD447)
+
+private fun DrawScope.glassDisc(center: Offset, radius: Float, rim: Float, opacity: Float, pressed: Boolean, rimColor: Color = Color.White) {
+    drawCircle((if (pressed) GLASS_PRESSED else GLASS).copy(alpha = (if (pressed) 0.72f else 0.46f) * opacity), radius, center)
+    drawCircle(rimColor.copy(alpha = (if (pressed) 0.85f else 0.32f) * opacity), radius - rim / 2f, center, style = Stroke(rim))
+}
+
+private fun DrawScope.drawGlassButton(
+    c: OnScreenControl.Button, center: Offset, radius: Float, rim: Float, opacity: Float, pressed: Boolean, cache: GamepadDrawCache,
+) {
+    val letter = when (c.id) {
+        ControlId.A -> LETTER_A; ControlId.B -> LETTER_B
+        ControlId.X -> LETTER_X; ControlId.Y -> LETTER_Y
+        else -> null
+    }
+    when {
+        letter != null -> {
+            glassDisc(center, radius, rim, opacity, pressed, rimColor = if (pressed) letter else Color.White)
+            drawLabel(cache, c.label, center, radius, letter.copy(alpha = 0.96f * opacity), bold = true, fill = 0.56f, tinted = true)
+        }
+        c.id in TRIGGER_IDS || c.id in PILL_IDS -> {
+            val trigger = c.id in TRIGGER_IDS
+            val w = radius * (if (trigger) 4.0f else 3.1f); val h = radius * (if (trigger) 1.5f else 1.1f)
+            val tl = Offset(center.x - w / 2f, center.y - h / 2f)
+            val cr = CornerRadius(h / 2f, h / 2f)
+            drawRoundRect((if (pressed) GLASS_PRESSED else GLASS).copy(alpha = (if (pressed) 0.72f else 0.46f) * opacity), tl, Size(w, h), cr)
+            drawRoundRect(Color.White.copy(alpha = (if (pressed) 0.85f else 0.32f) * opacity),
+                Offset(tl.x + rim / 2f, tl.y + rim / 2f), Size(w - rim, h - rim), cr, style = Stroke(rim))
+            drawLabel(cache, c.label, center, radius, Color.White.copy(alpha = 0.9f * opacity))
+        }
+        else -> {                                           // L3/R3/Back/Start: a small disc
+            val rr = radius * 0.8f
+            glassDisc(center, rr, rim, opacity, pressed)
+            drawLabel(cache, c.label, center, rr, Color.White.copy(alpha = 0.88f * opacity))
+        }
+    }
+}
+
+/** Four arrow pads around a hub, each lit while pressed. */
+private fun DrawScope.drawGlassDpad(center: Offset, radius: Float, rim: Float, opacity: Float, dirs: Set<Int>, cache: GamepadDrawCache) {
+    val g = cache.geom(center, radius)
+    drawCircle(GLASS.copy(alpha = 0.26f * opacity), radius, center)
+    clipPath(g.clipOval) {
+        drawPath(g.cross, GLASS.copy(alpha = 0.5f * opacity))
+        for (code in dirs) {
+            val clip = g.armClips.getOrNull(code) ?: continue
+            clipPath(clip) { drawPath(g.cross, Color.White.copy(alpha = 0.32f * opacity)) }
+        }
+        drawPath(g.cross, Color.White.copy(alpha = 0.3f * opacity), style = Stroke(rim))
+    }
+    // An arrow on each arm, pointing out.
+    val tip = radius * 0.86f; val base = radius * 0.6f; val half = radius * 0.13f
+    for (dir in 0..3) {
+        val (dx, dy) = when (dir) { 0 -> -1f to 0f; 1 -> 0f to -1f; 2 -> 1f to 0f; else -> 0f to 1f }
+        val path = Path().apply {
+            moveTo(center.x + dx * tip, center.y + dy * tip)
+            lineTo(center.x + dx * base - dy * half, center.y + dy * base + dx * half)
+            lineTo(center.x + dx * base + dy * half, center.y + dy * base - dx * half)
+            close()
+        }
+        drawPath(path, Color.White.copy(alpha = (if (dir in dirs) 0.95f else 0.6f) * opacity))
+    }
+}
+
+/** A dark well with a ring and a domed knob that lights its rim while held. */
+private fun DrawScope.drawGlassStick(center: Offset, radius: Float, rim: Float, opacity: Float, activePos: Offset?) {
+    drawCircle(GLASS.copy(alpha = 0.34f * opacity), radius, center)
+    drawCircle(Color.White.copy(alpha = 0.22f * opacity), radius - rim / 2f, center, style = Stroke(rim))
+    val knob = activePos?.let { p ->
+        var dx = p.x - center.x; var dy = p.y - center.y
+        val len = hypot(dx, dy)
+        if (len > radius) { dx = dx / len * radius; dy = dy / len * radius }
+        Offset(center.x + dx, center.y + dy)
+    } ?: center
+    val active = activePos != null
+    val knobR = radius * 0.56f
+    drawCircle(Brush.radialGradient(listOf(Color(0xFF3A443F), GLASS), center = Offset(knob.x, knob.y - knobR * 0.35f), radius = knobR * 1.3f),
+        knobR, knob, alpha = (if (active) 0.92f else 0.78f) * opacity)
+    drawCircle(Color.White.copy(alpha = (if (active) 0.8f else 0.4f) * opacity), knobR - rim / 2f, knob, style = Stroke(rim))
+}
+
 private fun DrawScope.drawSelection(c: OnScreenControl, size: IntSize, density: Density) {
     val center = controlCenterPx(c, size)
     val radius = with(density) { c.baseSizeDp.dp.toPx() } / 2f * c.scale
@@ -749,12 +852,14 @@ private fun DrawScope.drawHiddenMark(c: OnScreenControl, size: IntSize, density:
 
 private fun DrawScope.drawLabel(
     cache: GamepadDrawCache, label: String, center: Offset, radius: Float, color: Color,
-    bold: Boolean = false, fill: Float? = null,
+    bold: Boolean = false, fill: Float? = null, tinted: Boolean = false,
 ) {
     if (label.isEmpty()) return
-    // Only color.alpha varies per draw; label RGB stays white regardless of the bright-scene ink.
+    // Only color.alpha varies per draw; label RGB stays white regardless of the bright-scene ink,
+    // unless [tinted] (the modern look's coloured A/B/X/Y letters).
     val l = cache.label(label, radius, bold, fill)
     drawIntoCanvas { canvas ->
+        l.paint.color = if (tinted) color.copy(alpha = 1f).toArgb() else android.graphics.Color.WHITE
         l.paint.alpha = (color.alpha * 255).toInt()
         val nudgeX = if (fill != null) ABXY_LABEL_NUDGE_X * radius else 0f
         val baseline = center.y - l.cy                    // center the glyph itself, not the font line

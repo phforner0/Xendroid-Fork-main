@@ -282,7 +282,7 @@ private fun GamepadEditorContent(controller: GamepadController, onDone: () -> Un
         // screen (no top-bar inset). Pass the square-grid cell counts only while Snap is on.
         GamepadOverlay(
             controls = base, opacity = working.globals.opacity.coerceAtLeast(0.5f), modifier = Modifier.fillMaxSize(),
-            onKeyEvent = { _, _, _ -> }, editMode = true,
+            onKeyEvent = { _, _, _ -> }, editMode = true, style = ControlStyle.parse(working.globals.style),
             gridStepsX = if (snap) stepsX else 0, gridStepsY = if (snap) stepsY else 0,
             selectedId = selected, onSelect = { selected = it },
             onTranslate = { id, dx, dy ->

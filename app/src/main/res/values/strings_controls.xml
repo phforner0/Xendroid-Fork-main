@@ -182,4 +182,6 @@
         <item quantity="one">%1$d controller</item>
         <item quantity="other">%1$d controllers</item>
     </plurals>
+    <string name="xd_tg_style">Look</string>
+    <string name="xd_tg_style_desc">Modern: dark glass buttons with coloured letters. Classic: the coloured buttons of before.</string>
 </resources>

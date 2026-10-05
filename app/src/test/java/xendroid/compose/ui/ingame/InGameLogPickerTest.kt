@@ -5,7 +5,7 @@ import org.junit.Test
 
 class InGameLogPickerTest {
     @Test fun sessionPickerHasAllArchivesAndBackWithoutSwitchingTabs() {
-        val state = InGameMenuState().show(true).changePage(3).showLogs(4)
+        val state = InGameMenuState().show(true).changePage(-1).showLogs(4)
         assertEquals(6, state.count)
         assertEquals(InGamePage.SESSION, state.changePage(1).page)
         assertNull(state.action)

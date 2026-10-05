@@ -68,6 +68,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -87,7 +88,10 @@ import xendroid.compose.ui.keyboard.GuestKeyboardPanel
 import xendroid.compose.ui.messagebox.GuestMessageBoxPanel
 import xendroid.compose.ui.ingame.InGameAction
 import xendroid.compose.ui.ingame.InGameMenu
-import xendroid.compose.ui.ingame.InGameMenuHandle
+import xendroid.compose.ui.ingame.InGameMenuEdge
+import xendroid.compose.ui.ingame.InGameMenuModel
+import xendroid.compose.ui.ingame.MenuValue
+import xendroid.compose.ui.ingame.RowKind
 import xendroid.compose.ui.ingame.InGameMenuState
 import xendroid.compose.ui.ingame.InGamePage
 import xendroid.compose.ui.theme.xendroidTheme
@@ -102,6 +106,9 @@ import xendroid.compose.data.KeymapStore
 import xendroid.compose.settings.ConfigStore
 import xendroid.compose.settings.FpsConfigSnapshot
 import xendroid.compose.settings.InGameConfigRepository
+import xendroid.compose.settings.InGameChanges
+import xendroid.compose.settings.InGameChangesStore
+import xendroid.compose.settings.InGamePrefs
 
 /**
  * The :emu emulator host (separate process; see manifest). Reads game_uri from the Intent,
@@ -112,6 +119,20 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     companion object {
         private const val TAG = "EmuHost"
+        // Round 2: the settings the in-game menu keeps for the game (config keys) and the live ones Undo puts back.
+        private const val FPS_KEY = "GPU|framerate_limit"
+        private const val SCALING_KEY = "Display|postprocess_scaling_and_sharpening"
+        private const val AA_KEY = "Display|postprocess_antialiasing"
+        private const val CAS_KEY = "Display|postprocess_ffx_cas_additional_sharpness"
+        private const val DITHER_KEY = "Display|postprocess_dither"
+        private const val TOUCH_KEY = "HID|show_touch_overlay"
+        private const val VOLUME_KEY = "APU|volume"
+        private const val IMAGE_LIVE = "image"
+        private val MENU_CONFIG_KEYS = listOf(FPS_KEY, SCALING_KEY, AA_KEY, CAS_KEY, DITHER_KEY, TOUCH_KEY, VOLUME_KEY)
+        private val FPS_CHOICES = listOf(0, 30, 45, 60, 90, 120)
+        private val HUD_DETAILS = listOf(xendroid.compose.core.HudDetail.COMPACT, xendroid.compose.core.HudDetail.FULL,
+            xendroid.compose.core.HudDetail.PANEL)
+        private const val HUD_SCALE_SPAN = xendroid.compose.core.HudPlacements.MAX_SCALE - xendroid.compose.core.HudPlacements.MIN_SCALE
         private const val KEYBOARD_POLL_MS = 150L
         const val EXTRA_GAME_URI = "game_uri"
         const val EXTRA_DISC_LABELS = "disc_labels"
@@ -368,6 +389,26 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val hudMetrics = mutableStateOf(HudMetric.entries.toSet())
     /** 15g: the HUD's look for the running game (or the last one set). */
     private val hudLook = mutableStateOf(xendroid.compose.core.HudLook.BOX)
+    /** Round 2: the HUD's layout, edge, opacity, colours and graph (every game). */
+    private val hudStyle = mutableStateOf(xendroid.compose.core.HudStyle())
+    /** Round 2: this game's HUD size as the menu set it (null: the pinch's own). */
+    private val hudScale = mutableStateOf<Float?>(null)
+    /** Round 2: the in-game menu's own preferences (pause on open, keep changes for the game). */
+    private val inGamePrefs by lazy { InGamePrefs(getSharedPreferences(InGamePrefs.FILE, MODE_PRIVATE)) }
+    private val pauseOnOpen = mutableStateOf(true)
+    private val autoSave = mutableStateOf(true)
+    /** Round 2: this session's changes for the running game; reads and writes on [changesThread]. */
+    private var inGameChanges: InGameChanges? = null
+    private val changesThread = Dispatchers.IO.limitedParallelism(1)
+    // Not the activity's scope: a change made just before leaving the game still reaches the file.
+    private val changesScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + changesThread)
+    private val sessionChanges = mutableIntStateOf(0)
+    /** Round 2: the config keys this game has its own value for (the menu's "this game" tags). */
+    private val gameOwnKeys = mutableStateOf<Set<String>>(emptySet())
+    /** Round 2: each changed setting's live value before the session's first change of it, for Undo. */
+    private val liveBefore = mutableMapOf<String, Any?>()
+    /** Round 2: the touch controls' look (the layout file's globals, mirrored for the menu's actions). */
+    private val controlStyle = mutableStateOf(xendroid.compose.gamepad.ControlStyle.MODERN)
 
     // Fullscreen stretch:
     // false = preserve aspect ratio / black bars
@@ -616,6 +657,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             val savedMetrics = getSharedPreferences("fps_overlay", MODE_PRIVATE).getStringSet("hud_metrics", null)
             if (savedMetrics != null) hudMetrics.value = HudMetric.entries.filter { it.name in savedMetrics }.toSet()
             hudLook.value = xendroid.compose.core.HudPlacements.read(HudPreferences.of(this@EmulatorHostActivity), null).look
+            hudStyle.value = xendroid.compose.core.HudStyle.read(HudPreferences.of(this@EmulatorHostActivity))
+            pauseOnOpen.value = inGamePrefs.pauseOnOpen
+            autoSave.value = inGamePrefs.autoSave
 
             fullscreenStretchEnabled.value =
                 getSharedPreferences(
@@ -1433,6 +1477,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 bootStatus.value == null
                             ) {
                                 GamepadOverlay(
+                                    style = xendroid.compose.gamepad.ControlStyle.parse(cfg.globals.style),
                                     controls =
                                         controls,
                                     adaptiveSticks = adaptiveSticks.value,
@@ -1501,6 +1546,11 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         if (heldDirection != 0) panelNav()?.let { nav ->
                                             if (navRepeat.press(heldDirection, SystemClock.uptimeMillis())) movePanelSelection(nav, heldDirection)
                                         }
+                                        // Round 2: held left or right on a menu row keeps changing its value.
+                                        val heldAdjust = if (panelNavLeft) -1 else if (panelNavRight) 1 else 0
+                                        if (heldAdjust != 0 && menuRowsActive() && navRepeat.press(heldAdjust * 2, SystemClock.uptimeMillis())) {
+                                            adjustSelectedRow(heldAdjust)
+                                        }
                                         val playing = foregroundState.value && !menuState.value.open && !session.isPaused()
                                         val phones = phoneControllers.host != null
                                         val controllerRumble = rumbleSettings.value.anyOn
@@ -1536,6 +1586,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                         // 15g: this game's own HUD look, when it has one.
                                         hudLook.value = xendroid.compose.core.HudPlacements.read(
                                             HudPreferences.of(this@EmulatorHostActivity), activeTitle).look
+                                        hudScale.value = null
+                                        // Round 2: its changes start empty; its own display mode, filter and refresh rate apply.
+                                        startGameChanges(activeTitle)
                                         if (bootStatus.value != null && loadingArt.value == null && activeTitle != null) {
                                             loadingArt.value = withContext(Dispatchers.IO) {
                                                 runCatching {
@@ -1720,6 +1773,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 metrics = hudMetrics.value,
                                 titleId = activeTitleState.value,
                                 look = hudLook.value,
+                                style = hudStyle.value,
+                                scaleOverride = hudScale.value,
 
                                 modifier =
                                     Modifier.fillMaxSize(),
@@ -1735,125 +1790,29 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 ) }
                             } else if (menuState.value.open) {
                                 xendroidTheme(scale = uiScale, mode = hostMode) {
-                                    // U02: from string resources (en / pt-BR); status texts built by
-                                    // other components (ADPF, TV, phone controllers) are still English.
-                                    val on = stringResource(R.string.menu_on)
-                                    val off = stringResource(R.string.menu_off)
-                                    val rumbleNames = xendroid.compose.gamepad.RumbleIntensity.entries.associateWith { xendroid.compose.ui.rumbleLabel(it) }
+                                    // Round 2: the menu's values from this activity's state ([menuModel]).
+                                    LaunchedEffect(cfg.globals.style) { controlStyle.value = xendroid.compose.gamepad.ControlStyle.parse(cfg.globals.style) }
                                     InGameMenu(
                                         state = menuState.value,
-                                        paused = menuPaused.value,
-                                        fpsLimit = fpsLimitState.intValue,
-                                        fpsConfig = fpsConfig.value,
-                                        presentation = presentationState.value,
-                                        fgPreset = fgPreset.intValue,
-                                        lsfgAvailable = lsfgCache.value != null && !importingLsfg,
-                                        extensionLabels = mapOf(
-                                            InGameAction.COLOR_FILTER to if (presentationState.value.colorError != 0) stringResource(R.string.menu_color_filter_unavailable) else
-                                                stringResource(R.string.menu_color_filter_value, listOf(off, stringResource(R.string.menu_color_grayscale),
-                                                    stringResource(R.string.menu_color_contrast), stringResource(R.string.menu_color_warm),
-                                                    stringResource(R.string.menu_color_vivid))[presentationState.value.colorFilter.coerceIn(0, 4)]),
-                                            InGameAction.LSFG_MULTIPLIER to if (lsfgTarget.intValue != xendroid.compose.core.FrameGenerationTarget.OFF)
-                                                stringResource(R.string.menu_lsfg_multiplier_target, lsfgMultiplier.intValue)
-                                                else stringResource(R.string.menu_lsfg_multiplier_value, lsfgMultiplier.intValue),
-                                            InGameAction.LSFG_TARGET to stringResource(R.string.menu_lsfg_target_value, lsfgTargetText()),
-                                            InGameAction.PERFORMANCE_HINTS to performanceHintsLabel.value,
-                                            InGameAction.EXTERNAL_DISPLAY to (externalDisplayLabel.value ?: stringResource(R.string.tv_phone)),
-                                            InGameAction.TV_MARGIN to stringResource(R.string.menu_tv_margin,
-                                                java.text.NumberFormat.getNumberInstance().format(tvMargin.floatValue.toDouble())),
-                                            InGameAction.SCALING_EFFECT to stringResource(R.string.menu_scaling_value,
-                                                listOf(stringResource(R.string.menu_scaling_inherited), "Bilinear", "CAS", "FSR", "SGSR", "Lanczos", "CRT")[scalingEffect.intValue + 1]),
-                                            InGameAction.ANTIALIASING to stringResource(R.string.menu_aa_value, when (imageTuning.value.antialiasing) {
-                                                0 -> off
-                                                1 -> "FXAA"
-                                                2 -> stringResource(R.string.menu_aa_fxaa_extreme)
-                                                else -> stringResource(R.string.menu_from_settings)
-                                            }),
-                                            InGameAction.SHARPNESS to stringResource(R.string.menu_sharpness_value,
-                                                imageTuning.value.sharpness.let { level ->
-                                                    if (level !in 0..4) stringResource(R.string.menu_from_settings)
-                                                    else listOf(R.string.menu_sharpness_soft, R.string.menu_sharpness_low, R.string.menu_sharpness_medium,
-                                                        R.string.menu_sharpness_high, R.string.menu_sharpness_max).map { stringResource(it) }[level]
-                                                } + if (scalingEffect.intValue >= 0 && scalingEffect.intValue != 1 && scalingEffect.intValue != 2)
-                                                    " (" + stringResource(R.string.menu_sharpness_needs) + ")" else ""),
-                                            InGameAction.DITHER to stringResource(R.string.menu_dither_value, when (imageTuning.value.dither) {
-                                                0 -> off
-                                                1 -> on
-                                                else -> stringResource(R.string.menu_from_settings)
-                                            }),
-                                            InGameAction.REFRESH_RATE to stringResource(R.string.menu_refresh_rate_value,
-                                                requestedRefresh.value?.toString() ?: stringResource(R.string.menu_auto),
-                                                (if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else windowManager.defaultDisplay.refreshRate).toString()),
-                                            InGameAction.SUSTAINED_PERFORMANCE to stringResource(R.string.menu_sustained_value,
-                                                if (!sustainedAvailable.value) stringResource(R.string.menu_unavailable) else if (sustainedMode.value) on else off),
-                                            InGameAction.BACKGROUND_POLICY to stringResource(R.string.menu_background_value, backgroundPolicy.value.name),
-                                            InGameAction.GYRO_CAMERA to if (!gyroCamera.available) stringResource(R.string.menu_gyro_unavailable)
-                                                else stringResource(R.string.menu_gyro_camera_value, if (gyroEnabled.value) on else off),
-                                            InGameAction.GYRO_AIM to if (!gyroCamera.available) stringResource(R.string.menu_gyro_unavailable)
-                                                else stringResource(R.string.menu_gyro_aim_value, stringResource(when (gyroAim.value) {
-                                                    xendroid.compose.gamepad.GyroAim.ALWAYS -> R.string.menu_gyro_aim_always
-                                                    xendroid.compose.gamepad.GyroAim.WHILE_LT -> R.string.menu_gyro_aim_lt
-                                                    xendroid.compose.gamepad.GyroAim.WHILE_LB -> R.string.menu_gyro_aim_lb
-                                                })),
-                                            InGameAction.UNBUFFERED_INPUT to stringResource(R.string.menu_unbuffered_value,
-                                                if (unbufferedInput.value) on else off),
-                                            InGameAction.HUD_LOOK to stringResource(R.string.menu_hud_look, stringResource(when (hudLook.value) {
-                                                xendroid.compose.core.HudLook.BOX -> R.string.menu_hud_look_box
-                                                xendroid.compose.core.HudLook.OUTLINE -> R.string.menu_hud_look_outline
-                                                xendroid.compose.core.HudLook.PLAIN -> R.string.menu_hud_look_plain
-                                            })),
-                                            InGameAction.SPLIT_SCREEN to stringResource(R.string.menu_split_value, stringResource(
-                                                xendroid.compose.gamepad.splitScreenLabel(xendroid.compose.gamepad.SplitScreenMode.parse(cfg.globals.splitScreen)))),
-                                            InGameAction.GYRO_SENSITIVITY to stringResource(R.string.menu_gyro_sensitivity_value, listOf(
-                                                stringResource(R.string.menu_low), stringResource(R.string.menu_normal), stringResource(R.string.menu_high))[gyroSensitivity.intValue]),
-                                            InGameAction.CONTROLLER_RUMBLE to stringResource(R.string.menu_rumble_value, rumbleNames.getValue(rumbleSettings.value.default),
-                                                controllerSlots.players.withIndex()
-                                                    .filter { it.value != null && !it.value!!.startsWith(xendroid.compose.companion.CompanionHost.KEY_PREFIX) }
-                                                    .joinToString(", ") { player ->
-                                                        // U08: a controller with its own intensity says it.
-                                                        "P${player.index + 1}" + (player.value?.let { rumbleSettings.value.perDevice[it] }?.let { " (${rumbleNames.getValue(it)})" } ?: "")
-                                                    }.ifEmpty { stringResource(R.string.menu_no_controller) }),
-                                            InGameAction.PHONE_CONTROLLERS to (phoneControllersLabel.value ?: stringResource(R.string.phone_ctl_off)),
-                                            InGameAction.TOUCH_CAMERA to stringResource(R.string.menu_touch_camera, if (touchCamera.value) on else off),
-                                            InGameAction.MARK_SCENE to stringResource(R.string.menu_mark_scene, sceneMarkers.intValue),
-                                            InGameAction.DRIVER_INFO to driverLine.value.let { (state, label) ->
-                                                when (state) {
-                                                    xendroid.compose.driver.DriverIdentity.InGame.UNKNOWN -> stringResource(R.string.menu_driver_unknown)
-                                                    xendroid.compose.driver.DriverIdentity.InGame.AS_SELECTED -> stringResource(R.string.menu_driver, label)
-                                                    xendroid.compose.driver.DriverIdentity.InGame.CUSTOM_DID_NOT_LOAD -> stringResource(R.string.menu_driver_fallback, label)
-                                                    xendroid.compose.driver.DriverIdentity.InGame.OTHER_FOR_NEXT_START -> stringResource(R.string.menu_driver_next, label)
-                                                }
-                                            },
-                                        ),
-                                        phoneControllers = phoneControllersDetails.value,
-                                        frameGenerationBudget = fgBudgetLabel.value,
-                                        frameGenerationNotes = fgNotes.value,
-                                        performanceHud = performanceOverlayEnabled.value,
-                                        compactHud = hudDetail.value == xendroid.compose.core.HudDetail.COMPACT,
-                                        hudPanel = hudDetail.value == xendroid.compose.core.HudDetail.PANEL,
-                                        hudMetrics = hudMetrics.value,
-                                        touchControls = showTouchOverlay.value == true && !overlayHiddenByController.value,
-                                        adaptiveSticks = adaptiveSticks.value,
-                                        stretch = fullscreenStretchEnabled.value,
-                                        volume = audioVolume.intValue,
-                                        sessionInfo = "${BuildConfig.VERSION_NAME}\n${gpuLabel.value.ifEmpty { "GPU information unavailable" }}\nAudio output follows Android's media route.",
-                                        logSessions = menuLogSessions.value,
-                                        onLogChoice = ::chooseLogSession,
-                                        onPage = { page -> menuState.value = menuState.value.copy(page = page) },
+                                        model = menuModel(cfg),
+                                        onPage = { page -> menuState.value = menuState.value.copy(page = page, chip = 0) },
                                         onSelect = { index -> menuState.value = menuState.value.select(index) },
                                         onAction = ::performMenuAction,
+                                        onAdjust = ::adjustMenuAction,
+                                        onChoose = ::chooseMenuOption,
+                                        onSet = ::setMenuValue,
+                                        onSetDone = ::finishMenuValue,
+                                        onLogChoice = ::chooseLogSession,
                                         onQuitChoice = ::chooseMenuQuit,
-                                        gameName = loadingName,
-                                        art = loadingArt.value,
-                                        status = menuStatus.value,
                                     )
                                 }
                             } else if (
                                 booted && keyboardRequestState.value == null &&
                                 discRequestState.value == null && messageBoxRequestState.value == null
                             ) {
-                                InGameMenuHandle(
-                                    onOpen = { openMenu(pause = false) },
+                                // Round 2: no button over the game; a drag in from the left edge opens the menu.
+                                InGameMenuEdge(
+                                    onOpen = { openMenu() },
                                     modifier = Modifier.align(Alignment.CenterStart),
                                 )
                             }
@@ -2094,7 +2053,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                 !discOpen &&
                                 !messageBoxOpen
                     ) {
-                        openMenu(pause = true)
+                        openMenu()
                     }
 
                     BackHandler(
@@ -2396,7 +2355,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
         if (keyCode == KeyEvent.KEYCODE_BUTTON_MODE && !hasGuestPrompt()) {
             if (event.repeatCount == 0) {
-                if (menuState.value.open) backMenu() else openMenu(pause = true)
+                if (menuState.value.open) backMenu() else openMenu()
             }
             consumedMenuKeys.add(identity)
             return true
@@ -3000,11 +2959,12 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         // persistence, so opening the menu cannot silently overwrite either scope.
     }
 
-    private fun openMenu(pause: Boolean) {
+    /** Opens the in-game menu; it pauses the game when the player keeps "Pause when the menu opens" on (round 2). */
+    private fun openMenu() {
         gyroCamera.stop()
         if (menuState.value.open || hasGuestPrompt()) return
         releaseGuestInput()
-        val pausedHere = pause && session.booted && !session.isPaused()
+        val pausedHere = pauseOnOpen.value && session.booted && !session.isPaused()
         if (pausedHere) session.pause()
         recordEvent("menu", if (pausedHere) "opened, guest paused" else "opened")
         menuPaused.value = session.isPaused()
@@ -3014,6 +2974,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         menuStatus.value = runCatching { buildMenuStatus() }.getOrDefault(emptyList())
         refreshFpsConfig()
         refreshDriverLine()
+        refreshGameOwnKeys()
         lifecycleScope.launch {
             lsfgCache.value = withContext(Dispatchers.IO) { runCatching { LsfgAssets.cache(applicationContext)?.path }.getOrNull() }
         }
@@ -3109,228 +3070,248 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
     }
 
+    /** Round 2: what each row of the in-game menu shows, from this activity's state. */
+    @androidx.compose.runtime.Composable
+    private fun menuModel(cfg: GamepadConfigDto): InGameMenuModel {
+        val on = stringResource(R.string.menu_on)
+        val off = stringResource(R.string.menu_off)
+        val fromSettings = stringResource(R.string.menu_from_settings)
+        val unavailable = stringResource(R.string.menu_unavailable)
+        val own = gameOwnKeys.value
+        val presentation = presentationState.value
+        val image = imageTuning.value
+        val style = hudStyle.value
+        val percent = java.text.NumberFormat.getPercentInstance()
+        val number = java.text.NumberFormat.getNumberInstance()
+        val gyroAvailable = gyroCamera.available
+        val rumbleNames = xendroid.compose.gamepad.RumbleIntensity.entries.associateWith { xendroid.compose.ui.rumbleLabel(it) }
+        val chips = hudChipMetrics()
+        val chipLabels = chips.map { metric ->
+            when (metric) {
+                null -> stringResource(R.string.menu_chip_graph)
+                HudMetric.GPU_MEMORY -> stringResource(R.string.menu_chip_gpu_memory)
+                HudMetric.BATTERY_TEMPERATURE -> stringResource(R.string.menu_chip_battery)
+                HudMetric.SOC_TEMPERATURE -> "SoC"
+                HudMetric.POWER -> stringResource(R.string.menu_chip_power)
+                HudMetric.HOST_SUBMISSIONS -> "Vulkan"
+                else -> metric.label
+            }
+        }
+        val hudScaleNow = hudScale.value ?: xendroid.compose.core.HudPlacements.read(HudPreferences.of(this), activeTitleState.value).scale
+        val fps = fpsConfig.value
+        val values = mapOf(
+            // Image
+            InGameAction.DISPLAY_MODE to MenuValue(options = listOf(R.string.menu_opt_fit, R.string.menu_opt_fill, R.string.menu_opt_stretch,
+                R.string.menu_opt_integer).map { stringResource(it) }, selected = presentation.displayMode.coerceAtLeast(0),
+                own = InGameChanges.DISPLAY_MODE in own),
+            InGameAction.SCALING_EFFECT to MenuValue(text = listOf(fromSettings, "Bilinear", "CAS", "FSR", "SGSR", "Lanczos", "CRT")
+                [(scalingEffect.intValue + 1).coerceIn(0, 6)], own = SCALING_KEY in own),
+            InGameAction.ANTIALIASING to MenuValue(text = when (image.antialiasing) {
+                0 -> off; 1 -> "FXAA"; 2 -> stringResource(R.string.menu_aa_fxaa_extreme); else -> fromSettings
+            }, own = AA_KEY in own),
+            InGameAction.SHARPNESS to MenuValue(text = image.sharpness.takeIf { it in 0..4 }?.let { level ->
+                stringResource(listOf(R.string.menu_sharpness_soft, R.string.menu_sharpness_low, R.string.menu_sharpness_medium,
+                    R.string.menu_sharpness_high, R.string.menu_sharpness_max)[level])
+            } ?: fromSettings, own = CAS_KEY in own,
+                note = if (scalingEffect.intValue >= 0 && scalingEffect.intValue != 1 && scalingEffect.intValue != 2)
+                    stringResource(R.string.menu_sharpness_needs) else null),
+            InGameAction.DITHER to MenuValue(text = when (image.dither) { 0 -> off; 1 -> on; else -> fromSettings }, own = DITHER_KEY in own),
+            InGameAction.COLOR_FILTER to MenuValue(text = if (presentation.colorError != 0) unavailable else listOf(off,
+                stringResource(R.string.menu_color_grayscale), stringResource(R.string.menu_color_contrast), stringResource(R.string.menu_color_warm),
+                stringResource(R.string.menu_color_vivid))[presentation.colorFilter.coerceIn(0, 4)],
+                enabled = presentation.colorError == 0, own = InGameChanges.COLOR_FILTER in own),
+            InGameAction.STRETCH to MenuValue(on = fullscreenStretchEnabled.value, text = stringResource(R.string.menu_t_stretch_note),
+                enabled = !fps.loading && !fps.saving && fps.error == null),
+            InGameAction.EXTERNAL_DISPLAY to MenuValue(text = externalDisplayLabel.value ?: stringResource(R.string.tv_phone)),
+            InGameAction.TV_MARGIN to MenuValue(text = number.format(tvMargin.floatValue.toDouble()) + "%"),
+            InGameAction.DRIVER_INFO to MenuValue(text = driverLine.value.let { (state, label) ->
+                when (state) {
+                    xendroid.compose.driver.DriverIdentity.InGame.UNKNOWN -> stringResource(R.string.menu_driver_unknown)
+                    xendroid.compose.driver.DriverIdentity.InGame.AS_SELECTED -> stringResource(R.string.menu_driver, label)
+                    xendroid.compose.driver.DriverIdentity.InGame.CUSTOM_DID_NOT_LOAD -> stringResource(R.string.menu_driver_fallback, label)
+                    xendroid.compose.driver.DriverIdentity.InGame.OTHER_FOR_NEXT_START -> stringResource(R.string.menu_driver_next, label)
+                }
+            }),
+            InGameAction.WINFG to MenuValue(on = presentation.requested && presentation.engine == 0, enabled = BuildConfig.DEBUG),
+            InGameAction.WINFG_PRESET to MenuValue(text = stringResource(listOf(R.string.menu_preset_quality, R.string.menu_preset_balanced,
+                R.string.menu_preset_performance)[fgPreset.intValue.coerceIn(0, 2)]), enabled = BuildConfig.DEBUG),
+            InGameAction.LSFG to MenuValue(on = presentation.requested && presentation.engine == 1,
+                enabled = BuildConfig.DEBUG && lsfgCache.value != null && !importingLsfg),
+            InGameAction.LSFG_MULTIPLIER to MenuValue(text = "${lsfgMultiplier.intValue}×", enabled = BuildConfig.DEBUG),
+            InGameAction.LSFG_TARGET to MenuValue(text = lsfgTargetText(), enabled = BuildConfig.DEBUG),
+            // Performance
+            InGameAction.FPS_LIMIT to MenuValue(options = FPS_CHOICES.map { if (it == 0) stringResource(R.string.menu_unlimited) else "$it" },
+                selected = FPS_CHOICES.indexOf(fpsLimitState.intValue), own = FPS_KEY in own,
+                note = when {
+                    fps.saving -> stringResource(R.string.menu_saving_config)
+                    fps.loading -> stringResource(R.string.menu_reading_config)
+                    fps.error != null -> fps.error
+                    fps.globalLimit != null -> stringResource(R.string.menu_next_launch, fpsLabel(fps.globalLimit),
+                        if (fps.titleId == null) stringResource(R.string.menu_game_id_unavailable)
+                        else stringResource(R.string.menu_game_limit, fps.gameLimit?.let { fpsLabel(it) } ?: stringResource(R.string.menu_inherits_global)))
+                    else -> null
+                }),
+            InGameAction.REFRESH_RATE to MenuValue(text = requestedRefresh.value?.let { "${it.roundToInt()} Hz" } ?: stringResource(R.string.menu_auto),
+                own = InGameChanges.REFRESH_HZ in own,
+                note = stringResource(R.string.menu_refresh_rate_value, requestedRefresh.value?.let { "${it.roundToInt()} Hz" } ?: stringResource(R.string.menu_auto),
+                    ((if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else @Suppress("DEPRECATION") windowManager.defaultDisplay.refreshRate)
+                        ?.roundToInt()?.let { "$it Hz" }) ?: "—")),
+            InGameAction.SUSTAINED_PERFORMANCE to MenuValue(on = sustainedMode.value, enabled = sustainedAvailable.value,
+                text = if (!sustainedAvailable.value) unavailable else null),
+            InGameAction.PERFORMANCE_HINTS to MenuValue(on = performanceHints.requested, text = performanceHintsLabel.value),
+            InGameAction.BACKGROUND_POLICY to MenuValue(text = backgroundPolicy.value.name),
+            // HUD
+            InGameAction.PERFORMANCE_HUD to MenuValue(on = performanceOverlayEnabled.value),
+            InGameAction.HUD_LAYOUT to MenuValue(options = listOf(stringResource(R.string.menu_opt_vertical), stringResource(R.string.menu_opt_horizontal)),
+                selected = style.layout.ordinal),
+            InGameAction.HUD_STYLE to MenuValue(options = listOf(stringResource(R.string.menu_opt_fps_only), stringResource(R.string.menu_opt_metrics),
+                stringResource(R.string.menu_hud_panel)), selected = HUD_DETAILS.indexOf(hudDetail.value)),
+            InGameAction.HUD_METRICS to MenuValue(options = chipLabels, checked = chips.indices.filter { i ->
+                chips[i]?.let { it in hudMetrics.value } ?: style.graph
+            }.toSet()),
+            InGameAction.HUD_POSITION to MenuValue(options = listOf(stringResource(R.string.menu_opt_top), stringResource(R.string.menu_opt_bottom)),
+                selected = style.edge.ordinal, enabled = style.layout == xendroid.compose.core.HudLayout.HORIZONTAL,
+                note = if (style.layout == xendroid.compose.core.HudLayout.VERTICAL) stringResource(R.string.menu_hud_position_note) else null),
+            InGameAction.HUD_LOOK to MenuValue(options = listOf(stringResource(R.string.menu_opt_box), stringResource(R.string.menu_opt_outline),
+                stringResource(R.string.menu_opt_text)), selected = hudLook.value.ordinal),
+            InGameAction.HUD_SIZE to MenuValue(fraction = (hudScaleNow - xendroid.compose.core.HudPlacements.MIN_SCALE) / HUD_SCALE_SPAN, steps = 0,
+                text = percent.format(hudScaleNow.toDouble())),
+            InGameAction.HUD_OPACITY to MenuValue(fraction = style.opacity, steps = 0, text = percent.format(style.opacity.toDouble()),
+                enabled = hudLook.value == xendroid.compose.core.HudLook.BOX),
+            InGameAction.HUD_COLORS to MenuValue(fraction = style.colors, steps = 0, text = percent.format(style.colors.toDouble())),
+            // Controls
+            InGameAction.TOUCH_CONTROLS to MenuValue(on = showTouchOverlay.value == true && !overlayHiddenByController.value, own = TOUCH_KEY in own),
+            InGameAction.CONTROL_STYLE to MenuValue(options = listOf(stringResource(R.string.menu_opt_modern), stringResource(R.string.menu_opt_classic)),
+                selected = xendroid.compose.gamepad.ControlStyle.parse(cfg.globals.style).ordinal),
+            InGameAction.ADAPTIVE_STICKS to MenuValue(on = adaptiveSticks.value, enabled = activeTitleState.value != null, own = true),
+            InGameAction.TOUCH_CAMERA to MenuValue(on = touchCamera.value, text = stringResource(R.string.menu_t_touch_camera_note)),
+            InGameAction.EDIT_TOUCH_LAYOUT to MenuValue(text = stringResource(R.string.menu_t_edit_layout_note)),
+            InGameAction.SPLIT_SCREEN to MenuValue(text = stringResource(xendroid.compose.gamepad.splitScreenLabel(
+                xendroid.compose.gamepad.SplitScreenMode.parse(cfg.globals.splitScreen)))),
+            InGameAction.CONTROLLER_RUMBLE to MenuValue(text = rumbleNames.getValue(rumbleSettings.value.default),
+                note = controllerSlots.players.withIndex()
+                    .filter { it.value != null && !it.value!!.startsWith(xendroid.compose.companion.CompanionHost.KEY_PREFIX) }
+                    .joinToString(", ") { player ->
+                        // U08: a controller with its own intensity says it.
+                        "P${player.index + 1}" + (player.value?.let { rumbleSettings.value.perDevice[it] }?.let { " (${rumbleNames.getValue(it)})" } ?: "")
+                    }.ifEmpty { stringResource(R.string.menu_no_controller) }),
+            InGameAction.PHONE_CONTROLLERS to MenuValue(text = phoneControllersLabel.value ?: stringResource(R.string.phone_ctl_off)),
+            InGameAction.UNBUFFERED_INPUT to MenuValue(on = unbufferedInput.value),
+            InGameAction.GYRO_CAMERA to MenuValue(on = gyroEnabled.value, enabled = gyroAvailable,
+                text = if (!gyroAvailable) stringResource(R.string.menu_gyro_unavailable) else null),
+            InGameAction.GYRO_AIM to MenuValue(text = stringResource(when (gyroAim.value) {
+                xendroid.compose.gamepad.GyroAim.ALWAYS -> R.string.menu_gyro_aim_always
+                xendroid.compose.gamepad.GyroAim.WHILE_LT -> R.string.menu_gyro_aim_lt
+                xendroid.compose.gamepad.GyroAim.WHILE_LB -> R.string.menu_gyro_aim_lb
+            }), enabled = gyroAvailable),
+            InGameAction.GYRO_SENSITIVITY to MenuValue(text = listOf(stringResource(R.string.menu_low), stringResource(R.string.menu_normal),
+                stringResource(R.string.menu_high))[gyroSensitivity.intValue.coerceIn(0, 2)], enabled = gyroAvailable),
+            InGameAction.GYRO_CALIBRATE to MenuValue(text = stringResource(R.string.menu_t_gyro_calibrate_note), enabled = gyroAvailable),
+            // Session
+            InGameAction.VOLUME to MenuValue(fraction = audioVolume.intValue / 100f, steps = 0, text = "${audioVolume.intValue}%", own = VOLUME_KEY in own),
+            InGameAction.MUTE to MenuValue(on = audioVolume.intValue == 0),
+            InGameAction.AUTO_SAVE to MenuValue(on = autoSave.value, text = if (autoSave.value)
+                stringResource(R.string.menu_t_autosave_on, loadingName ?: activeTitleState.value ?: "XenDroid") else stringResource(R.string.menu_t_autosave_off)),
+            InGameAction.UNDO_SESSION to MenuValue(enabled = sessionChanges.intValue > 0, text = if (sessionChanges.intValue > 0)
+                pluralStringResource(R.plurals.menu_undo_note, sessionChanges.intValue, sessionChanges.intValue) else stringResource(R.string.menu_nothing_changed)),
+            InGameAction.MAKE_GLOBAL to MenuValue(enabled = sessionChanges.intValue > 0, text = stringResource(R.string.menu_t_global_note)),
+            InGameAction.PAUSE_ON_OPEN to MenuValue(on = pauseOnOpen.value, text = stringResource(R.string.menu_t_pause_note)),
+            InGameAction.MARK_SCENE to MenuValue(text = stringResource(R.string.menu_t_mark_note, sceneMarkers.intValue)),
+        )
+        val developer = menuState.value.developer
+        val graphicsNotes = buildList {
+            if (developer) {
+                add(presentation.label)
+                fgBudgetLabel.value?.let(::add)
+                addAll(fgNotes.value)
+                add(stringResource(R.string.menu_fg_experimental))
+            }
+            add(stringResource(R.string.menu_image_live_note))
+            if (!BuildConfig.DEBUG && developer) add(stringResource(R.string.menu_fg_gated))
+        }
+        val notes = mapOf(
+            InGamePage.GRAPHICS to graphicsNotes,
+            InGamePage.HUD to if (developer) listOf(stringResource(R.string.menu_system_note)) else emptyList(),
+            InGamePage.CONTROLS to listOfNotNull(phoneControllersDetails.value, stringResource(R.string.menu_adaptive_note),
+                stringResource(R.string.menu_phones_note)),
+            InGamePage.SESSION to listOf("${BuildConfig.VERSION_NAME}\n${gpuLabel.value.ifEmpty { "GPU information unavailable" }}"),
+        )
+        return InGameMenuModel(
+            values = values, gameName = loadingName, art = loadingArt.value, paused = menuPaused.value, status = menuStatus.value,
+            notes = notes, logSessions = menuLogSessions.value, savedChanges = if (autoSave.value) sessionChanges.intValue else 0,
+            hudPreview = if (performanceOverlayEnabled.value) xendroid.compose.ui.ingame.HudPreview(hudDetail.value, hudMetrics.value, hudLook.value,
+                style, hudScaleNow) else null,
+        )
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun fpsLabel(fps: Int): String = if (fps == 0) stringResource(R.string.menu_unlimited) else stringResource(R.string.menu_fps, fps)
+
+    /** Round 2: A on a row of the in-game menu, or a tap on it: a choice takes the next one, a cycle
+     *  its next value, a chip (the controller's) flips, a switch flips, a button runs. */
     private fun performMenuAction(action: InGameAction) {
+        when (action.kind) {
+            RowKind.CHOICE -> { chooseMenuOption(action, (choiceIndex(action) + 1) % choiceCount(action)); return }
+            RowKind.CYCLE -> { adjustMenuAction(action, 1); return }
+            RowKind.MULTI -> { chooseMenuOption(action, menuState.value.chip); return }
+            RowKind.SLIDER -> return
+            else -> {}
+        }
         if (action == InGameAction.MORE_OPTIONS) {
             menuState.value = menuState.value.toggleAdvanced()
             return
         }
-        if (!BuildConfig.DEBUG && action in listOf(InGameAction.WINFG, InGameAction.WINFG_PRESET,
-                InGameAction.LSFG, InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET)) return
-        if (action == InGameAction.COLOR_FILTER) {
-            session.setColorFilter((session.presentationState().colorFilter + 1) % 5)
-            presentationState.value = session.presentationState()
-            return
-        }
-        if (action == InGameAction.PERFORMANCE_HINTS) { performanceHints.requested = !performanceHints.requested; return }
-        if (action == InGameAction.EXTERNAL_DISPLAY) { externalDisplay?.cycle(); return }
-        if (action == InGameAction.TV_MARGIN) {
-            tvMargin.floatValue = xendroid.compose.core.TvMargin.next(tvMargin.floatValue)
-            getSharedPreferences(DISPLAY_SETTINGS_PREFS, MODE_PRIVATE).edit().putFloat("tv_margin_percent", tvMargin.floatValue).apply()
-            externalDisplay?.setMargin(tvMargin.floatValue)
-            return
-        }
-        if (action == InGameAction.SCALING_EFFECT) {
-            scalingEffect.intValue = if (scalingEffect.intValue >= 5) -1 else scalingEffect.intValue + 1
-            session.setScalingEffect(scalingEffect.intValue)
-            return
-        }
-        if (action == InGameAction.BACKGROUND_POLICY) {
-            backgroundPolicy.value = BackgroundPolicy.entries[(backgroundPolicy.value.ordinal + 1) % BackgroundPolicy.entries.size]
-            return
-        }
-        if (action == InGameAction.GYRO_CAMERA) {
-            if (gyroCamera.available) {
+        if (!BuildConfig.DEBUG && (action == InGameAction.WINFG || action == InGameAction.LSFG)) return
+        when (action) {
+            InGameAction.PERFORMANCE_HINTS -> performanceHints.requested = !performanceHints.requested
+            InGameAction.EXTERNAL_DISPLAY -> externalDisplay?.cycle()
+            InGameAction.GYRO_CAMERA -> if (gyroCamera.available) {
                 gyroEnabled.value = !gyroEnabled.value
                 val on = gyroEnabled.value
                 saveControlOptions { it.copy(gyroCamera = on) }
             }
-            return
-        }
-        if (action == InGameAction.GYRO_CALIBRATE) { gyroCamera.calibrate(); return }
-        if (action == InGameAction.GYRO_AIM) {
-            if (!gyroCamera.available) return
-            gyroAim.value = gyroAim.value.next()
-            val aim = gyroAim.value
-            saveControlOptions { it.copy(gyroAim = aim) }
-            return
-        }
-        if (action == InGameAction.SPLIT_SCREEN) {
-            // Saved with the touch controls (as the editor's "Split screen"): off, at a fold, always.
-            lifecycleScope.launch {
-                runCatching {
-                    gamepad.update { cfg ->
-                        cfg.copy(globals = cfg.globals.copy(splitScreen = xendroid.compose.gamepad.SplitScreenMode.parse(cfg.globals.splitScreen).next().key))
-                    }
-                }.onFailure { Log.w(TAG, "Saving the split screen mode failed", it) }
+            InGameAction.GYRO_CALIBRATE -> gyroCamera.calibrate()
+            InGameAction.UNBUFFERED_INPUT -> {
+                unbufferedInput.value = !unbufferedInput.value
+                val unbuffered = unbufferedInput.value
+                saveControlOptions { it.copy(unbufferedInput = unbuffered) }
+                applyUnbufferedInput()
+                recordEvent("input", "unbuffered " + if (unbufferedInput.value) "on" else "off")
             }
-            return
-        }
-        if (action == InGameAction.UNBUFFERED_INPUT) {
-            unbufferedInput.value = !unbufferedInput.value
-            val unbuffered = unbufferedInput.value
-            saveControlOptions { it.copy(unbufferedInput = unbuffered) }
-            applyUnbufferedInput()
-            recordEvent("input", "unbuffered " + if (unbufferedInput.value) "on" else "off")
-            return
-        }
-        if (action == InGameAction.PHONE_CONTROLLERS) {
-            // The native driver takes player slots only once the emulator runs a title.
-            if (phoneControllers.host == null && activeTitleState.value == null) {
-                Toast.makeText(this, getString(R.string.host_phone_wait), Toast.LENGTH_SHORT).show()
-                return
-            }
-            phoneControllers.toggle()
-            refreshPhoneControllers()
-            return
-        }
-        if (action == InGameAction.CONTROLLER_RUMBLE) {
-            rumbleSettings.value = rumbleSettings.value.cycleDefault()
-            val rumble = rumbleSettings.value.default
-            saveControlOptions { it.copy(rumble = rumble) }
-            stopRumble()
-            return
-        }
-        if (action == InGameAction.GYRO_SENSITIVITY) {
-            val next = xendroid.compose.gamepad.GyroSensitivity.entries[gyroSensitivity.intValue].next()
-            gyroSensitivity.intValue = next.ordinal
-            gyroCamera.sensitivity = next.scale
-            saveControlOptions { it.copy(gyroSensitivity = next) }
-            return
-        }
-        if (action == InGameAction.SUSTAINED_PERFORMANCE) {
-            val enabled = !sustainedMode.value
-            sustainedAvailable.value = sustainedPerformance(this, enabled)
-            if (sustainedAvailable.value) sustainedMode.value = enabled
-            return
-        }
-        if (action == InGameAction.REFRESH_RATE) {
-            @Suppress("DEPRECATION") val activeDisplay = if (Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay
-            if (activeDisplay != null) {
-                val modes = refreshChoices(activeDisplay)
-                val index = modes.indexOfFirst { it.hz == requestedRefresh.value }
-                requestedRefresh.value = if (index + 1 < modes.size) modes[index + 1].hz else null
-                selectRefresh(this, requestedRefresh.value)
-            }
-            return
-        }
-        if (action == InGameAction.MUTE || action == InGameAction.VOLUME_UP || action == InGameAction.VOLUME_DOWN) {
-            val current = session.audioVolume()
-            val volume = when (action) {
-                InGameAction.MUTE -> if (current == 0) volumeBeforeMute else { volumeBeforeMute = current; 0 }
-                InGameAction.VOLUME_UP -> (current + 10).coerceAtMost(100)
-                else -> (current - 10).coerceAtLeast(0)
-            }
-            session.setAudioVolume(volume); audioVolume.intValue = session.audioVolume()
-            return
-        }
-        if (action == InGameAction.IMPORT_LSFG_DLL) {
-            if (!importingLsfg) lsfgPicker.launch(arrayOf("application/octet-stream", "application/x-msdownload", "*/*"))
-            return
-        }
-        if (action == InGameAction.CLEAR_LSFG_CACHE) {
-            if (session.presentationState().engine == 1) {
-                session.setFrameGeneration(false, fgPreset.intValue, currentOutputHz())
-                restoreGenerationCap()
-            }
-            lifecycleScope.launch {
-                val deleted = withContext(Dispatchers.IO) { runCatching { LsfgAssets.clear(applicationContext) } }
-                if (deleted.isSuccess) lsfgCache.value = null
-                else Toast.makeText(this@EmulatorHostActivity, getString(R.string.host_cache_not_removed), Toast.LENGTH_LONG).show()
-                presentationState.value = session.presentationState()
-            }
-            return
-        }
-        if (action == InGameAction.LSFG || action == InGameAction.LSFG_MULTIPLIER || action == InGameAction.LSFG_TARGET) {
-            when (action) {
-                InGameAction.LSFG_MULTIPLIER -> {
-                    // A multiplier chosen by hand ends the target (15d).
-                    lsfgTarget.intValue = xendroid.compose.core.FrameGenerationTarget.OFF
-                    lsfgMultiplier.intValue = if (lsfgMultiplier.intValue == 4) 2 else lsfgMultiplier.intValue + 1
+            InGameAction.PHONE_CONTROLLERS -> {
+                // The native driver takes player slots only once the emulator runs a title.
+                if (phoneControllers.host == null && activeTitleState.value == null) {
+                    Toast.makeText(this, getString(R.string.host_phone_wait), Toast.LENGTH_SHORT).show()
+                    return
                 }
-                InGameAction.LSFG_TARGET -> lsfgTarget.intValue = xendroid.compose.core.FrameGenerationTarget.next(lsfgTarget.intValue)
-                else -> {}
+                phoneControllers.toggle()
+                refreshPhoneControllers()
             }
-            val cache = lsfgCache.value ?: return
-            val current = session.presentationState()
-            val running = current.requested && current.engine == 1
-            if (action != InGameAction.LSFG && !running) return
-            val enabled = if (action == InGameAction.LSFG) !running else true
-            val hz = currentOutputHz()
-            // 15d: a target picks the multiplier and caps the game at target ÷ multiplier, planned
-            // from the player's own limit (never from a cap frame generation put there).
-            val plan = xendroid.compose.core.FrameGenerationTarget.plan(lsfgTarget.intValue, hz,
-                generationCap.playerLimit(session.fpsLimit()))
-            if (plan != null) lsfgMultiplier.intValue = plan.multiplier
-            when {
-                !enabled -> restoreGenerationCap()
-                plan != null -> prepareExactCap(plan.cap)
-                else -> prepareGenerationCap(hz, lsfgMultiplier.intValue)
+            InGameAction.SUSTAINED_PERFORMANCE -> {
+                val enabled = !sustainedMode.value
+                sustainedAvailable.value = sustainedPerformance(this, enabled)
+                if (sustainedAvailable.value) sustainedMode.value = enabled
             }
-            session.setLsfg(enabled, cache, hz, lsfgMultiplier.intValue)
-            if (enabled) recordEvent("lsfg", plan?.let { "target ${it.target}/s: ${it.multiplier}x from ${it.cap} FPS" }
-                ?: "${lsfgMultiplier.intValue}x by hand")
-            presentationState.value = session.presentationState()
-            return
-        }
-        val displayMode = when (action) {
-            InGameAction.DISPLAY_FIT -> 0
-            InGameAction.DISPLAY_FILL -> 1
-            InGameAction.DISPLAY_STRETCH -> 2
-            InGameAction.DISPLAY_INTEGER -> 3
-            else -> null
-        }
-        if (displayMode != null) {
-            session.setPresentationMode(displayMode)
-            presentationState.value = session.presentationState()
-            return
-        }
-        if (action == InGameAction.WINFG || action == InGameAction.WINFG_PRESET) {
-            if (action == InGameAction.WINFG_PRESET) fgPreset.intValue = (fgPreset.intValue + 1) % 3
-            val state = session.presentationState()
-            if (action == InGameAction.WINFG_PRESET && state.engine == 1) return
-            val enabled = if (action == InGameAction.WINFG) !(state.requested && state.engine == 0) else state.requested
-            val hz = currentOutputHz()
-            if (enabled) prepareGenerationCap(hz) else restoreGenerationCap()
-            session.setFrameGeneration(enabled, fgPreset.intValue, hz)
-            presentationState.value = session.presentationState()
-            return
-        }
-        val metric = when (action) {
-            InGameAction.HUD_HOST_SUBMISSIONS -> HudMetric.HOST_SUBMISSIONS
-            InGameAction.HUD_CPU -> HudMetric.CPU
-            InGameAction.HUD_GPU -> HudMetric.GPU
-            InGameAction.HUD_RAM -> HudMetric.RAM
-            InGameAction.HUD_BATTERY -> HudMetric.BATTERY_TEMPERATURE
-            InGameAction.HUD_SOC -> HudMetric.SOC_TEMPERATURE
-            InGameAction.HUD_POWER -> HudMetric.POWER
-            InGameAction.HUD_GPU_MEMORY -> HudMetric.GPU_MEMORY
-            else -> null
-        }
-        if (metric != null) {
-            val enabled = hudMetrics.value.toMutableSet()
-            if (!enabled.remove(metric)) enabled.add(metric)
-            hudMetrics.value = enabled.toSet()
-            getSharedPreferences("fps_overlay", MODE_PRIVATE).edit()
-                .putStringSet("hud_metrics", enabled.map { it.name }.toSet()).apply()
-            return
-        }
-        val fps = when (action) {
-            InGameAction.FPS_UNLIMITED -> 0
-            InGameAction.FPS_30 -> 30
-            InGameAction.FPS_45 -> 45
-            InGameAction.FPS_60 -> 60
-            InGameAction.FPS_90 -> 90
-            InGameAction.FPS_120 -> 120
-            else -> null
-        }
-        if (fps != null) {
-            // Explicit manual changes supersede a temporary automatic FG cap.
-            generationCap.forget()
-            fpsLimitState.intValue = fps
-            session.setFpsLimit(fps) // session-only; don't overwrite the global/per-game config.
-            return
-        }
-        when (action) {
+            InGameAction.MUTE -> {
+                val current = session.audioVolume()
+                val volume = if (current == 0) volumeBeforeMute.takeIf { it > 0 } ?: 100 else { volumeBeforeMute = current; 0 }
+                session.setAudioVolume(volume); audioVolume.intValue = session.audioVolume()
+            }
+            InGameAction.IMPORT_LSFG_DLL -> if (!importingLsfg) lsfgPicker.launch(arrayOf("application/octet-stream", "application/x-msdownload", "*/*"))
+            InGameAction.CLEAR_LSFG_CACHE -> {
+                if (session.presentationState().engine == 1) {
+                    session.setFrameGeneration(false, fgPreset.intValue, currentOutputHz())
+                    restoreGenerationCap()
+                }
+                lifecycleScope.launch {
+                    val deleted = withContext(Dispatchers.IO) { runCatching { LsfgAssets.clear(applicationContext) } }
+                    if (deleted.isSuccess) lsfgCache.value = null
+                    else Toast.makeText(this@EmulatorHostActivity, getString(R.string.host_cache_not_removed), Toast.LENGTH_LONG).show()
+                    presentationState.value = session.presentationState()
+                }
+            }
+            InGameAction.LSFG -> runLsfg(action)
+            InGameAction.WINFG -> runWinFg(action)
             InGameAction.EDIT_TOUCH_LAYOUT -> {
                 if (session.booted && !session.isPaused()) {
                     session.pause()
@@ -3339,13 +3320,6 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 menuPaused.value = session.isPaused()
                 editorOpen.value = true
             }
-            InGameAction.SAVE_GAME_FPS,
-            InGameAction.INHERIT_GAME_FPS,
-            InGameAction.SAVE_GLOBAL_FPS -> persistMenuFps(action)
-            InGameAction.ANTIALIASING -> applyImageTuning(imageTuning.value.nextAntialiasing())
-            InGameAction.SHARPNESS -> applyImageTuning(imageTuning.value.nextSharpness())
-            InGameAction.DITHER -> applyImageTuning(imageTuning.value.nextDither())
-            InGameAction.SAVE_GAME_IMAGE -> persistImageTuning()
             InGameAction.STRETCH -> {
                 if (fpsConfig.value.loading || fpsConfig.value.saving || fpsConfig.value.error != null) return
                 val enabled = !fullscreenStretchEnabled.value
@@ -3369,23 +3343,14 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 getSharedPreferences("fps_overlay", MODE_PRIVATE).edit()
                     .putBoolean("performance_overlay_enabled", enabled).apply()
             }
-            InGameAction.HUD_LOOK -> {
-                // 15g: kept with this game's HUD place and size.
-                val store = HudPreferences.of(this)
-                val title = activeTitleState.value
-                val placement = xendroid.compose.core.HudPlacements.read(store, title)
-                val next = placement.look.next()
-                xendroid.compose.core.HudPlacements.write(store, title, placement.copy(look = next))
-                hudLook.value = next
+            InGameAction.TOUCH_CONTROLS -> {
+                val before = showTouchOverlay.value == true
+                rememberLive(TOUCH_KEY, before)
+                toggleTouchOverlay()
+                val after = showTouchOverlay.value == true
+                // Round 2: the setting itself, kept for this game; showing them over a controller is not a change.
+                if (after != before) keepChange(TOUCH_KEY, after.toString())
             }
-            InGameAction.HUD_STYLE -> {
-                val detail = hudDetail.value.next()
-                hudDetail.value = detail
-                if (detail != xendroid.compose.core.HudDetail.PANEL) panelSnapshot.value = null
-                getSharedPreferences("fps_overlay", MODE_PRIVATE).edit()
-                    .putString("performance_overlay_detail", detail.key).apply()
-            }
-            InGameAction.TOUCH_CONTROLS -> toggleTouchOverlay()
             InGameAction.ADAPTIVE_STICKS -> {
                 val title = session.activeTitleId() ?: return
                 val enabled = !adaptiveSticks.value
@@ -3405,6 +3370,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 val on = touchCamera.value
                 saveControlOptions { it.copy(touchCamera = on) }
             }
+            InGameAction.PAUSE_ON_OPEN -> setPauseOnOpen(!pauseOnOpen.value)
+            InGameAction.AUTO_SAVE -> setAutoSave(!autoSave.value)
+            InGameAction.UNDO_SESSION -> undoSessionChanges()
+            InGameAction.MAKE_GLOBAL -> makeChangesGlobal()
             InGameAction.RESUME -> closeMenuAndResume()
             InGameAction.SHARE_LOGS -> lifecycleScope.launch {
                 menuLogSessions.value = withContext(Dispatchers.IO) { runCatching { SessionLogs.sessions() }.getOrDefault(emptyList()) }
@@ -3415,27 +3384,434 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
     }
 
-    /** The Image options tried from the in-game menu: the core applies them from the next frame. */
+    /** Round 2: ←→ on a row of the menu, or a tap on its ‹ ›: the value beside. */
+    private fun adjustMenuAction(action: InGameAction, delta: Int) {
+        val step = if (delta < 0) -1 else 1
+        when (action.kind) {
+            RowKind.CHOICE -> chooseMenuOption(action, (choiceIndex(action) + step).coerceIn(0, choiceCount(action) - 1))
+            RowKind.MULTI -> menuState.value = menuState.value.moveChip(step, hudChipMetrics().size)
+            RowKind.TOGGLE -> if (toggleOn(action) != (step > 0)) performMenuAction(action)
+            RowKind.SLIDER -> { setMenuValue(action, sliderFraction(action) + step * sliderStep(action)); finishMenuValue(action) }
+            RowKind.CYCLE -> cycleMenuValue(action, step)
+            else -> {}
+        }
+    }
+
+    /** Round 2: a pill or a chip of the menu chosen by touch (or a choice's next by A). */
+    private fun chooseMenuOption(action: InGameAction, index: Int) {
+        when (action) {
+            InGameAction.DISPLAY_MODE -> setDisplayMode(index.coerceIn(0, 3))
+            InGameAction.FPS_LIMIT -> FPS_CHOICES.getOrNull(index)?.let(::setMenuFps)
+            InGameAction.HUD_LAYOUT -> updateHudStyle { it.copy(layout = xendroid.compose.core.HudLayout.entries[index.coerceIn(0, 1)]) }
+            InGameAction.HUD_POSITION -> updateHudStyle { it.copy(edge = xendroid.compose.core.HudEdge.entries[index.coerceIn(0, 1)]) }
+            InGameAction.HUD_STYLE -> setHudDetail(HUD_DETAILS[index.coerceIn(0, HUD_DETAILS.size - 1)])
+            InGameAction.HUD_LOOK -> setHudLook(xendroid.compose.core.HudLook.entries[index.coerceIn(0, 2)])
+            InGameAction.CONTROL_STYLE -> setControlStyle(xendroid.compose.gamepad.ControlStyle.entries[index.coerceIn(0, 1)])
+            InGameAction.HUD_METRICS -> {
+                menuState.value = menuState.value.copy(chip = index)
+                toggleHudChip(index)
+            }
+            else -> {}
+        }
+    }
+
+    /** Round 2: a slider of the menu moved to [fraction] (0..1): applied at once. */
+    private fun setMenuValue(action: InGameAction, fraction: Float) {
+        val f = fraction.coerceIn(0f, 1f)
+        when (action) {
+            InGameAction.HUD_SIZE -> {
+                val scale = ((xendroid.compose.core.HudPlacements.MIN_SCALE + f * HUD_SCALE_SPAN) * 10).roundToInt() / 10f
+                val store = HudPreferences.of(this)
+                val title = activeTitleState.value
+                xendroid.compose.core.HudPlacements.write(store, title, xendroid.compose.core.HudPlacements.read(store, title).copy(scale = scale))
+                hudScale.value = scale
+            }
+            InGameAction.HUD_OPACITY -> updateHudStyle { it.copy(opacity = (f * 10).roundToInt() / 10f) }
+            InGameAction.HUD_COLORS -> updateHudStyle { it.copy(colors = (f * 10).roundToInt() / 10f) }
+            InGameAction.VOLUME -> {
+                val volume = (f * 20).roundToInt() * 5
+                rememberLive(VOLUME_KEY, session.audioVolume())
+                session.setAudioVolume(volume)
+                audioVolume.intValue = session.audioVolume()
+            }
+            else -> {}
+        }
+    }
+
+    /** Round 2: a slider let go (or stepped by a controller): the volume is kept for this game. */
+    private fun finishMenuValue(action: InGameAction) {
+        if (action == InGameAction.VOLUME) keepChange(VOLUME_KEY, audioVolume.intValue.toString())
+    }
+
+    private fun choiceIndex(action: InGameAction): Int = when (action) {
+        InGameAction.DISPLAY_MODE -> presentationState.value.displayMode.coerceIn(0, 3)
+        InGameAction.FPS_LIMIT -> FPS_CHOICES.indexOf(fpsLimitState.intValue).coerceAtLeast(0)
+        InGameAction.HUD_LAYOUT -> hudStyle.value.layout.ordinal
+        InGameAction.HUD_POSITION -> hudStyle.value.edge.ordinal
+        InGameAction.HUD_STYLE -> HUD_DETAILS.indexOf(hudDetail.value).coerceAtLeast(0)
+        InGameAction.HUD_LOOK -> hudLook.value.ordinal
+        InGameAction.CONTROL_STYLE -> controlStyle.value.ordinal
+        else -> 0
+    }
+
+    private fun choiceCount(action: InGameAction): Int = when (action) {
+        InGameAction.DISPLAY_MODE -> 4
+        InGameAction.FPS_LIMIT -> FPS_CHOICES.size
+        InGameAction.HUD_STYLE -> HUD_DETAILS.size
+        InGameAction.HUD_LOOK -> xendroid.compose.core.HudLook.entries.size
+        else -> 2
+    }
+
+    private fun toggleOn(action: InGameAction): Boolean = when (action) {
+        InGameAction.STRETCH -> fullscreenStretchEnabled.value
+        InGameAction.WINFG -> presentationState.value.let { it.requested && it.engine == 0 }
+        InGameAction.LSFG -> presentationState.value.let { it.requested && it.engine == 1 }
+        InGameAction.SUSTAINED_PERFORMANCE -> sustainedMode.value
+        InGameAction.PERFORMANCE_HINTS -> performanceHints.requested
+        InGameAction.PERFORMANCE_HUD -> performanceOverlayEnabled.value
+        InGameAction.TOUCH_CONTROLS -> showTouchOverlay.value == true && !overlayHiddenByController.value
+        InGameAction.ADAPTIVE_STICKS -> adaptiveSticks.value
+        InGameAction.TOUCH_CAMERA -> touchCamera.value
+        InGameAction.UNBUFFERED_INPUT -> unbufferedInput.value
+        InGameAction.GYRO_CAMERA -> gyroEnabled.value
+        InGameAction.MUTE -> audioVolume.intValue == 0
+        InGameAction.PAUSE_ON_OPEN -> pauseOnOpen.value
+        InGameAction.AUTO_SAVE -> autoSave.value
+        else -> false
+    }
+
+    private fun sliderFraction(action: InGameAction): Float = when (action) {
+        InGameAction.HUD_SIZE -> ((hudScale.value ?: xendroid.compose.core.HudPlacements.read(HudPreferences.of(this), activeTitleState.value).scale) -
+            xendroid.compose.core.HudPlacements.MIN_SCALE) / HUD_SCALE_SPAN
+        InGameAction.HUD_OPACITY -> hudStyle.value.opacity
+        InGameAction.HUD_COLORS -> hudStyle.value.colors
+        InGameAction.VOLUME -> audioVolume.intValue / 100f
+        else -> 0f
+    }
+
+    /** One step of a slider for ←→: 10% of the HUD's size, opacity and colours; 5 points of volume. */
+    private fun sliderStep(action: InGameAction): Float = when (action) {
+        InGameAction.HUD_SIZE -> 0.1f / HUD_SCALE_SPAN
+        InGameAction.VOLUME -> 0.05f
+        else -> 0.1f
+    }
+
+    /** Round 2: a value of a ‹ › row of the menu, the previous ([step] -1) or the next. */
+    private fun cycleMenuValue(action: InGameAction, step: Int) {
+        fun <T> around(list: List<T>, current: T): T = list[(list.indexOf(current).coerceAtLeast(0) + step + list.size) % list.size]
+        when (action) {
+            InGameAction.SCALING_EFFECT -> {
+                rememberLive(SCALING_KEY, scalingEffect.intValue)
+                scalingEffect.intValue = around((-1..5).toList(), scalingEffect.intValue)
+                session.setScalingEffect(scalingEffect.intValue)
+                keepChange(SCALING_KEY, xendroid.compose.core.ImageTuning.scalingValue(scalingEffect.intValue))
+            }
+            InGameAction.ANTIALIASING -> applyImageTuning(imageTuning.value.copy(antialiasing = around((-1..2).toList(), imageTuning.value.antialiasing)))
+            InGameAction.SHARPNESS -> applyImageTuning(imageTuning.value.copy(sharpness = around((-1..4).toList(), imageTuning.value.sharpness)))
+            InGameAction.DITHER -> applyImageTuning(imageTuning.value.copy(dither = around(listOf(-1, 1, 0), imageTuning.value.dither)))
+            InGameAction.COLOR_FILTER -> {
+                val current = session.presentationState().colorFilter
+                rememberLive(InGameChanges.COLOR_FILTER, current)
+                val next = around((0..4).toList(), current)
+                session.setColorFilter(next)
+                presentationState.value = session.presentationState()
+                keepChange(InGameChanges.COLOR_FILTER, next.toString())
+            }
+            InGameAction.TV_MARGIN -> {
+                val choices = xendroid.compose.core.TvMargin.CHOICES
+                tvMargin.floatValue = around(choices, choices.minByOrNull { kotlin.math.abs(it - tvMargin.floatValue) } ?: choices.first())
+                getSharedPreferences(DISPLAY_SETTINGS_PREFS, MODE_PRIVATE).edit().putFloat("tv_margin_percent", tvMargin.floatValue).apply()
+                externalDisplay?.setMargin(tvMargin.floatValue)
+            }
+            InGameAction.REFRESH_RATE -> {
+                @Suppress("DEPRECATION") val activeDisplay = if (Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay
+                if (activeDisplay != null) {
+                    val choices = listOf<Float?>(null) + refreshChoices(activeDisplay).map { it.hz }
+                    rememberLive(InGameChanges.REFRESH_HZ, requestedRefresh.value)
+                    requestedRefresh.value = around(choices, requestedRefresh.value)
+                    selectRefresh(this, requestedRefresh.value)
+                    keepChange(InGameChanges.REFRESH_HZ, requestedRefresh.value?.toString())
+                }
+            }
+            InGameAction.BACKGROUND_POLICY -> backgroundPolicy.value = around(BackgroundPolicy.entries, backgroundPolicy.value)
+            InGameAction.GYRO_AIM -> if (gyroCamera.available) {
+                gyroAim.value = around(xendroid.compose.gamepad.GyroAim.entries, gyroAim.value)
+                val aim = gyroAim.value
+                saveControlOptions { it.copy(gyroAim = aim) }
+            }
+            InGameAction.GYRO_SENSITIVITY -> {
+                val next = around(xendroid.compose.gamepad.GyroSensitivity.entries, xendroid.compose.gamepad.GyroSensitivity.entries[gyroSensitivity.intValue])
+                gyroSensitivity.intValue = next.ordinal
+                gyroCamera.sensitivity = next.scale
+                saveControlOptions { it.copy(gyroSensitivity = next) }
+            }
+            InGameAction.CONTROLLER_RUMBLE -> {
+                rumbleSettings.value = rumbleSettings.value.copy(default = around(xendroid.compose.gamepad.RumbleIntensity.entries, rumbleSettings.value.default))
+                val rumble = rumbleSettings.value.default
+                saveControlOptions { it.copy(rumble = rumble) }
+                stopRumble()
+            }
+            InGameAction.SPLIT_SCREEN -> lifecycleScope.launch {
+                // Saved with the touch controls (as the editor's "Split screen"): off, at a fold, always.
+                runCatching {
+                    gamepad.update { cfg ->
+                        val mode = xendroid.compose.gamepad.SplitScreenMode.parse(cfg.globals.splitScreen)
+                        cfg.copy(globals = cfg.globals.copy(splitScreen = around(xendroid.compose.gamepad.SplitScreenMode.entries, mode).key))
+                    }
+                }.onFailure { Log.w(TAG, "Saving the split screen mode failed", it) }
+            }
+            InGameAction.WINFG_PRESET -> {
+                fgPreset.intValue = around(listOf(0, 1, 2), fgPreset.intValue)
+                runWinFg(action)
+            }
+            InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET -> runLsfg(action)
+            else -> {}
+        }
+    }
+
+    /** Frame generation by LSFG: on or off, a multiplier by hand or an output target (15d). */
+    private fun runLsfg(action: InGameAction) {
+        if (!BuildConfig.DEBUG) return
+        when (action) {
+            InGameAction.LSFG_MULTIPLIER -> {
+                // A multiplier chosen by hand ends the target (15d).
+                lsfgTarget.intValue = xendroid.compose.core.FrameGenerationTarget.OFF
+                lsfgMultiplier.intValue = if (lsfgMultiplier.intValue == 4) 2 else lsfgMultiplier.intValue + 1
+            }
+            InGameAction.LSFG_TARGET -> lsfgTarget.intValue = xendroid.compose.core.FrameGenerationTarget.next(lsfgTarget.intValue)
+            else -> {}
+        }
+        val cache = lsfgCache.value ?: return
+        val current = session.presentationState()
+        val running = current.requested && current.engine == 1
+        if (action != InGameAction.LSFG && !running) return
+        val enabled = if (action == InGameAction.LSFG) !running else true
+        val hz = currentOutputHz()
+        // 15d: a target picks the multiplier and caps the game at target ÷ multiplier, planned
+        // from the player's own limit (never from a cap frame generation put there).
+        val plan = xendroid.compose.core.FrameGenerationTarget.plan(lsfgTarget.intValue, hz,
+            generationCap.playerLimit(session.fpsLimit()))
+        if (plan != null) lsfgMultiplier.intValue = plan.multiplier
+        when {
+            !enabled -> restoreGenerationCap()
+            plan != null -> prepareExactCap(plan.cap)
+            else -> prepareGenerationCap(hz, lsfgMultiplier.intValue)
+        }
+        session.setLsfg(enabled, cache, hz, lsfgMultiplier.intValue)
+        if (enabled) recordEvent("lsfg", plan?.let { "target ${it.target}/s: ${it.multiplier}x from ${it.cap} FPS" }
+            ?: "${lsfgMultiplier.intValue}x by hand")
+        presentationState.value = session.presentationState()
+    }
+
+    /** Frame generation by Win-FG: on or off, or its preset while it runs. */
+    private fun runWinFg(action: InGameAction) {
+        if (!BuildConfig.DEBUG) return
+        val state = session.presentationState()
+        if (action == InGameAction.WINFG_PRESET && state.engine == 1) return
+        val enabled = if (action == InGameAction.WINFG) !(state.requested && state.engine == 0) else state.requested
+        val hz = currentOutputHz()
+        if (enabled) prepareGenerationCap(hz) else restoreGenerationCap()
+        session.setFrameGeneration(enabled, fgPreset.intValue, hz)
+        presentationState.value = session.presentationState()
+    }
+
+    private fun setDisplayMode(mode: Int) {
+        rememberLive(InGameChanges.DISPLAY_MODE, presentationState.value.displayMode)
+        session.setPresentationMode(mode)
+        presentationState.value = session.presentationState()
+        keepChange(InGameChanges.DISPLAY_MODE, mode.toString())
+    }
+
+    private fun setMenuFps(fps: Int) {
+        rememberLive(FPS_KEY, session.fpsLimit())
+        // Explicit manual changes supersede a temporary automatic FG cap.
+        generationCap.forget()
+        fpsLimitState.intValue = fps
+        session.setFpsLimit(fps)
+        keepChange(FPS_KEY, fps.toString())
+    }
+
+    private fun updateHudStyle(change: (xendroid.compose.core.HudStyle) -> xendroid.compose.core.HudStyle) {
+        val next = change(hudStyle.value)
+        hudStyle.value = next
+        xendroid.compose.core.HudStyle.write(HudPreferences.of(this), next)
+    }
+
+    private fun setHudDetail(detail: xendroid.compose.core.HudDetail) {
+        hudDetail.value = detail
+        if (detail != xendroid.compose.core.HudDetail.PANEL) panelSnapshot.value = null
+        getSharedPreferences("fps_overlay", MODE_PRIVATE).edit().putString("performance_overlay_detail", detail.key).apply()
+    }
+
+    private fun setHudLook(look: xendroid.compose.core.HudLook) {
+        // 15g: kept with this game's HUD place and size.
+        val store = HudPreferences.of(this)
+        val title = activeTitleState.value
+        xendroid.compose.core.HudPlacements.write(store, title, xendroid.compose.core.HudPlacements.read(store, title).copy(look = look))
+        hudLook.value = look
+    }
+
+    /** The HUD's chips in the menu: its metrics, then the FPS graph (null), then (developer) Vulkan submissions. */
+    private fun hudChipMetrics(): List<HudMetric?> = listOf(HudMetric.CPU, HudMetric.GPU, HudMetric.RAM, HudMetric.GPU_MEMORY,
+        HudMetric.BATTERY_TEMPERATURE, HudMetric.SOC_TEMPERATURE, HudMetric.POWER, null) +
+        if (menuState.value.developer) listOf(HudMetric.HOST_SUBMISSIONS) else emptyList()
+
+    private fun toggleHudChip(index: Int) {
+        val chips = hudChipMetrics()
+        if (index !in chips.indices) return
+        val metric = chips[index]
+        if (metric == null) { updateHudStyle { it.copy(graph = !it.graph) }; return }
+        val enabled = hudMetrics.value.toMutableSet()
+        if (!enabled.remove(metric)) enabled.add(metric)
+        hudMetrics.value = enabled.toSet()
+        getSharedPreferences("fps_overlay", MODE_PRIVATE).edit()
+            .putStringSet("hud_metrics", enabled.map { it.name }.toSet()).apply()
+    }
+
+    private fun setControlStyle(style: xendroid.compose.gamepad.ControlStyle) {
+        controlStyle.value = style
+        lifecycleScope.launch {
+            runCatching { gamepad.update { cfg -> cfg.copy(globals = cfg.globals.copy(style = style.key)) } }
+                .onFailure { Log.w(TAG, "Saving the touch controls' look failed", it) }
+        }
+    }
+
+    private fun setPauseOnOpen(on: Boolean) {
+        pauseOnOpen.value = on
+        inGamePrefs.pauseOnOpen = on
+        if (!menuState.value.open) return
+        // Applies to the menu open now too: the game stops, or goes on behind the menu.
+        if (on && session.booted && !session.isPaused()) {
+            session.pause()
+            menuState.value = menuState.value.copy(pausedByMenu = true)
+        } else if (!on && menuState.value.pausedByMenu) {
+            menuState.value = menuState.value.copy(pausedByMenu = false)
+            pausedByLifecycle = true
+            resumeForLifecycle()
+        }
+        menuPaused.value = session.isPaused()
+    }
+
+    private fun setAutoSave(on: Boolean) {
+        autoSave.value = on
+        inGamePrefs.autoSave = on
+        val changes = inGameChanges ?: return
+        if (on) changesScope.launch {
+            runCatching { changes.keepAll() }.onFailure { Log.w(TAG, "Keeping this session's changes failed", it) }
+            withContext(Dispatchers.Main) { refreshGameOwnKeys() }
+        }
+    }
+
+    /** Round 2: a new title runs: its changes start empty, and its own display mode, colour filter and refresh rate apply. */
+    private fun startGameChanges(title: String?) {
+        liveBefore.clear()
+        sessionChanges.intValue = 0
+        gameOwnKeys.value = emptySet()
+        inGameChanges = title?.let { InGameChanges(InGameChangesStore(ConfigStore(applicationContext), inGamePrefs, it)) }
+        if (title == null) return
+        inGamePrefs.value(InGameChanges.DISPLAY_MODE, title)?.toIntOrNull()?.takeIf { it in 0..3 }?.let { session.setPresentationMode(it) }
+        inGamePrefs.value(InGameChanges.COLOR_FILTER, title)?.toIntOrNull()?.takeIf { it in 0..4 }?.let { session.setColorFilter(it) }
+        inGamePrefs.value(InGameChanges.REFRESH_HZ, title)?.toFloatOrNull()?.let { hz ->
+            requestedRefresh.value = hz
+            selectRefresh(this, hz)
+        }
+        presentationState.value = session.presentationState()
+        // The menu has no button over the game any more: how to open it, once per install.
+        if (inGamePrefs.firstOpenTip()) Toast.makeText(this, getString(R.string.menu_open_tip), Toast.LENGTH_LONG).show()
+    }
+
+    /** Round 2: [key]'s live value before this session first changed it, for Undo. */
+    private fun rememberLive(key: String, value: Any?) {
+        if (key !in liveBefore) liveBefore[key] = value
+    }
+
+    /** Round 2: a value the menu changed, recorded for the game, and kept for it at once while "keep" is on. */
+    private fun keepChange(key: String, raw: String?) {
+        val changes = inGameChanges ?: return
+        val keep = autoSave.value
+        changesScope.launch {
+            val count = runCatching { changes.change(key, raw, keep); changes.count }
+            withContext(Dispatchers.Main) {
+                count.onSuccess { sessionChanges.intValue = it }.onFailure {
+                    Log.w(TAG, "Keeping $key for the game failed", it)
+                    Toast.makeText(this@EmulatorHostActivity, getString(R.string.host_changes_not_saved), Toast.LENGTH_SHORT).show()
+                }
+                if (keep) refreshGameOwnKeys()
+                if (key == FPS_KEY) refreshFpsConfig()
+            }
+        }
+    }
+
+    /** Round 2: which of the menu's settings this game has its own value for ("this game" in the menu). */
+    private fun refreshGameOwnKeys() {
+        val title = activeTitleState.value ?: return
+        changesScope.launch {
+            val own = runCatching {
+                val handle = ConfigStore(applicationContext).openGameConfig(title)
+                try { MENU_CONFIG_KEYS.filter { key -> key.split('|', limit = 2).let { (s, n) -> handle.getString(s, n) != null } }.toSet() }
+                finally { handle.closeDiscard() }
+            }.getOrDefault(emptySet()) + listOf(InGameChanges.DISPLAY_MODE, InGameChanges.COLOR_FILTER, InGameChanges.REFRESH_HZ)
+                .filter { inGamePrefs.gameValue(it, title) != null }
+            withContext(Dispatchers.Main) { if (activeTitleState.value == title) gameOwnKeys.value = own }
+        }
+    }
+
+    /** Round 2: this session's changes undone: the game's own settings and the live values as they were. */
+    private fun undoSessionChanges() {
+        val changes = inGameChanges ?: return
+        changesScope.launch {
+            val undone = runCatching { changes.undo() }.onFailure { Log.w(TAG, "Undoing this session's changes failed", it) }
+            withContext(Dispatchers.Main) {
+                liveBefore.toMap().forEach { (key, value) -> restoreLive(key, value) }
+                liveBefore.clear()
+                sessionChanges.intValue = 0
+                refreshGameOwnKeys()
+                refreshFpsConfig()
+                Toast.makeText(this@EmulatorHostActivity, getString(if (undone.isSuccess) R.string.host_changes_undone else R.string.host_config_not_saved),
+                    Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** Round 2: this session's changes become every game's (the global config and preferences). */
+    private fun makeChangesGlobal() {
+        val changes = inGameChanges ?: return
+        changesScope.launch {
+            val made = runCatching { changes.makeGlobal() }.onFailure { Log.w(TAG, "Making this session's changes global failed", it) }
+            withContext(Dispatchers.Main) {
+                if (made.isSuccess) {
+                    liveBefore.clear()
+                    sessionChanges.intValue = 0
+                }
+                refreshGameOwnKeys()
+                refreshFpsConfig()
+                Toast.makeText(this@EmulatorHostActivity, getString(if (made.isSuccess) R.string.host_changes_global else R.string.host_config_not_saved),
+                    Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun restoreLive(key: String, value: Any?) {
+        when (key) {
+            FPS_KEY -> (value as? Int)?.let { generationCap.forget(); session.setFpsLimit(it); fpsLimitState.intValue = session.fpsLimit() }
+            SCALING_KEY -> (value as? Int)?.let { scalingEffect.intValue = it; session.setScalingEffect(it) }
+            IMAGE_LIVE -> (value as? xendroid.compose.core.ImageTuning)?.let { imageTuning.value = it; session.setImageTuning(it) }
+            TOUCH_KEY -> (value as? Boolean)?.let { on -> if ((showTouchOverlay.value == true) != on) toggleTouchOverlay() }
+            VOLUME_KEY -> (value as? Int)?.let { session.setAudioVolume(it); audioVolume.intValue = session.audioVolume() }
+            InGameChanges.DISPLAY_MODE -> (value as? Int)?.let { session.setPresentationMode(it); presentationState.value = session.presentationState() }
+            InGameChanges.COLOR_FILTER -> (value as? Int)?.let { session.setColorFilter(it); presentationState.value = session.presentationState() }
+            InGameChanges.REFRESH_HZ -> { requestedRefresh.value = value as? Float; selectRefresh(this, requestedRefresh.value) }
+        }
+    }
+
+    /** The Image options tried from the in-game menu: the core applies them from the next frame, and the game keeps them. */
     private fun applyImageTuning(next: xendroid.compose.core.ImageTuning) {
+        rememberLive(IMAGE_LIVE, imageTuning.value)
+        val before = imageTuning.value.cvarValues()
         imageTuning.value = next
         session.setImageTuning(next)
         recordEvent("image", "aa ${next.antialiasing} sharpness ${next.sharpness} dither ${next.dither}")
-    }
-
-    /** Keeps the scaling effect and the Image options tried in the menu for this game. */
-    private fun persistImageTuning() {
-        val title = session.activeTitleId() ?: return
-        val values = imageTuning.value.cvars(scalingEffect.intValue)
-        if (values.isEmpty()) {
-            Toast.makeText(this, getString(R.string.host_image_nothing), Toast.LENGTH_SHORT).show()
-            return
-        }
-        lifecycleScope.launch {
-            val saved = withContext(Dispatchers.IO) { runCatching { inGameConfig.saveGameImage(title, values) } }
-            saved.onFailure { Log.w(TAG, "Saving the image options failed; keeping the previous file", it) }
-            Toast.makeText(this@EmulatorHostActivity, getString(if (saved.isSuccess) R.string.host_image_saved else R.string.host_config_not_saved),
-                if (saved.isSuccess) Toast.LENGTH_SHORT else Toast.LENGTH_LONG).show()
-        }
+        next.cvarValues().forEach { (key, raw) -> if (before[key] != raw) keepChange(key, raw) }
     }
 
     /** U01: what loaded (from the presenter) against the driver setting then and now. */
@@ -3457,44 +3833,6 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             fpsConfig.value = result.getOrElse {
                 Log.w(TAG, "Reading saved FPS configuration failed", it)
                 FpsConfigSnapshot(titleId = title, error = getString(R.string.host_config_unreadable))
-            }
-        }
-    }
-
-    private fun persistMenuFps(action: InGameAction) {
-        val before = fpsConfig.value
-        if (before.loading || before.saving || before.error != null) return
-        val title = before.titleId
-        if (action != InGameAction.SAVE_GLOBAL_FPS &&
-            (title == null || session.activeTitleId() != title)) return
-        val currentLimit = session.fpsLimit()
-        fpsConfig.value = before.copy(saving = true)
-        lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    val inherited = when (action) {
-                        InGameAction.SAVE_GAME_FPS -> { inGameConfig.saveGameFps(title!!, currentLimit); null }
-                        InGameAction.SAVE_GLOBAL_FPS -> { inGameConfig.saveGlobalFps(currentLimit); null }
-                        InGameAction.INHERIT_GAME_FPS -> inGameConfig.inheritGlobalFps(title!!)
-                        else -> null
-                    }
-                    val snapshot = runCatching { inGameConfig.fpsSnapshot(title) }.getOrElse {
-                        before.copy(saving = false, error = getString(R.string.host_config_not_refreshed))
-                    }
-                    snapshot to inherited
-                }
-            }
-            result.onSuccess { (snapshot, inherited) ->
-                fpsConfig.value = snapshot
-                if (inherited != null && session.activeTitleId() == title) {
-                    session.setFpsLimit(inherited)
-                    fpsLimitState.intValue = session.fpsLimit()
-                }
-                Toast.makeText(this@EmulatorHostActivity, "FPS configuration saved", Toast.LENGTH_SHORT).show()
-            }.onFailure {
-                Log.w(TAG, "Saving FPS configuration failed; keeping previous file", it)
-                fpsConfig.value = before
-                Toast.makeText(this@EmulatorHostActivity, getString(R.string.host_config_not_saved), Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -3595,8 +3933,13 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun panelKeyDown(
         nav: PanelNav,
         keyCode: Int
-    ): Boolean =
-        when (xendroid.compose.gamepad.MenuButtons.intentOf(keyCode, swapConfirm)) {
+    ): Boolean {
+        // Round 2: in the menu's rows, left and right change the row's value; up and down move.
+        if (menuRowsActive() && (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            adjustSelectedRow(if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1)
+            return true
+        }
+        return when (xendroid.compose.gamepad.MenuButtons.intentOf(keyCode, swapConfirm)) {
             xendroid.compose.gamepad.MenuButtons.Intent.PREVIOUS -> {
                 movePanelSelection(nav, -1)
                 true
@@ -3618,6 +3961,18 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             }
             else -> false
         }
+    }
+
+    /** The menu is open on its rows (not asking to quit or for a log): ←→ adjust there. */
+    private fun menuRowsActive(): Boolean =
+        menuState.value.open && !hasGuestPrompt() && !menuState.value.confirmingQuit && !menuState.value.logPicker
+
+    private fun adjustSelectedRow(delta: Int) {
+        menuState.value.action?.let { adjustMenuAction(it, delta) }
+    }
+
+    private var panelNavLeft = false
+    private var panelNavRight = false
 
     /** U04: the menu button layout (read once per game) and the pace of a held direction. */
     private val swapConfirm by lazy { xendroid.compose.gamepad.MenuButtonPrefs.swapConfirm(this) }
@@ -3630,6 +3985,21 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         nav: PanelNav,
         event: MotionEvent
     ) {
+        if (menuRowsActive()) {
+            val x = event.getAxisValue(MotionEvent.AXIS_HAT_X) + event.getAxisValue(MotionEvent.AXIS_X)
+            val y = event.getAxisValue(MotionEvent.AXIS_HAT_Y) + event.getAxisValue(MotionEvent.AXIS_Y)
+            val now = SystemClock.uptimeMillis()
+            val left = x < -0.5f && kotlin.math.abs(x) > kotlin.math.abs(y)
+            val right = x > 0.5f && kotlin.math.abs(x) > kotlin.math.abs(y)
+            if (left != panelNavLeft) { panelNavLeft = left; if (left && navRepeat.press(-2, now)) adjustSelectedRow(-1) }
+            if (right != panelNavRight) { panelNavRight = right; if (right && navRepeat.press(2, now)) adjustSelectedRow(1) }
+            val up = y < -0.5f && !left && !right
+            val down = y > 0.5f && !left && !right
+            if (up != panelNavPrev) { panelNavPrev = up; if (up && navRepeat.press(-1, now)) movePanelSelection(nav, -1) }
+            if (down != panelNavNext) { panelNavNext = down; if (down && navRepeat.press(1, now)) movePanelSelection(nav, 1) }
+            if (!panelNavPrev && !panelNavNext && !panelNavLeft && !panelNavRight) navRepeat.release()
+            return
+        }
         val y =
             event.getAxisValue(
                 MotionEvent.AXIS_HAT_Y

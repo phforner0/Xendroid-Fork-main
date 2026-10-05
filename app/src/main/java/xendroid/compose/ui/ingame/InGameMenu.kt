@@ -1,23 +1,72 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package xendroid.compose.ui.ingame
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import xendroid.compose.R
+import xendroid.compose.core.SessionLogs
 import xendroid.compose.ui.design.ButtonGlyph
 import xendroid.compose.ui.design.CHints
 import xendroid.compose.ui.design.LocalSwapConfirm
@@ -27,123 +76,120 @@ import xendroid.compose.ui.design.XdButtonKind
 import xendroid.compose.ui.design.XdHint
 import xendroid.compose.ui.design.XdIconButton
 import xendroid.compose.ui.design.XdIcons
+import xendroid.compose.ui.design.XdStepper
+import xendroid.compose.ui.design.XdSwitch
 import xendroid.compose.ui.design.XdText
 import xendroid.compose.ui.design.part
-import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
-import xendroid.compose.R
 import xendroid.compose.ui.panel.GuestPanelOption
-import xendroid.compose.settings.FpsConfigSnapshot
-import xendroid.compose.core.HudMetric
-import xendroid.compose.core.SessionLogs
-import xendroid.compose.core.PresentationState
-import xendroid.compose.BuildConfig
 
-/** A narrow touch target; Back or a controller opens the same menu without touching the screen. */
+/**
+ * Round 2: the way into the menu without a button over the game. A strip along the left edge that a
+ * drag inward opens; Back (the edge gesture or the button) and the controller's Guide open it too.
+ */
 @Composable
-fun InGameMenuHandle(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+fun InGameMenuEdge(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val description = stringResource(R.string.menu_open)
     Box(
-        modifier.width(28.dp).fillMaxHeight().pointerInput(onOpen) {
-            var dragged = 0f
-            detectHorizontalDragGestures(
-                onDragStart = { dragged = 0f },
-                onHorizontalDrag = { change, amount ->
-                    dragged += amount
-                    if (dragged > 48.dp.toPx()) {
-                        onOpen()
-                        dragged = Float.NEGATIVE_INFINITY
-                    }
-                    change.consume()
-                },
-                onDragEnd = { dragged = 0f },
-            )
-        },
-    ) {
-        val description = stringResource(R.string.menu_open)
-        Row(
-            Modifier.align(Alignment.TopStart).padding(top = 10.dp)
-                .clip(RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp))
-                .background(Color.Black.copy(alpha = 0.5f))
-                .clickable(onClick = onOpen)
-                .semantics { contentDescription = description; role = Role.Button }
-                .padding(horizontal = 6.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) { Icon(XdIcons.menu, null, Modifier.size(16.dp), tint = Color.White) }
-    }
+        modifier.width(22.dp).fillMaxHeight()
+            .semantics { contentDescription = description; role = Role.Button }
+            .pointerInput(onOpen) {
+                var dragged = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { dragged = 0f },
+                    onHorizontalDrag = { change, amount ->
+                        dragged += amount
+                        if (dragged > 48.dp.toPx()) {
+                            onOpen()
+                            dragged = Float.NEGATIVE_INFINITY
+                        }
+                        change.consume()
+                    },
+                    onDragEnd = { dragged = 0f },
+                )
+            },
+    )
 }
 
 /** One figure of the menu's status line: "30 FPS", "p99 34 ms", "41 °C"… ([value] in bold). */
 data class MenuStat(val value: String, val unit: String? = null, val label: String? = null)
 
+/**
+ * What a row of the menu shows. The host builds one per row from its own state (screen tests build
+ * them by hand); the row's kind ([InGameAction.kind]) says which fields it reads.
+ */
+data class MenuValue(
+    /** CYCLE and INFO: the value; TOGGLE and BUTTON: a line under the title; SLIDER: the value as read. */
+    val text: String? = null,
+    /** CHOICE and MULTI: the choices. */
+    val options: List<String> = emptyList(),
+    /** CHOICE: the chosen one; -1 when none of them is (a value set elsewhere). */
+    val selected: Int = -1,
+    /** MULTI: the chips that are on. */
+    val checked: Set<Int> = emptySet(),
+    /** TOGGLE. */
+    val on: Boolean = false,
+    /** SLIDER: where it sits (0..1), and the stops between the ends (0 = any value). */
+    val fraction: Float = 0f,
+    val steps: Int = 0,
+    val enabled: Boolean = true,
+    /** The value is this game's own (its config or its own preference), not the global one. */
+    val own: Boolean = false,
+    /** A line under the row: why it is off, what it needs, when it applies. */
+    val note: String? = null,
+)
+
+/** The menu's head, the value of every row, and the session's changes. */
+data class InGameMenuModel(
+    val values: Map<InGameAction, MenuValue> = emptyMap(),
+    val gameName: String? = null,
+    val art: Any? = null,
+    val paused: Boolean = false,
+    val status: List<MenuStat> = emptyList(),
+    /** Lines under a category's rows (frame generation notes, phone controllers, the build). */
+    val notes: Map<InGamePage, List<String>> = emptyMap(),
+    val logSessions: List<SessionLogs.Session> = emptyList(),
+    /** Round 2: settings this session changed and kept for the game (the "Kept for…" line). */
+    val savedChanges: Int = 0,
+    /** Round 2: the HUD as it is set now, drawn at the top of the HUD category (the HUD itself hides under the menu). */
+    val hudPreview: HudPreview? = null,
+)
+
+/** The HUD's settings for the menu's preview: what it shows, how, and its size. */
+data class HudPreview(
+    val detail: xendroid.compose.core.HudDetail,
+    val metrics: Set<xendroid.compose.core.HudMetric>,
+    val look: xendroid.compose.core.HudLook,
+    val style: xendroid.compose.core.HudStyle,
+    val scale: Float,
+)
+
+/**
+ * Round 2, the in-game menu: a rail of categories (tabs along the top in portrait) and, beside it,
+ * the category's options in groups. Each row shows its value and changes it in place: pills for a
+ * few choices, a switch, ‹ value › for longer lists, a slider for amounts. A controller moves with
+ * ↑↓, changes the row with ←→, acts with A, switches category with LB/RB and closes with B; the host
+ * drives that selection ([InGameMenuState]), so the rows only draw it.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun InGameMenu(
     state: InGameMenuState,
-    paused: Boolean,
-    fpsLimit: Int,
-    fpsConfig: FpsConfigSnapshot,
-    presentation: PresentationState,
-    fgPreset: Int,
-    lsfgAvailable: Boolean,
-    extensionLabels: Map<InGameAction, String>,
-    performanceHud: Boolean,
-    compactHud: Boolean,
-    hudMetrics: Set<HudMetric>,
-    touchControls: Boolean,
-    adaptiveSticks: Boolean,
-    stretch: Boolean,
-    volume: Int,
-    sessionInfo: String,
-    /** While phone controllers are on: address, code and players (Controls page). */
-    phoneControllers: String?,
-    /** While frame generation runs: the advisory budget verdict (Graphics page). */
-    frameGenerationBudget: String? = null,
-    /** FG figures: what it would cost here, or base → submitted while it runs. */
-    frameGenerationNotes: List<String> = emptyList(),
-    /** 15n: the HUD shows the performance panel (its third level). */
-    hudPanel: Boolean = false,
-    logSessions: List<SessionLogs.Session>,
-    onLogChoice: (Int) -> Unit,
+    model: InGameMenuModel,
     onPage: (InGamePage) -> Unit,
     onSelect: (Int) -> Unit,
+    /** A, or a tap on the row: flips a switch, takes a cycle's next value, runs a button. */
     onAction: (InGameAction) -> Unit,
+    /** ←→, or a tap on ‹ ›: the previous or the next value of a cycle. */
+    onAdjust: (InGameAction, Int) -> Unit,
+    /** A tap on a pill or a chip: that choice (a chip flips). */
+    onChoose: (InGameAction, Int) -> Unit,
+    /** A slider dragged to a place (0..1). */
+    onSet: (InGameAction, Float) -> Unit,
+    onLogChoice: (Int) -> Unit,
     onQuitChoice: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    /** Batch 2: the game's name and cover in the menu's head. */
-    gameName: String? = null,
-    art: Any? = null,
-    /** Batch 2: the status line (FPS, p99, temperature, battery, driver) without the HUD. */
-    status: List<MenuStat> = emptyList(),
+    /** A slider let go: what it changed is kept (the volume, for the game). */
+    onSetDone: (InGameAction) -> Unit = {},
 ) {
     val c = Xd.colors
     val controller = Xd.controller
@@ -154,142 +200,55 @@ fun InGameMenu(
     ) {
         val portrait = maxHeight > maxWidth
         val short = maxHeight < 400.dp
-        // Hardware navigation changes the selected option, not Compose focus. Scroll the
-        // corresponding row into view rather than leaving the highlight off-screen.
+        // The status line only where the rows keep room for several of them.
+        val roomy = maxHeight >= 460.dp
+        // Hardware navigation changes the selected row, not Compose focus: the row is scrolled
+        // into view instead of leaving the highlight off-screen.
         val scrollState = remember(state.page, state.confirmingQuit, state.logPicker) { ScrollState(0) }
         val selectedRow = remember(state.page, state.confirmingQuit, state.logPicker) { BringIntoViewRequester() }
         LaunchedEffect(state.page, state.selected, state.confirmingQuit, state.logPicker) {
             // After this frame's layout: when the menu opens, the selected row is not placed yet.
-            androidx.compose.runtime.withFrameNanos { }
+            withFrameNanos { }
             selectedRow.bringIntoView()
         }
         val shape = if (portrait) RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp) else RoundedCornerShape(topEnd = 22.dp, bottomEnd = 22.dp)
-        val panel = if (portrait) Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.8f)
-        else Modifier.align(Alignment.CenterStart).width(minOf(maxWidth * 0.66f, if (controller) 500.dp else 430.dp)).fillMaxHeight()
+        val panel = if (portrait) Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.86f)
+        else Modifier.align(Alignment.CenterStart).width(minOf(maxWidth * 0.74f, if (controller) 660.dp else 620.dp)).fillMaxHeight()
         Column(
             panel.clip(shape).background(c.solid(c.sheet))
                 .windowInsetsPadding(WindowInsets.safeDrawing.part(top = !portrait, bottom = true, start = true))
                 .padding(horizontal = if (short) 12.dp else 16.dp, vertical = if (short) 10.dp else 14.dp),
             verticalArrangement = Arrangement.spacedBy(if (short) 8.dp else 10.dp),
         ) {
-            // Head: the game, its state, and the way back to it.
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (art != null) AsyncImage(art, null, Modifier.size(40.dp, 52.dp).clip(RoundedCornerShape(7.dp)), contentScale = ContentScale.Crop)
-                Column(Modifier.weight(1f)) {
-                    Text(gameName ?: "XenDroid${fpsConfig.titleId?.let { " · $it" }.orEmpty()}", style = XdText.h2, color = c.fg,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(stringResource(if (paused) R.string.xd_menu_paused else R.string.xd_menu_running), style = XdText.small, color = c.fg3)
+            val dialog = state.confirmingQuit || state.logPicker
+            // Landscape keeps the height for the rows: leaving and the kept changes sit in the head, no footer.
+            Head(model, controller, compactActions = !portrait && !dialog, onClose = { onAction(InGameAction.RESUME) },
+                onQuit = { onAction(InGameAction.QUIT) }, onChanges = { onPage(InGamePage.SESSION) })
+            if (model.status.isNotEmpty() && !dialog && roomy) StatusLine(model.status)
+            val body = Modifier.weight(1f).fillMaxWidth()
+            when {
+                dialog -> Column(body.verticalScroll(scrollState), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    if (state.confirmingQuit) QuitConfirm(state, selectedRow, onQuitChoice)
+                    else LogPicker(state, model, selectedRow, onLogChoice)
                 }
-                if (!controller) XdIconButton(XdIcons.x, stringResource(R.string.menu_continue), { onAction(InGameAction.RESUME) })
-            }
-            if (status.isNotEmpty() && !state.confirmingQuit && !state.logPicker) StatusLine(status)
-            if (!state.confirmingQuit && !state.logPicker) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (controller) ButtonGlyph("LB")
-                    InGamePage.entries.forEach { page -> MenuTab(page.label(), page == state.page) { onPage(page) } }
-                    if (controller) ButtonGlyph("RB")
+                portrait -> Column(body, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PageTabs(state, controller, onPage)
+                    Rows(state, model, scrollState, selectedRow, Modifier.weight(1f).fillMaxWidth(), onSelect, onAction, onAdjust, onChoose, onSet, onSetDone)
                 }
-            }
-            // Head, tabs and foot stay visible even on short screens. Only options scroll;
-            // hardware selection is kept visible by the requester above.
-            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                if (state.confirmingQuit) {
-                    Text(stringResource(R.string.menu_exit_question), style = XdText.h2, color = c.fg, modifier = Modifier.padding(top = 8.dp))
-                    Text(stringResource(R.string.menu_exit_warning), style = XdText.bodySm, color = c.fg2)
-                    GuestPanelOption(
-                        label = stringResource(R.string.menu_cancel), selected = state.selected == 0,
-                        onClick = { onQuitChoice(false) },
-                        modifier = Modifier.padding(top = 6.dp)
-                            .then(if (state.selected == 0) Modifier.bringIntoViewRequester(selectedRow) else Modifier),
-                    )
-                    GuestPanelOption(
-                        label = stringResource(R.string.menu_exit_game), selected = state.selected == 1,
-                        onClick = { onQuitChoice(true) }, danger = true,
-                        modifier = if (state.selected == 1) Modifier.bringIntoViewRequester(selectedRow) else Modifier,
-                    )
-                } else if (state.logPicker) {
-                    Text(stringResource(R.string.menu_logs_title), style = XdText.h2, color = c.fg)
-                    Text(stringResource(R.string.xd_menu_logs_note), style = XdText.note, color = c.fg3)
-                    val labels = listOf(stringResource(R.string.menu_logs_all)) +
-                        logSessions.map { stringResource(R.string.menu_logs_session, it.label, (it.bytes / 1024).toInt()) } +
-                        stringResource(R.string.menu_back)
-                    labels.forEachIndexed { index, label ->
-                        GuestPanelOption(label, selected = state.selected == index,
-                            modifier = if (state.selected == index) Modifier.bringIntoViewRequester(selectedRow) else Modifier,
-                            onClick = { onLogChoice(index) })
-                    }
-                } else {
-                    if (state.page == InGamePage.GRAPHICS && state.developer) {
-                        MenuNote(presentation.label)
-                        frameGenerationBudget?.let { MenuNote(it) }
-                        frameGenerationNotes.forEach { MenuNote(it) }
-                        MenuNote(stringResource(R.string.menu_fg_experimental))
-                    }
-                    if (state.page == InGamePage.SYSTEM) {
-                        Text(stringResource(R.string.menu_frame_limit_title), style = XdText.label, color = c.fg)
-                        MenuNote(stringResource(R.string.menu_live_limit, fpsText(fpsLimit)) + "\n" +
-                            when {
-                                fpsConfig.saving -> stringResource(R.string.menu_saving_config)
-                                fpsConfig.loading -> stringResource(R.string.menu_reading_config)
-                                fpsConfig.error != null -> fpsConfig.error
-                                else -> stringResource(R.string.menu_next_launch, fpsText(fpsConfig.globalLimit),
-                                    if (fpsConfig.titleId == null) stringResource(R.string.menu_game_id_unavailable)
-                                    else stringResource(R.string.menu_game_limit,
-                                        fpsConfig.gameLimit?.let { fpsText(it) } ?: stringResource(R.string.menu_inherits_global)))
-                            })
-                    }
-                    state.actions().forEachIndexed { index, action ->
-                        val more = action == InGameAction.MORE_OPTIONS
-                        GuestPanelOption(
-                            label = if (more) {
-                                if (state.page in state.advanced) stringResource(R.string.menu_fewer_options)
-                                else stringResource(R.string.menu_more_options, state.advancedCount())
-                            } else {
-                                extensionLabels[action] ?: action.label(fpsLimit, performanceHud, compactHud, hudPanel, touchControls, adaptiveSticks, stretch, hudMetrics, presentation, fgPreset, volume)
-                            },
-                            selected = index == state.selected,
-                            enabled = (action != InGameAction.ADAPTIVE_STICKS || fpsConfig.titleId != null) &&
-                                (!action.isFrameGeneration || BuildConfig.DEBUG) &&
-                                (action != InGameAction.LSFG || lsfgAvailable) &&
-                                (!action.isPersistence ||
-                                    (!fpsConfig.loading && !fpsConfig.saving && fpsConfig.error == null &&
-                                        (action == InGameAction.SAVE_GLOBAL_FPS || action == InGameAction.STRETCH ||
-                                            fpsConfig.titleId != null))),
-                            splitValue = true,
-                            subtle = more,
-                            danger = action == InGameAction.QUIT,
-                            modifier = if (index == state.selected) Modifier.bringIntoViewRequester(selectedRow) else Modifier,
-                            onClick = {
-                                onSelect(index)
-                                onAction(action)
-                            },
-                        )
-                    }
-                    if (state.page == InGamePage.GRAPHICS) {
-                        MenuNote(stringResource(R.string.menu_image_live_note), Modifier.padding(top = 6.dp))
-                        MenuNote(stringResource(R.string.menu_graphics_note))
-                        if (!BuildConfig.DEBUG && state.developer) MenuNote(stringResource(R.string.menu_fg_gated))
-                    }
-                    if (state.page == InGamePage.SYSTEM) MenuNote(stringResource(R.string.menu_system_note), Modifier.padding(top = 6.dp))
-                    if (state.page == InGamePage.CONTROLS) {
-                        phoneControllers?.let {
-                            Text(it, style = XdText.bodySm, color = c.fg, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                .background(c.s1).padding(12.dp))
-                        }
-                        MenuNote(stringResource(R.string.menu_adaptive_note))
-                        MenuNote(stringResource(R.string.menu_touch_camera_note))
-                        MenuNote(stringResource(R.string.menu_phones_note))
-                    }
-                    if (state.page == InGamePage.SESSION) MenuNote(sessionInfo, Modifier.padding(top = 6.dp))
+                else -> Row(body, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PageRail(state, controller, short, onPage)
+                    Rows(state, model, scrollState, selectedRow, Modifier.weight(1f).fillMaxHeight(), onSelect, onAction, onAdjust, onChoose, onSet, onSetDone)
                 }
             }
+            if (!dialog && portrait && model.savedChanges > 0) SavedLine(model, short) { onPage(InGamePage.SESSION) }
             if (controller) {
                 val swap = LocalSwapConfirm.current
                 CHints(listOf(XdHint(if (swap) "B" else "A", stringResource(R.string.xd_hint_select)),
-                    XdHint(if (swap) "A" else "B", stringResource(R.string.xd_close)) { onAction(InGameAction.RESUME) },
-                    XdHint("LB/RB", stringResource(R.string.xd_hint_tabs))), Modifier.clip(RoundedCornerShape(12.dp)))
-            } else if (!state.confirmingQuit && !state.logPicker) {
+                    XdHint("◀/▶", stringResource(R.string.menu_hint_adjust)),
+                    XdHint("LB/RB", stringResource(R.string.menu_hint_categories)),
+                    XdHint(if (swap) "A" else "B", stringResource(R.string.xd_close)) { onAction(InGameAction.RESUME) }),
+                    Modifier.clip(RoundedCornerShape(12.dp)), scrim = false)
+            } else if (!dialog && portrait) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     XdButton(stringResource(R.string.menu_continue), { onAction(InGameAction.RESUME) }, kind = XdButtonKind.PRIMARY,
                         icon = XdIcons.play, modifier = Modifier.weight(1f))
@@ -300,11 +259,38 @@ fun InGameMenu(
     }
 }
 
+/** The game and its state; in landscape also the kept changes (a chip to Session) and "Exit game". */
+@Composable
+private fun Head(model: InGameMenuModel, controller: Boolean, compactActions: Boolean, onClose: () -> Unit, onQuit: () -> Unit,
+                 onChanges: () -> Unit) {
+    val c = Xd.colors
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (model.art != null) AsyncImage(model.art, null, Modifier.size(36.dp, 46.dp).clip(RoundedCornerShape(7.dp)), contentScale = ContentScale.Crop)
+        Column(Modifier.weight(1f)) {
+            Text(model.gameName ?: "XenDroid", style = XdText.h2, color = c.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(stringResource(if (model.paused) R.string.xd_menu_paused else R.string.xd_menu_running), style = XdText.small, color = c.fg3,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (compactActions && model.savedChanges > 0) {
+            Row(
+                Modifier.height(32.dp).clip(RoundedCornerShape(50)).background(c.acc.copy(alpha = 0.12f)).clickable(onClick = onChanges)
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(XdIcons.save, null, Modifier.size(14.dp), tint = c.acc)
+                Text(pluralStringResource(R.plurals.menu_saved_chip, model.savedChanges, model.savedChanges), style = XdText.labelSm, color = c.fg2, maxLines = 1)
+            }
+        }
+        if (compactActions && !controller) XdButton(stringResource(R.string.menu_exit_game), onQuit, kind = XdButtonKind.GHOST, icon = XdIcons.exit)
+        if (!controller) XdIconButton(XdIcons.x, stringResource(R.string.menu_continue), onClose)
+    }
+}
+
 @Composable
 private fun StatusLine(status: List<MenuStat>) {
     val c = Xd.colors
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.05f))
-        .horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
+        .horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
         for (s in status) {
             Text(buildAnnotatedString {
@@ -316,15 +302,291 @@ private fun StatusLine(status: List<MenuStat>) {
     }
 }
 
+/** Landscape: the categories down the side, icon over label; LB and RB at the ends with a pad. */
 @Composable
-private fun MenuTab(text: String, selected: Boolean, onClick: () -> Unit) {
+private fun PageRail(state: InGameMenuState, controller: Boolean, short: Boolean, onPage: (InGamePage) -> Unit) {
+    val c = Xd.colors
+    Column(
+        Modifier.width(if (short) 76.dp else 84.dp).fillMaxHeight().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (controller) ButtonGlyph("LB")
+        for (page in InGamePage.entries) {
+            val selected = page == state.page
+            val shape = RoundedCornerShape(12.dp)
+            Column(
+                Modifier.fillMaxWidth().clip(shape)
+                    .background(if (selected) c.acc.copy(alpha = 0.16f) else Color.Transparent)
+                    .clickable(role = Role.Tab) { onPage(page) }.semantics { this.selected = selected }
+                    .padding(vertical = if (short) 5.dp else 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Icon(page.icon(), null, Modifier.size(20.dp), tint = if (selected) c.acc else c.fg3)
+                Text(page.label(), style = XdText.labelSm.copy(fontSize = 11.5.sp), color = if (selected) c.acc else c.fg2, maxLines = 1)
+            }
+        }
+        if (controller) ButtonGlyph("RB")
+    }
+}
+
+/** Portrait: the categories as tabs along the top. */
+@Composable
+private fun PageTabs(state: InGameMenuState, controller: Boolean, onPage: (InGamePage) -> Unit) {
+    val c = Xd.colors
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (controller) ButtonGlyph("LB")
+        for (page in InGamePage.entries) {
+            val selected = page == state.page
+            Row(
+                Modifier.height(36.dp).clip(RoundedCornerShape(50))
+                    .background(if (selected) c.acc.copy(alpha = 0.18f) else Color.Transparent)
+                    .clickable(role = Role.Tab) { onPage(page) }.semantics { this.selected = selected }
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(page.icon(), null, Modifier.size(16.dp), tint = if (selected) c.acc else c.fg3)
+                Text(page.label(), style = XdText.labelSm, color = if (selected) c.acc else c.fg2, maxLines = 1)
+            }
+        }
+        if (controller) ButtonGlyph("RB")
+    }
+}
+
+/** The category's rows in their groups, then its notes. */
+@Composable
+private fun Rows(
+    state: InGameMenuState,
+    model: InGameMenuModel,
+    scrollState: ScrollState,
+    selectedRow: BringIntoViewRequester,
+    modifier: Modifier,
+    onSelect: (Int) -> Unit,
+    onAction: (InGameAction) -> Unit,
+    onAdjust: (InGameAction, Int) -> Unit,
+    onChoose: (InGameAction, Int) -> Unit,
+    onSet: (InGameAction, Float) -> Unit,
+    onSetDone: (InGameAction) -> Unit,
+) {
+    Column(modifier.verticalScroll(scrollState), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (state.page == InGamePage.HUD) model.hudPreview?.let { HudPreviewBox(it) }
+        var group: MenuGroup? = null
+        state.actions().forEachIndexed { index, action ->
+            val here = if (action == InGameAction.MORE_OPTIONS) null else groupOf(state.page, action)
+            if (here != null && here !== group) {
+                group = here
+                here.title?.let { GroupHead(stringResource(it), first = index == 0) }
+            }
+            val selected = index == state.selected
+            val value = model.values[action] ?: MenuValue()
+            val rowModifier = if (selected) Modifier.bringIntoViewRequester(selectedRow) else Modifier
+            if (action == InGameAction.MORE_OPTIONS) {
+                GuestPanelOption(
+                    label = if (state.page in state.advanced) stringResource(R.string.menu_fewer_options)
+                    else stringResource(R.string.menu_more_options, state.advancedCount()),
+                    selected = selected, subtle = true, modifier = rowModifier.padding(top = 4.dp),
+                    onClick = { onSelect(index); onAction(action) },
+                )
+            } else {
+                MenuRow(action, value, selected, if (selected) state.chip else -1, rowModifier,
+                    onClick = { onSelect(index); onAction(action) },
+                    onAdjust = { delta -> onSelect(index); onAdjust(action, delta) },
+                    onChoose = { option -> onSelect(index); onChoose(action, option) },
+                    onSet = { fraction -> onSelect(index); onSet(action, fraction) },
+                    onSetDone = { onSetDone(action) })
+            }
+        }
+        model.notes[state.page].orEmpty().forEach { MenuNote(it, Modifier.padding(top = 4.dp)) }
+        Spacer(Modifier.height(6.dp))
+    }
+}
+
+/** Round 2: the HUD as set now, over a dark stand-in for the game, with steady sample figures. */
+@Composable
+private fun HudPreviewBox(preview: HudPreview) {
+    val shape = RoundedCornerShape(12.dp)
+    val sample = remember {
+        xendroid.compose.HudSample(fps = 60.0, frameMs = 16.7, submissionsPerSecond = 60.0, cpu = 42f, gpu = 76, ramUsed = 6_600_000_000L,
+            ramTotal = 11_500_000_000L, batteryCelsius = 38.5f, socCelsius = 64f,
+            power = xendroid.compose.PowerReading(watts = 5.8, percent = 81, pluggedIn = false, minutesLeft = 142, minutesToFull = null),
+            gpuMemory = 1_300_000_000L)
+    }
+    val graph = remember { List(60) { i -> 57f + 3f * kotlin.math.sin(i / 3f) - if (i in 40..42) 18f else 0f } }
+    val scale = preview.scale.coerceIn(0.6f, 1.1f)
+    Box(
+        Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(shape)
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF1C2A33), Color(0xFF3B3022))))
+            .padding(6.dp),
+    ) {
+        if (preview.style.layout == xendroid.compose.core.HudLayout.HORIZONTAL) {
+            xendroid.compose.HudBar(sample, preview.detail, preview.metrics, preview.look, preview.style, scale,
+                graph = if (preview.style.graph) graph else null,
+                modifier = Modifier.align(if (preview.style.edge == xendroid.compose.core.HudEdge.TOP) Alignment.TopCenter else Alignment.BottomCenter))
+        } else {
+            xendroid.compose.HudView(sample, preview.detail, preview.metrics, preview.look, scale,
+                style = preview.style, graph = if (preview.style.graph) graph else null)
+        }
+    }
+}
+
+@Composable
+private fun GroupHead(text: String, first: Boolean) {
+    Text(text.uppercase(), style = XdText.cardHead.copy(fontSize = 10.5.sp), color = Xd.colors.fg3,
+        modifier = Modifier.padding(start = 4.dp, top = if (first) 0.dp else 10.dp, bottom = 2.dp))
+}
+
+/** A row of the menu: the frame (the controller's highlight), the title, and its control by kind. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MenuRow(
+    action: InGameAction,
+    value: MenuValue,
+    selected: Boolean,
+    /** The chip under the controller's cursor (MULTI); -1 when the row is not selected. */
+    chip: Int,
+    modifier: Modifier,
+    onClick: () -> Unit,
+    onAdjust: (Int) -> Unit,
+    onChoose: (Int) -> Unit,
+    onSet: (Float) -> Unit,
+    onSetDone: () -> Unit,
+) {
+    val c = Xd.colors
+    val shape = RoundedCornerShape(12.dp)
+    val kind = action.kind
+    // Pills, chips and the slider take their own taps; the other rows act on a tap anywhere.
+    val tappable = kind == RowKind.TOGGLE || kind == RowKind.CYCLE || kind == RowKind.BUTTON
+    Column(
+        modifier.fillMaxWidth().heightIn(min = 46.dp)
+            // U02: the controller's highlight is the screen reader's "selected", for the row and its title.
+            .semantics(mergeDescendants = true) { this.selected = selected }
+            .clip(shape)
+            .background(if (selected) c.acc.copy(alpha = 0.2f).compositeOver(c.solid(c.s1)) else c.s1)
+            .then(if (selected) Modifier.border(2.dp, c.acc, shape) else Modifier)
+            .then(if (tappable) Modifier.clickable(enabled = value.enabled, role = Role.Button, onClick = onClick) else Modifier)
+            .alpha(if (value.enabled) 1f else 0.45f)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        val title = action.title()
+        val danger = action == InGameAction.QUIT
+        when (kind) {
+            RowKind.CHOICE, RowKind.MULTI -> {
+                TitleLine(title, value, danger)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    value.options.forEachIndexed { i, option ->
+                        val on = if (kind == RowKind.CHOICE) i == value.selected else i in value.checked
+                        OptionPill(option, on, check = kind == RowKind.MULTI, cursor = kind == RowKind.MULTI && i == chip,
+                            enabled = value.enabled) { onChoose(i) }
+                    }
+                }
+            }
+            RowKind.SLIDER -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { TitleLine(title, value.copy(text = null), danger) }
+                    value.text?.let { Text(it, style = XdText.mono.copy(fontSize = 12.5.sp), color = c.fg) }
+                }
+                Slider(value = value.fraction, onValueChange = onSet, onValueChangeFinished = onSetDone, steps = value.steps, enabled = value.enabled,
+                    modifier = Modifier.fillMaxWidth().height(26.dp),
+                    colors = SliderDefaults.colors(thumbColor = c.acc, activeTrackColor = c.acc, inactiveTrackColor = c.solid(c.s4),
+                        activeTickColor = c.onAcc.copy(alpha = 0.4f), inactiveTickColor = c.fg3.copy(alpha = 0.4f)))
+            }
+            else -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.weight(1f)) {
+                    TitleLine(title, value, danger, under = kind != RowKind.CYCLE && kind != RowKind.INFO)
+                    if (kind == RowKind.INFO) value.text?.let { Text(it, style = XdText.small, color = c.fg2, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+                }
+                when (kind) {
+                    RowKind.TOGGLE -> XdSwitch(value.on, { onClick() }, enabled = value.enabled)
+                    RowKind.CYCLE -> XdStepper(value.text.orEmpty(), { onAdjust(-1) }, { onAdjust(1) }, enabled = value.enabled, minLabelWidth = 72.dp)
+                    RowKind.BUTTON -> if (!danger) Icon(XdIcons.chevR, null, Modifier.size(16.dp), tint = c.fg3)
+                    else -> {}
+                }
+            }
+        }
+        value.note?.let { Text(it, style = XdText.note, color = c.fg3) }
+    }
+}
+
+/** The title, "this game" when the value is the game's own, and (switches, buttons) the line under it. */
+@Composable
+private fun TitleLine(title: String, value: MenuValue, danger: Boolean, under: Boolean = false) {
+    val c = Xd.colors
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = XdText.label, color = if (danger) c.dangerText else c.fg, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false))
+            if (value.own) Text(stringResource(R.string.menu_tag_game), style = XdText.tiny.copy(fontWeight = FontWeight.Bold), color = c.acc,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(c.acc.copy(alpha = 0.14f)).padding(horizontal = 6.dp, vertical = 2.dp))
+        }
+        if (under) value.text?.let { Text(it, style = XdText.small, color = c.fg3, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+    }
+}
+
+/** A choice of a CHOICE row (a pill) or of a MULTI row (a chip with a check). */
+@Composable
+private fun OptionPill(text: String, on: Boolean, check: Boolean, cursor: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val c = Xd.colors
     val shape = RoundedCornerShape(50)
-    Box(
-        Modifier.height(34.dp).clip(shape).background(if (selected) c.acc.copy(alpha = 0.18f) else Color.Transparent)
-            .clickable(role = Role.Tab, onClick = onClick).semantics { this.selected = selected }.padding(horizontal = 14.dp),
-        contentAlignment = Alignment.Center,
-    ) { Text(text, style = XdText.labelSm, color = if (selected) c.acc else c.fg2, maxLines = 1) }
+    Row(
+        Modifier.height(32.dp).clip(shape)
+            .background(if (on) c.acc.copy(alpha = 0.22f).compositeOver(c.solid(c.s2)) else c.s2)
+            .then(if (on || cursor) Modifier.border(if (cursor) 2.dp else 1.dp, if (cursor) c.fg else c.acc.copy(alpha = 0.6f), shape) else Modifier)
+            .clickable(enabled = enabled, role = if (check) Role.Checkbox else Role.RadioButton, onClick = onClick)
+            .semantics { selected = on }
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        if (check && on) Icon(XdIcons.check, null, Modifier.size(14.dp), tint = c.acc)
+        Text(text, style = XdText.chip, color = if (on) c.fg else c.fg2, maxLines = 1)
+    }
+}
+
+/** "Kept for Halo 3: 3 changes", over the buttons; a tap goes to the session's options. */
+@Composable
+private fun SavedLine(model: InGameMenuModel, short: Boolean, onOpen: () -> Unit) {
+    val c = Xd.colors
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.acc.copy(alpha = 0.1f)).clickable(onClick = onOpen)
+            .padding(horizontal = 12.dp, vertical = if (short) 5.dp else 7.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(XdIcons.save, null, Modifier.size(15.dp), tint = c.acc)
+        Text(pluralStringResource(R.plurals.menu_saved_line, model.savedChanges, model.savedChanges, model.gameName ?: "XenDroid"),
+            style = XdText.small, color = c.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Icon(XdIcons.chevR, null, Modifier.size(14.dp), tint = c.fg3)
+    }
+}
+
+@Composable
+private fun QuitConfirm(state: InGameMenuState, selectedRow: BringIntoViewRequester, onQuitChoice: (Boolean) -> Unit) {
+    val c = Xd.colors
+    Text(stringResource(R.string.menu_exit_question), style = XdText.h2, color = c.fg, modifier = Modifier.padding(top = 8.dp))
+    Text(stringResource(R.string.menu_exit_warning), style = XdText.bodySm, color = c.fg2)
+    GuestPanelOption(
+        label = stringResource(R.string.menu_cancel), selected = state.selected == 0, onClick = { onQuitChoice(false) },
+        modifier = Modifier.padding(top = 6.dp).then(if (state.selected == 0) Modifier.bringIntoViewRequester(selectedRow) else Modifier),
+    )
+    GuestPanelOption(
+        label = stringResource(R.string.menu_exit_game), selected = state.selected == 1, onClick = { onQuitChoice(true) }, danger = true,
+        modifier = if (state.selected == 1) Modifier.bringIntoViewRequester(selectedRow) else Modifier,
+    )
+}
+
+@Composable
+private fun LogPicker(state: InGameMenuState, model: InGameMenuModel, selectedRow: BringIntoViewRequester, onLogChoice: (Int) -> Unit) {
+    val c = Xd.colors
+    Text(stringResource(R.string.menu_logs_title), style = XdText.h2, color = c.fg)
+    Text(stringResource(R.string.xd_menu_logs_note), style = XdText.note, color = c.fg3)
+    val labels = listOf(stringResource(R.string.menu_logs_all)) +
+        model.logSessions.map { stringResource(R.string.menu_logs_session, it.label, (it.bytes / 1024).toInt()) } +
+        stringResource(R.string.menu_back)
+    labels.forEachIndexed { index, label ->
+        GuestPanelOption(label, selected = state.selected == index,
+            modifier = if (state.selected == index) Modifier.bringIntoViewRequester(selectedRow) else Modifier,
+            onClick = { onLogChoice(index) })
+    }
 }
 
 @Composable
@@ -332,121 +594,83 @@ private fun MenuNote(text: String, modifier: Modifier = Modifier) {
     Text(text, style = XdText.note, color = Xd.colors.fg3, modifier = modifier)
 }
 
+private fun InGamePage.icon(): ImageVector = when (this) {
+    InGamePage.GRAPHICS -> XdIcons.image
+    InGamePage.SYSTEM -> XdIcons.bolt
+    InGamePage.HUD -> XdIcons.hud
+    InGamePage.CONTROLS -> XdIcons.gamepad
+    InGamePage.SESSION -> XdIcons.play
+}
+
 @Composable
 private fun InGamePage.label(): String = stringResource(
     when (this) {
         InGamePage.GRAPHICS -> R.string.menu_tab_graphics
         InGamePage.SYSTEM -> R.string.menu_tab_system
+        InGamePage.HUD -> R.string.menu_tab_hud
         InGamePage.CONTROLS -> R.string.menu_tab_controls
         InGamePage.SESSION -> R.string.menu_tab_session
     },
 )
 
+/** The row's name; its value comes from the host ([MenuValue]). */
 @Composable
-private fun onOff(on: Boolean): String = stringResource(if (on) R.string.menu_on else R.string.menu_off)
-
-@Composable
-private fun InGameAction.label(fps: Int, hud: Boolean, compact: Boolean, panel: Boolean, touch: Boolean, adaptive: Boolean, stretch: Boolean,
-                             metrics: Set<HudMetric>, presentation: PresentationState, preset: Int, volume: Int): String {
-    fun check(on: Boolean) = if (on) " ✓" else ""
-    return when (this) {
-        InGameAction.FPS_UNLIMITED -> stringResource(R.string.menu_unlimited) + check(fps == 0)
-        InGameAction.FPS_30 -> stringResource(R.string.menu_fps, 30) + check(fps == 30)
-        InGameAction.FPS_45 -> stringResource(R.string.menu_fps, 45) + check(fps == 45)
-        InGameAction.FPS_60 -> stringResource(R.string.menu_fps, 60) + check(fps == 60)
-        InGameAction.FPS_90 -> stringResource(R.string.menu_fps, 90) + check(fps == 90)
-        InGameAction.FPS_120 -> stringResource(R.string.menu_fps, 120) + check(fps == 120)
-        InGameAction.SAVE_GAME_FPS -> stringResource(R.string.menu_save_game_fps)
-        InGameAction.INHERIT_GAME_FPS -> stringResource(R.string.menu_inherit_game_fps)
-        InGameAction.SAVE_GLOBAL_FPS -> stringResource(R.string.menu_save_global_fps)
-        InGameAction.STRETCH -> stringResource(R.string.menu_stretch_next, onOff(stretch))
-        InGameAction.DISPLAY_FIT -> stringResource(R.string.menu_display_fit) + check(presentation.displayMode == 0)
-        InGameAction.DISPLAY_FILL -> stringResource(R.string.menu_display_fill) + check(presentation.displayMode == 1)
-        InGameAction.DISPLAY_STRETCH -> stringResource(R.string.menu_display_stretch) + check(presentation.displayMode == 2)
-        InGameAction.DISPLAY_INTEGER -> stringResource(R.string.menu_display_integer) + check(presentation.displayMode == 3)
-        InGameAction.WINFG -> stringResource(R.string.menu_winfg, onOff(presentation.requested))
-        InGameAction.WINFG_PRESET -> stringResource(R.string.menu_winfg_preset, stringResource(
-            listOf(R.string.menu_preset_quality, R.string.menu_preset_balanced, R.string.menu_preset_performance)[preset.coerceIn(0, 2)]))
-        InGameAction.LSFG -> stringResource(R.string.menu_lsfg, onOff(presentation.requested && presentation.engine == 1))
-        InGameAction.LSFG_MULTIPLIER -> stringResource(R.string.menu_lsfg_multiplier)
-        InGameAction.LSFG_TARGET -> stringResource(R.string.menu_lsfg_target)
-        InGameAction.IMPORT_LSFG_DLL -> stringResource(R.string.menu_import_lsfg)
-        InGameAction.CLEAR_LSFG_CACHE -> stringResource(R.string.menu_clear_lsfg)
-        InGameAction.PERFORMANCE_HUD -> stringResource(R.string.menu_performance_hud, onOff(hud))
-        InGameAction.HUD_STYLE -> stringResource(R.string.menu_hud_detail, stringResource(when {
-            panel -> R.string.menu_hud_panel
-            compact -> R.string.menu_hud_compact
-            else -> R.string.menu_hud_full
-        }))
-        InGameAction.HUD_HOST_SUBMISSIONS -> HudMetric.HOST_SUBMISSIONS.label(metrics)
-        InGameAction.HUD_CPU -> HudMetric.CPU.label(metrics)
-        InGameAction.HUD_GPU -> HudMetric.GPU.label(metrics)
-        InGameAction.HUD_RAM -> HudMetric.RAM.label(metrics)
-        InGameAction.HUD_BATTERY -> HudMetric.BATTERY_TEMPERATURE.label(metrics)
-        InGameAction.HUD_SOC -> HudMetric.SOC_TEMPERATURE.label(metrics)
-        InGameAction.HUD_POWER -> HudMetric.POWER.label(metrics)
-        InGameAction.HUD_GPU_MEMORY -> HudMetric.GPU_MEMORY.label(metrics)
-        InGameAction.HUD_LOOK -> stringResource(R.string.menu_hud_look_title)
-        InGameAction.TOUCH_CONTROLS -> stringResource(R.string.menu_touch_controls, onOff(touch))
-        InGameAction.ADAPTIVE_STICKS -> stringResource(R.string.menu_adaptive_sticks, onOff(adaptive))
-        InGameAction.EDIT_TOUCH_LAYOUT -> stringResource(R.string.menu_edit_layout)
-        InGameAction.RESUME -> stringResource(R.string.menu_continue)
-        InGameAction.SHARE_LOGS -> stringResource(R.string.menu_share_logs)
-        InGameAction.QUIT -> stringResource(R.string.menu_exit_game)
-        InGameAction.MUTE -> if (volume == 0) stringResource(R.string.menu_muted) else stringResource(R.string.menu_volume, volume)
-        InGameAction.VOLUME_DOWN -> stringResource(R.string.menu_volume_down)
-        InGameAction.VOLUME_UP -> stringResource(R.string.menu_volume_up)
-        InGameAction.REFRESH_RATE -> stringResource(R.string.menu_refresh_rate)
-        InGameAction.SUSTAINED_PERFORMANCE -> stringResource(R.string.menu_sustained)
-        InGameAction.BACKGROUND_POLICY -> stringResource(R.string.menu_background)
-        InGameAction.GYRO_CAMERA -> stringResource(R.string.menu_gyro_camera)
-        InGameAction.EXTERNAL_DISPLAY -> stringResource(R.string.menu_external_display)
-        InGameAction.TV_MARGIN -> stringResource(R.string.menu_tv_margin_title)
-        InGameAction.SCALING_EFFECT -> stringResource(R.string.menu_scaling)
-        InGameAction.ANTIALIASING -> stringResource(R.string.menu_aa_value, stringResource(R.string.menu_from_settings))
-        InGameAction.SHARPNESS -> stringResource(R.string.menu_sharpness_value, stringResource(R.string.menu_from_settings))
-        InGameAction.DITHER -> stringResource(R.string.menu_dither_value, stringResource(R.string.menu_from_settings))
-        InGameAction.SAVE_GAME_IMAGE -> stringResource(R.string.menu_save_game_image)
-        InGameAction.PERFORMANCE_HINTS -> stringResource(R.string.menu_hints)
-        InGameAction.COLOR_FILTER -> stringResource(R.string.menu_color_filter)
-        InGameAction.GYRO_CALIBRATE -> stringResource(R.string.menu_gyro_calibrate)
-        InGameAction.GYRO_SENSITIVITY -> stringResource(R.string.menu_gyro_sensitivity)
-        InGameAction.GYRO_AIM -> stringResource(R.string.menu_gyro_aim_title)
-        InGameAction.UNBUFFERED_INPUT -> stringResource(R.string.menu_unbuffered_title)
-        InGameAction.SPLIT_SCREEN -> stringResource(R.string.menu_split_title)
-        InGameAction.CONTROLLER_RUMBLE -> stringResource(R.string.menu_rumble)
-        InGameAction.PHONE_CONTROLLERS -> stringResource(R.string.menu_phone_controllers)
-        InGameAction.MORE_OPTIONS -> stringResource(R.string.menu_fewer_options)
-        InGameAction.TOUCH_CAMERA -> stringResource(R.string.menu_touch_camera, onOff(false))
-        InGameAction.MARK_SCENE -> stringResource(R.string.menu_mark_scene, 0)
-        InGameAction.DRIVER_INFO -> stringResource(R.string.menu_driver_unknown)
-    }
-}
-
-@Composable
-private fun HudMetric.label(metrics: Set<HudMetric>): String {
-    val name = when (this) {
-        HudMetric.HOST_SUBMISSIONS -> stringResource(R.string.menu_metric_submissions)
-        HudMetric.BATTERY_TEMPERATURE -> stringResource(R.string.menu_metric_battery)
-        HudMetric.SOC_TEMPERATURE -> stringResource(R.string.menu_metric_soc)
-        HudMetric.POWER -> stringResource(R.string.menu_metric_power)
-        HudMetric.GPU_MEMORY -> stringResource(R.string.menu_metric_gpu_memory)
-        else -> label
-    }
-    return stringResource(R.string.menu_hud_metric, name, onOff(this in metrics))
-}
-
-@Composable
-private fun fpsText(fps: Int?): String = when (fps) {
-    null -> stringResource(R.string.menu_unknown)
-    0 -> stringResource(R.string.menu_unlimited)
-    else -> stringResource(R.string.menu_fps, fps)
-}
-
-private val InGameAction.isPersistence: Boolean
-    get() = this == InGameAction.SAVE_GAME_FPS || this == InGameAction.INHERIT_GAME_FPS ||
-        this == InGameAction.SAVE_GLOBAL_FPS || this == InGameAction.STRETCH || this == InGameAction.SAVE_GAME_IMAGE
-
-private val InGameAction.isFrameGeneration: Boolean
-    get() = this == InGameAction.WINFG || this == InGameAction.WINFG_PRESET ||
-        this == InGameAction.LSFG || this == InGameAction.LSFG_MULTIPLIER || this == InGameAction.LSFG_TARGET
+internal fun InGameAction.title(): String = stringResource(
+    when (this) {
+        InGameAction.DISPLAY_MODE -> R.string.menu_t_display
+        InGameAction.SCALING_EFFECT -> R.string.menu_t_scaling
+        InGameAction.ANTIALIASING -> R.string.menu_t_aa
+        InGameAction.SHARPNESS -> R.string.menu_t_sharpness
+        InGameAction.DITHER -> R.string.menu_t_dither
+        InGameAction.COLOR_FILTER -> R.string.menu_t_color_filter
+        InGameAction.STRETCH -> R.string.menu_t_stretch
+        InGameAction.EXTERNAL_DISPLAY -> R.string.menu_t_tv
+        InGameAction.TV_MARGIN -> R.string.menu_tv_margin_title
+        InGameAction.DRIVER_INFO -> R.string.menu_group_driver
+        InGameAction.WINFG -> R.string.menu_t_winfg
+        InGameAction.WINFG_PRESET -> R.string.menu_t_winfg_preset
+        InGameAction.LSFG -> R.string.menu_t_lsfg
+        InGameAction.LSFG_MULTIPLIER -> R.string.menu_t_lsfg_multiplier
+        InGameAction.LSFG_TARGET -> R.string.menu_t_lsfg_target
+        InGameAction.IMPORT_LSFG_DLL -> R.string.menu_import_lsfg
+        InGameAction.CLEAR_LSFG_CACHE -> R.string.menu_clear_lsfg
+        InGameAction.FPS_LIMIT -> R.string.menu_t_fps
+        InGameAction.REFRESH_RATE -> R.string.menu_refresh_rate
+        InGameAction.SUSTAINED_PERFORMANCE -> R.string.menu_t_sustained
+        InGameAction.PERFORMANCE_HINTS -> R.string.menu_hints
+        InGameAction.BACKGROUND_POLICY -> R.string.menu_background
+        InGameAction.PERFORMANCE_HUD -> R.string.menu_t_hud
+        InGameAction.HUD_LAYOUT -> R.string.menu_t_hud_layout
+        InGameAction.HUD_STYLE -> R.string.menu_t_hud_detail
+        InGameAction.HUD_METRICS -> R.string.menu_t_hud_metrics
+        InGameAction.HUD_POSITION -> R.string.menu_t_hud_position
+        InGameAction.HUD_LOOK -> R.string.menu_t_hud_look
+        InGameAction.HUD_SIZE -> R.string.menu_t_hud_size
+        InGameAction.HUD_OPACITY -> R.string.menu_t_hud_opacity
+        InGameAction.HUD_COLORS -> R.string.menu_t_hud_colors
+        InGameAction.TOUCH_CONTROLS -> R.string.menu_t_touch
+        InGameAction.CONTROL_STYLE -> R.string.menu_t_control_style
+        InGameAction.ADAPTIVE_STICKS -> R.string.menu_t_adaptive
+        InGameAction.TOUCH_CAMERA -> R.string.menu_t_touch_camera
+        InGameAction.EDIT_TOUCH_LAYOUT -> R.string.menu_t_edit_layout
+        InGameAction.SPLIT_SCREEN -> R.string.menu_split_title
+        InGameAction.CONTROLLER_RUMBLE -> R.string.menu_rumble
+        InGameAction.PHONE_CONTROLLERS -> R.string.menu_phone_controllers
+        InGameAction.UNBUFFERED_INPUT -> R.string.menu_unbuffered_title
+        InGameAction.GYRO_CAMERA -> R.string.menu_gyro_camera
+        InGameAction.GYRO_AIM -> R.string.menu_gyro_aim_title
+        InGameAction.GYRO_SENSITIVITY -> R.string.menu_t_gyro_sensitivity
+        InGameAction.GYRO_CALIBRATE -> R.string.menu_t_gyro_calibrate
+        InGameAction.VOLUME -> R.string.menu_t_volume
+        InGameAction.MUTE -> R.string.menu_t_mute
+        InGameAction.PAUSE_ON_OPEN -> R.string.menu_t_pause
+        InGameAction.AUTO_SAVE -> R.string.menu_t_autosave
+        InGameAction.UNDO_SESSION -> R.string.menu_t_undo
+        InGameAction.MAKE_GLOBAL -> R.string.menu_t_global
+        InGameAction.MARK_SCENE -> R.string.menu_t_mark
+        InGameAction.SHARE_LOGS -> R.string.menu_share_logs
+        InGameAction.RESUME -> R.string.menu_continue
+        InGameAction.QUIT -> R.string.menu_exit_game
+        InGameAction.MORE_OPTIONS -> R.string.menu_fewer_options
+    },
+)

@@ -51,7 +51,7 @@ import xendroid.compose.settings.SettingsSchema
 import xendroid.compose.settings.SettingsViewModel
 import xendroid.compose.settings.UiMode
 import xendroid.compose.settings.UiModeStore
-import xendroid.compose.ui.ingame.InGameMenuHandle
+import xendroid.compose.ui.ingame.InGameMenuEdge
 import xendroid.compose.ui.ingame.InGameMenuState
 import xendroid.compose.ui.ingame.InGamePage
 import xendroid.compose.ui.library.FirstRunStore
@@ -114,10 +114,10 @@ class Item28PortugueseTest {
                 assertNothingCut("the $page tab")
             }
             state = InGameMenuState(open = true, developer = false)
-            compose.onNodeWithText(pt.getString(R.string.menu_more_options, 2)).assertExists()
+            compose.onNodeWithText(pt.getString(R.string.menu_more_options, 3)).assertExists()
             // The option the controller highlights is announced as selected.
             state = state.select(0)
-            compose.onNodeWithText(pt.getString(R.string.menu_display_fit), substring = true).assertIsSelected()
+            compose.onNodeWithText(pt.getString(R.string.menu_t_display)).assertIsSelected()
             state = state.askToQuit()
             compose.onNodeWithText(pt.getString(R.string.menu_exit_question)).assertExists()
             compose.onNodeWithText(pt.getString(R.string.menu_cancel)).assertIsSelected()
@@ -129,8 +129,8 @@ class Item28PortugueseTest {
         }
     }
 
-    @Test fun theMenuHandleIsAButtonNamedOpenMenu() {
-        show { InGameMenuHandle(onOpen = {}) }.use {
+    @Test fun theMenuEdgeIsAButtonNamedOpenMenu() {
+        show { InGameMenuEdge(onOpen = {}) }.use {
             compose.onNodeWithContentDescription(pt.getString(R.string.menu_open))
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
         }

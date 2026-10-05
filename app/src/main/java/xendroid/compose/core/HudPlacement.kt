@@ -71,3 +71,51 @@ object KgslMemory {
         else String.format(Locale.US, "GPU mem %.0f MB (all apps)", it / 1_048_576.0)
     } ?: "GPU mem N/A"
 }
+
+/** Round 2: the HUD as a box beside the game that the fingers move and size (vertical), or as a bar
+ *  along the top or the bottom edge, every metric in a line (horizontal). */
+enum class HudLayout(val key: String) {
+    VERTICAL("vertical"), HORIZONTAL("horizontal");
+
+    companion object {
+        fun parse(key: String?): HudLayout = entries.firstOrNull { it.key == key } ?: VERTICAL
+    }
+}
+
+/** Round 2: the edge the horizontal HUD sits on. */
+enum class HudEdge(val key: String) {
+    TOP("top"), BOTTOM("bottom");
+
+    companion object {
+        fun parse(key: String?): HudEdge = entries.firstOrNull { it.key == key } ?: TOP
+    }
+}
+
+/**
+ * Round 2: how the HUD is drawn, every game's: its layout and edge, the background's opacity, how
+ * strongly labels and the graph are coloured (0 = white), and whether the FPS graph shows.
+ */
+data class HudStyle(
+    val layout: HudLayout = HudLayout.VERTICAL,
+    val edge: HudEdge = HudEdge.TOP,
+    val opacity: Float = DEFAULT_OPACITY,
+    val colors: Float = 1f,
+    val graph: Boolean = true,
+) {
+    companion object {
+        const val DEFAULT_OPACITY = 0.58f
+
+        fun read(store: HudPlacements.Store): HudStyle = HudStyle(
+            layout = HudLayout.parse(store.string("layout")),
+            edge = HudEdge.parse(store.string("edge")),
+            opacity = store.float("opacity")?.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: DEFAULT_OPACITY,
+            colors = store.float("colors")?.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 1f,
+            graph = store.string("graph") != "off",
+        )
+
+        fun write(store: HudPlacements.Store, style: HudStyle) = store.put(mapOf(
+            "layout" to style.layout.key, "edge" to style.edge.key, "opacity" to style.opacity, "colors" to style.colors,
+            "graph" to if (style.graph) "on" else "off",
+        ))
+    }
+}

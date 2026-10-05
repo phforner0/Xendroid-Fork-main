@@ -2,49 +2,54 @@ package xendroid.compose.ui.ingame
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InGameMenuStateTest {
+    private fun InGameMenuState.on(action: InGameAction) = select(actions().indexOf(action))
+
     @Test fun reopeningRestoresLastPageWithoutReopeningQuitConfirmation() {
-        val session = InGameMenuState().show(pause = true).changePage(-1).move(2).askToQuit()
+        val session = InGameMenuState().show(pause = true).changePage(-1).on(InGameAction.QUIT).askToQuit()
         val reopened = session.hide().show(pause = false)
         assertEquals(InGamePage.SESSION, reopened.page)
         assertEquals(InGameAction.QUIT, reopened.action)
         assertFalse(reopened.confirmingQuit)
         assertFalse(reopened.pausedByMenu)
     }
+
     @Test fun navigationRetainsFocusPerPageAcrossOpenings() {
-        val menu = InGameMenuState().show(pause = true).move(3)
-        assertEquals(InGameAction.DISPLAY_INTEGER, menu.action)
-        val system = menu.changePage(1).move(3)
+        val menu = InGameMenuState().show(pause = true).move(2)
+        assertEquals(InGameAction.ANTIALIASING, menu.action)
+        val system = menu.changePage(1)
         assertEquals(InGamePage.SYSTEM, system.page)
-        assertEquals(InGameAction.FPS_60, system.action)
+        assertEquals(InGameAction.FPS_LIMIT, system.action)
         val graphics = system.changePage(-1)
-        assertEquals(3, graphics.selected)
-        assertEquals(3, graphics.changePage(1).selected)
-        assertEquals(3, graphics.hide().show(pause = false).selected)
+        assertEquals(2, graphics.selected)
+        assertEquals(2, graphics.changePage(1).changePage(-1).selected)
+        assertEquals(2, graphics.hide().show(pause = false).selected)
         assertFalse(graphics.hide().show(pause = false).pausedByMenu)
     }
 
-    /** U01: nothing gets lost in the regrouping, and nothing shows twice. */
-    @Test fun everyOptionLivesOnExactlyOneTab() {
+    /** U01, round 2: nothing gets lost in the categories and groups, and nothing shows twice. */
+    @Test fun everyOptionLivesOnExactlyOneCategoryAndGroup() {
         val placed = inGamePageActions.values.flatten()
         assertEquals(placed.size, placed.toSet().size)
         assertEquals(InGameAction.entries.toSet() - InGameAction.MORE_OPTIONS, placed.toSet())
         assertTrue(advancedActions.all { it in placed })
-        // The tabs hold what the plan gives them.
-        assertTrue(inGamePageActions.getValue(InGamePage.GRAPHICS).containsAll(listOf(InGameAction.DISPLAY_FIT, InGameAction.WINFG,
-            InGameAction.DRIVER_INFO)))
-        assertTrue(inGamePageActions.getValue(InGamePage.SYSTEM).containsAll(listOf(InGameAction.FPS_60,
-            InGameAction.SUSTAINED_PERFORMANCE, InGameAction.PERFORMANCE_HUD)))
-        assertTrue(inGamePageActions.getValue(InGamePage.CONTROLS).containsAll(listOf(InGameAction.EDIT_TOUCH_LAYOUT,
-            InGameAction.PHONE_CONTROLLERS, InGameAction.GYRO_CAMERA)))
-        assertTrue(inGamePageActions.getValue(InGamePage.SESSION).containsAll(listOf(InGameAction.RESUME,
-            InGameAction.SHARE_LOGS, InGameAction.QUIT)))
+        inGamePageActions.forEach { (page, actions) -> actions.forEach { assertNotNull("$it on $page", groupOf(page, it)) } }
+        assertTrue(inGamePageActions.getValue(InGamePage.GRAPHICS).containsAll(listOf(InGameAction.DISPLAY_MODE, InGameAction.ANTIALIASING,
+            InGameAction.SHARPNESS, InGameAction.WINFG, InGameAction.DRIVER_INFO)))
+        assertTrue(inGamePageActions.getValue(InGamePage.SYSTEM).containsAll(listOf(InGameAction.FPS_LIMIT, InGameAction.SUSTAINED_PERFORMANCE)))
+        assertTrue(inGamePageActions.getValue(InGamePage.HUD).containsAll(listOf(InGameAction.PERFORMANCE_HUD, InGameAction.HUD_LAYOUT,
+            InGameAction.HUD_METRICS, InGameAction.HUD_OPACITY, InGameAction.HUD_COLORS)))
+        assertTrue(inGamePageActions.getValue(InGamePage.CONTROLS).containsAll(listOf(InGameAction.CONTROL_STYLE,
+            InGameAction.EDIT_TOUCH_LAYOUT, InGameAction.PHONE_CONTROLLERS, InGameAction.GYRO_CAMERA)))
+        assertTrue(inGamePageActions.getValue(InGamePage.SESSION).containsAll(listOf(InGameAction.PAUSE_ON_OPEN, InGameAction.AUTO_SAVE,
+            InGameAction.UNDO_SESSION, InGameAction.MAKE_GLOBAL, InGameAction.SHARE_LOGS, InGameAction.QUIT)))
     }
 
-    @Test fun moreOptionsOpenInPlaceAndPerTab() {
+    @Test fun moreOptionsOpenInPlaceAndPerCategory() {
         val menu = InGameMenuState().show(pause = true)
         val closed = menu.actions(InGamePage.SYSTEM)
         assertEquals(InGameAction.MORE_OPTIONS, closed.last())
@@ -54,10 +59,10 @@ class InGameMenuStateTest {
         assertEquals(InGameAction.MORE_OPTIONS, open.action)                       // still on the toggle
         assertEquals(toggle, open.selected)
         assertEquals(closed, open.actions().take(closed.size))                      // common ones unchanged
-        assertTrue(InGameAction.HUD_CPU in open.actions() && InGameAction.SAVE_GLOBAL_FPS in open.actions())
-        assertEquals(11, open.advancedCount())                                     // global save, power, 8 HUD items
-        assertEquals(closed.size + 11, open.count)
-        // Other tabs keep theirs closed; closing again hides them.
+        assertTrue(InGameAction.SUSTAINED_PERFORMANCE in open.actions() && InGameAction.BACKGROUND_POLICY in open.actions())
+        assertEquals(3, open.advancedCount())                                      // sustained, ADPF hints, background
+        assertEquals(closed.size + 3, open.count)
+        // Other categories keep theirs closed; closing again hides them.
         assertTrue(open.actions(InGamePage.GRAPHICS).none { it in advancedActions })
         assertEquals(closed, open.toggleAdvanced().actions())
         // A selection inside the advanced list does not point past the end once closed.
@@ -69,26 +74,47 @@ class InGameMenuStateTest {
         val player = InGameMenuState(developer = false).show(pause = true)
         val graphics = player.actions(InGamePage.GRAPHICS)
         assertTrue(graphics.none { it in developerActions })
-        assertTrue(InGameAction.WINFG !in graphics && InGameAction.PERFORMANCE_HINTS !in graphics)
-        assertTrue(InGameAction.DISPLAY_FIT in graphics && InGameAction.SCALING_EFFECT in graphics && InGameAction.DRIVER_INFO in graphics)
+        assertTrue(InGameAction.WINFG !in graphics && InGameAction.LSFG !in graphics)
+        assertTrue(InGameAction.DISPLAY_MODE in graphics && InGameAction.SCALING_EFFECT in graphics && InGameAction.DRIVER_INFO in graphics)
         assertEquals(graphics.size, player.count)
         // Wrapping navigation stays inside the shown actions.
         assertEquals(graphics.last(), player.move(-1).action)
-        // Open, the advanced list still has no developer option: stretch, the color filter and dither.
+        // Open, the advanced list still has no developer option: dither, the colour filter and stretch.
         val graphicsOpen = player.toggleAdvanced()
         assertEquals(3, graphicsOpen.advancedCount())
         assertTrue(graphicsOpen.actions().none { it in developerActions })
         assertTrue(InGameAction.STRETCH in graphicsOpen.actions())
-        assertTrue(player.actions(InGamePage.SYSTEM).none { it == InGameAction.HUD_HOST_SUBMISSIONS })
         assertTrue(InGameAction.PHONE_CONTROLLERS in player.actions(InGamePage.CONTROLS))
-        // Session's only advanced option is a developer one: no "More options" there.
-        assertTrue(InGameAction.MORE_OPTIONS !in player.actions(InGamePage.SESSION))
-        assertTrue(InGameAction.MORE_OPTIONS in InGameMenuState().actions(InGamePage.SESSION))
+        // Performance's advanced options are all developer ones: no "More options" there in Player.
+        assertTrue(InGameAction.MORE_OPTIONS !in player.actions(InGamePage.SYSTEM))
+        assertTrue(InGameAction.MORE_OPTIONS in InGameMenuState().actions(InGamePage.SYSTEM))
+    }
+
+    /** Round 2: a row of chips (the HUD's metrics) has a cursor of its own for ←→. */
+    @Test fun aChipCursorMovesWithinItsRowAndStartsOverElsewhere() {
+        val row = InGameMenuState().show(pause = true).copy(page = InGamePage.HUD).on(InGameAction.HUD_METRICS)
+        assertEquals(InGameAction.HUD_METRICS, row.action)
+        assertEquals(RowKind.MULTI, row.action!!.kind)
+        val moved = row.moveChip(1, 8).moveChip(1, 8)
+        assertEquals(2, moved.chip)
+        assertEquals(7, moved.moveChip(10, 8).chip)
+        assertEquals(0, moved.moveChip(-10, 8).chip)
+        assertEquals(2, moved.select(moved.selected).chip)                         // the same row keeps it
+        assertEquals(0, moved.move(1).chip)                                        // another row starts over
+        assertEquals(0, moved.changePage(1).chip)
+    }
+
+    @Test fun everyRowHasAKindTheControllerCanWorkWith() {
+        val adjustable = setOf(RowKind.CHOICE, RowKind.MULTI, RowKind.CYCLE, RowKind.TOGGLE, RowKind.SLIDER)
+        // The options a player tunes the most are changed in place by ←→, not by a list of rows.
+        listOf(InGameAction.DISPLAY_MODE, InGameAction.FPS_LIMIT, InGameAction.SCALING_EFFECT, InGameAction.VOLUME,
+            InGameAction.HUD_LAYOUT, InGameAction.CONTROL_STYLE, InGameAction.PAUSE_ON_OPEN).forEach { assertTrue("$it", it.kind in adjustable) }
+        assertEquals(RowKind.BUTTON, InGameAction.QUIT.kind)
+        assertEquals(RowKind.INFO, InGameAction.DRIVER_INFO.kind)
     }
 
     @Test fun quitConfirmationCannotSwitchTabsAndCanBeCancelled() {
-        val menu = InGameMenuState().show(pause = true)
-            .changePage(-1).move(2).askToQuit()
+        val menu = InGameMenuState().show(pause = true).changePage(-1).on(InGameAction.QUIT).askToQuit()
         assertEquals(InGameAction.QUIT, menu.cancelQuit().action)
         assertEquals(InGamePage.SESSION, menu.changePage(1).page)
         assertEquals(1, menu.move(1).selected)

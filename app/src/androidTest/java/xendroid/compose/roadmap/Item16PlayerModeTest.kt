@@ -40,6 +40,7 @@ import xendroid.compose.settings.UiModeStore
 import xendroid.compose.ui.ingame.InGameMenu
 import xendroid.compose.ui.ingame.InGameMenuState
 import xendroid.compose.ui.ingame.InGamePage
+import xendroid.compose.ui.ingame.InGameMenuModel
 import xendroid.compose.ui.settings.PerGameSettingsScreen
 import xendroid.compose.ui.settings.SettingsScreen
 import xendroid.compose.ui.theme.xendroidTheme
@@ -133,15 +134,12 @@ class Item16PlayerModeTest {
     @Test fun theInGameMenuInPlayerHasNoEngineOptions() {
         var state by mutableStateOf(InGameMenuState(open = true, developer = false, advanced = InGamePage.entries.toSet()))
         compose.setContent { xendroidTheme { Menu(state) } }
-        val off = Device.string(R.string.menu_off)
         val developerOnly = mapOf(
-            InGamePage.GRAPHICS to listOf(Device.string(R.string.menu_winfg, off), Device.string(R.string.menu_lsfg, off),
-                Device.string(R.string.menu_lsfg_multiplier), Device.string(R.string.menu_import_lsfg),
-                Device.string(R.string.menu_clear_lsfg)),
-            InGamePage.SYSTEM to listOf(Device.string(R.string.menu_sustained), Device.string(R.string.menu_hints),
-                Device.string(R.string.menu_hud_metric, Device.string(R.string.menu_metric_submissions), off)),
-            InGamePage.SESSION to listOf(Device.string(R.string.menu_background)),
-        )
+            InGamePage.GRAPHICS to listOf(R.string.menu_t_winfg, R.string.menu_t_lsfg, R.string.menu_t_lsfg_multiplier,
+                R.string.menu_import_lsfg, R.string.menu_clear_lsfg),
+            InGamePage.SYSTEM to listOf(R.string.menu_t_sustained, R.string.menu_hints, R.string.menu_background),
+            InGamePage.CONTROLS to listOf(R.string.menu_unbuffered_title),
+        ).mapValues { (_, ids) -> ids.map { Device.string(it) } }
         for (developer in listOf(false, true)) {
             for ((page, labels) in developerOnly) {
                 state = state.copy(page = page, developer = developer)
@@ -151,10 +149,10 @@ class Item16PlayerModeTest {
                 }
             }
         }
-        // Player: Graphics keeps "More options" (stretch, color filter); Session has none.
+        // Player: Image keeps "More options" (dither, colour filter, stretch); Performance has none.
         state = InGameMenuState(open = true, developer = false, page = InGamePage.GRAPHICS)
-        compose.onNodeWithText(Device.string(R.string.menu_more_options, 2)).assertExists()
-        state = InGameMenuState(open = true, developer = false, page = InGamePage.SESSION, advanced = setOf(InGamePage.SESSION))
+        compose.onNodeWithText(Device.string(R.string.menu_more_options, 3)).assertExists()
+        state = InGameMenuState(open = true, developer = false, page = InGamePage.SYSTEM, advanced = setOf(InGamePage.SYSTEM))
         compose.waitForIdle()
         compose.onAllNodesWithText(Device.string(R.string.menu_fewer_options)).assertCountEquals(0)
     }
@@ -163,9 +161,7 @@ class Item16PlayerModeTest {
 /** The in-game menu as the game process shows it, with a game's ordinary state. */
 @Composable
 internal fun Menu(state: InGameMenuState, sessionInfo: String = "") = InGameMenu(
-    state = state, paused = false, fpsLimit = 60, fpsConfig = FpsConfigSnapshot("4D5309C9", 60, null),
-    presentation = PresentationState(), fgPreset = 1, lsfgAvailable = true, extensionLabels = emptyMap(),
-    performanceHud = false, compactHud = false, hudMetrics = emptySet(), touchControls = true, adaptiveSticks = false,
-    stretch = false, volume = 100, sessionInfo = sessionInfo, phoneControllers = null, logSessions = emptyList(),
-    onLogChoice = {}, onPage = {}, onSelect = {}, onAction = {}, onQuitChoice = {},
+    state = state, model = InGameMenuModel(notes = mapOf(InGamePage.SESSION to listOf(sessionInfo))),
+    onPage = {}, onSelect = {}, onAction = {}, onAdjust = { _, _ -> }, onChoose = { _, _ -> }, onSet = { _, _ -> },
+    onLogChoice = {}, onQuitChoice = {},
 )

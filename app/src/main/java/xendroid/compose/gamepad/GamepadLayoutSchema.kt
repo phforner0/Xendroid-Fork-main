@@ -79,7 +79,19 @@ data class GamepadGlobalsDto(
     val slideButtons: Boolean = false,
     /** 15f: a free finger sliding onto a stick takes it. */
     val slideSticks: Boolean = false,
+    /** Round 2: a [ControlStyle] key: dark glass buttons (modern) or the coloured ones (classic). */
+    val style: String = ControlStyle.MODERN.key,
 )
+
+/** Round 2: how the touch controls look. Modern: dark translucent glass with a thin rim and the A/B/X/Y
+ *  letters in their colours; classic: the glossy coloured face buttons of before. */
+enum class ControlStyle(val key: String) {
+    MODERN("modern"), CLASSIC("classic");
+
+    companion object {
+        fun parse(key: String?): ControlStyle = entries.firstOrNull { it.key == key } ?: MODERN
+    }
+}
 
 /** A game's own layout (U06); an orientation it has none for uses the shared one. */
 @Serializable

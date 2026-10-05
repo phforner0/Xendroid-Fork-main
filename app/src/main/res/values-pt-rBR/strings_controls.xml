@@ -182,4 +182,6 @@
         <item quantity="one">%1$d controle</item>
         <item quantity="other">%1$d controles</item>
     </plurals>
+    <string name="xd_tg_style">Visual</string>
+    <string name="xd_tg_style_desc">Moderno: botões de vidro escuro com letras coloridas. Clássico: os botões coloridos de antes.</string>
 </resources>

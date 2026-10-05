@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import java.text.NumberFormat
 import kotlin.math.roundToInt
 import xendroid.compose.R
+import xendroid.compose.gamepad.ControlStyle
 import xendroid.compose.gamepad.GamepadGlobalsDto
 import xendroid.compose.gamepad.SplitScreenMode
 import xendroid.compose.gamepad.TouchCamera
@@ -88,6 +89,11 @@ fun TouchOptionRows(
             OptionRow(stringResource(R.string.ge_enabled), null) {
                 XdSwitch(false, { on -> onGlobals { it.copy(enabled = on) } })
             }
+        }
+        // Round 2: the controls' look, modern (dark glass) or classic (coloured buttons).
+        OptionRow(stringResource(R.string.xd_tg_style), stringResource(R.string.xd_tg_style_desc), stack = true) {
+            XdSegmented(ControlStyle.entries.map { it to stringResource(if (it == ControlStyle.MODERN) R.string.menu_opt_modern else R.string.menu_opt_classic) },
+                ControlStyle.parse(globals.style), { style -> onGlobals { it.copy(style = style.key) } })
         }
         val opacity = (globals.opacity * 100).roundToInt()
         OptionRow(stringResource(R.string.xd_tg_opacity), stringResource(R.string.xd_tg_opacity_desc)) {

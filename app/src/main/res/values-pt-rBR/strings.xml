@@ -6,7 +6,7 @@
     <string name="menu_open">Abrir menu</string>
     <string name="menu_paused">Pausado · Voltar para fechar</string>
     <string name="menu_running">Jogo rodando · Voltar para fechar</string>
-    <string name="menu_tab_graphics">Gráficos</string>
+    <string name="menu_tab_graphics">Imagem</string>
     <string name="menu_tab_system">Desempenho</string>
     <string name="menu_tab_controls">Controles</string>
     <string name="menu_tab_session">Sessão</string>

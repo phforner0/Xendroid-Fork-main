@@ -166,6 +166,47 @@ que não entram no repositório (mostram a barra de status de quem testou).
   recebe os valores por `set_image_tuning` e o apresentador os usa no quadro seguinte; "Guardar esta
   imagem para o jogo" grava efeito, suavização, nitidez e pontilhado na config do jogo.
 
+### Ajustes 2: segunda rodada
+
+Segundo retorno do aparelho, com capturas de referência de um front-end de PC no Android. A
+análise, o que mudou entre a primeira ideia e a aplicada, e a ordem estão em
+[ajustes-2.md](ajustes-2.md).
+
+- **Bugs** (causas na análise):
+  - modo console na primeira abertura sem controle: uma conferência de controle só, estrita
+    (`XdInput.kt`);
+  - "Jogos" reabrindo o assistente: o estado da biblioteca vem antes de qualquer `return` e os
+    pedidos de Sobre e do trilho são de uma vez só;
+  - Sobre: o relato do núcleo resumido (`CoreReport`), o completo numa folha;
+  - `APU|mute` e `GPU|readback_memexport` saem: não existem no núcleo.
+- **Menu em jogo reorganizado** (`InGameMenu.kt`, `InGameMenuState.kt`):
+  - trilho de categorias (Imagem, Desempenho, HUD, Controles, Sessão) e grupos dentro delas;
+  - cada linha mostra o valor e muda ali mesmo: pílulas, interruptor, ‹ valor › ou controle
+    deslizante;
+  - no controle, ↑↓ entre as linhas e ←→ muda o valor (numa linha de caixas de seleção, move o
+    cursor entre elas); A aciona e LB/RB trocam de categoria.
+- **Guardado por jogo** (`InGameChanges.kt`):
+  - o que muda no menu vai na hora para a config do jogo: FPS, tela, imagem, filtro de cor,
+    controles de toque, analógicos adaptativos e giroscópio;
+  - "N guardadas" leva à Sessão, com Desfazer as mudanças desta sessão e Usar em todos os jogos;
+  - as linhas com valor próprio do jogo dizem "deste jogo".
+- **Pausar ao abrir o menu:** interruptor na Sessão, ligado por padrão e valendo para todos os
+  jogos; muda na hora.
+- **Sem o botão ☰:**
+  - o menu abre pelo Voltar, pelo Guia do controle ou arrastando da borda esquerda
+    (`InGameMenuEdge`);
+  - na primeira sessão, um aviso diz como.
+- **HUD horizontal** (`FpsOverlay.kt`, `HudPlacement.kt`):
+  - uma barra no topo ou na base, com rótulos coloridos por métrica e um gráfico do FPS;
+  - a categoria HUD tem formato, posição, detalhe, métricas, tamanho, opacidade, intensidade das
+    cores e estilo, com uma prévia ao vivo.
+- **Controles na tela, visual Moderno** (`GamepadOverlay.kt`):
+  - vidro escuro com contorno fino e letras A/B/X/Y coloridas;
+  - direcional em setas, gatilhos e bumpers em pílulas, analógicos discretos.
+  - O Clássico continua como opção, em Controles → toque e no menu em jogo.
+  - No retrato, LT sobre LB e RT sobre RB no layout padrão: lado a lado, eles se sobrepunham no
+    desenho e no toque.
+
 ## Testes
 
 Rodados em 2026-10-04, no fim do lote 7:
@@ -193,6 +234,7 @@ Rodados em 2026-10-04, no fim do lote 7:
 | 6 | Assistente numa instalação limpa (acesso a todos os arquivos, Android 10 e 14); navegador com cartão SD e USB (nome do volume); "Onde ele está agora?"; atualização num build `.fork` com canal (baixar, conferir, permissão do instalador); copiar os dados em Sobre |
 | 7 | Mensagem, teclado e troca de disco em jogos reais: seleção pelo direcional vinda do host, teclado do telefone sem cobrir o campo, atalhos do Xbox 360, troca num jogo de vários discos |
 | Ajustes 1 | Rodapé das folhas visível no Android 15 e 16; Suavização, Nitidez e Pontilhado mudando a imagem na hora num jogo real; "Guardar esta imagem para o jogo" valendo na sessão seguinte |
+| Ajustes 2 | Primeira abertura sem controle em modo toque; "Jogos" sem reabrir o assistente; mudanças do menu em jogo valendo na sessão seguinte, com Desfazer e Usar em todos os jogos; abrir o menu pela borda esquerda e pelo Guia; pausa ao abrir desligada; HUD horizontal no topo e na base; controles no visual Moderno |
 
 ## Propostas do protótipo que ficaram de fora
 
@@ -218,4 +260,4 @@ Rodados em 2026-10-04, no fim do lote 7:
 | Lote 6: primeira abertura e telas do app | [atualizador](prints/app/lote6/antes-atualizador.png), [jogos que saíram](prints/app/lote6/antes-jogos-que-sairam.png), [navegador de pastas](prints/app/lote6/antes-navegador-de-pastas.png), [pastas](prints/app/lote6/antes-pastas.png), [primeira abertura](prints/app/lote6/antes-primeira-abertura.png), [sem vulkan](prints/app/lote6/antes-sem-vulkan.png), [sobre](prints/app/lote6/antes-sobre.png) | [atualizador baixando](prints/app/lote6/depois-atualizador-baixando.png), [atualizador controle](prints/app/lote6/depois-atualizador-controle.png), [atualizador retrato](prints/app/lote6/depois-atualizador-retrato.png), [atualizador](prints/app/lote6/depois-atualizador.png), [jogos que saíram](prints/app/lote6/depois-jogos-que-sairam.png), [navegador arquivo retrato](prints/app/lote6/depois-navegador-arquivo-retrato.png), [navegador de pastas controle](prints/app/lote6/depois-navegador-de-pastas-controle.png), [navegador de pastas](prints/app/lote6/depois-navegador-de-pastas.png), [pastas retrato](prints/app/lote6/depois-pastas-retrato.png), [pastas](prints/app/lote6/depois-pastas.png), [primeira abertura como usar](prints/app/lote6/depois-primeira-abertura-como-usar.png), [primeira abertura idioma](prints/app/lote6/depois-primeira-abertura-idioma.png), [primeira abertura jogos](prints/app/lote6/depois-primeira-abertura-jogos.png), [primeira abertura perfil](prints/app/lote6/depois-primeira-abertura-perfil.png), [primeira abertura retrato](prints/app/lote6/depois-primeira-abertura-retrato.png), [primeira abertura](prints/app/lote6/depois-primeira-abertura.png), [sem vulkan retrato](prints/app/lote6/depois-sem-vulkan-retrato.png), [sem vulkan](prints/app/lote6/depois-sem-vulkan.png), [sobre controle](prints/app/lote6/depois-sobre-controle.png), [sobre retrato](prints/app/lote6/depois-sobre-retrato.png), [sobre](prints/app/lote6/depois-sobre.png) |
 | Lote 7: painéis do jogo | [mensagem](prints/app/lote7/antes-mensagem.png), [troca de disco](prints/app/lote7/antes-troca-de-disco.png) | [mensagem controle](prints/app/lote7/depois-mensagem-controle.png), [mensagem longa retrato](prints/app/lote7/depois-mensagem-longa-retrato.png), [mensagem](prints/app/lote7/depois-mensagem.png), [teclado controle](prints/app/lote7/depois-teclado-controle.png), [teclado símbolos retrato](prints/app/lote7/depois-teclado-simbolos-retrato.png), [teclado](prints/app/lote7/depois-teclado.png), [troca de disco controle](prints/app/lote7/depois-troca-de-disco-controle.png), [troca de disco sem disco retrato](prints/app/lote7/depois-troca-de-disco-sem-disco-retrato.png), [troca de disco](prints/app/lote7/depois-troca-de-disco.png) |
 | Ajustes 1: retorno do aparelho | — | [drivers para baixar retrato](prints/app/ajustes-1/depois-drivers-para-baixar-retrato.png), [drivers para baixar](prints/app/ajustes-1/depois-drivers-para-baixar.png), [hud](prints/app/ajustes-1/depois-hud.png), [menu imagem controle](prints/app/ajustes-1/depois-menu-imagem-controle.png), [menu imagem retrato](prints/app/ajustes-1/depois-menu-imagem-retrato.png), [menu imagem](prints/app/ajustes-1/depois-menu-imagem.png) |
-| Ajustes 2: segunda rodada | — | [sobre relato completo](prints/app/ajustes-2/depois-sobre-relato-completo.png), [sobre retrato](prints/app/ajustes-2/depois-sobre-retrato.png), [sobre](prints/app/ajustes-2/depois-sobre.png) |
+| Ajustes 2: segunda rodada | — | [controles classico](prints/app/ajustes-2/depois-controles-classico.png), [controles moderno retrato](prints/app/ajustes-2/depois-controles-moderno-retrato.png), [controles moderno](prints/app/ajustes-2/depois-controles-moderno.png), [hud horizontal](prints/app/ajustes-2/depois-hud-horizontal.png), [menu controles](prints/app/ajustes-2/depois-menu-controles.png), [menu desempenho](prints/app/ajustes-2/depois-menu-desempenho.png), [menu hud controle](prints/app/ajustes-2/depois-menu-hud-controle.png), [menu hud retrato](prints/app/ajustes-2/depois-menu-hud-retrato.png), [menu hud](prints/app/ajustes-2/depois-menu-hud.png), [menu imagem](prints/app/ajustes-2/depois-menu-imagem.png), [menu sessao](prints/app/ajustes-2/depois-menu-sessao.png), [sobre relato completo](prints/app/ajustes-2/depois-sobre-relato-completo.png), [sobre retrato](prints/app/ajustes-2/depois-sobre-retrato.png), [sobre](prints/app/ajustes-2/depois-sobre.png) |

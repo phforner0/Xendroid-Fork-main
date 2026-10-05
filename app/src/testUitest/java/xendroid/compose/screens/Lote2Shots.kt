@@ -20,13 +20,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import xendroid.compose.core.HudMetric
-import xendroid.compose.core.PresentationState
-import xendroid.compose.settings.FpsConfigSnapshot
 import xendroid.compose.shots.Fixture
 import xendroid.compose.shots.Phone
 import xendroid.compose.shots.SampleArt
 import xendroid.compose.shots.SampleLibrary
+import xendroid.compose.shots.SampleMenu
 import xendroid.compose.shots.ShotApp
 import xendroid.compose.shots.app
 import xendroid.compose.shots.shot
@@ -39,7 +37,6 @@ import xendroid.compose.ui.ingame.InGamePage
 import xendroid.compose.ui.ingame.LaunchFailure
 import xendroid.compose.ui.ingame.LaunchFailureScreen
 import xendroid.compose.ui.ingame.LoadingDetails
-import xendroid.compose.ui.ingame.MenuStat
 
 /** Batch 2 "depois": the loading screen, the launch failure and the in-game menu over a game. */
 @RunWith(AndroidJUnit4::class)
@@ -77,17 +74,10 @@ class Lote2Shots {
         compose.app(mode) {
             Scene {
                 InGameMenu(
-                    state = InGameMenuState(open = true, page = page, developer = false, selections = listOf(0, 0, 0, 0)),
-                    paused = true, fpsLimit = 30,
-                    fpsConfig = FpsConfigSnapshot(titleId = "4D5307E6", globalLimit = 60, gameLimit = 30),
-                    presentation = PresentationState(displayMode = 0), fgPreset = 1, lsfgAvailable = false,
-                    extensionLabels = emptyMap(), performanceHud = true, compactHud = true, hudMetrics = HudMetric.entries.toSet(),
-                    touchControls = true, adaptiveSticks = false, stretch = false, volume = 80,
-                    sessionInfo = "v412 · 7bb3409\nAdreno (TM) 740", phoneControllers = null,
-                    logSessions = emptyList(), onLogChoice = {}, onPage = {}, onSelect = {}, onAction = {}, onQuitChoice = {},
-                    gameName = "Halo 3", art = art,
-                    status = listOf(MenuStat("30", "FPS"), MenuStat("34", "ms", "p99"), MenuStat("41", "°C"), MenuStat("72%", label = "bateria"),
-                        MenuStat("Turnip Mesa 25.3.0")),
+                    state = InGameMenuState(open = true, page = page, developer = false),
+                    model = SampleMenu.model(art),
+                    onPage = {}, onSelect = {}, onAction = {}, onAdjust = { _, _ -> }, onChoose = { _, _ -> }, onSet = { _, _ -> },
+                    onLogChoice = {}, onQuitChoice = {},
                 )
             }
         }
