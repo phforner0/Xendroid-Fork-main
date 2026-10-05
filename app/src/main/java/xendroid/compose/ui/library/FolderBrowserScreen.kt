@@ -47,8 +47,10 @@ import xendroid.compose.ui.design.XdButton
 import xendroid.compose.ui.design.XdButtonKind
 import xendroid.compose.ui.design.XdChip
 import xendroid.compose.ui.design.XdIcons
+import xendroid.compose.ui.design.XdSheet
 import xendroid.compose.ui.design.XdSingleScreen
 import xendroid.compose.ui.design.XdText
+import xendroid.compose.ui.design.XdTextInput
 import xendroid.compose.ui.design.focusRing
 
 /**
@@ -86,7 +88,10 @@ fun FolderBrowserScreen(
     val root = roots.filter { current.absolutePath.startsWith(it.dir.absolutePath) }.maxByOrNull { it.dir.absolutePath.length } ?: roots.first()
     val atRoot = current.absolutePath == root.dir.absolutePath
 
-    val subDirs = remember(current.absolutePath) {
+    // Round 2: "New folder" names one here; the list is read again once it exists.
+    var naming by remember { mutableStateOf(false) }
+    var refresh by remember { mutableStateOf(0) }
+    val subDirs = remember(current.absolutePath, refresh) {
         current.listFiles()?.filter { it.isDirectory && !it.isHidden }?.sortedBy { it.name.lowercase() } ?: emptyList()
     }
     val files = remember(current.absolutePath) {
@@ -95,6 +100,7 @@ fun FolderBrowserScreen(
     }
     val goUp: () -> Unit = { if (atRoot) onCancel() else current = current.parentFile ?: root.dir }
     BackHandler(onBack = goUp)
+    if (naming) NewFolderSheet(current, onDismiss = { naming = false }) { made -> naming = false; refresh++; current = made }
 
     // The path from the root: the root's name, then each folder below it.
     val crumbs = remember(current.absolutePath, root) {
@@ -149,11 +155,41 @@ fun FolderBrowserScreen(
                             else pluralStringResource(R.plurals.xd_cm_games, here.games, here.games))
                     }, style = XdText.note, color = c.fg3, modifier = Modifier.weight(1f))
                 }
+                // Round 2: a folder that does not exist yet, made here and opened.
+                if (onFolderChosen != null) XdButton(stringResource(R.string.xd_br_new_folder), { naming = true }, kind = XdButtonKind.GHOST,
+                    icon = XdIcons.plus, enabled = current.canWrite())
                 XdButton(stringResource(R.string.common_cancel), onCancel, kind = XdButtonKind.GHOST)
                 if (onFolderChosen != null) XdButton(stringResource(R.string.browse_use_folder), { onFolderChosen(current.absolutePath) },
                     kind = XdButtonKind.PRIMARY, icon = XdIcons.check)
             }
         }
+    }
+}
+
+/** Round 2: names a new folder inside [parent] and makes it; [onMade] opens it. */
+@Composable
+private fun NewFolderSheet(parent: File, onDismiss: () -> Unit, onMade: (File) -> Unit) {
+    val c = Xd.colors
+    var name by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<Int?>(null) }
+    val create = {
+        val clean = name.trim()
+        when {
+            clean.isEmpty() -> {}
+            '/' in clean || clean == "." || clean == ".." -> problem = R.string.xd_br_new_folder_bad_name
+            else -> {
+                val dir = File(parent, clean)
+                if (dir.isDirectory || dir.mkdirs()) onMade(dir) else problem = R.string.xd_br_new_folder_failed
+            }
+        }
+    }
+    XdSheet(onDismiss = onDismiss, title = stringResource(R.string.xd_br_new_folder_title, parent.name.ifEmpty { parent.path }), actions = {
+        XdButton(stringResource(R.string.common_cancel), onDismiss, kind = XdButtonKind.GHOST)
+        XdButton(stringResource(R.string.xd_br_new_folder_create), create, kind = XdButtonKind.PRIMARY, icon = XdIcons.check,
+            enabled = name.isNotBlank())
+    }) {
+        XdTextInput(name, { name = it; problem = null }, placeholder = stringResource(R.string.xd_br_new_folder_name), width = 320.dp)
+        problem?.let { Text(stringResource(it), style = XdText.note, color = c.errText) }
     }
 }
 

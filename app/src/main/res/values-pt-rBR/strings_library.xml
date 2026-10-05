@@ -164,4 +164,22 @@
         <item quantity="one">Usa o global no lugar do %1$d ajuste próprio, para ver se ele causa o problema</item>
         <item quantity="other">Usa o global no lugar dos %1$d ajustes próprios, para ver se algum causa o problema</item>
     </plurals>
+    <string name="xd_perf_sessions_title">Sessões de %1$s</string>
+    <string name="xd_perf_sessions_sub">A que você escolher aparece em Desempenho: números, linha do tempo e ajustes.</string>
+    <string name="xd_perf_session_change">toque para ver outra</string>
+    <string name="xd_perf_session_numbers">%1$d FPS (baixo %2$d) · p99 %3$s ms</string>
+    <string name="xd_perf_session_no_numbers">sem números</string>
+    <string name="xd_perf_session_latest_with_numbers">A última sessão não tem números; esta é a mais recente que tem.</string>
+    <string name="xd_perf_settings_title">Ajustes em vigor</string>
+    <string name="xd_perf_settings_none">Tudo no padrão.</string>
+    <string name="xd_perf_settings_unknown">Não registrado nesta sessão.</string>
+    <plurals name="xd_perf_sessions_count">
+        <item quantity="one">%1$d sessão</item>
+        <item quantity="other">%1$d sessões</item>
+    </plurals>
+    <string name="xd_game_patches_yours">Para a sua versão</string>
+    <string name="xd_game_patches_others">Para outras versões</string>
+    <string name="xd_game_patches_others_note">Não valem para a versão que você joga.</string>
+    <string name="xd_game_patches_any">Sem versão indicada</string>
+    <string name="xd_game_version_of">versão %1$s</string>
 </resources>

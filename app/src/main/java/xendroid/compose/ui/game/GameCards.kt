@@ -12,11 +12,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -44,6 +55,7 @@ import xendroid.compose.ui.design.XdButtonKind
 import xendroid.compose.ui.design.XdButtonSize
 import xendroid.compose.ui.design.XdCard
 import xendroid.compose.ui.design.XdEyebrow
+import xendroid.compose.ui.design.XdGroupHeader
 import xendroid.compose.ui.design.XdIcons
 import xendroid.compose.ui.design.XdKpi
 import xendroid.compose.ui.design.XdKv
@@ -51,6 +63,8 @@ import xendroid.compose.ui.design.XdLink
 import xendroid.compose.ui.design.XdListRow
 import xendroid.compose.ui.design.XdNote
 import xendroid.compose.ui.design.XdPath
+import xendroid.compose.ui.design.XdSheet
+import xendroid.compose.ui.design.focusRing
 import xendroid.compose.ui.design.XdStatusPill
 import xendroid.compose.ui.design.XdSwitch
 import xendroid.compose.ui.design.XdText
@@ -151,17 +165,38 @@ class GameCards(
         }
     }
 
-    /** "Performance": the last run in full, its timeline and what to do with it. */
+    /**
+     * "Performance": one run in full, its timeline, the settings it ran with and what to do with
+     * it. Round 2: the newest run with numbers (a session that died early has none), or the one
+     * picked from the list of the game's sessions.
+     */
     @Composable
     fun Performance() {
+        val runs = info?.runs.orEmpty()
+        var picked by rememberSaveable(game.identityKey) { mutableStateOf<String?>(null) }
+        val chosen = runs.firstOrNull { it.runId == picked } ?: runs.firstOrNull { it.hasNumbers() } ?: run
+        val lastEvents = info?.lastRunEvents
+        val events by produceState<xendroid.compose.sessions.RunEventLog?>(null, chosen?.runId, lastEvents) {
+            value = when {
+                chosen == null -> null
+                chosen.runId == run?.runId && lastEvents != null -> lastEvents
+                else -> withContext(Dispatchers.IO) {
+                    runCatching { xendroid.compose.sessions.SessionRuns.store().events(chosen.runId) }.getOrNull()
+                }
+            }
+        }
+        var choosing by remember { mutableStateOf(false) }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            LastSessionCard(full = true)
-            Timeline()
+            if (chosen != null && runs.size > 1) RunPicker(chosen, runs.size) { choosing = true }
+            if (chosen != null && picked == null && chosen.runId != run?.runId) XdNote(stringResource(R.string.xd_perf_session_latest_with_numbers))
+            SessionCard(chosen, full = true)
+            Timeline(events)
+            if (chosen != null) SettingsInEffect(chosen)
             XdCard {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val r = run
+                    val r = chosen
                     XdButton(stringResource(R.string.xd_perf_share), {
-                        if (r != null) actions.showReport(xendroid.compose.sessions.RunReports.build(r, info?.lastRunEvents,
+                        if (r != null) actions.showReport(xendroid.compose.sessions.RunReports.build(r, events,
                             info?.compatibility?.reports.orEmpty(),
                             xendroid.compose.sessions.SessionRuns.reportDevice(xendroid.compose.BuildConfig.VERSION_NAME),
                             System.currentTimeMillis()))
@@ -171,6 +206,7 @@ class GameCards(
                 }
             }
         }
+        if (choosing) RunsSheet(runs, chosen, onPick = { picked = it.runId; choosing = false }, onDismiss = { choosing = false })
     }
 
     /** "Patches and content": every patch, the title update and DLC, and the file. */
@@ -262,17 +298,99 @@ class GameCards(
         val trailing = if (played != null) stringResource(R.string.xd_game_ov_trailing, playedAgo(played).orEmpty(), playTime(played).orEmpty())
         else stringResource(R.string.xd_lib_never_played)
         XdCard(title = stringResource(R.string.xd_lib_last_session), icon = XdIcons.chart, trailing = trailing) {
-            PerfBody(full)
+            PerfBody(full, run)
             if (!full && perf != null) XdLink(stringResource(R.string.xd_game_ov_perf_link), { onSection(GameSections.PERF) })
+        }
+    }
+
+    /** Performance's card: the last session as the overview shows it, or the one picked, by its date. */
+    @Composable
+    private fun SessionCard(r: SessionRun?, full: Boolean) {
+        if (r == null || r.runId == run?.runId) { LastSessionCard(full); return }
+        XdCard(title = runWhen(r), icon = XdIcons.chart, trailing = r.playedMs?.let { xendroid.compose.sessions.formatPlayTime(it) }) {
+            PerfBody(full, r)
+        }
+    }
+
+    /** The session shown, its date, length and FPS, and how many there are: a tap lists them. */
+    @Composable
+    private fun RunPicker(r: SessionRun, count: Int, onClick: () -> Unit) {
+        val c = Xd.colors
+        val shape = RoundedCornerShape(12.dp)
+        Row(
+            Modifier.fillMaxWidth().focusRing(shape).clip(shape).background(c.s1).clickable(role = Role.Button, onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(XdIcons.timeline, null, Modifier.size(18.dp), tint = c.acc)
+            Column(Modifier.weight(1f)) {
+                Text(listOfNotNull(runWhen(r), r.playedMs?.let { xendroid.compose.sessions.formatPlayTime(it) }, runFps(r)).joinToString(" · "),
+                    style = XdText.label, color = c.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(pluralStringResource(R.plurals.xd_perf_sessions_count, count, count) + " · " + stringResource(R.string.xd_perf_session_change),
+                    style = XdText.tiny, color = c.fg3)
+            }
+            Icon(XdIcons.chevD, null, Modifier.size(16.dp), tint = c.fg2)
+        }
+    }
+
+    /** The game's sessions, newest first: when, how it ended, its numbers and driver. */
+    @Composable
+    private fun RunsSheet(runs: List<SessionRun>, chosen: SessionRun?, onPick: (SessionRun) -> Unit, onDismiss: () -> Unit) {
+        XdSheet(onDismiss = onDismiss, title = stringResource(R.string.xd_perf_sessions_title, game.name),
+            subtitle = stringResource(R.string.xd_perf_sessions_sub)) {
+            Column {
+                runs.forEachIndexed { i, r ->
+                    val numbers = r.performance?.takeIf { it.sampledSeconds > 0 }?.let { p ->
+                        val median = p.fpsPercentile(0.5); val low = p.fpsPercentile(0.05); val p99 = p.frameTimeUpperMs(0.99)
+                        if (median != null && low != null) stringResource(R.string.xd_perf_session_numbers, median, low,
+                            p99?.let { if (it >= RunPerformance.FRAME_TIME_OPEN_BUCKET) "$it+" else "$it" } ?: "—") else null
+                    } ?: stringResource(R.string.xd_perf_session_no_numbers)
+                    XdListRow(runWhen(r), icon = if (r.runId == chosen?.runId) XdIcons.check else when (r.state) {
+                            RunState.FAILED -> XdIcons.xCircle
+                            RunState.INTERRUPTED -> XdIcons.alert
+                            else -> XdIcons.timeline
+                        },
+                        subtitle = listOfNotNull(runEnding(r), numbers, r.driver?.label).joinToString(" · "),
+                        divider = i < runs.lastIndex, onClick = { onPick(r) })
+                }
+            }
+        }
+    }
+
+    /** "Today, 21:40", "Yesterday, 18:02", "3 Oct, 21:40". */
+    @Composable
+    private fun runWhen(r: SessionRun): String {
+        val context = LocalContext.current
+        return android.text.format.DateUtils.getRelativeDateTimeString(context, r.runningAt ?: r.startedAt,
+            android.text.format.DateUtils.DAY_IN_MILLIS, android.text.format.DateUtils.WEEK_IN_MILLIS,
+            android.text.format.DateUtils.FORMAT_ABBREV_ALL).toString()
+    }
+
+    private fun runFps(r: SessionRun): String? = r.performance?.takeIf { it.sampledSeconds > 0 }?.fpsPercentile(0.5)?.let { "$it FPS" }
+
+    private fun SessionRun.hasNumbers(): Boolean = (performance?.sampledSeconds ?: 0) > 0
+
+    /** The settings away from the defaults as [r] booted (C06), now on the sheet. */
+    @Composable
+    private fun SettingsInEffect(r: SessionRun) {
+        val c = Xd.colors
+        val lines = r.changedSettings
+        XdCard(title = stringResource(R.string.xd_perf_settings_title), icon = XdIcons.sliders, trailing = lines?.size?.takeIf { it > 0 }?.toString()) {
+            when {
+                lines == null -> Text(stringResource(R.string.xd_perf_settings_unknown), style = XdText.note, color = c.fg3)
+                lines.isEmpty() -> Text(stringResource(R.string.xd_perf_settings_none), style = XdText.note, color = c.fg3)
+                else -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (line in lines) Text(line, style = XdText.monoSm, color = c.fg2)
+                }
+            }
         }
     }
 
     @OptIn(ExperimentalLayoutApi::class)
     @Composable
-    private fun PerfBody(full: Boolean) {
+    private fun PerfBody(full: Boolean, r: SessionRun?) {
         val c = Xd.colors
-        val r = run
-        val p = perf
+        val p = r?.performance?.takeIf { it.sampledSeconds > 0 }
         when {
             r == null && data.played(game) == null -> Text(stringResource(R.string.xd_perf_none_yet), style = XdText.bodySm, color = c.fg3)
             r == null -> Text(stringResource(R.string.xd_game_loading), style = XdText.bodySm, color = c.fg3)
@@ -344,7 +462,7 @@ class GameCards(
             add(stringResource(R.string.xd_perf_pacing) to listOf(limits, hz).filter { it.isNotEmpty() }.joinToString(" · "))
         }
         r.driver?.let { add(stringResource(R.string.xd_perf_driver) to it.label) }
-        info?.lastProfile?.let { add(stringResource(R.string.xd_perf_profile) to it) }
+        if (r.runId == run?.runId) info?.lastProfile?.let { add(stringResource(R.string.xd_perf_profile) to it) }
     }
 
     @Composable
@@ -360,8 +478,8 @@ class GameCards(
     }
 
     @Composable
-    private fun Timeline() {
-        val log = info?.lastRunEvents?.takeIf { it.events.isNotEmpty() } ?: return
+    private fun Timeline(events: xendroid.compose.sessions.RunEventLog? = info?.lastRunEvents) {
+        val log = events?.takeIf { it.events.isNotEmpty() } ?: return
         val c = Xd.colors
         var all by remember { mutableStateOf(false) }
         XdCard(title = stringResource(R.string.lib_timeline), icon = XdIcons.timeline,
@@ -385,7 +503,15 @@ class GameCards(
     private fun PatchesCard(limit: Int?) {
         val c = Xd.colors
         val loaded = patchState as? GamePatchesViewModel.UiState.Loaded
-        val entries = loaded?.files.orEmpty().flatMap { f -> f.entries.map { f to it } }
+        // Round 2: by version. Once a run here recorded the game's hashes, the files for that
+        // version come first, then the others (with the TU their name or comments state), then
+        // those that state none; until then, in the files' order.
+        val match = { f: xendroid.compose.patches.PatchFile -> loaded?.versions?.get(f.fileName) ?: xendroid.compose.patches.PatchVersion.Match.UNKNOWN }
+        val groups: List<Pair<xendroid.compose.patches.PatchVersion.Match?, List<xendroid.compose.patches.PatchFile>>> =
+            if (loaded?.versionKnown == true) xendroid.compose.patches.PatchVersion.Match.entries
+                .map { m -> m to loaded.files.filter { match(it) == m } }.filter { it.second.isNotEmpty() }
+            else listOf(null to loaded?.files.orEmpty())
+        val entries = groups.flatMap { (_, files) -> files.flatMap { f -> f.entries.map { f to it } } }
         val on = entries.count { it.second.isEnabled }
         XdCard(title = stringResource(if (limit == null) R.string.xd_game_patches_title else R.string.xd_game_patches), icon = XdIcons.patch,
             trailing = if (entries.isNotEmpty()) stringResource(R.string.xd_game_patches_on, on, entries.size) else null) {
@@ -396,19 +522,40 @@ class GameCards(
                     style = XdText.note, color = c.fg3)
             }
             if (limit == null && entries.isNotEmpty()) Text(stringResource(R.string.xd_game_patches_note), style = XdText.note, color = c.fg3)
+            if (limit == null && loaded != null && !loaded.versionKnown && entries.isNotEmpty()) {
+                Text(stringResource(R.string.pt_version_unknown), style = XdText.note, color = c.fg3)
+            }
             val many = (loaded?.files?.size ?: 0) > 1
-            Column {
-                for ((file, entry) in if (limit != null) entries.take(limit) else entries) {
-                    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text(entry.name, style = XdText.labelSm, color = c.fg, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            val sub = listOfNotNull(if (many) file.variantLabel else null, entry.desc?.takeIf { limit == null && it.isNotBlank() })
-                            if (sub.isNotEmpty()) Text(sub.joinToString(" · "), style = XdText.tiny, color = c.fg3, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        }
-                        XdSwitch(entry.isEnabled, { patches?.toggle(file, entry, it) }, contentDescription = entry.name)
+            val row: @Composable (xendroid.compose.patches.PatchFile, xendroid.compose.patches.PatchEntry, Boolean) -> Unit = { file, entry, label ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(entry.name, style = XdText.labelSm, color = c.fg, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        val sub = listOfNotNull(if (label) fileLabel(file) else null, entry.desc?.takeIf { limit == null && it.isNotBlank() })
+                        if (sub.isNotEmpty()) Text(sub.joinToString(" · "), style = XdText.tiny, color = c.fg3, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
-                    HorizontalDivider(thickness = 1.dp, color = c.line)
+                    XdSwitch(entry.isEnabled, { patches?.toggle(file, entry, it) }, contentDescription = entry.name)
+                }
+                HorizontalDivider(thickness = 1.dp, color = c.line)
+            }
+            Column {
+                if (limit != null) {
+                    for ((file, entry) in entries.take(limit)) row(file, entry, many)
+                } else for ((m, files) in groups) {
+                    if (m != null && (groups.size > 1 || m != xendroid.compose.patches.PatchVersion.Match.YOURS)) {
+                        XdGroupHeader(stringResource(when (m) {
+                            xendroid.compose.patches.PatchVersion.Match.YOURS -> R.string.xd_game_patches_yours
+                            xendroid.compose.patches.PatchVersion.Match.OTHER -> R.string.xd_game_patches_others
+                            xendroid.compose.patches.PatchVersion.Match.UNKNOWN -> R.string.xd_game_patches_any
+                        }), files.sumOf { it.entries.size })
+                        if (m == xendroid.compose.patches.PatchVersion.Match.OTHER) {
+                            Text(stringResource(R.string.xd_game_patches_others_note), style = XdText.note, color = c.fg3)
+                        }
+                    }
+                    for (file in files) {
+                        if (many) Text(fileLabel(file), style = XdText.small, color = c.fg2, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+                        for (entry in file.entries) row(file, entry, false)
+                    }
                 }
             }
             if (loaded != null && loaded.conflicts.isNotEmpty() && limit == null) {
@@ -420,12 +567,24 @@ class GameCards(
         }
     }
 
+    /** A patch file as the sheet names it: its variant ("Undertow (TU2)") and, when the name does
+     *  not say it, the version its comments state. */
+    @Composable
+    private fun fileLabel(file: xendroid.compose.patches.PatchFile): String {
+        val label = if (file.mine) stringResource(R.string.pt_added_by_you, file.variantLabel) else file.variantLabel
+        val version = file.versionLabel?.takeIf { v -> !label.replace(" ", "").contains(v.replace(" ", ""), ignoreCase = true) }
+        return listOfNotNull(label, version).joinToString(" · ")
+    }
+
     @Composable
     private fun ContentFacts(withCache: Boolean = true) {
         val context = LocalContext.current
         val none = stringResource(R.string.xd_game_none)
         XdKv(listOfNotNull(
-            stringResource(R.string.xd_game_tu) to (info?.updates?.let { if (it.isEmpty()) none else it.joinToString(", ") } ?: "—"),
+            stringResource(R.string.xd_game_tu) to (info?.updates?.let { list ->
+                if (list.isEmpty()) none
+                else list.joinToString(", ") { n -> info.updateVersions[n]?.let { v -> "$n (${context.getString(R.string.xd_game_version_of, v)})" } ?: n }
+            } ?: "—"),
             stringResource(R.string.xd_game_dlc) to (info?.dlcCount?.let { if (it == 0) none else it.toString() } ?: "—"),
             if (withCache) stringResource(R.string.xd_data_cache) to (info?.shaderCache?.let { (files, bytes) ->
                 if (files == 0) none else android.text.format.Formatter.formatShortFileSize(context, bytes)

@@ -111,4 +111,22 @@
         <item quantity="other">%1$d execuções</item>
     </plurals>
     <string name="xd_bm_run_details">5º pct %1$d · 99%% dos quadros %2$s</string>
+    <string name="xd_cm_found_title">Pacotes encontrados</string>
+    <string name="xd_cm_looking_folders">Procurando em Downloads e nas suas pastas de conteúdo…</string>
+    <string name="xd_cm_found_none">Nenhum pacote de conteúdo em Downloads nem nas suas pastas de conteúdo.</string>
+    <string name="xd_cm_found_none_game">Nenhum pacote deste jogo em Downloads nem nas suas pastas de conteúdo.</string>
+    <string name="xd_cm_folders_title">Pastas de conteúdo</string>
+    <string name="xd_cm_folders_note">Atualizações e DLC são procurados nestas pastas e em todas as pastas dentro delas, além de Downloads.</string>
+    <string name="xd_cm_folder_add">Adicionar pasta</string>
+    <string name="xd_cm_folder_pick_title">Pasta de atualizações e DLC</string>
+    <string name="xd_cm_folder_pick_hint">Os pacotes dela e das pastas dentro dela aparecem aqui para instalar.</string>
+    <string name="xd_cm_folder_unreadable">sem acesso</string>
+    <string name="xd_cm_downloads">Downloads</string>
+    <string name="xd_cm_installed_badge">Instalado</string>
+    <string name="xd_cm_install_again">Instalar de novo</string>
+    <string name="xd_cm_in_folder">em %1$s</string>
+    <plurals name="xd_cm_folder_packages">
+        <item quantity="one">%1$d pacote</item>
+        <item quantity="other">%1$d pacotes</item>
+    </plurals>
 </resources>

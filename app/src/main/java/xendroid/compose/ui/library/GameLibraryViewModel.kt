@@ -166,6 +166,10 @@ class GameLibraryViewModel(
         val lastProfile: String? = null,
         /** The game's shader and pipeline cache: files and bytes; null when unreadable. */
         val shaderCache: Pair<Int, Long>? = null,
+        /** Round 2: the title's finished runs, newest first (Performance picks one to show). */
+        val runs: List<xendroid.compose.sessions.SessionRun> = emptyList(),
+        /** Round 2: by name, the version each installed title update brings ("1.0.3.0"). */
+        val updateVersions: Map<String, String> = emptyMap(),
     )
 
     /** C04: the kept catalog copy (null = never downloaded) and the game's results by setup. */
@@ -193,7 +197,14 @@ class GameLibraryViewModel(
             val loaded = withContext(Dispatchers.IO) {
                 runCatching {
                     val runs = xendroid.compose.sessions.SessionRuns.store()
-                    val lastRun = runs.lastRun(title)
+                    // One read of the records: this title's runs, and its play history (the
+                    // library's is from the last scan, which does not run with the sheet open).
+                    val all = runs.runs()
+                    val mine = all.filter { it.titleId.equals(title, ignoreCase = true) && it.state.final }
+                    val lastRun = mine.firstOrNull()
+                    xendroid.compose.sessions.titleActivityOf(mine).firstOrNull()?.let { played ->
+                        _activity.update { it + (played.titleId to played) }
+                    }
                     val content = runCatching { installedContent(title) }
                         .onFailure { Log.w("GameLibrary", "Listing installed content failed", it) }.getOrNull()
                     val patches = runCatching { patchesOf(title) }
@@ -208,7 +219,8 @@ class GameLibraryViewModel(
                     }.onFailure { Log.w("GameLibrary", "Reading the shader cache failed", it) }.getOrNull()
                     GameDetails(game.identityKey, title, compatibilityStore.get(title), lastRun,
                         lastRun?.let { runs.events(it.runId) }, content?.first, content?.second,
-                        patches?.first, patches?.second, catalogView(title, gpu, catalogMessage), lastProfile, shaderCache)
+                        patches?.first, patches?.second, catalogView(title, gpu, catalogMessage), lastProfile, shaderCache,
+                        runs = mine.take(MAX_SHEET_RUNS), updateVersions = content?.third.orEmpty())
                 }.onFailure { Log.w("GameLibrary", "Reading game details failed", it) }.getOrNull()
             }
             if (loaded != null && _details.value?.identityKey == game.identityKey) _details.value = loaded
@@ -281,12 +293,17 @@ class GameLibraryViewModel(
 
     /** Installed title updates (names) and DLC count, from the core's own content listing. The
      *  library already loaded the core; without it this answers nothing rather than loading it. */
-    private fun installedContent(title: String): Pair<List<String>, Int>? {
+    private fun installedContent(title: String): Triple<List<String>, Int, Map<String, String>>? {
         val emu = EmulatorRuntime.emulator ?: return null
         val root = ContentPaths.contentRoot().absolutePath
         val updates = emu.list_content(root, title, ContentPaths.TU_CONTENT_TYPE) ?: return null
         val dlc = emu.list_content(root, title, ContentPaths.DLC_CONTENT_TYPE) ?: return null
-        return updates.map { it.displayName?.ifBlank { null } ?: it.pkgDir } to dlc.size
+        val named = updates.map { (it.displayName?.ifBlank { null } ?: it.pkgDir) to it.pkgDir }
+        val versions = named.mapNotNull { (name, dir) ->
+            runCatching { xendroid.compose.core.ContentVersion.ofInstalled(java.io.File(ContentPaths.contentDir(title, ContentPaths.TU_CONTENT_TYPE), dir)) }
+                .getOrNull()?.let { name to it }
+        }.toMap()
+        return Triple(named.map { it.first }, dlc.size, versions)
     }
 
     /** Enabled and shipped patch entries of the title (bundled catalog + the user's toggles). */
@@ -761,3 +778,6 @@ class GameLibraryViewModel(
     // declared above, which must be initialized first.
     init { refresh() }
 }
+
+/** Round 2: the runs a game sheet offers to pick from in Performance. */
+private const val MAX_SHEET_RUNS = 40

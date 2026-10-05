@@ -92,4 +92,15 @@
         <item quantity="one">%1$s · %2$d extensão</item>
         <item quantity="other">%1$s · %2$d extensões</item>
     </plurals>
+    <string name="xd_br_new_folder">Nova pasta</string>
+    <string name="xd_br_new_folder_title">Nova pasta em %1$s</string>
+    <string name="xd_br_new_folder_name">Nome da pasta</string>
+    <string name="xd_br_new_folder_create">Criar e abrir</string>
+    <string name="xd_br_new_folder_failed">Não deu para criar a pasta aqui.</string>
+    <string name="xd_br_new_folder_bad_name">Use um nome sem “/”.</string>
+    <string name="xd_fd_std">Criar pastas padrão</string>
+    <string name="xd_fd_std_note">Cria XenDroid/%1$s para os jogos e XenDroid/TU e XenDroid/DLC para atualizações e DLC, e já as adiciona.</string>
+    <string name="xd_fd_std_games">Jogos</string>
+    <string name="xd_fd_std_done">Criadas em XenDroid: %1$s (já é pasta de jogos), TU e DLC (pastas de conteúdo, em Conteúdo → Instalar).</string>
+    <string name="xd_fd_std_failed">Não deu para criar as pastas (acesso ao armazenamento?).</string>
 </resources>

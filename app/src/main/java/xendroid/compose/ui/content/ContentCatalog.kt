@@ -13,6 +13,12 @@ data class FoundPackage(
     val displayName: String,
     val size: Long,
     val modified: Long,
+    /** Round 2: the content folder it was found under; null for Downloads. */
+    val folder: String? = null,
+    /** Round 2: a package of the same name is installed for its title already. */
+    val installed: Boolean = false,
+    /** Round 2: a title update's version, from its header ("1.0.3.0"). */
+    val version: String? = null,
 ) {
     val isGame: Boolean get() = ContentPaths.isLaunchableGameType(contentType)
 }
@@ -56,6 +62,29 @@ object ContentCatalog {
             .sortedByDescending { it.lastModified() }
             .take(look)
             .filter(::looksLikePackage)
+
+    /**
+     * Round 2: packages in [dir] and its subfolders, [maxDepth] levels down, skipping hidden
+     * folders and Android's app data; at most [maxEntries] entries are looked at, so a whole
+     * card stays cheap. In name order.
+     */
+    fun packagesUnder(dir: File?, maxDepth: Int = 6, maxEntries: Int = 4000): List<File> {
+        dir ?: return emptyList()
+        val found = mutableListOf<File>()
+        var seen = 0
+        val queue = ArrayDeque(listOf(dir to 0))
+        while (queue.isNotEmpty() && seen < maxEntries) {
+            val (folder, depth) = queue.removeFirst()
+            for (f in folder.listFiles().orEmpty().sortedBy { it.name.lowercase() }) {
+                if (++seen > maxEntries) break
+                if (f.name.startsWith(".")) continue
+                if (f.isDirectory) {
+                    if (depth < maxDepth && !(depth == 0 && f.name == "Android")) queue.addLast(f to depth + 1)
+                } else if (looksLikePackage(f)) found += f
+            }
+        }
+        return found
+    }
 
     /** Free space where packages are installed; null when unknown. */
     fun freeBytes(contentRoot: File = ContentPaths.contentRoot()): Long? {

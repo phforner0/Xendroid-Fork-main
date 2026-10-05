@@ -21,6 +21,8 @@ data class PatchFile(
     val update: PatchUpdate? = null,
     /** L11: a file the user added (not from the bundled catalog); it can be removed. */
     val mine: Boolean = false,
+    /** Round 2: the game version the file says it is for ("TU 2"), from its name or comments. */
+    val versionLabel: String? = null,
 )
 
 /**

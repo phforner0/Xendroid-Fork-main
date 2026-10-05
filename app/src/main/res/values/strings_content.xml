@@ -111,4 +111,22 @@
         <item quantity="other">%1$d runs</item>
     </plurals>
     <string name="xd_bm_run_details">5th pct %1$d · 99%% of frames %2$s</string>
+    <string name="xd_cm_found_title">Packages found</string>
+    <string name="xd_cm_looking_folders">Looking in Downloads and your content folders…</string>
+    <string name="xd_cm_found_none">No content package in Downloads or your content folders.</string>
+    <string name="xd_cm_found_none_game">No package of this game in Downloads or your content folders.</string>
+    <string name="xd_cm_folders_title">Content folders</string>
+    <string name="xd_cm_folders_note">Title updates and DLC are looked for in these folders and every folder inside them, besides Downloads.</string>
+    <string name="xd_cm_folder_add">Add folder</string>
+    <string name="xd_cm_folder_pick_title">Folder of title updates and DLC</string>
+    <string name="xd_cm_folder_pick_hint">The packages in it and in the folders inside show here to install.</string>
+    <string name="xd_cm_folder_unreadable">no access</string>
+    <string name="xd_cm_downloads">Downloads</string>
+    <string name="xd_cm_installed_badge">Installed</string>
+    <string name="xd_cm_install_again">Install again</string>
+    <string name="xd_cm_in_folder">in %1$s</string>
+    <plurals name="xd_cm_folder_packages">
+        <item quantity="one">%1$d package</item>
+        <item quantity="other">%1$d packages</item>
+    </plurals>
 </resources>

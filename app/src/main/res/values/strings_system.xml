@@ -92,4 +92,15 @@
         <item quantity="one">%1$s · %2$d extension</item>
         <item quantity="other">%1$s · %2$d extensions</item>
     </plurals>
+    <string name="xd_br_new_folder">New folder</string>
+    <string name="xd_br_new_folder_title">New folder in %1$s</string>
+    <string name="xd_br_new_folder_name">Name of the folder</string>
+    <string name="xd_br_new_folder_create">Create and open</string>
+    <string name="xd_br_new_folder_failed">Could not create the folder here.</string>
+    <string name="xd_br_new_folder_bad_name">Use a name without “/”.</string>
+    <string name="xd_fd_std">Create standard folders</string>
+    <string name="xd_fd_std_note">Creates XenDroid/%1$s for games and XenDroid/TU and XenDroid/DLC for title updates and DLC, and adds them.</string>
+    <string name="xd_fd_std_games">Games</string>
+    <string name="xd_fd_std_done">Created in XenDroid: %1$s (now a games folder), TU and DLC (content folders, under Content → Install).</string>
+    <string name="xd_fd_std_failed">Could not create the folders (storage access?).</string>
 </resources>

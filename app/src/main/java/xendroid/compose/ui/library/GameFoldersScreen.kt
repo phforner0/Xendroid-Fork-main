@@ -58,6 +58,10 @@ fun GameFoldersScreen(
     onMakeInstallFolder: (String) -> Unit,
     onRescan: () -> Unit,
     onBack: () -> Unit,
+    /** Round 2: makes XenDroid/<games>, /TU and /DLC and adds them; null where it cannot. */
+    onCreateStandard: (() -> Unit)? = null,
+    /** The standard games folder, to tell whether it is in the list already. */
+    standardGames: String? = null,
 ) {
     BackHandler(onBack = onBack)
     val c = Xd.colors
@@ -95,6 +99,12 @@ fun GameFoldersScreen(
                             if (i < folders.lastIndex && !c.controller) HorizontalDivider(thickness = 1.dp, color = c.line)
                         }
                     }
+                }
+            }
+            if (onCreateStandard != null && standardGames != null && folders.none { it.trimEnd('/') == standardGames }) {
+                XdCard(Modifier.fillMaxWidth(), title = stringResource(R.string.xd_fd_std), icon = XdIcons.folder) {
+                    Text(stringResource(R.string.xd_fd_std_note, File(standardGames).name), style = XdText.note, color = c.fg3)
+                    XdButton(stringResource(R.string.xd_fd_std), onCreateStandard, size = XdButtonSize.SM, icon = XdIcons.plus)
                 }
             }
             XdNote(stringResource(R.string.folders_note))

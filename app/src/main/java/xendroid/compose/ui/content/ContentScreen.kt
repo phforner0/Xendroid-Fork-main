@@ -54,7 +54,10 @@ import xendroid.compose.ui.design.Xd
 import xendroid.compose.ui.design.XdArea
 import xendroid.compose.ui.design.XdBar
 import xendroid.compose.ui.design.XdButton
+import xendroid.compose.ui.design.BadgeTone
+import xendroid.compose.ui.design.XdBadge
 import xendroid.compose.ui.design.XdButtonKind
+import xendroid.compose.ui.design.XdIconButton
 import xendroid.compose.ui.design.XdButtonSize
 import xendroid.compose.ui.design.XdCard
 import xendroid.compose.ui.design.XdEmpty
@@ -111,9 +114,11 @@ fun ContentScreen(
     val vmState by vm.state.collectAsStateWithLifecycle()
     val deleteState by vm.deleteState.collectAsStateWithLifecycle()
     val found by vm.found.collectAsStateWithLifecycle()
+    val folders by vm.folderCounts.collectAsStateWithLifecycle()
     val free by vm.freeBytes.collectAsStateWithLifecycle()
     val installerState = installer?.state?.collectAsStateWithLifecycle()?.value ?: ContentInstallState.Idle
     var picking by remember { mutableStateOf(false) }
+    var addingFolder by remember { mutableStateOf(false) }
     // An install ends on a sheet to read; a removal or a restore on a toast.
     var installing by remember { mutableStateOf(false) }
     val all = vm.allGames
@@ -133,6 +138,11 @@ fun ContentScreen(
         FolderBrowserScreen(onFileChosen = { path -> picking = false; install(path) }, onCancel = { picking = false })
         return
     }
+    if (addingFolder) {
+        FolderBrowserScreen(onFolderChosen = { path -> addingFolder = false; vm.addFolder(path) }, onCancel = { addingFolder = false },
+            title = stringResource(R.string.xd_cm_folder_pick_title), hint = stringResource(R.string.xd_cm_folder_pick_hint))
+        return
+    }
 
     val loaded = listState as? ListState.Loaded
     val name: (String) -> String = { title -> links.gameName(title) ?: context.getString(R.string.xd_cm_title_n, title) }
@@ -146,8 +156,8 @@ fun ContentScreen(
     val installSection = XdSection(ContentSections.INSTALL, stringResource(R.string.xd_cm_sec_install), XdIcons.plus,
         heading = stringResource(R.string.xd_cm_install_heading)) {
         LaunchedEffect(Unit) { if (vm.found.value == null) vm.lookForPackages() }
-        InstallBody(all, found, free, busy, name, size, onPick = { picking = true }, onInstall = { install(it.path) },
-            onLookAgain = vm::lookForPackages)
+        InstallBody(all, found, folders, free, busy, name, size, onPick = { picking = true }, onInstall = { install(it.path) },
+            onLookAgain = vm::lookForPackages, onAddFolder = { addingFolder = true }, onRemoveFolder = vm::removeFolder)
     }
     val sections = if (all) listOf(
         XdSection(ContentSections.INSTALLED, stringResource(R.string.xd_cm_sec_installed), XdIcons.box,
@@ -296,7 +306,8 @@ private fun PackageCard(items: List<ContentEntry>, empty: String, size: (Long) -
 
 @Composable
 private fun PackageRow(e: ContentEntry, divider: Boolean, narrow: Boolean, size: (Long) -> String, busy: Boolean, onRemove: (ContentEntry) -> Unit) {
-    ItemRow(e.displayName, listOf(typeText(e.contentType), size(e.size)).joinToString(" · "), iconOf(e.contentType), divider, narrow) {
+    ItemRow(e.displayName, listOfNotNull(typeText(e.contentType), e.version?.let { stringResource(R.string.xd_game_version_of, it) }, size(e.size))
+        .joinToString(" · "), iconOf(e.contentType), divider, narrow) {
         XdButton(stringResource(R.string.common_remove), { onRemove(e) }, kind = XdButtonKind.GHOST, size = XdButtonSize.SM, icon = XdIcons.trash,
             enabled = !busy)
     }
@@ -347,12 +358,16 @@ private fun TrashBody(
     }
 }
 
-/** Installing: the steps and the file picker, and the packages waiting in Downloads. */
+/**
+ * Installing: the steps and the file picker; round 2, the content folders (searched with every
+ * folder inside them, besides Downloads) and the packages found there, the installed ones marked.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun InstallBody(
     all: Boolean,
     found: List<FoundPackage>?,
+    folders: List<ContentManagerViewModel.FolderCount>,
     free: Long?,
     busy: Boolean,
     name: (String) -> String,
@@ -360,6 +375,8 @@ private fun InstallBody(
     onPick: () -> Unit,
     onInstall: (FoundPackage) -> Unit,
     onLookAgain: () -> Unit,
+    onAddFolder: () -> Unit,
+    onRemoveFolder: (String) -> Unit,
 ) {
     val c = Xd.colors
     BoxWithConstraints {
@@ -378,17 +395,38 @@ private fun InstallBody(
                             modifier = Modifier.align(Alignment.CenterVertically))
                     }
                 }
+                XdCard(Modifier.fillMaxWidth(), title = stringResource(R.string.xd_cm_folders_title), icon = XdIcons.folder) {
+                    Text(stringResource(R.string.xd_cm_folders_note), style = XdText.note, color = c.fg3)
+                    Column {
+                        val inDownloads = found?.count { it.folder == null }
+                        XdListRow(stringResource(R.string.xd_cm_downloads), icon = XdIcons.download, divider = folders.isNotEmpty(),
+                            subtitle = inDownloads?.let { pluralStringResource(R.plurals.xd_cm_folder_packages, it, it) })
+                        folders.forEachIndexed { i, f ->
+                            XdListRow(java.io.File(f.path).name.ifEmpty { f.path }, icon = XdIcons.folder, divider = i < folders.lastIndex,
+                                subtitle = listOf(xendroid.compose.ui.library.displayPath(f.path),
+                                    if (f.readable) pluralStringResource(R.plurals.xd_cm_folder_packages, f.packages, f.packages)
+                                    else stringResource(R.string.xd_cm_folder_unreadable)).joinToString(" · ")) {
+                                XdIconButton(XdIcons.x, stringResource(R.string.common_remove), { onRemoveFolder(f.path) })
+                            }
+                        }
+                    }
+                    XdButton(stringResource(R.string.xd_cm_folder_add), onAddFolder, size = XdButtonSize.SM, icon = XdIcons.plus, enabled = !busy)
+                }
             }, right = {
-                XdCard(Modifier.fillMaxWidth(), title = stringResource(R.string.xd_cm_in_downloads), icon = XdIcons.download,
+                XdCard(Modifier.fillMaxWidth(), title = stringResource(R.string.xd_cm_found_title), icon = XdIcons.box,
                     trailing = found?.size?.takeIf { it > 0 }?.toString()) {
                     when {
-                        found == null -> Text(stringResource(R.string.xd_cm_looking), style = XdText.note, color = c.fg3)
-                        found.isEmpty() -> Text(stringResource(if (all) R.string.xd_cm_downloads_none else R.string.xd_cm_downloads_none_game),
+                        found == null -> Text(stringResource(R.string.xd_cm_looking_folders), style = XdText.note, color = c.fg3)
+                        found.isEmpty() -> Text(stringResource(if (all) R.string.xd_cm_found_none else R.string.xd_cm_found_none_game),
                             style = XdText.note, color = c.fg3)
                         else -> Column {
-                            found.forEachIndexed { i, f ->
-                                ItemRow(f.fileName, describe(f, name, size), iconOf(f.contentType), i < found.lastIndex, narrow || wide) {
-                                    XdButton(stringResource(R.string.xd_cm_install), { onInstall(f) }, size = XdButtonSize.SM, enabled = !busy)
+                            // Not yet installed first; among them, the newest.
+                            val ordered = found.sortedWith(compareBy<FoundPackage> { it.installed }.thenByDescending { it.modified })
+                            ordered.forEachIndexed { i, f ->
+                                ItemRow(f.fileName, describe(f, name, size), iconOf(f.contentType), i < ordered.lastIndex, narrow || wide,
+                                    badge = if (f.installed) stringResource(R.string.xd_cm_installed_badge) else null) {
+                                    XdButton(stringResource(if (f.installed) R.string.xd_cm_install_again else R.string.xd_cm_install), { onInstall(f) },
+                                        size = XdButtonSize.SM, kind = if (f.installed) XdButtonKind.GHOST else XdButtonKind.SECONDARY, enabled = !busy)
                                 }
                             }
                         }
@@ -430,11 +468,14 @@ private fun ItemRow(
     icon: ImageVector,
     divider: Boolean,
     stacked: Boolean,
+    badge: String? = null,
     actions: @Composable () -> Unit,
 ) {
     val c = Xd.colors
+    val badges: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? =
+        badge?.let { text -> { XdBadge(text, tone = BadgeTone.OK, modifier = Modifier.align(Alignment.CenterVertically)) } }
     if (!stacked || c.controller) {
-        XdListRow(title, subtitle = subtitle, icon = icon, divider = divider) { actions() }
+        XdListRow(title, subtitle = subtitle, icon = icon, divider = divider, badges = badges) { actions() }
         return
     }
     Column(Modifier.fillMaxWidth()) {
@@ -442,7 +483,11 @@ private fun ItemRow(
             Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(22.dp), tint = c.fg3) }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column {
-                    Text(title, style = XdText.label, color = c.fg)
+                    if (badge == null) Text(title, style = XdText.label, color = c.fg)
+                    else FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(title, style = XdText.label, color = c.fg, modifier = Modifier.align(Alignment.CenterVertically))
+                        XdBadge(badge, tone = BadgeTone.OK, modifier = Modifier.align(Alignment.CenterVertically))
+                    }
                     Text(subtitle, style = XdText.small, color = c.fg3, modifier = Modifier.padding(top = 2.dp))
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
@@ -483,7 +528,11 @@ private fun typeText(contentType: Int): String = when {
 
 /** A found package as the list says it: kind, game, the name inside it, size. */
 @Composable
-private fun describe(f: FoundPackage, name: (String) -> String, size: (Long) -> String): String = when {
-    f.isGame -> listOfNotNull(f.displayName.takeIf { it != f.fileName }, stringResource(R.string.xd_cm_found_game, size(f.size))).joinToString(" · ")
-    else -> listOfNotNull(typeText(f.contentType), f.titleId?.let(name), f.displayName.takeIf { it != f.fileName }, size(f.size)).joinToString(" · ")
+private fun describe(f: FoundPackage, name: (String) -> String, size: (Long) -> String): String {
+    val where = f.folder?.let { stringResource(R.string.xd_cm_in_folder, java.io.File(it).name.ifEmpty { it }) }
+    return when {
+        f.isGame -> listOfNotNull(f.displayName.takeIf { it != f.fileName }, stringResource(R.string.xd_cm_found_game, size(f.size)), where)
+        else -> listOfNotNull(typeText(f.contentType), f.version?.let { stringResource(R.string.xd_game_version_of, it) }, f.titleId?.let(name),
+            f.displayName.takeIf { it != f.fileName }, size(f.size), where)
+    }.joinToString(" · ")
 }

@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import xendroid.compose.Emulator
 import xendroid.compose.core.ContentPaths
+import xendroid.compose.core.ContentVersion
 import xendroid.compose.core.EmulatorRuntime
 import xendroid.compose.core.GameMetadataSource
 import xendroid.compose.core.StorageAccess
@@ -32,6 +33,8 @@ class ContentManagerViewModel(
     private val titleId: String?,
     /** Where downloaded packages wait (Downloads); null when it cannot be read. */
     private val inbox: () -> File? = { Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) },
+    /** Round 2: the player's content folders, searched with their subfolders. */
+    private val folders: () -> List<String> = { ContentFolders.read(appContext) },
 ) : ViewModel() {
 
     data class ContentEntry(
@@ -41,6 +44,8 @@ class ContentManagerViewModel(
         val contentType: Int,
         /** The title it is installed for (uppercase). */
         val titleId: String = "",
+        /** Round 2: a title update's version, from its patch executable ("1.0.3.0"). */
+        val version: String? = null,
     )
 
     /** One game's installed packages. */
@@ -70,6 +75,12 @@ class ContentManagerViewModel(
     private val _found = MutableStateFlow<List<FoundPackage>?>(null)
     /** Packages lying in Downloads (this game's only, for one game); null until looked for. */
     val found: StateFlow<List<FoundPackage>?> = _found.asStateFlow()
+
+    /** Round 2: a content folder and how many packages the last look found under it. */
+    data class FolderCount(val path: String, val packages: Int, val readable: Boolean)
+
+    private val _folderCounts = MutableStateFlow<List<FolderCount>>(emptyList())
+    val folderCounts: StateFlow<List<FolderCount>> = _folderCounts.asStateFlow()
 
     private val _freeBytes = MutableStateFlow<Long?>(null)
     /** Free space where packages are installed. */
@@ -141,22 +152,51 @@ class ContentManagerViewModel(
         _freeBytes.value = withContext(Dispatchers.IO) { ContentCatalog.freeBytes() }
     }
 
-    /** Looks in Downloads for packages (a few header bytes of its newest files; the core reads
-     *  the header of those that look like one). */
+    /** Looks for packages: in Downloads (a few header bytes of its newest files) and, round 2,
+     *  in the content folders and every folder inside them. The core reads the header of those
+     *  that look like one; each says whether it is installed already and a title update's version. */
     fun lookForPackages() = viewModelScope.launch {
-        _found.value = withContext(Dispatchers.IO) {
+        val (found, counts) = withContext(Dispatchers.IO) {
             EmulatorRuntime.ensureLoaded()
-            ContentCatalog.packagesIn(runCatching { inbox() }.getOrNull()).mapNotNull { file ->
-                val meta = metadata.readContentHeader(file.absolutePath) ?: return@mapNotNull null
-                FoundPackage(file.absolutePath, file.name, meta.titleId, meta.contentType, meta.displayName.ifBlank { file.name },
-                    file.length(), file.lastModified())
-            }.filter { titleId == null || it.titleId.equals(titleId, ignoreCase = true) }
+            fun describe(file: File, folder: String?): FoundPackage? {
+                val meta = metadata.readContentHeader(file.absolutePath) ?: return null
+                val installed = meta.titleId?.let { File(ContentPaths.contentDir(it, meta.contentType), file.name).exists() } == true
+                val version = if (meta.contentType == ContentPaths.TU_CONTENT_TYPE) ContentVersion.ofPackage(file) else null
+                return FoundPackage(file.absolutePath, file.name, meta.titleId, meta.contentType, meta.displayName.ifBlank { file.name },
+                    file.length(), file.lastModified(), folder, installed, version)
+            }
+            val mine = { p: FoundPackage -> titleId == null || p.titleId.equals(titleId, ignoreCase = true) }
+            val fromDownloads = ContentCatalog.packagesIn(runCatching { inbox() }.getOrNull()).mapNotNull { describe(it, null) }
+            val counts = mutableListOf<FolderCount>()
+            val fromFolders = runCatching { folders() }.getOrDefault(emptyList()).flatMap { path ->
+                val dir = File(path)
+                val packages = ContentCatalog.packagesUnder(dir).mapNotNull { describe(it, path) }.filter(mine)
+                counts += FolderCount(path, packages.size, dir.canRead())
+                packages
+            }
+            (fromDownloads.filter(mine) + fromFolders).distinctBy { it.path } to counts.toList()
         }
+        _folderCounts.value = counts
+        _found.value = found
+    }
+
+    /** Round 2: a folder of title updates and DLC to look in, with its subfolders. */
+    fun addFolder(path: String) {
+        ContentFolders.add(appContext, path)
+        lookForPackages()
+    }
+
+    fun removeFolder(path: String) {
+        ContentFolders.remove(appContext, path)
+        lookForPackages()
     }
 
     private fun Array<Emulator.ContentItem>.toEntries(contentType: Int, title: String) =
-        map { ContentEntry(it.pkgDir, it.displayName ?: it.pkgDir, it.size, contentType, title) }
-            .sortedBy { it.displayName.lowercase() }
+        map {
+            val version = if (contentType == ContentPaths.TU_CONTENT_TYPE)
+                runCatching { ContentVersion.ofInstalled(File(ContentPaths.contentDir(title, contentType), it.pkgDir)) }.getOrNull() else null
+            ContentEntry(it.pkgDir, it.displayName ?: it.pkgDir, it.size, contentType, title, version)
+        }.sortedBy { it.displayName.lowercase() }
 
     /** The title [item] is installed for. */
     private fun titleOf(item: ContentEntry): String = item.titleId.ifEmpty { titleId.orEmpty() }
