@@ -25,7 +25,7 @@ class SettingsProfileStore(
 
     /** Every valid profile (the app's first) and why anything else was skipped. */
     fun load(): SettingsProfiles.Parsed {
-        val app = bundled()?.let { SettingsProfiles.parse(it, ProfileSource.BUNDLED, "XenDroid") }
+        val app = bundled()?.let { SettingsProfiles.parse(it, ProfileSource.BUNDLED, "Xendroid+") }
             ?: SettingsProfiles.Parsed(emptyList(), emptyList())
         val local = localFiles().map { file ->
             if (file.length() > SettingsProfiles.MAX_FILE_BYTES) {

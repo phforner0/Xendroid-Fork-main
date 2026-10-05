@@ -101,7 +101,7 @@
     <string name="xd_drv_remove_text">Os arquivos saem do aparelho. Baixe ou importe de novo para usar depois.</string>
     <string name="xd_drv_removed">%1$s removido</string>
     <string name="xd_drv_remove_failed">Não deu para remover %1$s</string>
-    <string name="xd_tu_sysmem">Desenha direto na memória em vez dos tiles do chip (GMEM). Mais lento, mas evita uma classe de travamentos da GPU Adreno. Padrão do XenDroid.</string>
+    <string name="xd_tu_sysmem">Desenha direto na memória em vez dos tiles do chip (GMEM). Mais lento, mas evita uma classe de travamentos da GPU Adreno. Padrão do Xendroid+.</string>
     <string name="xd_tu_gmem">Sempre desenha nos tiles do chip. Mais rápido onde funciona; o oposto de sysmem.</string>
     <string name="xd_tu_nolrz">Desliga o LRZ, o teste de profundidade antecipado. Pode corrigir cintilação ou geometria sumindo; custa velocidade.</string>
     <string name="xd_tu_nolrzfc">Desliga só a limpeza rápida do LRZ. Uma versão mais estreita do nolrz.</string>

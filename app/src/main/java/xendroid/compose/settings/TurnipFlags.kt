@@ -13,7 +13,7 @@ object TurnipFlags {
 
     val KNOWN: List<Flag> = listOf(
         Flag("sysmem", "Draw straight to memory instead of in on-chip tiles (GMEM). Slower, but avoids a class of " +
-            "tiled-rendering artifacts and GPU hangs. XenDroid's default."),
+            "tiled-rendering artifacts and GPU hangs. Xendroid+'s default."),
         Flag("gmem", "Always draw in on-chip tiles. Faster where it works; the opposite of sysmem."),
         Flag("nolrz", "Turn off LRZ, the early depth test. Can fix flickering or missing geometry; costs speed."),
         Flag("nolrzfc", "Turn off only LRZ's fast clear. A narrower version of nolrz."),

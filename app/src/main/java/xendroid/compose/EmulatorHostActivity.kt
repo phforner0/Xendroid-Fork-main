@@ -3211,7 +3211,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             InGameAction.VOLUME to MenuValue(fraction = audioVolume.intValue / 100f, steps = 0, text = "${audioVolume.intValue}%", own = VOLUME_KEY in own),
             InGameAction.MUTE to MenuValue(on = audioVolume.intValue == 0),
             InGameAction.AUTO_SAVE to MenuValue(on = autoSave.value, text = if (autoSave.value)
-                stringResource(R.string.menu_t_autosave_on, loadingName ?: activeTitleState.value ?: "XenDroid") else stringResource(R.string.menu_t_autosave_off)),
+                stringResource(R.string.menu_t_autosave_on, loadingName ?: activeTitleState.value ?: stringResource(R.string.app_name)) else stringResource(R.string.menu_t_autosave_off)),
             InGameAction.UNDO_SESSION to MenuValue(enabled = sessionChanges.intValue > 0, text = if (sessionChanges.intValue > 0)
                 pluralStringResource(R.plurals.menu_undo_note, sessionChanges.intValue, sessionChanges.intValue) else stringResource(R.string.menu_nothing_changed)),
             InGameAction.MAKE_GLOBAL to MenuValue(enabled = sessionChanges.intValue > 0, text = stringResource(R.string.menu_t_global_note)),
@@ -3869,7 +3869,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     val send = Intent(Intent.ACTION_SEND).apply {
                         type = "application/zip"
                         putExtra(Intent.EXTRA_STREAM, uri)
-                        clipData = ClipData.newRawUri("XenDroid diagnostics", uri)
+                        clipData = ClipData.newRawUri(getString(R.string.host_share_diagnostics), uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     startActivity(Intent.createChooser(send, getString(R.string.host_share_diagnostics)))

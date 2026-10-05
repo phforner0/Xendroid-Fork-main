@@ -71,7 +71,7 @@ fun AboutScreen(
     // Off the main thread: the core's report creates a Vulkan instance to ask.
     val device by produceState<List<Pair<Int, String>>?>(null) { value = withContext(Dispatchers.IO) { DeviceInfo.rows(context) } }
     val report by produceState<CoreReport?>(null, device) { value = withContext(Dispatchers.IO) { DeviceInfo.coreReport() } }
-    XdSingleScreen(title = stringResource(R.string.lib_menu_about), subtitle = "XenDroid · ${versionLine()}", onBack = onBack,
+    XdSingleScreen(title = stringResource(R.string.lib_menu_about), subtitle = "${stringResource(R.string.app_name)} · ${versionLine()}", onBack = onBack,
         headIcon = XdIcons.info) {
         BoxWithConstraints {
             val wide = maxWidth > 640.dp
@@ -80,7 +80,8 @@ fun AboutScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         XdLogo(56.dp)
                         Column(Modifier.weight(1f)) {
-                            Text("XenDroid", style = XdText.h1, color = c.fg)
+                            Text(stringResource(R.string.app_name), style = XdText.h1, color = c.fg)
+                            Text(stringResource(R.string.ab_creator), style = XdText.bodySm, color = c.fg2)
                             Text(stringResource(R.string.ab_version, versionLine()), style = XdText.small, color = c.fg3)
                             Text(stringResource(R.string.xd_fr_tagline), style = XdText.bodySm, color = c.fg2)
                         }
@@ -122,7 +123,7 @@ fun AboutScreen(
                 XdButton(stringResource(R.string.xd_copy), {
                     DeviceInfo.coreReportText()?.let { text ->
                         context.getSystemService(android.content.ClipboardManager::class.java)
-                            ?.setPrimaryClip(android.content.ClipData.newPlainText("XenDroid", text))
+                            ?.setPrimaryClip(android.content.ClipData.newPlainText(context.getString(R.string.app_name), text))
                         toast.show(context.getString(R.string.xd_ab_report_copied))
                     }
                 }, icon = XdIcons.copy)

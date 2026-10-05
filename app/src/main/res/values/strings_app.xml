@@ -101,7 +101,7 @@
     <string name="xd_drv_remove_text">Its files leave the phone. Download or import it again to use it later.</string>
     <string name="xd_drv_removed">%1$s removed</string>
     <string name="xd_drv_remove_failed">%1$s could not be removed</string>
-    <string name="xd_tu_sysmem">Draws straight to memory instead of in the on-chip tiles (GMEM). Slower, but avoids a class of Adreno GPU hangs. XenDroid default.</string>
+    <string name="xd_tu_sysmem">Draws straight to memory instead of in the on-chip tiles (GMEM). Slower, but avoids a class of Adreno GPU hangs. Xendroid+ default.</string>
     <string name="xd_tu_gmem">Always draws in the on-chip tiles. Faster where it works; the opposite of sysmem.</string>
     <string name="xd_tu_nolrz">Turns off LRZ, the early depth test. Can fix flickering or missing geometry; costs speed.</string>
     <string name="xd_tu_nolrzfc">Turns off only the fast clear of LRZ. A narrower version of nolrz.</string>

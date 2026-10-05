@@ -199,7 +199,7 @@ private fun StepRail(current: FirstRunStep, onStep: (FirstRunStep) -> Unit, modi
     Column(modifier.background(c.s1).verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 22.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)) {
         XdLogo(40.dp)
-        Text("XenDroid", style = XdText.h2, color = c.fg, modifier = Modifier.padding(top = 12.dp))
+        Text(stringResource(R.string.app_name), style = XdText.h2, color = c.fg, modifier = Modifier.padding(top = 12.dp))
         Text(stringResource(R.string.xd_fr_tagline), style = XdText.note, color = c.fg3, modifier = Modifier.padding(bottom = 16.dp))
         FirstRunStep.entries.forEach { s -> StepItem(s, current, onStep) }
     }
@@ -234,7 +234,7 @@ private fun StepStrip(current: FirstRunStep, onStep: (FirstRunStep) -> Unit) {
         Row(Modifier.padding(start = 20.dp, top = 16.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             XdLogo(28.dp)
-            Text("XenDroid", style = XdText.label, color = c.fg)
+            Text(stringResource(R.string.app_name), style = XdText.label, color = c.fg)
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {

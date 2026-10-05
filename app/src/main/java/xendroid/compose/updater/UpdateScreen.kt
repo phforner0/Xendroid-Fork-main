@@ -173,7 +173,7 @@ fun UpdateScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         XdLogo(46.dp)
                         Column(Modifier.weight(1f)) {
-                            Text("XenDroid v${BuildConfig.VERSION_CODE}", style = XdText.h2, color = c.fg)
+                            Text("${stringResource(R.string.app_name)} v${BuildConfig.VERSION_CODE}", style = XdText.h2, color = c.fg)
                             val version = BuildConfig.VERSION_NAME.take(9)
                             Text(if (!feed) stringResource(R.string.xd_up_hero_no_feed, version) else stringResource(R.string.xd_up_hero_line, version,
                                 channelText(updateChannel(context)), lastUpdateCheck(context)?.let {

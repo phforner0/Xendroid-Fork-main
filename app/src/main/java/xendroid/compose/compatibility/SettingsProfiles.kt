@@ -271,7 +271,7 @@ object SettingsProfiles {
         }
         if (r.models.isNotEmpty() && r.models.none { it.equals(f.model, ignoreCase = true) }) add("for the ${r.models.joinToString(" or ")} model")
         r.minAndroidSdk?.let { if (f.androidSdk < it) add("needs Android API level $it or newer") }
-        r.minAppVersionCode?.let { if (f.appVersionCode < it) add("needs a newer XenDroid build") }
+        r.minAppVersionCode?.let { if (f.appVersionCode < it) add("needs a newer Xendroid+ build") }
     }
 
     /** True when one of the tests behind [p] ran on this very GPU. */

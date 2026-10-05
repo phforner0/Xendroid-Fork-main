@@ -58,10 +58,10 @@ object DeviceInfo {
 
     /** Version and device, one line each, for a problem report; the core's full report last. */
     fun text(context: Context): String =
-        "XenDroid ${BuildConfig.VERSION_NAME}\n" + rows(context).joinToString("\n") { (label, value) -> context.getString(label) + ": " + value } +
+        context.getString(R.string.app_name) + " ${BuildConfig.VERSION_NAME}\n" + rows(context).joinToString("\n") { (label, value) -> context.getString(label) + ": " + value } +
             coreReportText()?.let { "\n\n" + it.trimEnd() }.orEmpty()
 
     fun copy(context: Context) {
-        context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("XenDroid", text(context)))
+        context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.app_name), text(context)))
     }
 }

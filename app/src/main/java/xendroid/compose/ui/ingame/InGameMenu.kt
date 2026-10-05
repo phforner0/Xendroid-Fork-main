@@ -267,7 +267,7 @@ private fun Head(model: InGameMenuModel, controller: Boolean, compactActions: Bo
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         if (model.art != null) AsyncImage(model.art, null, Modifier.size(36.dp, 46.dp).clip(RoundedCornerShape(7.dp)), contentScale = ContentScale.Crop)
         Column(Modifier.weight(1f)) {
-            Text(model.gameName ?: "XenDroid", style = XdText.h2, color = c.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(model.gameName ?: stringResource(R.string.app_name), style = XdText.h2, color = c.fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(stringResource(if (model.paused) R.string.xd_menu_paused else R.string.xd_menu_running), style = XdText.small, color = c.fg3,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -553,7 +553,7 @@ private fun SavedLine(model: InGameMenuModel, short: Boolean, onOpen: () -> Unit
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(XdIcons.save, null, Modifier.size(15.dp), tint = c.acc)
-        Text(pluralStringResource(R.plurals.menu_saved_line, model.savedChanges, model.savedChanges, model.gameName ?: "XenDroid"),
+        Text(pluralStringResource(R.plurals.menu_saved_line, model.savedChanges, model.savedChanges, model.gameName ?: stringResource(R.string.app_name)),
             style = XdText.small, color = c.fg2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Icon(XdIcons.chevR, null, Modifier.size(14.dp), tint = c.fg3)
     }

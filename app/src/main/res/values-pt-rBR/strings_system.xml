@@ -61,7 +61,7 @@
     <string name="xd_ab_k_abi">ABI</string>
     <string name="xd_ab_copy_all">Copiar tudo</string>
     <string name="xd_ab_copied">Versão e dados do aparelho copiados.</string>
-    <string name="xd_ab_credits_line">Baseado no Xenia e em projetos de código aberto.</string>
+    <string name="xd_ab_credits_line">Criado e mantido por phforner0. Baseado no Xenia e em outros projetos de código aberto.</string>
     <string name="xd_ab_credits_head">Créditos e licenças</string>
     <plurals name="xd_fr_found">
         <item quantity="one">%1$d jogo encontrado</item>

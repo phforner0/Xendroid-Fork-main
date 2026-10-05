@@ -195,7 +195,7 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, links: SettingsLin
         })
         add(XdSection(Ids.ABOUT, stringResource(R.string.xd_guide_about), XdIcons.info) {
             XdCard {
-                XdListRow("XenDroid ${xendroid.compose.BuildConfig.VERSION_NAME}", icon = XdIcons.info,
+                XdListRow("${stringResource(R.string.app_name)} ${xendroid.compose.BuildConfig.VERSION_NAME}", icon = XdIcons.info,
                     subtitle = xendroid.compose.core.EmulatorRuntime.gpuDeviceName ?: "", divider = false) {
                     XdButton(stringResource(R.string.xd_set_about_open), links.onAbout, size = XdButtonSize.SM)
                 }
