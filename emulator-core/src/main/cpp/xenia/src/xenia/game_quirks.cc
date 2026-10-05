@@ -212,6 +212,18 @@ static const Quirk kQuirks[] = {
      "scalar FPU NaNs by the host's rules"},
     {0x4D530AA4, "a64_vmx_nan_fixup", false,
      "VMX NaNs by the host's rules"},
+    // Gears of War 3 (Unreal Engine 3) draws the depth of each projected
+    // shadow at 4x MSAA into EDRAM it then reads as 1x - 20 shadows a frame in
+    // its first checkpoint, each a 4x -> 1x and a 1x -> 4x transfer: 96
+    // transfers (36700 tiles) and 143 render passes a frame, GPU-bound at 25
+    // fps. Into the 1x surfaces of their samples (with the overwritten
+    // transfers skipped, on for every title), 6300 tiles and 66 render passes
+    // a frame, 30 fps (its cap), the same shadows (fork.opt b105, runtime
+    // switches in the same scene, 2026-10-05).
+    {0x4D5308AB, "vulkan_depth_4x_as_1x", true,
+     "4x depth-only shadow draws into the 1x surface of their samples"},
+    {0x4D5308AB, "vulkan_samples_as_pixels_simple_ps", true,
+     "4x draws with simple pixel shaders into the 1x surface"},
 };
 
 // Same path/priority as a per-game config file.
