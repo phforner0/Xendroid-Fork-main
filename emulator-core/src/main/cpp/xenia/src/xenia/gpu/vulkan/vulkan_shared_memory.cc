@@ -477,11 +477,13 @@ void VulkanSharedMemory::TryInitializeHostBuffer() {
   // draws while the main buffer stays fast device-local. Non-sparse, so it can
   // accept host memory where the sparse buffer can't.
   if (!CreateImportedGuestRamBuffer(host_buffer_, host_buffer_memory_)) {
-    // Without it memexport output stays device-local and the CPU never sees it.
-    XELOGW(
-        "Shared memory: no host buffer for memexport - memexport_enable is set "
-        "but the import failed, games reading exported data on the CPU will "
-        "misbehave");
+    if (IsHostMapped()) {
+      XELOGI("Shared memory: guest RAM import unavailable - memexport uses "
+             "synchronous host-mapped readback");
+    } else {
+      XELOGW("Shared memory: memexport needs guest RAM import or a host-mapped "
+             "buffer (readback_resolve=uma)");
+    }
     host_buffer_ = VK_NULL_HANDLE;
     host_buffer_memory_ = VK_NULL_HANDLE;
     return;

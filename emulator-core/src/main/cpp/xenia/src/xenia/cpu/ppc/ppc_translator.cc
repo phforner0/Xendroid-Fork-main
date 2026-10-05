@@ -296,7 +296,8 @@ bool PPCTranslator::Translate(GuestFunction* function,
   if (cvars::disassemble_functions) {
     debug_info_flags |= DebugInfoFlags::kDebugInfoAllDisasm;
   }
-  const bool dump_this_function = IsDumpTarget(function->address());
+  bool dump_this_function =
+      IsDumpTarget(function->address(), function->address());
   if (dump_this_function) {
     debug_info_flags |= DebugInfoFlags::kDebugInfoAllDisasm;
   }
@@ -320,6 +321,16 @@ bool PPCTranslator::Translate(GuestFunction* function,
   // Scan the function to find its extents and gather debug data.
   if (!scanner_->Scan(function, debug_info.get())) {
     return false;
+  }
+
+  // A dump target inside the function, known now that its extent is.
+  if (!dump_this_function &&
+      IsDumpTarget(function->address(), function->end_address())) {
+    dump_this_function = true;
+    debug_info_flags |= DebugInfoFlags::kDebugInfoAllDisasm;
+    if (!debug_info) {
+      debug_info.reset(new FunctionDebugInfo());
+    }
   }
 
   // Setup trace data, if needed.
@@ -399,9 +410,9 @@ bool PPCTranslator::Translate(GuestFunction* function,
   return true;
 }
 
-bool PPCTranslator::IsDumpTarget(uint32_t address) {
+bool PPCTranslator::IsDumpTarget(uint32_t first, uint32_t last) {
   return !cvars::dump_functions_at.empty() &&
-         GuestAddressInList(cvars::dump_functions_at, address);
+         GuestAddressInList(cvars::dump_functions_at, first, last);
 }
 
 void PPCTranslator::DumpTargetFunction(GuestFunction* function) {

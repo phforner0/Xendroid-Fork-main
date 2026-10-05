@@ -205,7 +205,11 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
   // Drops the code buffer, tail entries and both label pools. Both the success
   // path and a failed compile must run it, or stale labels carry over.
   void ResetPerFunctionState();
-  bool Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info);
+  // Gives every local of the function its stack offset (turning it into a
+  // constant) and returns the frame size.
+  size_t LayOutLocals(hir::HIRBuilder* builder);
+  bool Emit(hir::HIRBuilder* builder, size_t stack_size,
+            EmitFunctionInfo& func_info);
   // Whether a guest function has to be emitted again with long-range branches.
   bool IsNearBranchOutOfRange(const Xbyak_aarch64::Error& e) const;
 

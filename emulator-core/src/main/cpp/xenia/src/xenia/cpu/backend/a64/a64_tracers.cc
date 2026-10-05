@@ -270,11 +270,155 @@ GuestCallLogSlot* AcquireGuestCallLogSlot(GuestCallLogSlot* slots,
   return nullptr;
 }
 
+// log_guest_calls_ring: entries are raw values, formatted only when logged.
+constexpr uint32_t kGuestCallRingWords = 16;
+struct GuestCallRingEntry {
+  // Index + 1 once the entry is complete, 0 while being written.
+  std::atomic<uint64_t> seq{0};
+  uint32_t address;
+  uint32_t thread_id;
+  uint32_t lr;
+  uint32_t r3, r4, r5, r11;
+  uint32_t is_return;
+  uint32_t word_count;
+  // Bit n set: words[n] could not be read.
+  uint32_t unmapped;
+  uint32_t words[kGuestCallRingWords];
+};
+std::atomic<uint64_t> guest_call_ring_next{0};
+// Set when the ring is logged: the other threads keep running meanwhile and
+// would wrap it under the reader.
+std::atomic<bool> guest_call_ring_frozen{false};
+
+// ReadGuestWord without the global lock QueryProtect takes, which would
+// serialize the threads the ring is recording.
+bool ReadGuestWordUnlocked(ppc::PPCContext* ppc_context, uint32_t address,
+                           uint32_t* out_value) {
+  auto* memory = ppc_context->processor ? ppc_context->processor->memory()
+                                        : nullptr;
+  const BaseHeap* heap = memory ? memory->LookupHeap(address) : nullptr;
+  uint32_t protect = 0;
+  if (!heap || !heap->QueryProtectUnlocked(address, &protect) ||
+      !(protect & kMemoryProtectRead)) {
+    return false;
+  }
+  *out_value =
+      xe::load_and_swap<uint32_t>(ppc_context->virtual_membase + address);
+  return true;
+}
+
+GuestCallRingEntry* GuestCallRing() {
+  static GuestCallRingEntry* ring =
+      cvars::log_guest_calls_ring
+          ? new GuestCallRingEntry[cvars::log_guest_calls_ring]
+          : nullptr;
+  return ring;
+}
+
+void RecordGuestCall(ppc::PPCContext* ppc_context, uint32_t address,
+                     bool is_return) {
+  GuestCallRingEntry* ring = GuestCallRing();
+  if (!ring || guest_call_ring_frozen.load(std::memory_order_relaxed)) {
+    return;
+  }
+  const uint64_t index =
+      guest_call_ring_next.fetch_add(1, std::memory_order_relaxed);
+  GuestCallRingEntry& entry = ring[index % cvars::log_guest_calls_ring];
+  entry.seq.store(0, std::memory_order_relaxed);
+  entry.address = address;
+  entry.thread_id = ppc_context->thread_id;
+  entry.lr = static_cast<uint32_t>(ppc_context->lr);
+  entry.r3 = static_cast<uint32_t>(ppc_context->r[3]);
+  entry.r4 = static_cast<uint32_t>(ppc_context->r[4]);
+  entry.r5 = static_cast<uint32_t>(ppc_context->r[5]);
+  entry.r11 = static_cast<uint32_t>(ppc_context->r[11]);
+  entry.is_return = is_return;
+  entry.word_count = 0;
+  entry.unmapped = 0;
+  if (!is_return) {
+    for (const auto& field : GetGuestCallFields()) {
+      uint32_t base =
+          static_cast<uint32_t>(ppc_context->r[field.reg]) + field.offset;
+      bool readable = true;
+      if (field.indirect) {
+        uint32_t pointer = 0;
+        readable = ReadGuestWordUnlocked(ppc_context, base, &pointer);
+        base = pointer + field.indirect_offset;
+      }
+      for (uint32_t word = 0;
+           word < field.words && entry.word_count < kGuestCallRingWords;
+           ++word) {
+        uint32_t value = 0;
+        if (!readable ||
+            !ReadGuestWordUnlocked(ppc_context, base + word * 4, &value)) {
+          entry.unmapped |= 1u << entry.word_count;
+        }
+        entry.words[entry.word_count++] = value;
+      }
+    }
+  }
+  entry.seq.store(index + 1, std::memory_order_release);
+}
+
 }  // namespace
+
+void LogGuestCallRing() {
+  GuestCallRingEntry* ring = GuestCallRing();
+  if (!ring) {
+    return;
+  }
+  guest_call_ring_frozen.store(true, std::memory_order_relaxed);
+  const uint64_t size = cvars::log_guest_calls_ring;
+  const uint64_t end = guest_call_ring_next.load(std::memory_order_acquire);
+  const uint64_t begin = end > size ? end - size : 0;
+  XELOGI("guest call ring: calls {} to {}", begin, end);
+  for (uint64_t index = begin; index < end; ++index) {
+    const GuestCallRingEntry& slot = ring[index % size];
+    if (slot.seq.load(std::memory_order_acquire) != index + 1) {
+      continue;  // still being written when the ring froze
+    }
+    GuestCallRingEntry entry;
+    entry.address = slot.address;
+    entry.thread_id = slot.thread_id;
+    entry.lr = slot.lr;
+    entry.r3 = slot.r3;
+    entry.r4 = slot.r4;
+    entry.r5 = slot.r5;
+    entry.r11 = slot.r11;
+    entry.is_return = slot.is_return;
+    entry.word_count = std::min(slot.word_count, kGuestCallRingWords);
+    entry.unmapped = slot.unmapped;
+    std::memcpy(entry.words, slot.words, sizeof(entry.words));
+    std::atomic_thread_fence(std::memory_order_acquire);
+    if (slot.seq.load(std::memory_order_relaxed) != index + 1) {
+      continue;  // a writer that claimed it before the freeze tore it
+    }
+    if (entry.is_return) {
+      XELOGI("ring {} ret {:08X} thread {:04X} r3={:08X}", index,
+             entry.address, entry.thread_id, entry.r3);
+      continue;
+    }
+    std::string words;
+    for (uint32_t word = 0; word < entry.word_count; ++word) {
+      words += (entry.unmapped >> word) & 1
+                   ? std::string(" -")
+                   : fmt::format(" {:08X}", entry.words[word]);
+    }
+    XELOGI(
+        "ring {} call {:08X} thread {:04X} lr={:08X} r3={:08X} r4={:08X} "
+        "r5={:08X} r11={:08X} |{}",
+        index, entry.address, entry.thread_id, entry.lr, entry.r3, entry.r4,
+        entry.r5, entry.r11, words);
+  }
+}
 
 void LogGuestCallEntry(void* raw_context, uint64_t function_address) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
   const uint32_t address = static_cast<uint32_t>(function_address);
+  if (cvars::log_guest_calls_ring) {
+    RecordGuestCall(ppc_context, address, false);
+    return;
+  }
   auto* slot = AcquireGuestCallLogSlot(guest_call_entry_slots, address);
   const uint32_t hits =
       slot ? slot->hits.fetch_add(1, std::memory_order_relaxed) + 1 : 1;
@@ -296,6 +440,10 @@ void LogGuestCallEntry(void* raw_context, uint64_t function_address) {
 void LogGuestCallReturn(void* raw_context, uint64_t function_address) {
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(raw_context);
   const uint32_t address = static_cast<uint32_t>(function_address);
+  if (cvars::log_guest_calls_ring) {
+    RecordGuestCall(ppc_context, address, true);
+    return;
+  }
   const uint64_t value = ppc_context->r[3];
   auto* slot = AcquireGuestCallLogSlot(guest_call_return_slots, address);
   const uint32_t hits =

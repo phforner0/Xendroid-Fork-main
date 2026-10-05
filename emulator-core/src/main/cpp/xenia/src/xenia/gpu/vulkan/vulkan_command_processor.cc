@@ -78,6 +78,7 @@ DECLARE_bool(skip_overwritten_transfers);
 DECLARE_bool(skip_overwritten_transfers_cutout);
 DECLARE_bool(transfer_cleared_sources_as_clears);
 DECLARE_bool(host_alpha_to_coverage);
+DECLARE_bool(memexport_enable);
 DECLARE_bool(spirv_texture_sign_specialization);
 DECLARE_bool(spirv_texture_sign_specialization_used);
 DECLARE_bool(spirv_texture_fetch_constants_decoded);
@@ -2143,6 +2144,17 @@ void VulkanCommandProcessor::ShutdownContext() {
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyDescriptorSetLayout,
                                          device,
                                          fxaa_source_descriptor_set_layout_);
+
+  // Memexport readback snapshot cleanup.
+  if (memexport_snapshot_mapping_) {
+    dfn.vkUnmapMemory(device, memexport_snapshot_memory_);
+    memexport_snapshot_mapping_ = nullptr;
+  }
+  ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyBuffer, device,
+                                         memexport_snapshot_buffer_);
+  ui::vulkan::util::DestroyAndNullHandle(dfn.vkFreeMemory, device,
+                                         memexport_snapshot_memory_);
+  memexport_snapshot_size_ = 0;
 
   // Resolve downscale cleanup.
   ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyBuffer, device,
@@ -4564,6 +4576,53 @@ Shader* VulkanCommandProcessor::LoadShader(xenos::ShaderType shader_type,
   return pipeline_cache_->LoadShader(shader_type, host_address, dword_count);
 }
 
+bool VulkanCommandProcessor::EnsureMemexportSnapshotBuffer(uint32_t size) {
+  if (size <= memexport_snapshot_size_) {
+    return true;
+  }
+  const ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
+  const ui::vulkan::VulkanDevice::Functions& dfn = vulkan_device->functions();
+  const VkDevice device = vulkan_device->device();
+  // Every exporting draw awaits its submission before returning, so the
+  // previous buffer is idle.
+  if (memexport_snapshot_mapping_) {
+    dfn.vkUnmapMemory(device, memexport_snapshot_memory_);
+    memexport_snapshot_mapping_ = nullptr;
+  }
+  ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyBuffer, device,
+                                         memexport_snapshot_buffer_);
+  ui::vulkan::util::DestroyAndNullHandle(dfn.vkFreeMemory, device,
+                                         memexport_snapshot_memory_);
+  memexport_snapshot_size_ = 0;
+  const uint32_t new_size = xe::align(size, uint32_t(1) << 20);
+  uint32_t memory_type = UINT32_MAX;
+  if (!ui::vulkan::util::CreateDedicatedAllocationBuffer(
+          vulkan_device, new_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+          ui::vulkan::util::MemoryPurpose::kReadback,
+          memexport_snapshot_buffer_, memexport_snapshot_memory_,
+          &memory_type)) {
+    XELOGE("Memexport readback: failed to create a {} KB snapshot buffer",
+           new_size >> 10);
+    return false;
+  }
+  void* mapping = nullptr;
+  if (dfn.vkMapMemory(device, memexport_snapshot_memory_, 0, VK_WHOLE_SIZE, 0,
+                      &mapping) != VK_SUCCESS) {
+    XELOGE("Memexport readback: failed to map the snapshot buffer");
+    ui::vulkan::util::DestroyAndNullHandle(dfn.vkDestroyBuffer, device,
+                                           memexport_snapshot_buffer_);
+    ui::vulkan::util::DestroyAndNullHandle(dfn.vkFreeMemory, device,
+                                           memexport_snapshot_memory_);
+    return false;
+  }
+  memexport_snapshot_mapping_ = static_cast<const uint8_t*>(mapping);
+  memexport_snapshot_coherent_ =
+      memory_type < 32 &&
+      ((vulkan_device->memory_types().host_coherent >> memory_type) & 1);
+  memexport_snapshot_size_ = new_size;
+  return true;
+}
+
 bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
                                        uint32_t index_count,
                                        IndexBufferInfo* index_buffer_info,
@@ -5649,6 +5708,61 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     }
   }
 
+  // The memexport readback fallback (after the draw) needs the export ranges as
+  // the draw finds them: the GPU copies them into memexport_snapshot_buffer_,
+  // after the uploads above and before the draw writes.
+  const bool memexport_readback = !route_to_host && cvars::memexport_enable &&
+                                  !memexport_ranges_.empty() &&
+                                  !shared_memory_->is_zero_copy();
+  if (memexport_readback) {
+    if (!shared_memory_->IsHostMapped()) {
+      XELOGE("Memexport readback requires a host-mapped shared memory buffer "
+             "when guest RAM cannot be imported (readback_resolve=uma)");
+      return false;
+    }
+    memexport_snapshot_regions_.clear();
+    VkDeviceSize snapshot_offset = 0;
+    for (const draw_util::MemExportRange& range : memexport_ranges_) {
+      VkBufferCopy& region = memexport_snapshot_regions_.emplace_back();
+      region.srcOffset = VkDeviceSize(range.base_address_dwords) << 2;
+      region.dstOffset = snapshot_offset;
+      region.size = range.size_bytes;
+      snapshot_offset += range.size_bytes;
+    }
+    if (!EnsureMemexportSnapshotBuffer(uint32_t(snapshot_offset))) {
+      return false;
+    }
+    PushBufferMemoryBarrier(
+        shared_memory_->buffer(), memexport_extent_start,
+        memexport_extent_end - memexport_extent_start,
+        guest_shader_pipeline_stages_ | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+        VK_ACCESS_TRANSFER_READ_BIT, VK_QUEUE_FAMILY_IGNORED,
+        VK_QUEUE_FAMILY_IGNORED, false);
+    SubmitBarriers(true);
+    deferred_command_buffer_.CmdVkCopyBuffer(
+        shared_memory_->buffer(), memexport_snapshot_buffer_,
+        uint32_t(memexport_snapshot_regions_.size()),
+        memexport_snapshot_regions_.data());
+    // The draw writes after the copy has read, and the host reads the copy
+    // once the draw's submission completes.
+    PushBufferMemoryBarrier(
+        shared_memory_->buffer(), memexport_extent_start,
+        memexport_extent_end - memexport_extent_start,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, guest_shader_pipeline_stages_,
+        VK_ACCESS_TRANSFER_READ_BIT,
+        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, false);
+    PushBufferMemoryBarrier(memexport_snapshot_buffer_, 0, snapshot_offset,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            VK_PIPELINE_STAGE_HOST_BIT,
+                            VK_ACCESS_TRANSFER_WRITE_BIT,
+                            VK_ACCESS_HOST_READ_BIT, VK_QUEUE_FAMILY_IGNORED,
+                            VK_QUEUE_FAMILY_IGNORED, false);
+  }
+
   // vulkan_debug_extra_pass_breaks: break the guest pass before every Nth draw
   // to measure what a break costs.
   if (cvars::vulkan_debug_extra_pass_breaks && in_render_pass_ &&
@@ -5876,7 +5990,81 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
     // buffer on demand (texture loads).
     for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
       MarkMemexportPagesWritten(memexport_range.base_address_dwords << 2,
-                                memexport_range.size_bytes);
+                                 memexport_range.size_bytes);
+    }
+  } else if (memexport_readback) {
+    // Android's KGSL drivers may not expose VK_EXT_external_memory_host.
+    // In that case the shader wrote the device buffer, not guest RAM. A guest
+    // CPU or PM4_WAIT_REG_MEM reader must see the completed export even if no
+    // swap/fence packet follows this draw. Use the dense UMA mapping as a
+    // synchronous fallback; never publish uncompleted GPU writes to the CPU.
+    // Only the bytes the draw changed (against the snapshot taken before it)
+    // are stored, byte by byte: the rest of a range is whatever the CPU has,
+    // possibly newer than the buffer and written concurrently right now.
+    PushBufferMemoryBarrier(
+        shared_memory_->buffer(), memexport_extent_start,
+        memexport_extent_end - memexport_extent_start,
+        guest_shader_pipeline_stages_, VK_PIPELINE_STAGE_HOST_BIT,
+        VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, false);
+    SubmitBarriers(true);
+    if (!AwaitAllQueueOperationsCompletion()) {
+      XELOGE("Memexport readback: GPU submission did not complete");
+      return false;
+    }
+    ++vk_frame_sync_stats_.memexport_awaits;
+    if (!memexport_snapshot_coherent_) {
+      const ui::vulkan::VulkanDevice* const vulkan_device = GetVulkanDevice();
+      VkMappedMemoryRange snapshot_range;
+      snapshot_range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+      snapshot_range.pNext = nullptr;
+      snapshot_range.memory = memexport_snapshot_memory_;
+      snapshot_range.offset = 0;
+      snapshot_range.size = VK_WHOLE_SIZE;
+      vulkan_device->functions().vkInvalidateMappedMemoryRanges(
+          vulkan_device->device(), 1, &snapshot_range);
+    }
+    for (size_t i = 0; i < memexport_ranges_.size(); ++i) {
+      const draw_util::MemExportRange& range = memexport_ranges_[i];
+      const uint32_t address = range.base_address_dwords << 2;
+      memexport_readback_after_.resize(range.size_bytes);
+      if (!shared_memory_->ReadHostMapped(address, range.size_bytes,
+                                          memexport_readback_after_.data())) {
+        XELOGE("Memexport readback failed at {:08X} ({} bytes)", address,
+               range.size_bytes);
+        return false;
+      }
+      const uint8_t* before = memexport_snapshot_mapping_ +
+                              memexport_snapshot_regions_[i].dstOffset;
+      const uint8_t* after = memexport_readback_after_.data();
+      volatile uint8_t* guest = static_cast<volatile uint8_t*>(
+          memory_->TranslatePhysical(address));
+      uint32_t changed = 0;
+      uint32_t offset = 0;
+      for (; offset + 8 <= range.size_bytes; offset += 8) {
+        uint64_t before_word, after_word;
+        std::memcpy(&before_word, before + offset, sizeof(before_word));
+        std::memcpy(&after_word, after + offset, sizeof(after_word));
+        if (before_word == after_word) {
+          continue;
+        }
+        for (uint32_t j = offset; j < offset + 8; ++j) {
+          if (before[j] != after[j]) {
+            guest[j] = after[j];
+            ++changed;
+          }
+        }
+      }
+      for (; offset < range.size_bytes; ++offset) {
+        if (before[offset] != after[offset]) {
+          guest[offset] = after[offset];
+          ++changed;
+        }
+      }
+      if (cvars::shader_profiling) {
+        XELOGI("Memexport readback: {:08X}, {} bytes, {} changed", address,
+               range.size_bytes, changed);
+      }
     }
   }
 

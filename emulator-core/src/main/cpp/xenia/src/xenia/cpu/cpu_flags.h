@@ -24,6 +24,7 @@ DECLARE_bool(disassemble_functions);
 DECLARE_string(log_guest_calls_at);
 DECLARE_string(log_guest_call_fields);
 DECLARE_uint32(log_guest_calls_limit);
+DECLARE_uint32(log_guest_calls_ring);
 
 DECLARE_bool(trace_functions);
 DECLARE_bool(trace_function_coverage);
@@ -51,6 +52,9 @@ namespace cpu {
 // Matches an address against a comma-separated list of hex guest addresses,
 // tolerating "0x" and "sub_" prefixes.
 bool GuestAddressInList(const std::string& list, uint32_t address);
+// The same for any listed address in [first, last].
+bool GuestAddressInList(const std::string& list, uint32_t first,
+                        uint32_t last);
 
 }  // namespace cpu
 }  // namespace xe

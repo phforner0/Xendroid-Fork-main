@@ -541,6 +541,16 @@ resta, em ordem de valor:
 | 5 | **Quirks exatos de GPU como padrão** depois de jogo de verdade em 2–3 títulos (o S64 só cobriu menus) | AB13 seção 8 | todos os jogos |
 | 6 | Thread de comandos: o que o `memmove` copia (5,8%), `WriteRegisterRangeFromRing` (6,9%) | perfil do b82 | ≤ 10% da thread |
 
+## Compatibilidade com outros jogos (builds 89–98, `compat-results.md`)
+
+| Jogo | Situação | Próximo passo |
+|---|---|---|
+| Forza Horizon 2 | quirks do FH1 (b90): ~29,9 fps, GPU 20–22 ms (era 24–27 fps, 36–41 ms) | — |
+| Need for Speed: Most Wanted | crash de ~40% das aberturas **corrigido** (b98, ABA no pool de jobs); **em jogo** desde a b101 (quirks de `fmadz` e memexport; a devolução do memexport grava só os bytes que o desenho mudou) | desempenho em jogo (~19 fps; esperas síncronas do memexport) |
+| Sonic Unleashed | um crash não reproduzido (SIGTRAP no thunk de resolução) | repetir aberturas no b98: pode ter sido o mesmo ABA |
+| Halo 4 | vídeos Bink **corrigidos** (b105): swizzle constante 1 de um fetch sem textura era zerado | jogar além do prólogo (cryo pod) |
+| GTA IV / RDR | 22 / 25 fps, thread de comandos no limite | medir em jogo e perfilar a thread de comandos |
+
 ## Becos sem saída (não repetir sem fato novo)
 
 LRZ (AB3); extents reais no tiling predicado; thread de replay; estacionar todo
@@ -578,4 +588,8 @@ FPR que pareçam NaN sinalizador); sincronização de pilha desligada como
 quirk (risco de `longjmp`); escrever o FPCR menos vezes no JIT (~0,1 ns por
 escrita nos A720); cache de `LoadShader` por comparação (custa o mesmo que o
 XXH3); cache de `QueryRegionInfo` (0 acertos); ADPF na thread de comandos
-(não muda o clock); resolves 4a–4c (tetos de 0,05–0,25 ms).
+(não muda o clock); resolves 4a–4c (tetos de 0,05–0,25 ms). Do NFS: para o
+ABA de reservas não bastam o caminho por software, a geração checada antes
+do store (nem por CAS na geração) ou ordem TSO — a checagem tem de estar
+dentro da janela exclusiva do store; e o log por chamada com
+`log_guest_calls_at` muda o timing (lock global): use o anel.
