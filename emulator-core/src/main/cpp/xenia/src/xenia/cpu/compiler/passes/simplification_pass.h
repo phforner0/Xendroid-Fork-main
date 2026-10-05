@@ -28,6 +28,7 @@ class SimplificationPass : public ConditionalGroupSubpass {
   bool EliminateConversions(hir::HIRBuilder* builder);
   bool CheckTruncate(hir::Instr* i);
   bool CheckByteSwap(hir::Instr* i);
+  bool CheckDoubleToSingleBits(hir::Instr* i, hir::HIRBuilder* builder);
 
   bool SimplifyAssignments(hir::HIRBuilder* builder);
   hir::Value* CheckValue(hir::Value* value, bool& result);

@@ -244,6 +244,10 @@ class HIRBuilder {
   Value* VectorCompareUGE(Value* value1, Value* value2, TypeName part_type);
   Value* VectorDenormFlush(Value* value1);
   Value* ToSingle(Value* value);
+  // lfs/stfs conversions keeping a signaling NaN signaling (see
+  // OPCODE_SINGLE_BITS_TO_DOUBLE).
+  Value* SingleBitsToDouble(Value* single_bits);
+  Value* DoubleToSingleBits(Value* value);
   Value* Add(Value* value1, Value* value2, uint32_t arithmetic_flags = 0);
   Value* AddWithCarry(Value* value1, Value* value2, Value* value3,
                       uint32_t arithmetic_flags = 0);

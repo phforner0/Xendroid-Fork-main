@@ -651,6 +651,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
                                                value);
         }
         bin_select_ = (bin_select_ & 0xFFFFFFFF00000000ull) | value;
+        COMMAND_PROCESSOR::OnBinSelectWritten();
         if (XE_UNLIKELY(bin_trace_.frames_left)) {
           COMMAND_PROCESSOR::BinTraceSetBin(
               true, COMMAND_PROCESSOR::GuestReadPtrOffset(-8));
@@ -852,6 +853,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_XE_SWAP(uint32_t packet,
   COMMAND_PROCESSOR::IssueSwap(frontbuffer_ptr, frontbuffer_width,
                                frontbuffer_height);
   COMMAND_PROCESSOR::FrameStatsEndSwap(fs_swap_begin);
+  COMMAND_PROCESSOR::FrameHintEndFrame();
   COMMAND_PROCESSOR::BinTraceEndFrame();
 
   // Advance the present-frame counter shown in the log prefix.
@@ -976,11 +978,15 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
 
     if (!matched) {
       if (!unmet_begin_ns) {
-        unmet_begin_ns = COMMAND_PROCESSOR::FrameStatsBegin();
+        unmet_begin_ns = COMMAND_PROCESSOR::FrameWaitBegin();
       }
       if (log_unmet && first_check) {
         first_value = value;
         log_begin_ns = COMMAND_PROCESSOR::FrameStatsNow();
+        if (is_memory) {
+          // Catch the guest write that will satisfy the wait.
+          COMMAND_PROCESSOR::WrmWriterArm(poll_reg_addr & ~uint32_t(0x3));
+        }
       }
       first_check = false;
       // Wait using the duration specified by the guest.
@@ -1027,11 +1033,12 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
     --wrm_log_left_;
     XELOGI(
         "WaitRegMem: {} {:08X} func={} ref={:08X} mask={:08X} interval={} "
-        "first={:08X} final={:08X} waited={}us | rptr={} wptr={}",
+        "first={:08X} final={:08X} waited={}us | rptr={} wptr={} | {}",
         is_memory ? "mem" : "reg", poll_reg_addr, wait_info & 0x7, ref, mask,
         wait, first_value, value,
         (COMMAND_PROCESSOR::FrameStatsNow() - log_begin_ns) / 1000,
-        read_ptr_index_, write_ptr_index_.load(std::memory_order_relaxed));
+        read_ptr_index_, write_ptr_index_.load(std::memory_order_relaxed),
+        is_memory ? COMMAND_PROCESSOR::WrmWriterTake() : std::string());
   }
   return true;
 }
@@ -1555,6 +1562,12 @@ bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
 
   if (XE_UNLIKELY(bin_trace_.frames_left)) {
     COMMAND_PROCESSOR::BinTraceDraw((packet & 1) != 0, true);
+  }
+
+  // merge_tiling_bands: draws of an earlier band aren't repeated.
+  if (draw_succeeded && XE_UNLIKELY(tiling_band_ >= 0) &&
+      !COMMAND_PROCESSOR::PrepareTilingBandDraw()) {
+    return true;
   }
 
   if (draw_succeeded) {

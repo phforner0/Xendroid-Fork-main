@@ -16,6 +16,7 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "xenia/base/hash.h"
 #include "xenia/base/xxhash.h"
@@ -75,6 +76,10 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
       // contents can be discarded (loadOp = DONT_CARE).
       uint32_t depth_and_color_load_dont_care
           : 1 + xenos::kMaxColorRenderTargets;  // 30
+      // 4x MSAA attachments stored with 2 samples per pixel (RenderTargetKey::
+      // host_2x): msaa_samples stays 4x, for the guest decisions and the
+      // framebuffer extent, and the attachments and the rasterization have 2.
+      uint32_t host_2x : 1;  // 31
     };
     uint32_t key = 0;
     struct Hasher {
@@ -82,6 +87,11 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
         return std::hash<uint32_t>{}(key.key);
       }
     };
+    // The sample count of the attachments and of the rasterization (before
+    // the 2x-as-4x emulation when 2x attachments are unsupported).
+    xenos::MsaaSamples GetHostMsaaSamples() const {
+      return host_2x ? xenos::MsaaSamples::k2X : msaa_samples;
+    }
     bool operator==(const RenderPassKey& other_key) const {
       return key == other_key.key;
     }
@@ -120,6 +130,20 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // Debug names of the guest render targets backing the last update, for
   // identifying a render pass bucket in the frame-time breakdown.
   std::string GetLastUpdateRenderTargetsDebugName() const;
+  // log_gpu_frame_time_breakdown: the ownership transfers of the draws since
+  // the last call, per frame, by source -> destination render target with the
+  // most tiles first ("" if there were none).
+  std::string TakeTransferStats(double frames);
+
+  // vulkan_debug_gpu_probe bits (the work skipped to measure what it costs).
+  static constexpr int32_t kGpuProbeSkipSmallResolves = 1 << 0;
+  static constexpr int32_t kGpuProbeTextureOnlyResolves = 1 << 1;
+  static constexpr int32_t kGpuProbeSkipTransfers = 1 << 2;
+  static constexpr int32_t kGpuProbeSkipSameBaseMsaaTransfers = 1 << 3;
+  // Direct host resolves of averaged MSAA samples read only the first sample.
+  static constexpr int32_t kGpuProbeSingleSampleResolves = 1 << 4;
+  // Direct host resolves of depth don't fetch the stencil (stored as 0).
+  static constexpr int32_t kGpuProbeSkipDepthResolveStencil = 1 << 5;
 
 
   // Called once per guest frame (from IssueSwap) to aggregate and, once per
@@ -127,6 +151,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   void LogResolveDetailsOnFrameEnd();
 
   Path GetPath() const override { return path_; }
+  // msaa_4x_as_2x, on the host render target path with 2x attachments.
+  bool IsMsaa4xHost2x() const override;
 
   VkBuffer edram_buffer() const { return edram_buffer_; }
 
@@ -145,9 +171,14 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
                bool* written_scaled_out = nullptr);
   // Kind and size of the last Resolve, for per-resolve GPU timing: bit 31 -
   // clears, bit 30 - copies depth, bit 29 - copies, bit 28 - copied with the
-  // direct host path, bits 11:21 - width / 8, bits 0:10 - height / 8. 0 if
-  // there was nothing to do.
+  // direct host path, bits 24:27 - source format of the copy, bits 22:23 -
+  // source xenos::MsaaSamples of the copy, bits 11:21 - width / 8, bits 0:10 -
+  // height / 8. 0 if there was nothing to do.
   uint32_t last_resolve_key() const { return last_resolve_key_; }
+  // Opens the VkMiscTime region of the current resolve's copy dispatches
+  // (MiscTimestampKind::kResolveCopyDispatch) - after the barriers before
+  // them, outside a render pass.
+  bool OpenResolveCopyDispatchTimestamp(bool direct_host);
 
   bool Update(bool is_rasterization_done,
               reg::RB_DEPTHCONTROL normalized_depth_control,
@@ -169,6 +200,31 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   RenderPassKey last_update_render_pass_key() const {
     return last_update_render_pass_key_;
   }
+
+  // merge_tiling_bands (CommandProcessor::OnBinSelectWritten): the
+  // multisampled render targets the first band draws into, and the rows of the
+  // band being resolved below the first one - the resolves read them there.
+  void ResetTilingBandRenderTargets() {
+    tiling_band_color_key_ = 0;
+    tiling_band_depth_key_ = 0;
+  }
+  void SetTilingBandResolveRows(uint32_t rows) {
+    tiling_band_resolve_rows_ = rows;
+  }
+  // For the draw just updated: while drawing the first band, records its
+  // multisampled render targets not recorded yet (returned - 1 color, 2 depth -
+  // to be replicated before the draw, unless the draw replaces all of their
+  // screen); whether it draws into the recorded ones.
+  uint32_t NoteTilingBandDraw(bool first_band,
+                              reg::RB_DEPTHCONTROL normalized_depth_control,
+                              uint32_t normalized_color_mask,
+                              const Shader& vertex_shader,
+                              bool& into_band_targets_out);
+  // Copies the first band_rows rows of the render targets of the last update
+  // (1 color, 2 depth) into the rows below them - each band starts with what
+  // the first one starts with. Records the barriers and the copies, ending the
+  // render pass.
+  void ReplicateTilingBandRows(uint32_t render_targets, uint32_t band_rows);
   VkRenderPass last_update_render_pass() const {
     return last_update_render_pass_;
   }
@@ -187,6 +243,10 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // Falls back to performing the queued transfers in their own render pass(es),
   // ending the active pass. Always clears the queue.
   bool FlushPendingDrawPassTransfers();
+  // The transfers the last Update() turned into clears of their destinations
+  // (transfer_cleared_sources_as_clears), recorded in the currently-active
+  // guest render pass - after the in-pass transfers, before the draw.
+  void EncodePendingDrawPassClears();
 
   // For VK_KHR_dynamic_rendering: fills in attachment info structures.
   // Returns the number of color attachments (may be less than max if trailing
@@ -427,6 +487,67 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   VkPipeline
       direct_host_depth_resolve_pipelines_[kDirectHostResolveMsaaCount]
                                           [kDirectHostResolveScaledCount] = {};
+  // 4 pixels per thread instead of 8 (vulkan_direct_host_resolve_4px): the
+  // 32bpp fast color and the depth resolves, the only ones taking 8.
+  static const DirectHostResolveShaderCode kDirectHostResolveColor32Shaders4px
+      [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount]
+      [kDirectHostResolveSourceUintCount];
+  static const DirectHostResolveShaderCode
+      kDirectHostResolveDepthShaders4px[kDirectHostResolveMsaaCount]
+                                       [kDirectHostResolveScaledCount];
+  VkPipeline direct_host_resolve_pipelines_4px_
+      [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount]
+      [kDirectHostResolveSourceUintCount] = {};
+  VkPipeline direct_host_depth_resolve_pipelines_4px_
+      [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount] = {};
+  // Unscaled variants also storing into the destination texture
+  // (vulkan_direct_host_resolve_to_texture).
+  enum class DirectHostResolveTextureKind {
+    kFastColor4px,
+    kFullColor32bpp,
+    kDepth4px,
+  };
+  static constexpr size_t kDirectHostResolveTextureKindCount = 3;
+  static const DirectHostResolveShaderCode kDirectHostResolveTextureShaders
+      [kDirectHostResolveTextureKindCount][kDirectHostResolveMsaaCount]
+      [kDirectHostResolveSourceUintCount];
+  VkPipeline direct_host_resolve_texture_pipelines_
+      [kDirectHostResolveTextureKindCount][kDirectHostResolveMsaaCount]
+      [kDirectHostResolveSourceUintCount] = {};
+  VkPipeline GetDirectHostResolveTexturePipeline(
+      DirectHostResolveTextureKind kind, xenos::MsaaSamples msaa_samples,
+      bool source_is_uint);
+  // vulkan_direct_host_resolve_7e3_variant: full color resolves of 7e3 in the
+  // EDRAM to 2_10_10_10 with both formats known to the shader - 1x (with
+  // vulkan_direct_host_resolve_format_variants), 2x and 4x sources, only to
+  // memory or also into the texture.
+  static const DirectHostResolveShaderCode
+      kDirectHostResolveColorFull7e3Shaders[3][2];
+  VkPipeline direct_host_color_full_7e3_resolve_pipelines_[3][2] = {};
+  VkPipeline GetDirectHostColorFull7e3ResolvePipeline(
+      xenos::MsaaSamples msaa_samples, bool to_texture);
+  // vulkan_direct_host_resolve_format_variants: one EDRAM format known to the
+  // shader - the 4-pixel 32bpp fast color of 8_8_8_8 and 2_10_10_10
+  // ([MSAA][format][into the texture]), and depth of D24S8 and D24FS8
+  // ([MSAA][format][8 pixels (1x only), 4 pixels, 4 pixels into the texture]).
+  static const DirectHostResolveShaderCode
+      kDirectHostResolveColorFormatShaders[3][2][2];
+  static const DirectHostResolveShaderCode
+      kDirectHostResolveDepthFormatShaders[3][2][3];
+  VkPipeline direct_host_color_format_resolve_pipelines_[3][2][2] = {};
+  VkPipeline direct_host_depth_format_resolve_pipelines_[3][2][3] = {};
+  VkPipeline GetDirectHostFormatResolvePipeline(bool is_depth,
+                                                size_t msaa_index,
+                                                size_t format_index,
+                                                size_t kind);
+  // Texel offset of a resolve strip into the texture it was matched to by
+  // containment, from the byte offset of its base into the tiled texture.
+  // False if the offset has no texel form.
+  static bool GetResolveDestTextureDelta(
+      const draw_util::ResolveInfo& resolve_info, uint32_t base_delta,
+      int32_t& delta_x_out, int32_t& delta_y_out);
+  // vulkan_resolve_dest_diag: the destinations and refusals already logged.
+  std::unordered_set<uint64_t> resolve_dest_diag_logged_;
   std::unique_ptr<ui::vulkan::VulkanUploadBufferPool>
       direct_host_resolve_constants_pool_;
 
@@ -434,6 +555,14 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // for passing parameters to pipeline setup - there's always only one render
   // pass.
   RenderPassKey last_update_render_pass_key_;
+
+  // merge_tiling_bands.
+  uint32_t GetTilingBandSourceTileOffset(RenderTargetKey key) const;
+  void ReplicateTilingBandRenderTargetRows(RenderTarget* render_target,
+                                           uint32_t band_rows);
+  uint32_t tiling_band_color_key_ = 0;
+  uint32_t tiling_band_depth_key_ = 0;
+  uint32_t tiling_band_resolve_rows_ = 0;
   VkRenderPass last_update_render_pass_ = VK_NULL_HANDLE;
   // The pitch is not used on the fragment shader interlock path.
   uint32_t last_update_framebuffer_pitch_tiles_at_32bpp_ = 0;
@@ -753,6 +882,10 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
       // size and conversion between the scale spaces.
       uint32_t dest_scale_native : 1;
       uint32_t source_scale_native : 1;
+      // 4x MSAA sides stored with 2 samples per pixel (RenderTargetKey::host_2x).
+      uint32_t dest_host_2x : 1;
+      uint32_t source_host_2x : 1;
+      uint32_t host_depth_source_host_2x : 1;
 
       // Last bits because this affects the pipeline layout - after sorting,
       // only change it as fewer times as possible. Depth buffers have an
@@ -896,6 +1029,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
       // source_scale_native only.
       // Address the EDRAM buffer with the plain 1x1 tile layout.
       uint32_t native_layout : 1;
+      // A 4x MSAA source stored with 2 samples per pixel.
+      uint32_t host_2x : 1;
     };
 
     DumpPipelineKey() : key(0) { static_assert_size(*this, sizeof(key)); }
@@ -1035,7 +1170,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // slot is the current pass's color attachment being resolved.
   VkPipeline GetResolveInPassPipeline(RenderPassKey render_pass_key,
                                       uint32_t color_slot, bool is_64bpp,
-                                      bool writes_texture);
+                                      bool writes_texture,
+                                      bool full_7e3 = false);
 
   // Selects the transfer mode for one ownership transfer from the source/dest
   // aspects. Shared by PerformTransfersAndResolveClears and the draw-pass
@@ -1071,7 +1207,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // Returns false without recording anything if not applicable.
   bool TryResolveClearInGuestPass(RenderTarget* const* clear_render_targets,
                                   const uint64_t* clear_values,
-                                  const Transfer::Rectangle& clear_rectangle);
+                                  const Transfer::Rectangle& clear_rectangle,
+                                  VulkanSharedMemory& shared_memory);
 
   // Queuing of transfers for in-pass execution.
   void ClearPendingDrawPassTransfers();
@@ -1094,14 +1231,16 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
 
   VkPipeline GetDumpPipeline(DumpPipelineKey key);
 
+  // four_pixels: the 4-pixel-per-thread variant (32bpp only for color).
   VkPipeline GetDirectHostResolvePipeline(bool is_64bpp,
                                           xenos::MsaaSamples msaa_samples,
-                                          bool scaled, bool source_is_uint);
+                                          bool scaled, bool source_is_uint,
+                                          bool four_pixels);
   VkPipeline GetDirectHostColorFullResolvePipeline(
       xenos::MsaaSamples msaa_samples, bool scaled, bool source_is_uint,
       draw_util::ResolveCopyShaderIndex copy_shader);
   VkPipeline GetDirectHostDepthResolvePipeline(xenos::MsaaSamples msaa_samples,
-                                               bool scaled);
+                                               bool scaled, bool four_pixels);
   bool TryInPassResolveCopy(
       const draw_util::ResolveInfo& resolve_info,
       const draw_util::ResolveCopyShaderConstants& copy_shader_constants,
@@ -1129,6 +1268,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   bool color_7e3_as_r11g11b10_ = false;
   // See last_resolve_key().
   uint32_t last_resolve_key_ = 0;
+  // Direct host resolve source layouts already logged (VkDirectResolve).
+  std::unordered_set<uint64_t> direct_resolves_logged_;
 
   bool depth_unorm24_vulkan_format_supported_ = false;
   bool depth_float24_round_ = false;
@@ -1174,6 +1315,9 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // Bit 0: 64bpp dest, bit 1: multisampled source.
   // [is_64bpp | msaa<<1 | writes_texture<<2]
   VkShaderModule resolve_inpass_shaders_[8] = {};
+  // vulkan_in_pass_resolve_7e3: 7e3 in the EDRAM to 2_10_10_10 from
+  // single-sampled sources, only to memory and also into the texture.
+  VkShaderModule resolve_inpass_7e3_shaders_[2] = {};
   VkShaderModule resolve_inpass_vertex_shader_ = VK_NULL_HANDLE;
   // Bits 0-31: RenderPassKey, 32-33: color slot, 34: 64bpp dest.
   std::unordered_map<uint64_t, VkPipeline> resolve_inpass_pipelines_;
@@ -1225,8 +1369,32 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   uint32_t pending_draw_pass_transfer_mask_ = 0;
   uint32_t pending_draw_pass_full_overwrite_mask_ = 0;
 
+  // Transfers of only what a resolve clear left in their source, as clears of
+  // their destinations with that value (transfer_cleared_sources_as_clears),
+  // to record in the draw's pass (EncodePendingDrawPassClears).
+  std::array<std::vector<std::pair<Transfer, uint64_t>>,
+             1 + xenos::kMaxColorRenderTargets>
+      pending_draw_pass_clears_;
+  std::array<RenderTarget*, 1 + xenos::kMaxColorRenderTargets>
+      pending_draw_pass_clear_render_targets_ = {};
+  uint32_t pending_draw_pass_clear_mask_ = 0;
+  // A draw that never happened: in the last pass (or dropped if it can't be
+  // reopened).
+  void FlushPendingDrawPassClears();
+  void ClearPendingDrawPassClears();
+  // For TakeTransferStats.
+  uint64_t transfers_as_clears_ = 0;
+  uint64_t transfer_tiles_as_clears_ = 0;
+
   // Temporary storage for DumpRenderTargets.
   std::vector<ResolveCopyDumpRectangle> dump_rectangles_;
+
+  // TakeTransferStats: per (source key << 32 | destination key).
+  struct TransferPairStats {
+    uint64_t transfers = 0;
+    uint64_t tiles = 0;
+  };
+  std::unordered_map<uint64_t, TransferPairStats> transfer_stats_;
   std::vector<DumpInvocation> dump_invocations_;
 
   // For pixel (fragment) shader interlock.

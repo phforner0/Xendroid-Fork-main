@@ -23,11 +23,15 @@ num = r"([-\d.]+)"
 sync_re = re.compile(r"VkFrameSync: (\d+) frames .*?submissions=" + num +
                      r".*?resolves=" + num + r".*?gpu exec avg=" + num +
                      r"ms.*?rp_begins=" + num)
-gf_re = re.compile(r"GpuFrame: \d+ frames, interval avg=" + num)
+gf_re = re.compile(r"GpuFrame: (\d+) frames, interval avg=" + num +
+                   r"ms max=" + num)
+# Frame intervals over 37 ms, counted per report (newer builds).
+long_re = re.compile(r"intervals >37ms=(\d+)")
 pass_re = re.compile(r"VkPassTime: (xfer )?(\d+)x(\d+) : " + num +
                      r"ms/fr \(" + num + r"pass " + num + r"draw/fr")
+# Newer builds add the source format and MSAA of the copy after the size.
 res_re = re.compile(r"VkResolveTime: copy=(\w+)(\+clear)?( direct)? (\d+)x(\d+)"
-                    r" : " + num + r"ms/fr \(" + num + r"/fr")
+                    r"( [^:]+?)? : " + num + r"ms/fr \(" + num + r"/fr")
 # Split of each resolve kind at the end of its copy (newer builds).
 split_re = re.compile(r"\| copy " + num + r"ms/fr clear " + num + r"ms/fr")
 misc_re = re.compile(r"VkMiscTime: (.+?) : " + num + r"ms/fr \(" + num + r"/fr")
@@ -39,7 +43,11 @@ def parse(path):
     reports, intervals, cur = [], [], None
     for line in open(path, encoding="utf-8", errors="replace"):
         if (m := gf_re.search(line)):
-            intervals.append(float(m.group(1)))
+            lg = long_re.search(line)
+            # interval, worst interval, frames, frames over 37 ms.
+            intervals.append((float(m.group(2)), float(m.group(3)),
+                              float(m.group(1)),
+                              float(lg.group(1)) if lg else float("nan")))
         if (m := sync_re.search(line)):
             cur = {"gpu": float(m.group(2)) * float(m.group(4)),
                    "resolves": float(m.group(3)), "rp": float(m.group(5)),
@@ -53,8 +61,8 @@ def parse(path):
                 float(m.group(4)))
         elif (m := res_re.search(line)):
             key = (f"{m.group(1)}{m.group(2) or ''}{m.group(3) or ''} "
-                   f"{m.group(4)}x{m.group(5)}")
-            cur["res"][key] = float(m.group(6))
+                   f"{m.group(4)}x{m.group(5)}{m.group(6) or ''}")
+            cur["res"][key] = float(m.group(7))
             if (sm := split_re.search(line)):
                 cur["split"][f"{key} copy"] = float(sm.group(1))
                 cur["split"][f"{key} clear"] = float(sm.group(2))
@@ -71,7 +79,10 @@ def parse(path):
     if not reports or not intervals:
         return None
     n = len(reports)
-    run = {"interval": statistics.fmean(intervals),
+    run = {"interval": statistics.fmean(x[0] for x in intervals),
+           "max": statistics.fmean(x[1] for x in intervals),
+           "slow": 100.0 * sum(x[3] for x in intervals) /
+                   sum(x[2] for x in intervals),
            "gpu": sum(r["gpu"] for r in reports) / n,
            "resolves": sum(r["resolves"] for r in reports) / n,
            "rp": sum(r["rp"] for r in reports) / n}
@@ -101,13 +112,17 @@ def mean(runs, key, sub=None):
 
 
 labels = list(groups)
-print("label".ljust(24) + "runs    fps  interval   GPU/fr  resolves  passes")
+# max: mean of the per-second worst frame interval; >37ms: share of frames
+# (nan with older builds).
+print("label".ljust(24) + "runs    fps  interval   GPU/fr  resolves  passes"
+      "    max  >37ms")
 for label in labels:
     runs = groups[label]
     iv = mean(runs, "interval")
     print(f"{label[:23]:<24}{len(runs):>4} {1000 / iv:6.2f} {iv:8.1f}ms "
           f"{mean(runs, 'gpu'):7.1f}ms {mean(runs, 'resolves'):8.1f} "
-          f"{mean(runs, 'rp'):7.0f}")
+          f"{mean(runs, 'rp'):7.0f} {mean(runs, 'max'):6.1f} "
+          f"{mean(runs, 'slow'):5.1f}%")
 
 for kind, title in (("pass", "render passes, ms/frame"),
                     ("res", "resolves, ms/frame"),
@@ -122,10 +137,10 @@ for kind, title in (("pass", "render passes, ms/frame"),
     if not keys:
         continue
     print(f"\n{title} (top {top} + total):")
-    print(" " * 36 + "".join(f"{label[:12]:>13}" for label in labels))
+    print(" " * 50 + "".join(f"{label[:12]:>13}" for label in labels))
     for k, _ in keys.most_common(top):
-        print(f"  {k[:34]:<34}" +
+        print(f"  {k[:48]:<48}" +
               "".join(f"{mean(groups[label], kind, k):13.2f}" for label in labels))
-    print(f"  {'total':<34}" + "".join(
+    print(f"  {'total':<48}" + "".join(
         f"{statistics.fmean(sum(r[kind].values()) for r in groups[label]):13.2f}"
         for label in labels))

@@ -9,6 +9,7 @@
 
 #include "xenia/cpu/backend/a64/a64_backend.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstring>
 
@@ -50,6 +51,35 @@ DEFINE_bool(a64_enable_host_guest_stack_synchronization, true,
             "Records entries for guest/host stack mappings at function starts "
             "and checks for reentry at return sites. Has slight performance "
             "impact, but fixes crashes in games that use setjmp/longjmp.",
+            "a64");
+
+DEFINE_bool(a64_fpu_nan_fixup, true,
+            "Emulate PPC NaN propagation on scalar FPU arithmetic (add, sub, "
+            "mul, div, fused multiply-add): the first NaN operand by "
+            "position is returned, quieted; generated NaNs become the PPC "
+            "default NaN. Costs a NaN check before and after each operation. "
+            "When disabled, the host's NaN rules are used, like "
+            "a64_vmx_nan_fixup for vectors and like the x64 backend.",
+            "a64");
+
+DEFINE_bool(a64_fpu_nan_fixup_result_check, true,
+            "With a64_fpu_nan_fixup: check only the result of a scalar FPU "
+            "operation for NaN (a NaN input always gives a NaN result) and "
+            "pick the PPC NaN out of line, instead of checking the inputs "
+            "before and the result after - the same results with 2 instead "
+            "of 5 extra instructions per operation (3 when the destination "
+            "register is also an input, which is copied first).",
+            "a64");
+
+DEFINE_bool(a64_near_branches, true,
+            "Emit the conditional branches of guest functions (b.cond, cbz, "
+            "cbnz) direct. They reach +/-1 MiB, so a function they don't "
+            "reach across is emitted again with each one routed through an "
+            "unconditional branch. The long-range form costs an extra "
+            "instruction where the branch is taken and a taken branch where "
+            "a direct one falls through: direct, the code is 4-9% smaller and "
+            "Forza Horizon's busiest guest thread takes 3-7% fewer cycles on "
+            "the POCO F7 (S65, S67, 2026-10-02).",
             "a64");
 
 DEFINE_bool(a64_vmx_nan_fixup, true,
@@ -660,6 +690,17 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
                 backend_context->current_stackpoint_depth,
                 static_cast<uint32_t>(guest_context->r[1]));
             if (sync_depth != 0) {
+              // Whether a title ever needs the synchronization (its cost is
+              // up to a quarter of hot call-heavy guest functions).
+              static std::atomic<uint32_t> reentries_logged{0};
+              if (reentries_logged.fetch_add(1, std::memory_order_relaxed) <
+                  16) {
+                XELOGI(
+                    "A64Backend: longjmp re-entry into {:08X} (stackpoint "
+                    "depth {} -> {})",
+                    static_cast<uint32_t>(target_address),
+                    backend_context->current_stackpoint_depth, sync_depth);
+              }
               backend_context->pending_stackpoint_sync_depth = sync_depth;
               return host_address;
             }

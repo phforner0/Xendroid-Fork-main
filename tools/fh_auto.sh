@@ -18,6 +18,8 @@
 #     title screen on - check the VkFrameSync GPU times before trusting it.
 #   Env PASSES=true: with launch 1, also log per-render-pass and per-resolve
 #     GPU times (the timestamps serialize the passes, absolute times grow).
+#   Env STAT=<seconds>: count each arm's last seconds with the CPU's hardware
+#     counters per thread (/data/local/tmp/fh_arm_<i>_stat.txt).
 PKG=xendroid.compose.fork.opt
 DIR=/sdcard/Android/data/$PKG/files/compose
 LOG=$DIR/xe.log
@@ -40,7 +42,9 @@ last_draws() {
   grep 'GpuFrame' $LOG 2>/dev/null | tail -n $1 | sed -n 's/.*draws=\([0-9]*\).*/\1/p'
 }
 # Last $1 per-second reports all within $2 per mille of their mean and above
-# $3 draws. Parked: ~2920-2960 draws with +-0.3% jitter; driving: 3000-3650.
+# $3 draws. Parked: ~2920-2960 draws with +-0.3% jitter; driving: 3000-3650;
+# with merge_tiling_bands (the repeated draws of the tiling bands skipped)
+# parked ~2000. Menus and loading screens stay in the hundreds.
 stable() {
   c=0; min=999999; max=0; sum=0
   for v in $(last_draws $1); do
@@ -148,13 +152,13 @@ fi
 # launch 2: the game is already booting/loading - only wait for the scene.
 if [ "$LAUNCH" -ge 1 ]; then
   t=0
-  while ! stable 2 1000 2500; do
+  while ! stable 2 1000 1500; do
     sleep 1; t=$((t + 1)); [ $t -gt 240 ] && fail "world not loaded"
   done
   say "in game"
   # The intro drive ends with the car parked; require stability and a floor.
   t=0
-  while [ $t -lt 60 ] || ! stable 6 15 2600; do
+  while [ $t -lt 60 ] || ! stable 6 15 1500; do
     sleep 1; t=$((t + 1)); [ $t -gt 300 ] && fail "scene never settled"
   done
   say "scene stable after ${t}s: $(last_draws 1) draws/frame"
@@ -177,15 +181,42 @@ fi
 
 i=0
 EMU=$(pidof $PKG:emu)
-rm -f /data/local/tmp/fh_arm_*_top.txt
+rm -f /data/local/tmp/fh_arm_*_top.txt /data/local/tmp/fh_arm_*_stat.txt \
+  /data/local/tmp/fh_ab_*.png
 for v in $VALUES; do
   i=$((i + 1))
   setprop $PROP $v
   say "arm $i $PROP=$v"
-  sleep $((ARM - 4))
+  # Battery charge used over the arm (the sysfs current is not readable by the
+  # shell; the counter moves in ~1 mAh steps). Only meaningful on battery: on
+  # external power the charger's varying input and the gauge's update bursts
+  # dominate it (0 to 3100 mA between identical 36 s arms on USB).
+  c0=$(dumpsys battery | sed -n 's/.*Charge counter: \([0-9]*\).*/\1/p')
+  t0=$(date +%s)
+  # Env STAT=<seconds>: the arm's last seconds counted by the CPU's hardware
+  # counters per thread (instructions and cycles; tools/forza_cpustat.py).
+  # Instructions per frame repeat within ~1% where CPU time moves with the
+  # core and the clock the scheduler picks.
+  if [ -n "$STAT" ] && [ $((ARM - 4)) -gt "$STAT" ]; then
+    sleep $((ARM - 4 - STAT))
+    simpleperf stat --app $PKG -e instructions,cpu-cycles --per-thread \
+      --duration $STAT -o /data/local/tmp/fh_arm_${i}_stat.txt > /dev/null 2>&1
+  else
+    sleep $((ARM - 4))
+  fi
+  c1=$(dumpsys battery | sed -n 's/.*Charge counter: \([0-9]*\).*/\1/p')
+  t1=$(date +%s)
+  if [ -n "$c0" ] && [ -n "$c1" ] && [ $t1 -gt $t0 ]; then
+    note=""
+    [ "$(dumpsys battery | grep -cE '(AC|USB|Wireless|Dock) powered: true')" -gt 0 ] &&
+      note=" (on external power: not the load)"
+    say "arm $i power: charge used $(((c0 - c1) / 1000)) mAh in $((t1 - t0)) s = $(((c0 - c1) * 36 / 10 / (t1 - t0))) mA net$note"
+  fi
   # Per-thread CPU over the arm's last seconds (guest busy-wait, GPU Commands).
   [ -n "$EMU" ] && top -H -b -n 1 -d 3 -p $EMU -o TID,%CPU,CMD -s 2 2>/dev/null |
     head -16 > /data/local/tmp/fh_arm_${i}_top.txt
+  # The arm's image, after its measured window (for visual A/Bs of switches).
+  screencap -p /data/local/tmp/fh_ab_${i}_${v}.png 2>/dev/null
   say "arm $i end: $(gpu_clock)"
 done
 # Don't leave the override set for later launches (the running game keeps the

@@ -9,10 +9,12 @@
 
 #include "xenia/gpu/vulkan/vulkan_pipeline_cache.h"
 
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <set>
+#include <string>
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
@@ -21,6 +23,7 @@
 #include "xenia/base/shader_compile_counter.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
+#include "xenia/base/platform.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/xxhash.h"
 #include "xenia/gpu/draw_util.h"
@@ -121,6 +124,11 @@ DEFINE_string(
 DECLARE_bool(vulkan_dynamic_rendering);
 DECLARE_bool(spirv_disable_rounding_mode_rte);
 DECLARE_bool(precise_interpolation);
+DECLARE_bool(host_alpha_to_coverage);
+DECLARE_bool(alpha_to_coverage_as_alpha_test);
+#if XE_PLATFORM_xendroid || XE_PLATFORM_ANDROID
+DECLARE_string(ir3_debug);
+#endif
 
 namespace xe {
 namespace gpu {
@@ -1622,6 +1630,8 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
     description_out.pixel_shader_hash =
         pixel_shader->shader().ucode_data_hash();
     description_out.pixel_shader_modification = pixel_shader->modification();
+    description_out.texture_sign_classes = texture_sign_classes_ & 0xFFFF;
+    description_out.texture_exp_adjust_zero = texture_exp_adjust_zero_ ? 1 : 0;
   }
   // Same normalization as the framebuffer key: the loadOp discard bits do not
   // affect pipeline compatibility under dynamic rendering, and letting them
@@ -1835,6 +1845,21 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
               reg::RB_BLENDCONTROL::rt_register_indices[color_rt_index]),
           (normalized_color_mask >> (color_rt_index * 4)) & 0b1111,
           description_out.render_targets[color_rt_index]);
+    }
+
+    // Alpha to coverage by the host's fixed function, from the alpha of color
+    // output 0 - exactly where the pixel shader leaves the emulation out
+    // (SpirvShaderTranslator::IsColorOutput0ForHostAlphaToCoverage); without
+    // that output (depth-only passes) the shader still emulates it.
+    if (cvars::host_alpha_to_coverage && pixel_shader &&
+        (render_pass_color_rts & 0b1) &&
+        pixel_shader->shader().writes_color_target(0) &&
+        (SpirvShaderTranslator::Modification(pixel_shader->modification())
+             .pixel.color_targets_used &
+         0b1) &&
+        regs.Get<reg::RB_COLORCONTROL>().alpha_to_mask_enable &&
+        !cvars::alpha_to_coverage_as_alpha_test) {
+      description_out.alpha_to_coverage = 1;
     }
   }
 
@@ -2438,6 +2463,15 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   shader_stage_fragment.module = VK_NULL_HANDLE;
   shader_stage_fragment.pName = "main";
   shader_stage_fragment.pSpecializationInfo = nullptr;
+  // The texture sign classes (spirv_texture_sign_specialization), then
+  // whether the exponent adjustments are all zero
+  // (spirv_texture_exp_adjust_specialization) - entries for constants a shader
+  // doesn't have are ignored.
+  VkSpecializationMapEntry texture_sign_class_map_entries
+      [SpirvShaderTranslator::kTextureSignClassFetchConstantCount + 1];
+  uint32_t texture_sign_class_values
+      [SpirvShaderTranslator::kTextureSignClassFetchConstantCount + 1];
+  VkSpecializationInfo texture_sign_class_specialization_info;
   if (fragment_shader_override != VK_NULL_HANDLE) {
     // Use the override shader (for placeholder pipelines).
     shader_stage_fragment.module = fragment_shader_override;
@@ -2450,6 +2484,40 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
         creation_arguments.pixel_shader->GetOrCreateShaderModule();
     if (shader_stage_fragment.module == VK_NULL_HANDLE) {
       return false;
+    }
+    uint32_t texture_sign_class_count = 0;
+    for (uint32_t i = 0;
+         i < SpirvShaderTranslator::kTextureSignClassFetchConstantCount; ++i) {
+      uint32_t sign_class = (description.texture_sign_classes >> (2 * i)) & 3;
+      if (!sign_class) {
+        continue;
+      }
+      VkSpecializationMapEntry& map_entry =
+          texture_sign_class_map_entries[texture_sign_class_count];
+      map_entry.constantID =
+          SpirvShaderTranslator::kSpecIdTextureSignClassFirst + i;
+      map_entry.offset = sizeof(uint32_t) * texture_sign_class_count;
+      map_entry.size = sizeof(uint32_t);
+      texture_sign_class_values[texture_sign_class_count++] = sign_class;
+    }
+    if (description.texture_exp_adjust_zero) {
+      VkSpecializationMapEntry& map_entry =
+          texture_sign_class_map_entries[texture_sign_class_count];
+      map_entry.constantID = SpirvShaderTranslator::kSpecIdTextureExpAdjustZero;
+      map_entry.offset = sizeof(uint32_t) * texture_sign_class_count;
+      map_entry.size = sizeof(VkBool32);
+      texture_sign_class_values[texture_sign_class_count++] = VK_TRUE;
+    }
+    if (texture_sign_class_count) {
+      texture_sign_class_specialization_info.mapEntryCount =
+          texture_sign_class_count;
+      texture_sign_class_specialization_info.pMapEntries =
+          texture_sign_class_map_entries;
+      texture_sign_class_specialization_info.dataSize =
+          sizeof(uint32_t) * texture_sign_class_count;
+      texture_sign_class_specialization_info.pData = texture_sign_class_values;
+      shader_stage_fragment.pSpecializationInfo =
+          &texture_sign_class_specialization_info;
     }
   } else {
     if (edram_fragment_shader_interlock) {
@@ -2612,7 +2680,10 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   VkPipelineMultisampleStateCreateInfo multisample_state = {};
   multisample_state.sType =
       VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-  if (description.render_pass_key.msaa_samples == xenos::MsaaSamples::k2X &&
+  // 4x MSAA attachments stored at 2x (host_2x) rasterize with 2 samples.
+  const xenos::MsaaSamples host_msaa_samples =
+      description.render_pass_key.GetHostMsaaSamples();
+  if (host_msaa_samples == xenos::MsaaSamples::k2X &&
       !render_target_cache_.IsMsaa2xSupported(
           !edram_fragment_shader_interlock &&
           description.render_pass_key.depth_and_color_used != 0)) {
@@ -2625,9 +2696,15 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
     // Direct3D, it's completely ignored in this case).
     multisample_state.pSampleMask = &sample_mask;
   } else {
-    multisample_state.rasterizationSamples = VkSampleCountFlagBits(
-        uint32_t(1) << uint32_t(description.render_pass_key.msaa_samples));
+    multisample_state.rasterizationSamples =
+        VkSampleCountFlagBits(uint32_t(1) << uint32_t(host_msaa_samples));
   }
+  // Only with the option on: otherwise the pixel shaders emulate it, and a
+  // stored description with the bit must not add the host's on top.
+  multisample_state.alphaToCoverageEnable =
+      (description.alpha_to_coverage && cvars::host_alpha_to_coverage)
+          ? VK_TRUE
+          : VK_FALSE;
 
   VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {};
   depth_stencil_state.sType =
@@ -2838,6 +2915,12 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
             VK_DYNAMIC_STATE_COLOR_WRITE_MASK_EXT;
       }
     }
+  }
+  // The coarse shading of vulkan_shading_rate, set per draw.
+  if (vulkan_device->properties().pipelineFragmentShadingRate &&
+      !edram_fragment_shader_interlock) {
+    dynamic_states[dynamic_state.dynamicStateCount++] =
+        VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR;
   }
   assert_true(dynamic_state.dynamicStateCount <= dynamic_states.size());
 
@@ -3155,9 +3238,22 @@ void VulkanPipelineCache::InitializeShaderStorage(
     std::error_code ec;
     std::filesystem::create_directories(shader_storage_local_root, ec);
   }
+  // Binaries built with other Turnip compiler flags (ir3_debug) go to their
+  // own file - a driver may return cached binaries by the shader alone.
+  std::string vk_pipeline_cache_name =
+      fmt::format("{:08X}", shader_storage_title_id_);
+#if XE_PLATFORM_xendroid || XE_PLATFORM_ANDROID
+  if (!cvars::ir3_debug.empty()) {
+    vk_pipeline_cache_name += '.';
+    for (char c : cvars::ir3_debug) {
+      vk_pipeline_cache_name += std::isalnum(static_cast<unsigned char>(c))
+                                    ? c
+                                    : '_';
+    }
+  }
+#endif
   vk_pipeline_cache_path_ =
-      shader_storage_local_root /
-      fmt::format("{:08X}.vk.bin", shader_storage_title_id_);
+      shader_storage_local_root / (vk_pipeline_cache_name + ".vk.bin");
 
   const ui::vulkan::VulkanDevice* const vulkan_device =
       command_processor_.GetVulkanDevice();

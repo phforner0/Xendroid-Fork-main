@@ -72,6 +72,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
     kUniformBufferComputeB1,
     // Storage image at binding 0 for the resolve-to-texture fragment variant.
     kStorageImageFragment,
+    // Storage image at binding 0 for texture loads straight into the image.
+    kStorageImageCompute,
     kCount,
   };
 
@@ -203,11 +205,21 @@ class VulkanCommandProcessor final : public CommandProcessor {
     kTextureLoad = 1,
     // The setup command buffer (hoisted shared memory uploads).
     kSetupCommands = 2,
+    // The copy dispatches of a resolve, from the end of their barriers (the
+    // render pass break, source layout transitions) to the last dispatch:
+    // height / 8 in bits 0:7 and width / 8 in bits 8:15 (both saturated),
+    // depth in bit 16, source xenos::MsaaSamples in bits 17:18, source format
+    // in bits 19:22, and bit 23 for the direct host path (otherwise the copy
+    // from the EDRAM buffer).
+    kResolveCopyDispatch = 3,
   };
   static constexpr uint32_t kMiscTimestampKeyBit = UINT32_C(1) << 30;
   static constexpr uint32_t kMiscTimestampTextureGpuWritten = UINT32_C(1) << 7;
   static constexpr uint32_t kMiscTimestampTextureBase = UINT32_C(1) << 6;
   static constexpr uint32_t kMiscTimestampTextureMips = UINT32_C(1) << 5;
+  // The copy of the untiled texels from the scratch buffer to the image (the
+  // load's second half; without it, the untiling dispatches).
+  static constexpr uint32_t kMiscTimestampTextureCopy = UINT32_C(1) << 4;
   static constexpr uint32_t MakeMiscTimestampKey(MiscTimestampKind kind,
                                                  uint32_t payload) {
     return kMiscTimestampKeyBit | (uint32_t(kind) << 24) |
@@ -215,6 +227,15 @@ class VulkanCommandProcessor final : public CommandProcessor {
   }
   bool misc_timestamps_enabled() const {
     return pass_timestamp_mapping_ != nullptr;
+  }
+  // Work counted per submission for VkSlowSubmission (a submission whose GPU
+  // time passes vulkan_log_slow_submission_ms, with the frame timestamps).
+  void NoteTextureLoad(uint64_t texels) {
+    ++submission_work_.texture_loads;
+    submission_work_.texture_load_texels += texels;
+  }
+  void NoteSharedMemoryUpload(uint64_t bytes) {
+    submission_work_.upload_bytes += bytes;
   }
   bool OpenMiscTimestamp(uint32_t key);
   void CloseMiscTimestamp();
@@ -330,6 +351,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
     kBufferBarriers,
     kImageBarriers,
     kBufferAndImageBarriers,
+    // Descriptor and texture bindings of a draw (texture usage transitions).
+    kBindings,
     kCount,
   };
   class PassEndReasonScope {
@@ -351,6 +374,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
     PassEndReason previous_reason_;
   };
   PassEndReason pass_end_reason_ = PassEndReason::kOther;
+  // The PassEndReason scopes open when the pending barriers were pushed (a bit
+  // per reason), for the origins of the barriers that end render passes.
+  uint32_t pending_barrier_origins_ = 0;
 
   VkDescriptorSetLayout GetSingleTransientDescriptorLayout(
       SingleTransientDescriptorLayout transient_descriptor_layout) const {
@@ -434,6 +460,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   void IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbuffer_width,
                  uint32_t frontbuffer_height) override;
+  // adrenotools_turbo_reassert_seconds, once per swap: requests the KGSL
+  // power control again after a resume or once the period has passed.
+  void ReassertGpuPowerControlIfDue();
 
   void OnPrimaryBufferEnd() override;
 
@@ -445,6 +474,21 @@ class VulkanCommandProcessor final : public CommandProcessor {
                  IndexBufferInfo* index_buffer_info,
                  bool major_mode_explicit) override;
   bool IssueCopy() override;
+  // vulkan_depth_4x_as_1x: the guest's 4x MSAA surface info rewritten for the
+  // current draw (IssueDraw restores it) to the 1x surface of the samples, for
+  // depth-only draws (and with vulkan_samples_as_pixels_simple_ps, draws with
+  // simple pixel shaders) into surfaces never drawn with color otherwise (the
+  // depth surfaces of multisampled scenes are left alone). pixel_shader is the
+  // one the draw uses (null for depth-only). Returns whether the draw renders
+  // the samples as pixels.
+  bool RewriteMsaa4xSurfaceInfoForDraw(const Shader* pixel_shader,
+                                       bool pixel_shader_uses_position);
+  // The key of the current depth surface: depth base | pitch << 16.
+  uint32_t GetMsaa4xDepthSurface() const;
+  std::unordered_set<uint32_t> msaa_4x_scene_depth_surfaces_;
+  // vulkan_samples_as_pixels_simple_ps when msaa_4x_scene_depth_surfaces_ was
+  // filled.
+  bool msaa_4x_scene_depth_surfaces_simple_ps_ = false;
 
   void InitializeTrace() override;
 
@@ -781,6 +825,17 @@ class VulkanCommandProcessor final : public CommandProcessor {
     uint64_t resolve_clears_in_guest_pass = 0;
     // Render passes ended, by PassEndReason.
     uint64_t pass_ends[size_t(PassEndReason::kCount)] = {};
+    // Guest passes reopened on the framebuffer the previous guest pass ended
+    // on - breaks between draws into the same attachments - by the
+    // PassEndReason of that end, and how many of them had a resolve between.
+    uint64_t pass_reopens[size_t(PassEndReason::kCount)] = {};
+    uint64_t pass_reopens_after_resolve = 0;
+    // Render passes ended by barriers, by the PassEndReason scope that pushed
+    // them (several per pass end if several did).
+    uint64_t pass_ending_barrier_origins[size_t(PassEndReason::kCount)] = {};
+    // In-pass render target transfers inside an open native occlusion query
+    // segment, which was closed around them.
+    uint64_t zpd_transfer_suspends = 0;
     uint64_t last_report_ns = 0;
   };
   VkFrameSyncStats vk_frame_sync_stats_;
@@ -789,6 +844,14 @@ class VulkanCommandProcessor final : public CommandProcessor {
   VkFrameSyncStats& vk_frame_sync_stats() { return vk_frame_sync_stats_; }
 
  private:
+  struct SubmissionWork {
+    uint32_t draws = 0;
+    uint32_t resolves = 0;
+    uint32_t texture_loads = 0;
+    uint64_t texture_load_texels = 0;
+    uint64_t upload_bytes = 0;
+  };
+  SubmissionWork submission_work_;
   struct SubmitTimeRecord {
     uint64_t submission;
     uint64_t submit_ns;
@@ -800,6 +863,7 @@ class VulkanCommandProcessor final : public CommandProcessor {
     // Render-pass timestamp pairs recorded in this submission.
     uint32_t pass_slot_base;
     uint32_t pass_pair_count;
+    SubmissionWork work;
   };
   std::deque<SubmitTimeRecord> vk_submit_times_;
   // GPU timestamps around each submission (2 per slot), copied in-buffer to
@@ -850,8 +914,10 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // GPU timestamps bracketing each render pass, bucketed CPU-side by
   // framebuffer extent (bit 31 = ownership-transfer pass). Same ring/readback
   // pattern; timestamps written OUTSIDE the pass (before begin / after end).
-  // Also holds the VkMiscTime regions (keys with kMiscTimestampKeyBit).
-  static constexpr uint32_t kPassTimestampPairsPerSubmission = 192;
+  // Also holds the VkMiscTime regions (keys with kMiscTimestampKeyBit). 192
+  // dropped ~10 pairs per frame of Forza Horizon (a submission can hold most
+  // of a frame's ~300 passes, resolves and loads).
+  static constexpr uint32_t kPassTimestampPairsPerSubmission = 512;
   static constexpr uint32_t kPassTimestampRingSubmissions = 32;
   VkQueryPool pass_timestamp_pool_ = VK_NULL_HANDLE;
   VkBuffer pass_timestamp_buffer_ = VK_NULL_HANDLE;
@@ -1221,6 +1287,11 @@ class VulkanCommandProcessor final : public CommandProcessor {
   bool dynamic_color_blend_enable_update_needed_;
   bool dynamic_color_blend_equation_update_needed_;
   bool dynamic_color_write_mask_update_needed_;
+  // vulkan_shading_rate: the rate the current draw wants and the one set in
+  // the command buffer - bit 0: 2 pixels wide, bit 1: 2 pixels tall.
+  uint32_t draw_shading_rate_ = 0;
+  uint32_t dynamic_shading_rate_ = 0;
+  bool dynamic_shading_rate_update_needed_ = true;
 
   // Currently used samplers.
   std::vector<std::pair<VulkanTextureCache::SamplerParameters, VkSampler>>
@@ -1251,10 +1322,19 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // but in_render_pass_ is true.
   VkRenderPass current_render_pass_;
   const VulkanRenderTargetCache::Framebuffer* current_framebuffer_;
+  // For the VkPassEnd reopen counts: the framebuffer of the last guest pass
+  // ended, why it ended, and whether a resolve was issued since.
+  const VulkanRenderTargetCache::Framebuffer* last_ended_framebuffer_ = nullptr;
+  PassEndReason last_pass_end_reason_ = PassEndReason::kOther;
+  bool resolve_since_pass_end_ = false;
   // True when inside a render pass or dynamic rendering block.
   bool in_render_pass_ = false;
   // Draws since the last vulkan_debug_extra_pass_breaks break.
   uint32_t debug_extra_pass_break_draws_ = 0;
+  // adrenotools_turbo_reassert_seconds: the last resume the KGSL power
+  // control was requested for, and when it was last requested.
+  uint32_t gpu_power_resume_count_seen_ = 0;
+  uint64_t gpu_power_last_request_ms_ = 0;
 
   // Currently bound graphics pipeline, either from the pipeline cache (with
   // potentially deferred creation - current_external_graphics_pipeline_ is
@@ -1272,6 +1352,13 @@ class VulkanCommandProcessor final : public CommandProcessor {
   VkPipeline current_external_graphics_pipeline_;
   VkPipeline current_external_compute_pipeline_;
 
+  // The index buffer bound in the current submission's command buffer. Guest
+  // DMA index buffers are bound at the start of the shared memory buffer and
+  // selected with firstIndex, the others rebound only when they change.
+  VkBuffer current_index_buffer_ = VK_NULL_HANDLE;
+  VkDeviceSize current_index_buffer_offset_ = 0;
+  VkIndexType current_index_type_ = VK_INDEX_TYPE_MAX_ENUM;
+
   // Pipeline layout of the current guest graphics pipeline.
   const PipelineLayout* current_guest_graphics_pipeline_layout_;
   VkDescriptorBufferInfo current_constant_buffer_infos_
@@ -1279,6 +1366,20 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // Whether up-to-date data has been written to constant (uniform) buffers, and
   // the buffer infos in current_constant_buffer_infos_ point to them.
   uint32_t current_constant_buffers_up_to_date_;
+  // merge_tiling_bands: the band sequence the state below is for, the rows of
+  // a band, the render targets to replicate before the draw (1 - color, 2 -
+  // depth), and the row offset and the scissor expansion of the draw.
+  uint32_t tiling_band_sequence_seen_ = UINT32_MAX;
+  uint32_t tiling_band_rows_ = 0;
+  uint32_t tiling_band_replicate_ = 0;
+  int32_t tiling_band_draw_y_offset_ = 0;
+  bool tiling_band_draw_expand_scissor_ = false;
+  // spirv_texture_fetch_constants_decoded: the values decoded from each fetch
+  // constant (appended to the fetch constant buffer), and the fetch
+  // constants written since they were decoded.
+  std::array<SpirvShaderTranslator::DecodedTextureFetchConstant, 32>
+      fetch_constants_decoded_;
+  uint32_t fetch_constants_decode_needed_ = UINT32_MAX;
   // Dynamic constant buffers: when true (gated at SetupContext on the device reporting
   // maxDescriptorSetUniformBuffersDynamic >= kConstantBufferCount and the
   // vulkan_dynamic_constant_buffers cvar), the kDescriptorSetConstants set uses

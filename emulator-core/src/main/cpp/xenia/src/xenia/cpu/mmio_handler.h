@@ -10,6 +10,8 @@
 #ifndef XENIA_CPU_MMIO_HANDLER_H_
 #define XENIA_CPU_MMIO_HANDLER_H_
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -65,6 +67,17 @@ class MMIOHandler {
       MmioAccessRecordCallback record_mmio_callback, void* record_mmio_context);
   static MMIOHandler* global_handler() { return global_handler_; }
 
+  // The host code address and the guest thread (xe::threading
+  // current_thread_id) of the access violation last passed to the access
+  // violation callback - for diagnostics inside the callbacks it triggers. A
+  // fault racing on another thread may overwrite them.
+  static uint64_t last_fault_host_pc() {
+    return last_fault_host_pc_.load(std::memory_order_relaxed);
+  }
+  static uint32_t last_fault_thread_id() {
+    return last_fault_thread_id_.load(std::memory_order_relaxed);
+  }
+
   bool RegisterRange(uint32_t virtual_address, uint32_t mask, uint32_t size,
                      void* context, MMIOReadCallback read_callback,
                      MMIOWriteCallback write_callback);
@@ -105,6 +118,9 @@ class MMIOHandler {
 
   void* record_mmio_context_;
   static MMIOHandler* global_handler_;
+  static std::atomic<uint64_t> last_fault_host_pc_;
+  static std::atomic<uint32_t> last_fault_thread_id_;
+  void NoteFaultForCallback(Exception* ex);
 
   xe::global_critical_region global_critical_region_;
 

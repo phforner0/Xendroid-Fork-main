@@ -44,6 +44,114 @@ static const Quirk kQuirks[] = {
      "exact texture sign decode in a uniform branch"},
     {0x4D5309C9, "spirv_fast_precision_rounding", true,
      "exact cheaper 21-bit rounding"},
+    // Exact too: ~10 full-screen textures reloaded per frame skip the copy from
+    // a buffer; +4.5% fps, -5.4% GPU time on the POCO F7 (2026-09-29).
+    {0x4D5309C9, "vulkan_texture_load_to_image", true,
+     "texture loads straight into the image"},
+    // Exact: the resolves store into the textures read back from them, whose
+    // uploads are then skipped (3.0 -> 0.75 ms per frame, GPU -1.4 ms, +1.4%
+    // fps with the POCO F7 cool; 2026-09-30).
+    {0x4D5309C9, "vulkan_direct_host_resolve_to_texture", true,
+     "resolves store straight into their textures"},
+    // Main pass -7% (AB5). No visible difference parked, over a 45 s drive
+    // and in the pause menu (2026-09-30); night, rain and tunnels unchecked.
+    {0x4D5309C9, "spirv_ps_relaxed_math", int64_t(3),
+     "no SM3 zero-multiply or 21-bit rounding emulation in pixel shaders"},
+    // 55% of the main pass draws use alpha to coverage: main pass -7.5%, the
+    // same foliage parked and driving (only the dither pattern differs).
+    {0x4D5309C9, "host_alpha_to_coverage", true,
+     "alpha to coverage by the host's fixed function"},
+    // The shadow atlas is cleared by 4x depth-only quads read back as 1x: no
+    // more 1x <-> 4x transfers of it, GPU time -1.1 ms (-3.4%), the same
+    // shadows (depth at the double-resolution pixel centers instead of the 4x
+    // sample positions; 2026-09-30).
+    {0x4D5309C9, "vulkan_depth_4x_as_1x", true,
+     "4x depth-only draws into the 1x surface of their samples"},
+    // The Direct3D wait for the GPU (only the code with this signature - its
+    // first 16 instructions - so another build is left alone) sleeps until
+    // the command processor makes progress instead of spinning: Guest CPU 0
+    // 97% -> 37% of a core, the same fps (AB3, AB5).
+    {0x4D5309C9, "spin_park_guest_functions", "829F04A8:B864F65007F969C0",
+     "the Direct3D GPU wait parks instead of spinning"},
+    {0x4D5309C9, "spin_park_mode", int64_t(1),
+     "the Direct3D GPU wait parks instead of spinning"},
+    // Forza Horizon never reads the 7e3 alpha: +3.1% fps, -3.5% GPU time
+    // (AB3), the same image in motion (AB5).
+    {0x4D5309C9, "render_target_7e3_as_r11g11b10", true,
+     "7e3 scene color in 32 bpp"},
+    // The clear of a resolve inside the game's own render pass: with the
+    // draw barriers moved to the resolve, render passes 205 -> ~133 per frame
+    // (AB8), the same GPU time at the 30 fps cap (S18, 2026-10-01). Every
+    // visual check since AB7 ran with it.
+    {0x4D5309C9, "vulkan_resolve_clear_in_guest_pass", true,
+     "resolve clears inside the game's render pass"},
+    // Turnip's early preamble costs every draw ~1.6 us of GPU time when the
+    // draws are small (one-primitive main pass draws 2.8 -> 1.2 us, S20); off,
+    // GPU time -0.8 ms (-2.4%) per frame at the 30 fps cap (S21, 2026-10-01).
+    // Only Turnip reads it; the pipeline cache file is separate per flags.
+    {0x4D5309C9, "ir3_debug", "noearlypreamble",
+     "no early shader preamble in the Turnip compiler"},
+    // The EDRAM is reused by targets that start with a clear quad: the
+    // transfers it overwrites are skipped - 11 of 49 transfers and 3.7 of 12.5
+    // thousand tiles per frame, GPU time -1.1 ms (-3.1%) at the 30 fps cap,
+    // the same image parked and over a drive (S24, 2026-10-01).
+    {0x4D5309C9, "skip_overwritten_transfers", true,
+     "no transfers into what the draw overwrites"},
+    // The 1280x720 lighting marks stencil at 640x360 4x (quads with texture-
+    // less pixel shaders) between 1x passes: drawn into the 1x surface of
+    // their samples, transfers 8071 -> 3703 tiles a frame, GPU time -1.7 ms
+    // (-5.2%) at the 30 fps cap, the same image parked (S28, 2026-10-01).
+    {0x4D5309C9, "vulkan_samples_as_pixels_simple_ps", true,
+     "4x stencil marking with simple pixel shaders into the 1x surface"},
+    // Transfers a clear quad covers in part (whole rows of tiles claimed, less
+    // drawn) copy only the rest: 9 a frame, GPU time -0.1 to -0.2 ms at the
+    // 30 fps cap, the same image parked (S37, 2026-10-01).
+    {0x4D5309C9, "skip_overwritten_transfers_cutout", true,
+     "transfers skip the part the draw overwrites"},
+    // Exact: the texture signs (mostly gamma) as specialization constants of
+    // the pixel shader pipelines, no runtime branches around the samples - GPU
+    // time -1.9 ms (-7.9%) at the 30 fps cap, both restart A/B pairs within
+    // 0.1 ms, the same image parked (S40, 2026-10-01). The first launch after
+    // the change compiles the pixel shader pipelines again.
+    {0x4D5309C9, "spirv_texture_sign_specialization", true,
+     "texture signs known to the host compiler per pipeline"},
+    // 2D fetches with the LOD the host computes (implicit LOD plus the bias)
+    // instead of 4 coarse derivatives and an explicit-gradient sample: with
+    // the signs specialized the texture pipe limits - GPU time -1.6 ms (-7%)
+    // at the 30 fps cap, both restart A/B pairs within 0.2 ms, the same image
+    // parked (S43, 2026-10-01). Neutral in AB10, when branches still wrapped
+    // the samples.
+    {0x4D5309C9, "spirv_texture_implicit_lod", true,
+     "2D texture fetches with the host's LOD"},
+    // Vertex shaders without the Shader Model 3 "0 * x = 0" emulation (a
+    // third of the main pass vertex shaders' instructions): the same positions
+    // for finite operands, so the passes still match - GPU time -0.7 ms at the
+    // 30 fps cap (S43, S45: both restart A/B pairs), no depth fighting on the
+    // road markings over a drive (S45, 2026-10-01).
+    {0x4D5309C9, "spirv_vs_relaxed_math", int64_t(1),
+     "no SM3 zero-multiply emulation in vertex shaders"},
+    // The scene is drawn in 3 bands of predicated tiling replaying the same
+    // command buffers: every draw executed only in the first band it's
+    // predicated into, into render targets as tall as the screen, each band
+    // resolved from its rows - 2916 -> ~1980 draws per frame, GPU time -1.0 to
+    // -1.1 ms at the 30 fps cap (S49, S51), the same image parked and over
+    // drives (2026-10-02). Unchecked: shaders using the pixel position in the
+    // ~300 draws only the lower bands have.
+    {0x4D5309C9, "merge_tiling_bands", true,
+     "the bands of predicated tiling drawn as one"},
+    // The JIT with the host's NaN rules for scalar FPU and VMX arithmetic
+    // (like the x64 backend: only which NaN an operation with a NaN input
+    // returns differs) and leaves up to 32 instructions inlined; loads and
+    // stores stay bit exact (lfs/stfs keep signaling NaNs, so data copied
+    // through float registers is untouched). With the exact paths cheap
+    // (2026-10-02) the gain is small: Guest CPU 5 56.0-56.4 M instructions
+    // per frame against 52.7-63.5 without, Guest CPU 1 -2%, at the 30 fps
+    // cap (S67, b85); the same image parked.
+    {0x4D5309C9, "a64_fpu_nan_fixup", false,
+     "scalar FPU NaNs by the host's rules"},
+    {0x4D5309C9, "a64_vmx_nan_fixup", false, "VMX NaNs by the host's rules"},
+    {0x4D5309C9, "inline_leaf_max_instructions", int64_t(32),
+     "leaves up to 32 instructions inlined"},
 };
 
 // Same path/priority as a per-game config file.

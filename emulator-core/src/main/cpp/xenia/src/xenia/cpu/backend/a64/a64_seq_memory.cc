@@ -21,6 +21,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/threading.h"
+#include "xenia/base/xxhash.h"
 #include "xenia/cpu/backend/a64/a64_backend.h"
 #include "xenia/cpu/backend/a64/a64_emitter.h"
 #include "xenia/cpu/backend/a64/a64_op.h"
@@ -65,7 +66,9 @@ DEFINE_string(
     "guest scheduler such a wait otherwise burns a whole host core. Only these "
     "functions are affected by spin_park_mode: parking every spin-backoff "
     "also hits the title's short lock and job-queue spins and slowed Forza "
-    "Horizon from 24 to 2 FPS.",
+    "Horizon from 24 to 2 FPS. An address may be followed by a colon and the "
+    "hex XXH3 hash of the function's first 64 bytes, as logged by the SpinPark "
+    "line when it is translated: only matching code is then affected.",
     "CPU");
 
 DEFINE_int32(
@@ -260,7 +263,14 @@ static void SpinBackoffParkThunk(void* /*ppc_context*/) {
 }
 
 namespace {
-bool IsSpinParkGuestFunction(uint32_t guest_address) {
+// An entry of spin_park_guest_functions may carry, after a colon, the XXH3
+// hash of the first kSpinParkSignatureBytes of the function's code
+// (829F04A8:0123456789ABCDEF): then only that code is parked, and another
+// build of the title with something else at the address is left alone. The
+// hash of every listed function is logged when it is translated.
+constexpr uint32_t kSpinParkSignatureBytes = 64;
+
+bool IsSpinParkGuestFunction(A64Emitter& e, uint32_t guest_address) {
   const std::string& list = cvars::spin_park_guest_functions;
   if (!guest_address || list.empty()) {
     return false;
@@ -271,12 +281,28 @@ bool IsSpinParkGuestFunction(uint32_t guest_address) {
     if (end == std::string::npos) {
       end = list.size();
     }
-    if (end > begin &&
-        std::strtoul(list.substr(begin, end - begin).c_str(), nullptr, 16) ==
-            guest_address) {
+    const std::string entry = list.substr(begin, end - begin);
+    begin = end + 1;
+    if (entry.empty() ||
+        std::strtoul(entry.c_str(), nullptr, 16) != guest_address) {
+      continue;
+    }
+    const size_t colon = entry.find(':');
+    const uint64_t signature =
+        XXH3_64bits(e.processor()->memory()->TranslateVirtual<const uint8_t*>(
+                        guest_address),
+                    kSpinParkSignatureBytes);
+    if (colon == std::string::npos) {
+      XELOGI("SpinPark: guest function {:08X} signature {:016X}",
+             guest_address, signature);
       return true;
     }
-    begin = end + 1;
+    const bool matches =
+        std::strtoull(entry.c_str() + colon + 1, nullptr, 16) == signature;
+    XELOGI("SpinPark: guest function {:08X} signature {:016X}{}",
+           guest_address, signature,
+           matches ? " (matches)" : " (does not match - not parked)");
+    return matches;
   }
   return false;
 }
@@ -429,7 +455,7 @@ struct SPIN_BACKOFF
       // frame) plus a thread_local lookup. Gate it on the scheduler's own
       // give-way flag so the common case is two instructions.
       if (cvars::guest_scheduler) {
-        if (IsSpinParkGuestFunction(e.current_guest_function())) {
+        if (IsSpinParkGuestFunction(e, e.current_guest_function())) {
           // A known wait for the GPU: the helper checks spin_park_mode at run
           // time (and the give-way flag itself), so it can be switched without
           // retranslating anything.

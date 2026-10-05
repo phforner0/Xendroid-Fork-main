@@ -141,9 +141,10 @@ DEFINE_string(
 
 DEFINE_string(
     ir3_debug, "",
-    "Comma-separated IR3_DEBUG flags for the Turnip shader compiler, e.g. "
-    "nopreamble or noearlypreamble to keep uniform math out of the shader "
-    "preamble. Empty leaves IR3_DEBUG unset.",
+    "Comma-separated IR3_SHADER_DEBUG flags for the Turnip shader compiler, "
+    "e.g. nopreamble or noearlypreamble to keep uniform math out of the shader "
+    "preamble, nouboopt, nocache. Each value has its own Vulkan pipeline "
+    "cache file. Empty leaves the variable unset.",
     "Vulkan");
 
 DEFINE_string(
@@ -258,9 +259,12 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(
       XELOGI("Set FD_DEV_FEATURES={} for the Turnip Vulkan driver", fd_features);
     }
     // Read when the compiler is created, so set it before the driver loads.
+    // Mesa's ir3 reads IR3_SHADER_DEBUG (IR3_DEBUG alone had no effect with
+    // Mesa 26); both are set for older or modified builds.
     if (!std::string(cvars::ir3_debug).empty()) {
+      setenv("IR3_SHADER_DEBUG", cvars::ir3_debug.c_str(), 1);
       setenv("IR3_DEBUG", cvars::ir3_debug.c_str(), 1);
-      XELOGI("Set IR3_DEBUG={} for the Turnip shader compiler",
+      XELOGI("Set IR3_SHADER_DEBUG={} for the Turnip shader compiler",
              cvars::ir3_debug);
     }
     // Whole-GPU hardware counter sampler in the instrumented Turnip build.
