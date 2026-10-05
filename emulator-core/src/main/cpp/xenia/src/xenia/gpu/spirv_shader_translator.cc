@@ -116,18 +116,19 @@ DEFINE_int32(
     "GPU");
 
 DEFINE_bool(
-    spirv_fast_precision_rounding, false,
+    spirv_fast_precision_rounding, true,
     "Round results of exp, log, sqrt, rsq and rcp to the 21 mantissa bits of "
     "the Xenos with an add of half the kept unit in the last place and a "
     "mask, instead of computing both roundings and selecting (5 instead of 12 "
     "Adreno instructions each, -6% pixel shader instructions on the Forza "
     "Horizon shaders). Same results for every input, including infinity, NaN "
     "and the finite values that must not round up to infinity; read when "
-    "shaders are translated (startup).",
+    "shaders are translated (startup). On for every title since 2026-10-05.",
     "GPU");
+UPDATE_from_bool(spirv_fast_precision_rounding, 2026, 10, 5, 12, false);
 
 DEFINE_bool(
-    spirv_texture_sign_branch, false,
+    spirv_texture_sign_branch, true,
     "Convert gamma texture components to linear only inside a branch on "
     "whether any component of the fetch is gamma (a uniform condition), "
     "marked DontFlatten, with selects for the cheap signed and biased "
@@ -138,11 +139,13 @@ DEFINE_bool(
     "Horizon main pass on Adreno 825). The branch costs a few instructions "
     "per fetch, so this pays off unless most fetched textures are gamma (see "
     "the TexSigns lines of pm4_bin_trace). Same results; read when shaders "
-    "are translated (startup).",
+    "are translated (startup). On for every title since 2026-10-05 (exact; "
+    "Forza Horizon +3% fps with spirv_fast_precision_rounding).",
     "GPU");
+UPDATE_from_bool(spirv_texture_sign_branch, 2026, 10, 5, 11, false);
 
 DEFINE_bool(
-    spirv_texture_sign_specialization, false,
+    spirv_texture_sign_specialization, true,
     "Pixel shaders take the signs of the textures of fetch constants 0-7 "
     "(all unsigned, gamma color with linear alpha, all gamma) from "
     "specialization constants their pipelines set from the fetch constants "
@@ -151,8 +154,12 @@ DEFINE_bool(
     "branch on gamma - leaving one sample and the gamma conversion where "
     "needed. Same results; more pipelines where a shader is used with "
     "textures of different signs. Read when shaders are translated (startup); "
-    "vulkan_texture_sign_classes switches the specialization per draw.",
+    "vulkan_texture_sign_classes switches the specialization per draw. On for "
+    "every title since 2026-10-05 (exact; Forza Horizon GPU time -1.9 ms); "
+    "the first launch after the change compiles the pixel shader pipelines "
+    "again.",
     "GPU");
+UPDATE_from_bool(spirv_texture_sign_specialization, 2026, 10, 5, 10, false);
 
 DEFINE_bool(
     spirv_texture_sign_specialization_used, true,
