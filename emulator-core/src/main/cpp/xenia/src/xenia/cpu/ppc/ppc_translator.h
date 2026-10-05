@@ -37,7 +37,7 @@ class PPCTranslator {
 
  private:
   void DumpSource(GuestFunction* function, StringBuffer* string_buffer);
-  static bool IsDumpTarget(uint32_t address);
+  static bool IsDumpTarget(uint32_t first, uint32_t last);
   static void DumpTargetFunction(GuestFunction* function);
 
   PPCFrontend* frontend_;

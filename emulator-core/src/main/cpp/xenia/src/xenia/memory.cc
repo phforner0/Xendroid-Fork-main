@@ -1858,6 +1858,17 @@ bool BaseHeap::QueryProtect(uint32_t address, uint32_t* out_protect) {
   return true;
 }
 
+bool BaseHeap::QueryProtectUnlocked(uint32_t address,
+                                    uint32_t* out_protect) const {
+  uint32_t page_number = (address - heap_base_) >> page_size_shift_;
+  if (address < heap_base_ || page_number >= page_table_.size()) {
+    *out_protect = 0;
+    return false;
+  }
+  *out_protect = page_table_[page_number].current_protect;
+  return true;
+}
+
 xe::memory::PageAccess BaseHeap::QueryRangeAccess(uint32_t low_address,
                                                   uint32_t high_address) {
   if (low_address > high_address || low_address < heap_base_ ||

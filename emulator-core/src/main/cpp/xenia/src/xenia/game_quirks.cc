@@ -38,6 +38,16 @@ static const Quirk kQuirks[] = {
     {0x49470804, "network_enabled", false, "hangs on a blocking recvfrom"},
     {0x4E4D083A, "spirv_multiply_zero_test_on_bits", true,
      "ir3 cannot compile fmadz"},
+    // NFS Most Wanted (Criterion): the Turnip compiler rejects fmadz in VS
+    // 13EE4011483DC17D. The bit test preserves the SM3 zero-multiply result.
+    {0x45410961, "spirv_multiply_zero_test_on_bits", true,
+     "ir3 cannot compile fmadz in the first 3D scene"},
+    // Its CPU consumes memory-exported geometry. Without guest-visible
+    // exports the CPU/GPU handshake stalls at PM4_WAIT_REG_MEM after the FMV.
+    {0x45410961, "memexport_enable", true,
+     "CPU consumes memexport output before continuing the command stream"},
+    {0x45410961, "readback_resolve", "uma",
+     "host-mapped fallback for memexport when guest RAM import is unavailable"},
     // Forza Horizon: both exact (the same image for every input); on the POCO
     // F7 (Adreno 825) together +3.0% fps, -3.7% GPU time (AB5, 2026-09-29).
     {0x4D5309C9, "spirv_texture_sign_branch", true,
@@ -152,6 +162,45 @@ static const Quirk kQuirks[] = {
     {0x4D5309C9, "a64_vmx_nan_fixup", false, "VMX NaNs by the host's rules"},
     {0x4D5309C9, "inline_leaf_max_instructions", int64_t(32),
      "leaves up to 32 instructions inlined"},
+    // Forza Horizon 2 (the same engine family) takes Forza Horizon's GPU
+    // quirks: racing in its first race at full throttle, GPU time 41.1 / 36.4
+    // -> 20.2 / 20.2 ms per frame, 24-27 -> 29.95 fps, frames over 37 ms
+    // 38-79% -> 0.7% (S70, b89, 2026-10-02); the exact ones alone 29.0 / 26.8
+    // ms. The same image at the same spots of the race, no seams at the band
+    // boundaries. Without the spin park (Forza Horizon's address) and the 7e3
+    // render target as R11G11B10 (unchecked here).
+    {0x4D530AA4, "spirv_texture_sign_specialization", true,
+     "texture signs known to the host compiler per pipeline"},
+    {0x4D530AA4, "spirv_texture_sign_branch", true,
+     "exact texture sign decode in a uniform branch"},
+    {0x4D530AA4, "spirv_fast_precision_rounding", true,
+     "exact cheaper 21-bit rounding"},
+    {0x4D530AA4, "skip_overwritten_transfers", true,
+     "no transfers into what the draw overwrites"},
+    {0x4D530AA4, "skip_overwritten_transfers_cutout", true,
+     "transfers skip the part the draw overwrites"},
+    {0x4D530AA4, "vulkan_texture_load_to_image", true,
+     "texture loads straight into the image"},
+    {0x4D530AA4, "vulkan_direct_host_resolve_to_texture", true,
+     "resolves store straight into their textures"},
+    {0x4D530AA4, "vulkan_resolve_clear_in_guest_pass", true,
+     "resolve clears inside the game's render pass"},
+    {0x4D530AA4, "spirv_texture_implicit_lod", true,
+     "2D texture fetches with the host's LOD"},
+    {0x4D530AA4, "spirv_ps_relaxed_math", int64_t(3),
+     "no SM3 zero-multiply or 21-bit rounding emulation in pixel shaders"},
+    {0x4D530AA4, "spirv_vs_relaxed_math", int64_t(1),
+     "no SM3 zero-multiply emulation in vertex shaders"},
+    {0x4D530AA4, "host_alpha_to_coverage", true,
+     "alpha to coverage by the host's fixed function"},
+    {0x4D530AA4, "vulkan_depth_4x_as_1x", true,
+     "4x depth-only draws into the 1x surface of their samples"},
+    {0x4D530AA4, "vulkan_samples_as_pixels_simple_ps", true,
+     "4x stencil marking with simple pixel shaders into the 1x surface"},
+    {0x4D530AA4, "merge_tiling_bands", true,
+     "the bands of predicated tiling drawn as one"},
+    {0x4D530AA4, "ir3_debug", "noearlypreamble",
+     "no early shader preamble in the Turnip compiler"},
 };
 
 // Same path/priority as a per-game config file.

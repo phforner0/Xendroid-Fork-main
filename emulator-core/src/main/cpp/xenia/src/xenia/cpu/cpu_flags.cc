@@ -20,9 +20,10 @@ DEFINE_string(
     "CPU");
 
 DEFINE_string(dump_functions_at, "",
-              "Comma-separated guest addresses (hex) whose PPC source, "
-              "optimized HIR and host machine code are written to "
-              "<log dir>/fndump_<address>.txt when first translated.",
+              "Comma-separated guest addresses (hex) whose functions' PPC "
+              "source, optimized HIR and host machine code are written to "
+              "<log dir>/fndump_<function address>.txt when first "
+              "translated. Any address in a function selects it.",
               "CPU");
 DEFINE_bool(disassemble_functions, false,
             "Disassemble functions during generation.", "CPU");
@@ -41,6 +42,12 @@ DEFINE_uint32(log_guest_calls_limit, 1000,
               "Entry and return lines logged per address by "
               "log_guest_calls_at; 0 is unlimited. A return whose value "
               "differs from the last one is always logged.",
+              "CPU");
+DEFINE_uint32(log_guest_calls_ring, 0,
+              "With log_guest_calls_at, keep the last this many entry and "
+              "return lines in memory instead of logging each, and log them "
+              "when the guest crashes: the calls leading up to a crash without "
+              "the per-call logging changing the timing. 0 logs each line.",
               "CPU");
 
 DEFINE_bool(trace_functions, false, "Generate tracing for function statistics.",
@@ -91,6 +98,11 @@ namespace xe {
 namespace cpu {
 
 bool GuestAddressInList(const std::string& list, uint32_t address) {
+  return GuestAddressInList(list, address, address);
+}
+
+bool GuestAddressInList(const std::string& list, uint32_t first,
+                        uint32_t last) {
   for (size_t pos = 0; pos < list.size();) {
     size_t end = list.find(',', pos);
     if (end == std::string::npos) {
@@ -98,11 +110,11 @@ bool GuestAddressInList(const std::string& list, uint32_t address) {
     }
     std::string entry = list.substr(pos, end - pos);
     pos = end + 1;
-    size_t first = entry.find_first_not_of(" \t");
-    if (first == std::string::npos) {
+    size_t text = entry.find_first_not_of(" \t");
+    if (text == std::string::npos) {
       continue;
     }
-    entry = entry.substr(first, entry.find_last_not_of(" \t") - first + 1);
+    entry = entry.substr(text, entry.find_last_not_of(" \t") - text + 1);
     if (entry.size() > 2 && entry[0] == '0' &&
         (entry[1] == 'x' || entry[1] == 'X')) {
       entry = entry.substr(2);
@@ -112,7 +124,8 @@ bool GuestAddressInList(const std::string& list, uint32_t address) {
       entry = entry.substr(4);
     }
     uint32_t parsed = 0;
-    if (std::sscanf(entry.c_str(), "%X", &parsed) == 1 && parsed == address) {
+    if (std::sscanf(entry.c_str(), "%X", &parsed) == 1 && parsed >= first &&
+        parsed <= last) {
       return true;
     }
   }

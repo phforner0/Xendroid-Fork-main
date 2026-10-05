@@ -221,6 +221,9 @@ class BaseHeap {
   // Queries the current protection mode of the region containing the given
   // address.
   bool QueryProtect(uint32_t address, uint32_t* out_protect);
+  // The same without the global lock, for diagnostics on hot paths: the
+  // answer may be a moment stale.
+  bool QueryProtectUnlocked(uint32_t address, uint32_t* out_protect) const;
 
   // Queries the currently strictest readability and writability for the entire
   // range.

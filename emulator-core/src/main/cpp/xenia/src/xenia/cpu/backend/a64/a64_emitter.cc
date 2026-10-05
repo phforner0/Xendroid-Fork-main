@@ -39,6 +39,16 @@ DEFINE_bool(
     "materialize and a store on every loop back-edge; diagnostic only.",
     "CPU");
 
+DEFINE_bool(
+    a64_guest_memory_tso, false,
+    "Order guest memory accesses like a TSO machine (x86): a load-load "
+    "barrier after every guest load and a store-store one before every guest "
+    "store, so no load passes a load and no store passes a load or a store. "
+    "ARM reorders all of those, which a guest race the console's or an x86 "
+    "host's ordering hides can need. Slow; diagnostic only. Takes effect for "
+    "code translated afterwards.",
+    "CPU");
+
 namespace xe {
 namespace cpu {
 namespace backend {
@@ -110,6 +120,9 @@ bool A64Emitter::Emit(GuestFunction* function, hir::HIRBuilder* builder,
   // emitted again with the long-range form.
   EmitFunctionInfo func_info = {};
   bool emitted = false;
+  // Once: it turns every local into its stack offset (a constant of another
+  // type), so a second emission must reuse the layout, not redo it.
+  const size_t stack_size = LayOutLocals(builder);
   for (bool near_branches : {bool(cvars::a64_near_branches), false}) {
     // Reset state.
     near_branches_ = near_branches;
@@ -119,7 +132,7 @@ bool A64Emitter::Emit(GuestFunction* function, hir::HIRBuilder* builder,
     fpcr_mode_ = FPCRMode::Unknown;
     func_info = {};
     try {
-      emitted = Emit(builder, func_info);
+      emitted = Emit(builder, stack_size, func_info);
     } catch (const Xbyak_aarch64::Error& e) {
       if (IsNearBranchOutOfRange(e)) {
         XELOGI(
@@ -156,7 +169,7 @@ bool A64Emitter::IsNearBranchOutOfRange(const Xbyak_aarch64::Error& e) const {
   return near_branches_ && int(e) == Xbyak_aarch64::ERR_LABEL_IS_TOO_FAR;
 }
 
-bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
+size_t A64Emitter::LayOutLocals(hir::HIRBuilder* builder) {
   // Calculate local variable stack offsets.
   auto locals = builder->locals();
   size_t stack_offset = StackLayout::GUEST_STACK_SIZE;
@@ -172,8 +185,11 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
   // Align total stack offset to 16 bytes (ARM64 ABI requirement).
   stack_offset -= StackLayout::GUEST_STACK_SIZE;
   stack_offset = xe::align(stack_offset, static_cast<size_t>(16));
+  return StackLayout::GUEST_STACK_SIZE + stack_offset;
+}
 
-  const size_t stack_size = StackLayout::GUEST_STACK_SIZE + stack_offset;
+bool A64Emitter::Emit(hir::HIRBuilder* builder, size_t stack_size,
+                      EmitFunctionInfo& func_info) {
   // ARM64 ABI: SP must always be 16-byte aligned.
   assert_true(stack_size % 16 == 0);
   func_info.stack_size = stack_size;
@@ -262,6 +278,18 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
       }
       const hir::Instr* new_tail = instr;
       bool selected = false;
+      const hir::Opcode opcode = instr->GetOpcodeNum();
+      const bool tso_load =
+          cvars::a64_guest_memory_tso &&
+          (opcode == hir::OPCODE_LOAD || opcode == hir::OPCODE_LOAD_OFFSET ||
+           opcode == hir::OPCODE_LVL || opcode == hir::OPCODE_LVR ||
+           opcode == hir::OPCODE_RESERVED_LOAD);
+      if (cvars::a64_guest_memory_tso &&
+          (opcode == hir::OPCODE_STORE || opcode == hir::OPCODE_STORE_OFFSET ||
+           opcode == hir::OPCODE_STVL || opcode == hir::OPCODE_STVR ||
+           opcode == hir::OPCODE_MEMSET)) {
+        dmb(ISHST);
+      }
       try {
         selected = SelectSequence(this, instr, &new_tail);
       } catch (const Xbyak_aarch64::Error& e) {
@@ -283,6 +311,9 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
         XELOGE("A64: Unable to process HIR opcode {}",
                hir::GetOpcodeName(instr->GetOpcodeInfo()));
         return false;
+      }
+      if (tso_load) {
+        dmb(ISHLD);
       }
       instr = new_tail;
     }

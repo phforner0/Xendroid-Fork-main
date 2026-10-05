@@ -151,9 +151,10 @@ DEFINE_bool(
     "write it to a buffer aliasing guest RAM. Needed by games that read "
     "exported data on the CPU. Disabling it keeps the output in device-local "
     "memory, which is faster for the draws that consume it on the GPU. Applies "
-    "at title launch. Off by default here: the host buffer needs "
-    "VK_EXT_external_memory_host, which Turnip does not expose, so the import "
-    "fails and the output stays device-local either way.",
+    "at title launch. Vulkan falls back to synchronous readback from the "
+    "host-mapped buffer (readback_resolve=uma) if guest RAM import is "
+    "unavailable. Off by default because CPU visibility may require a GPU "
+    "stall for each exporting draw.",
     "GPU");
 
 DEFINE_bool(
