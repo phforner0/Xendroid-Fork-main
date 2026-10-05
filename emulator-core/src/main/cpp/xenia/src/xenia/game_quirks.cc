@@ -167,8 +167,13 @@ static const Quirk kQuirks[] = {
     // -> 20.2 / 20.2 ms per frame, 24-27 -> 29.95 fps, frames over 37 ms
     // 38-79% -> 0.7% (S70, b89, 2026-10-02); the exact ones alone 29.0 / 26.8
     // ms. The same image at the same spots of the race, no seams at the band
-    // boundaries. Without the spin park (Forza Horizon's address) and the 7e3
-    // render target as R11G11B10 (unchecked here).
+    // boundaries. Without the spin park (Forza Horizon's address). Its band
+    // merge relies on merge_tiling_bands_call_sites: 100-200 draws a frame
+    // were otherwise taken for an earlier band's (whole blocks of Castelletto
+    // missing until close). With the rest of Forza Horizon's quirks too (the
+    // 7e3 render target as R11G11B10, the host's NaN rules), against the
+    // defaults alone: GPU time 9.37 -> 7.98 ms per frame driving, the same
+    // streets (2026-10-05).
     {0x4D530AA4, "spirv_texture_sign_specialization", true,
      "texture signs known to the host compiler per pipeline"},
     {0x4D530AA4, "spirv_texture_sign_branch", true,
@@ -201,6 +206,12 @@ static const Quirk kQuirks[] = {
      "the bands of predicated tiling drawn as one"},
     {0x4D530AA4, "ir3_debug", "noearlypreamble",
      "no early shader preamble in the Turnip compiler"},
+    {0x4D530AA4, "render_target_7e3_as_r11g11b10", true,
+     "7e3 scene color in 32 bpp"},
+    {0x4D530AA4, "a64_fpu_nan_fixup", false,
+     "scalar FPU NaNs by the host's rules"},
+    {0x4D530AA4, "a64_vmx_nan_fixup", false,
+     "VMX NaNs by the host's rules"},
 };
 
 // Same path/priority as a per-game config file.
