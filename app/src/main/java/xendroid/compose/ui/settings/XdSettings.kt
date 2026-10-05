@@ -74,11 +74,13 @@ import xendroid.compose.ui.design.XdBadge
 import xendroid.compose.ui.design.XdButton
 import xendroid.compose.ui.design.XdButtonKind
 import xendroid.compose.ui.design.XdButtonSize
+import xendroid.compose.ui.design.XdCard
 import xendroid.compose.ui.design.XdChip
 import xendroid.compose.ui.design.XdEmpty
 import xendroid.compose.ui.design.XdGroupHeader
 import xendroid.compose.ui.design.XdIcons
 import xendroid.compose.ui.design.XdLink
+import xendroid.compose.ui.design.XdListRow
 import xendroid.compose.ui.design.XdNote
 import xendroid.compose.ui.design.XdSearchField
 import xendroid.compose.ui.design.XdSegmented
@@ -196,18 +198,19 @@ class SettingsPanelState(level: SettingLevel) {
 
 enum class SettingFilter { ALL, CHANGED, NEW, LIVE, PINNED }
 
-/** The rows [state] shows from [settings]. */
+/** The rows [state] shows from [settings]; at [level] instead of the panel's (what the level switch counts). */
 fun visibleSettings(
     settings: List<Setting>,
     state: SettingsPanelState,
     editing: SettingsEditing,
     pinned: List<String>,
+    level: SettingLevel = state.level,
     searchText: (Setting) -> String,
 ): List<Setting> {
     val q = normalize(state.query.trim())
     return settings.filter { s ->
         val meta = SettingCatalog.meta(s)
-        meta.level <= state.level &&
+        meta.level <= level &&
             (q.isEmpty() || normalize(searchText(s)).contains(q) || normalize(s.key.replace('|', '.')).contains(q)) &&
             when (state.filter) {
                 SettingFilter.ALL -> true
@@ -217,6 +220,32 @@ fun visibleSettings(
                 SettingFilter.PINNED -> s.key in pinned
             }
     }
+}
+
+/**
+ * Round 2: what a settings panel lists in one tab ([group]; null: every group). [rows] are this
+ * tab's at the panel's level; [perLevel], how many each level would list with the same search and
+ * filter; [hidden], the matches of a search or filter that the level leaves out; [elsewhere], a
+ * search's matches in the other tabs, at any level (the jump there says if the level hides them).
+ */
+class PanelResults(val rows: List<Setting>, val perLevel: List<Int>, val hidden: Int, val elsewhere: List<Setting>)
+
+fun panelResults(
+    group: SettingGroup?,
+    state: SettingsPanelState,
+    editing: SettingsEditing,
+    pinned: List<String>,
+    searchText: (Setting) -> String,
+): PanelResults {
+    val here = if (group == null) SettingCatalog.settings(SettingLevel.ALL) else SettingCatalog.settings(group)
+    val perLevel = SettingLevel.entries.map { visibleSettings(here, state, editing, pinned, it, searchText) }
+    val rows = perLevel[state.level.ordinal]
+    val narrowed = state.query.isNotBlank() || state.filter != SettingFilter.ALL
+    val hidden = if (narrowed) perLevel.last().size - rows.size else 0
+    val elsewhere = if (state.query.isBlank() || group == null) emptyList()
+    else SettingCatalog.groups.filter { it != group }
+        .flatMap { visibleSettings(SettingCatalog.settings(it), state, editing, pinned, SettingLevel.ALL, searchText) }
+    return PanelResults(rows, perLevel.map { it.size }, hidden, elsewhere)
 }
 
 private fun normalize(s: String): String =
@@ -717,6 +746,11 @@ fun XdResolutionRow(editing: SettingsEditing, compact: Boolean, modifier: Modifi
 /**
  * Search, level and filters over a list of settings, then the rows: by group (with headers) or
  * one [group]. On a game's screen, the scope switch edits the game's values or the global ones.
+ *
+ * Round 2: the search looks in this tab only; what matches in the other tabs shows under "In
+ * other tabs", and [onJump] goes there (the search stays, so the setting is in view). Each level
+ * says how many settings it would list here, and a search or filter says how many results the
+ * level hides, with "Show". Without [header] (the Summary's own search), only the results show.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -734,76 +768,154 @@ fun XdSettingsPanel(
     onOpenDrivers: (() -> Unit)? = null,
     onShowOverriding: ((Setting) -> Unit)? = null,
     scopeSwitch: (@Composable () -> Unit)? = null,
+    onJump: ((SettingGroup) -> Unit)? = null,
+    header: Boolean = true,
+) {
+    val c = Xd.colors
+    val context = LocalContext.current
+    val found = panelResults(group, state, editing, pinned) { settingSearchText2(context, it) }
+    val rows = found.rows
+    val hidden = found.hidden
+    val elsewhere = found.elsewhere
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (header) PanelHeader(editing, state, pinned, group, found.perLevel, gameName, onPresets, onToml, onResetAll, scopeSwitch)
+        if (hidden > 0) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(pluralStringResource(R.plurals.xd_set_hidden_by_level, hidden, hidden, levelTitle(state.level)), style = XdText.note, color = c.fg3)
+            XdLink(stringResource(R.string.xd_set_show_hidden), { state.level = SettingLevel.ALL })
+        }
+        when {
+            rows.isNotEmpty() -> SettingRows(rows, editing, state, pinned, onPinnedChange, byGroup = group == null,
+                onOpenDrivers = onOpenDrivers, onShowOverriding = onShowOverriding, onJump = onJump)
+            elsewhere.isEmpty() && hidden == 0 ->
+                XdEmpty(stringResource(R.string.xd_set_none)) { XdLink(stringResource(R.string.xd_set_clear_filters), { state.clear() }) }
+            group != null -> Text(stringResource(R.string.xd_set_none_in, groupTitle(group)), style = XdText.bodySm, color = c.fg2)
+        }
+        if (elsewhere.isNotEmpty()) OtherTabs(elsewhere, onJump)
+    }
+}
+
+/** The panel's search, level (each saying how many it lists here), filters, and what is edited. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PanelHeader(
+    editing: SettingsEditing,
+    state: SettingsPanelState,
+    pinned: List<String>,
+    group: SettingGroup?,
+    perLevel: List<Int>,
+    gameName: String?,
+    onPresets: (() -> Unit)?,
+    onToml: (() -> Unit)?,
+    onResetAll: (() -> Unit)?,
+    scopeSwitch: (@Composable () -> Unit)?,
+) {
+    val c = Xd.colors
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        scopeSwitch?.invoke()
+        XdSearchField(state.query, { state.query = it },
+            if (group != null) stringResource(R.string.xd_set_search_in, groupTitle(group)) else stringResource(R.string.xd_set_search),
+            Modifier.widthIn(min = 220.dp, max = 420.dp))
+        XdSegmented(SettingLevel.entries.map { it to levelTitle(it) }, state.level, { state.level = it }, counts = perLevel)
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        val here = remember(group) { if (group == null) SettingCatalog.settings(SettingLevel.ALL) else SettingCatalog.settings(group) }
+        val counted = { f: SettingFilter ->
+            visibleSettings(here, SettingsPanelState(state.level).also { it.filter = f }, editing, pinned) { "" }.size
+        }
+        listOf(
+            SettingFilter.ALL to stringResource(R.string.xd_set_filter_all),
+            SettingFilter.CHANGED to stringResource(if (editing.forGame) R.string.xd_set_filter_changed_game else R.string.xd_set_filter_changed),
+            SettingFilter.NEW to stringResource(R.string.xd_set_filter_new),
+            SettingFilter.LIVE to stringResource(R.string.xd_set_filter_live),
+            SettingFilter.PINNED to stringResource(R.string.xd_set_filter_pinned),
+        ).forEach { (f, label) ->
+            XdChip(label, state.filter == f, { state.filter = f }, count = if (f == SettingFilter.ALL) null else counted(f))
+        }
+        if (onPresets != null) XdButton(stringResource(R.string.xd_set_presets), onPresets, size = XdButtonSize.SM, icon = XdIcons.wand)
+        if (onToml != null) XdButton(stringResource(if (editing.forGame) R.string.xd_set_toml else R.string.xd_set_toml_global), onToml,
+            size = XdButtonSize.SM, icon = XdIcons.code)
+        XdButton(stringResource(if (state.showDescriptions) R.string.xd_set_less_text else R.string.xd_set_more_text),
+            { state.showDescriptions = !state.showDescriptions }, size = XdButtonSize.SM, kind = XdButtonKind.GHOST, icon = XdIcons.info)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(XdIcons.info, null, Modifier.padding(top = 1.dp).size(15.dp), tint = c.fg3)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                when {
+                    !editing.forGame && gameName != null -> stringResource(R.string.xd_set_note_game_global)
+                    !editing.forGame -> stringResource(R.string.xd_set_note_global, editing.changedCount)
+                    else -> stringResource(R.string.xd_set_note_game, gameName.orEmpty())
+                },
+                style = XdText.note, color = c.fg3,
+            )
+            if (editing.forGame && editing.changedCount > 0 && onResetAll != null) XdLink(stringResource(R.string.xd_set_reset_all), onResetAll)
+        }
+    }
+}
+
+/** The rows: one list in a tab, or under each group's header ("Open the tab" when [onJump] goes there). */
+@Composable
+private fun SettingRows(
+    rows: List<Setting>,
+    editing: SettingsEditing,
+    state: SettingsPanelState,
+    pinned: List<String>,
+    onPinnedChange: (List<String>) -> Unit,
+    byGroup: Boolean,
+    onOpenDrivers: (() -> Unit)?,
+    onShowOverriding: ((Setting) -> Unit)?,
+    onJump: ((SettingGroup) -> Unit)?,
 ) {
     val c = Xd.colors
     val context = LocalContext.current
     val toast = LocalXdToast.current
-    val all = remember(group) { if (group == null) SettingCatalog.settings(SettingLevel.ALL) else SettingCatalog.settings(group) }
-    val searching = state.query.isNotBlank()
-    val source = if (searching) SettingCatalog.settings(SettingLevel.ALL) else all
-    val rows = visibleSettings(source, state, editing, pinned) { settingSearchText2(context, it) }
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            scopeSwitch?.invoke()
-            XdSearchField(state.query, { state.query = it }, stringResource(R.string.xd_set_search), Modifier.widthIn(min = 220.dp, max = 420.dp))
-            XdSegmented(SettingLevel.entries.map { it to levelTitle(it) }, state.level, { state.level = it })
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            val counted = { f: SettingFilter ->
-                visibleSettings(source, SettingsPanelState(state.level).also { it.filter = f }, editing, pinned) { "" }.size
+    val pin: (Setting) -> (() -> Unit)? = { s ->
+        if (s is Setting.Action) null else ({
+            val next = PinnedSettings.toggled(pinned, s.key)
+            onPinnedChange(next)
+            toast.show(context.getString(if (s.key in next) R.string.xd_set_pinned else R.string.xd_set_unpinned))
+        })
+    }
+    val one: @Composable (Setting) -> Unit = { s ->
+        if (c.controller) XdControllerSettingRow(s, editing, onOpenDrivers = onOpenDrivers)
+        else XdSettingRow(s, editing, state.showDescriptions, s.key in pinned, pin(s), onOpenDrivers = onOpenDrivers, onShowOverriding = onShowOverriding)
+    }
+    if (!byGroup) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { rows.forEach { one(it) } }
+        return
+    }
+    Column {
+        for (g in SettingCatalog.groups) {
+            val inGroup = rows.filter { SettingCatalog.meta(it).group == g }
+            if (inGroup.isEmpty()) continue
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                XdGroupHeader(groupTitle(g), inGroup.size, Modifier.weight(1f))
+                if (onJump != null) XdLink(stringResource(R.string.xd_set_open_tab) + " ›", { onJump(g) }, Modifier.padding(bottom = 6.dp))
             }
-            listOf(
-                SettingFilter.ALL to stringResource(R.string.xd_set_filter_all),
-                SettingFilter.CHANGED to stringResource(if (editing.forGame) R.string.xd_set_filter_changed_game else R.string.xd_set_filter_changed),
-                SettingFilter.NEW to stringResource(R.string.xd_set_filter_new),
-                SettingFilter.LIVE to stringResource(R.string.xd_set_filter_live),
-                SettingFilter.PINNED to stringResource(R.string.xd_set_filter_pinned),
-            ).forEach { (f, label) ->
-                XdChip(label, state.filter == f, { state.filter = f }, count = if (f == SettingFilter.ALL) null else counted(f))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { inGroup.forEach { one(it) } }
+        }
+    }
+}
+
+/** "In other tabs": up to five matches of the search elsewhere, each with its tab; a tap goes there. */
+@Composable
+private fun OtherTabs(found: List<Setting>, onJump: ((SettingGroup) -> Unit)?) {
+    val c = Xd.colors
+    val shown = found.take(5)
+    Column {
+        XdGroupHeader(stringResource(R.string.xd_set_other_tabs), found.size)
+        XdCard(tight = true) {
+            shown.forEachIndexed { i, s ->
+                val g = SettingCatalog.meta(s).group
+                XdListRow(settingTitle(s), subtitle = groupTitle(g), icon = groupIcon(g), divider = i < shown.lastIndex,
+                    onClick = onJump?.let { jump -> { jump(g) } }) {
+                    if (onJump != null) Icon(XdIcons.chevR, null, Modifier.size(16.dp), tint = c.fg3)
+                }
             }
-            if (onPresets != null) XdButton(stringResource(R.string.xd_set_presets), onPresets, size = XdButtonSize.SM, icon = XdIcons.wand)
-            if (onToml != null) XdButton(stringResource(if (editing.forGame) R.string.xd_set_toml else R.string.xd_set_toml_global), onToml,
-                size = XdButtonSize.SM, icon = XdIcons.code)
-            XdButton(stringResource(if (state.showDescriptions) R.string.xd_set_less_text else R.string.xd_set_more_text),
-                { state.showDescriptions = !state.showDescriptions }, size = XdButtonSize.SM, kind = XdButtonKind.GHOST, icon = XdIcons.info)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(XdIcons.info, null, Modifier.padding(top = 1.dp).size(15.dp), tint = c.fg3)
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    when {
-                        !editing.forGame && gameName != null -> stringResource(R.string.xd_set_note_game_global)
-                        !editing.forGame -> stringResource(R.string.xd_set_note_global, editing.changedCount)
-                        else -> stringResource(R.string.xd_set_note_game, gameName.orEmpty())
-                    },
-                    style = XdText.note, color = c.fg3,
-                )
-                if (editing.forGame && editing.changedCount > 0 && onResetAll != null) XdLink(stringResource(R.string.xd_set_reset_all), onResetAll)
-            }
-        }
-        if (rows.isEmpty()) {
-            XdEmpty(stringResource(R.string.xd_set_none)) { XdLink(stringResource(R.string.xd_set_clear_filters), { state.clear() }) }
-            return@Column
-        }
-        val pin: (Setting) -> (() -> Unit)? = { s ->
-            if (s is Setting.Action) null else ({
-                val next = PinnedSettings.toggled(pinned, s.key)
-                onPinnedChange(next)
-                toast.show(context.getString(if (s.key in next) R.string.xd_set_pinned else R.string.xd_set_unpinned))
-            })
-        }
-        val one: @Composable (Setting) -> Unit = { s ->
-            if (c.controller) XdControllerSettingRow(s, editing, onOpenDrivers = onOpenDrivers)
-            else XdSettingRow(s, editing, state.showDescriptions, s.key in pinned, pin(s), onOpenDrivers = onOpenDrivers, onShowOverriding = onShowOverriding)
-        }
-        if (group != null && !searching) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { rows.forEach { one(it) } }
-        } else {
-            for (g in SettingCatalog.groups) {
-                val inGroup = rows.filter { SettingCatalog.meta(it).group == g }
-                if (inGroup.isEmpty()) continue
-                XdGroupHeader(groupTitle(g), inGroup.size)
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { inGroup.forEach { one(it) } }
+            if (found.size > shown.size) {
+                val more = found.size - shown.size
+                Text(pluralStringResource(R.plurals.xd_set_other_more, more, more), style = XdText.note, color = c.fg3,
+                    modifier = Modifier.padding(start = 4.dp, top = 6.dp))
             }
         }
     }

@@ -71,7 +71,8 @@ private fun XdSettingLevelRow(level: SettingLevel, count: Int, onLevel: (Setting
         SettingLevel.ADVANCED -> R.string.xd_app_level_advanced_sub
         SettingLevel.ALL -> R.string.xd_app_level_all_sub
     }, count)) {
-        XdSegmented(SettingLevel.entries.map { it to levelTitle(it) }, level, onLevel)
+        XdSegmented(SettingLevel.entries.map { it to levelTitle(it) }, level, onLevel,
+            counts = SettingLevel.entries.map { SettingCatalog.settings(it).size })
     }
 }
 

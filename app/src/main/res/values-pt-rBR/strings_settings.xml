@@ -244,4 +244,19 @@
     <string name="st_d_display_show_debug_overlay">Mostra a sobreposição de depuração do core por cima do jogo.</string>
     <string name="st_t_logging_log_sessions_keep">Sessões de log guardadas</string>
     <string name="st_d_logging_log_sessions_keep">Quantas sessões anteriores o app guarda para diagnóstico.</string>
+    <string name="xd_back_to">Voltar para %1$s</string>
+    <string name="xd_set_search_in">Buscar em %1$s</string>
+    <string name="xd_set_search_everywhere">Buscar em todos os ajustes, chaves e descrições</string>
+    <string name="xd_set_other_tabs">Em outras abas</string>
+    <string name="xd_set_none_in">Nada em %1$s para esta busca.</string>
+    <string name="xd_set_show_hidden">Mostrar</string>
+    <string name="xd_set_open_tab">Abrir a aba</string>
+    <plurals name="xd_set_hidden_by_level">
+        <item quantity="one">%1$d resultado escondido pelo nível %2$s.</item>
+        <item quantity="other">%1$d resultados escondidos pelo nível %2$s.</item>
+    </plurals>
+    <plurals name="xd_set_other_more">
+        <item quantity="one">e mais %1$d</item>
+        <item quantity="other">e mais %1$d</item>
+    </plurals>
 </resources>

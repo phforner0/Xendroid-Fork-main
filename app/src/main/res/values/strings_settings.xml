@@ -244,4 +244,19 @@
     <string name="st_d_display_show_debug_overlay">Show an on-screen overlay with FPS, frame times, and in-flight shader compiles.</string>
     <string name="st_t_logging_log_sessions_keep">Log sessions to keep</string>
     <string name="st_d_logging_log_sessions_keep">How many past sessions\' log zips to keep in the logs folder before old ones are rotated out.</string>
+    <string name="xd_back_to">Back to %1$s</string>
+    <string name="xd_set_search_in">Search in %1$s</string>
+    <string name="xd_set_search_everywhere">Search every setting, key or description</string>
+    <string name="xd_set_other_tabs">In other tabs</string>
+    <string name="xd_set_none_in">Nothing in %1$s for this search.</string>
+    <string name="xd_set_show_hidden">Show</string>
+    <string name="xd_set_open_tab">Open the tab</string>
+    <plurals name="xd_set_hidden_by_level">
+        <item quantity="one">%1$d result hidden by the %2$s level.</item>
+        <item quantity="other">%1$d results hidden by the %2$s level.</item>
+    </plurals>
+    <plurals name="xd_set_other_more">
+        <item quantity="one">and %1$d more</item>
+        <item quantity="other">and %1$d more</item>
+    </plurals>
 </resources>

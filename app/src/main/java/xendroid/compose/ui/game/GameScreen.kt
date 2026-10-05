@@ -114,7 +114,7 @@ private fun controllerSection(id: String): String = when {
 
 private fun touchSection(id: String): String = when (id) {
     "play", "launch", "quick", "compat" -> GameSections.OVERVIEW
-    "set", GameSections.SETTINGS -> GameSections.group(SettingCatalog.groups.first())
+    "set" -> GameSections.SETTINGS
     else -> id
 }
 
@@ -234,7 +234,7 @@ fun GameScreen(
             e, panel, pinned, onPinned, group = group, gameName = game.name,
             onPresets = if (!panel.editGlobal) ({ presetsOpen = true }) else null,
             onToml = { tomlOpen = true }, onResetAll = resetAll, onOpenDrivers = links.onDrivers,
-            scopeSwitch = scopeSwitch,
+            scopeSwitch = scopeSwitch, onJump = if (controller) null else ({ g -> section = GameSections.group(g) }),
         )
     }
     val quick: @Composable () -> Unit = {
@@ -279,6 +279,9 @@ fun GameScreen(
             add(XdSection(GameSections.OVERVIEW, stringResource(R.string.xd_game_sec_overview), XdIcons.home, group = groupGame, heading = null) {
                 cards.Overview()
             })
+            // Round 2: "All settings" (the overview's link) lists every group, each a tap from its tab.
+            add(XdSection(GameSections.SETTINGS, stringResource(R.string.xd_game_sec_all), XdIcons.gear, group = groupSettings,
+                badge = overrides.size.takeIf { it > 0 }?.toString()) { settingsPanel(null) })
             for (g in SettingCatalog.groups) {
                 val own = overrides.keys.count { key -> SettingsSchema.byKey[key]?.let { SettingCatalog.meta(it).group == g } == true }
                 add(XdSection(GameSections.group(g), groupTitle(g), groupIcon(g), group = groupSettings,

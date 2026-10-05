@@ -37,7 +37,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -235,6 +240,59 @@ class XdSection(
     val content: (@Composable ColumnScope.() -> Unit)? = null,
 )
 
+/**
+ * Round 2: in-screen jumps remember where they came from. A change of section that does not come
+ * from the section list (a link such as "All settings" or "See the patches") adds a step; Back, the
+ * controller's B and "‹ Back to …" over the section return to it.
+ */
+class XdSectionHistory internal constructor(private val stack: MutableState<List<String>>) {
+    internal var onSelect: (String) -> Unit = {}
+    private var last: String? = null
+    private var fromList = false
+
+    /** The section a jump came from; null when there is none to go back to. */
+    val previous: String? get() = stack.value.lastOrNull()
+
+    /** A section picked in the section list: a fresh start, nothing to go back to. */
+    fun pick(id: String) {
+        stack.value = emptyList()
+        if (id != last) fromList = true
+        onSelect(id)
+    }
+
+    fun back() {
+        val target = previous ?: return
+        stack.value = stack.value.dropLast(1)
+        if (target != last) fromList = true
+        onSelect(target)
+    }
+
+    internal fun observe(selected: String) {
+        val before = last
+        if (before != null && before != selected && !fromList) stack.value = (stack.value + before).takeLast(8)
+        fromList = false
+        last = selected
+    }
+}
+
+@Composable
+private fun rememberSectionHistory(selected: String, onSelect: (String) -> Unit): XdSectionHistory {
+    val stack = rememberSaveable { mutableStateOf(listOf<String>()) }
+    val history = remember { XdSectionHistory(stack) }
+    history.onSelect = onSelect
+    LaunchedEffect(selected) { history.observe(selected) }
+    BackHandler(enabled = stack.value.isNotEmpty()) { history.back() }
+    return history
+}
+
+/** "‹ Back to Summary" over a section reached by a link. */
+@Composable
+private fun BackToLink(history: XdSectionHistory, sections: List<XdSection>, modifier: Modifier = Modifier) {
+    val id = history.previous ?: return
+    val title = sections.firstOrNull { it.id == id }?.title ?: return
+    XdLink("‹ " + stringResource(R.string.xd_back_to, title), { history.back() }, modifier.padding(bottom = 8.dp))
+}
+
 /** A button hint of the controller bar: glyphs ("A", "LB/RB", "≡"), label, and what a tap does. */
 class XdHint(val buttons: String, val label: String, val onClick: (() -> Unit)? = null)
 
@@ -266,8 +324,9 @@ fun XdSectionedScreen(
 ) {
     val real = sections.filter { it.goTo == null && it.content != null }
     val current = real.firstOrNull { it.id == selected } ?: real.firstOrNull()
+    val history = rememberSectionHistory(selected, onSelect)
     if (Xd.controller) {
-        CSectioned(title, sections, current, onSelect, modifier, subtitle, onBack, lead, headIcon, art, actions, hints, overlay, onPad)
+        CSectioned(title, sections, current, history, modifier, subtitle, onBack, lead, headIcon, art, actions, hints, overlay, onPad)
         return
     }
     val c = Xd.colors
@@ -279,10 +338,10 @@ fun XdSectionedScreen(
                     BTopBar(title, subtitle = subtitle, subtitleMono = subtitleMono, onBack = onBack, lead = lead, art = art, portrait = true, actions = actions)
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for (s in sections) SecNavItem(s, s.id == current?.id, onSelect, compact = true)
+                        for (s in sections) SecNavItem(s, s.id == current?.id, history::pick, compact = true)
                     }
                     HorizontalDivider(thickness = 1.dp, color = c.line)
-                    SectionBody(current, Modifier.weight(1f))
+                    SectionBody(current, Modifier.weight(1f)) { BackToLink(history, sections) }
                 }
                 BBottomBar(area)
             }
@@ -301,11 +360,11 @@ fun XdSectionedScreen(
                                         modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = if (lastGroup == null) 4.dp else 10.dp, bottom = 4.dp))
                                     lastGroup = s.group
                                 }
-                                SecNavItem(s, s.id == current?.id, onSelect, compact = false)
+                                SecNavItem(s, s.id == current?.id, history::pick, compact = false)
                             }
                         }
                         VerticalDivider(thickness = 1.dp, color = c.line)
-                        SectionBody(current, Modifier.weight(1f))
+                        SectionBody(current, Modifier.weight(1f)) { BackToLink(history, sections) }
                     }
                 }
             }
@@ -314,12 +373,16 @@ fun XdSectionedScreen(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun SecNavItem(s: XdSection, selected: Boolean, onSelect: (String) -> Unit, compact: Boolean) {
     val c = Xd.colors
     val shape = RoundedCornerShape(9.dp)
+    // Round 2: a section chosen by a link scrolls the list (a row in portrait) to it.
+    val inView = remember { BringIntoViewRequester() }
+    LaunchedEffect(selected) { if (selected) { withFrameNanos { }; inView.bringIntoView() } }
     Row(
-        Modifier.then(if (compact) Modifier else Modifier.fillMaxWidth()).focusRing(shape).heightIn(min = 33.dp).clip(shape)
+        Modifier.bringIntoViewRequester(inView).then(if (compact) Modifier else Modifier.fillMaxWidth()).focusRing(shape).heightIn(min = 33.dp).clip(shape)
             .background(if (selected) c.s3 else Color.Transparent)
             .clickable(role = Role.Tab) { s.goTo?.invoke() ?: onSelect(s.id) }
             .semantics { this.selected = selected }
@@ -338,10 +401,11 @@ private fun SecNavItem(s: XdSection, selected: Boolean, onSelect: (String) -> Un
 }
 
 @Composable
-private fun SectionBody(section: XdSection?, modifier: Modifier) {
+private fun SectionBody(section: XdSection?, modifier: Modifier, top: @Composable () -> Unit = {}) {
     val c = Xd.colors
     if (section == null) { Box(modifier); return }
     val head: @Composable ColumnScope.() -> Unit = {
+        top()
         if (section.heading != null) Text(section.heading, style = XdText.h2, color = c.fg, modifier = Modifier.padding(bottom = 10.dp))
         if (section.lead != null) Text(section.lead, style = XdText.bodySm, color = c.fg3, modifier = Modifier.readable().padding(bottom = 12.dp))
     }
@@ -559,7 +623,7 @@ private fun CSectioned(
     title: String,
     sections: List<XdSection>,
     current: XdSection?,
-    onSelect: (String) -> Unit,
+    history: XdSectionHistory,
     modifier: Modifier,
     subtitle: String?,
     onBack: (() -> Unit)?,
@@ -572,6 +636,7 @@ private fun CSectioned(
     onPad: ((PadButton) -> Boolean)?,
 ) {
     val c = Xd.colors
+    val onSelect: (String) -> Unit = history::pick
     val real = sections.filter { it.goTo == null && it.content != null }
     val shoulder: (Int) -> Unit = { d ->
         val i = real.indexOfFirst { it.id == current?.id }
@@ -589,7 +654,7 @@ private fun CSectioned(
                     CHead(title, subtitle, onBack, lead, headIcon, actions = actions)
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(3.dp)) { for (s in sections) menuItem(s) }
-                    CPanel(current, Modifier.weight(1f), portrait = true)
+                    CPanel(current, Modifier.weight(1f), portrait = true) { BackToLink(history, sections) }
                 }
             } else {
                 Row(Modifier.fillMaxSize()) {
@@ -611,7 +676,7 @@ private fun CSectioned(
                     Column(Modifier.weight(1f)) {
                         if (actions != null) Row(Modifier.fillMaxWidth().padding(top = 12.dp, end = 22.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                             verticalAlignment = Alignment.CenterVertically, content = actions)
-                        CPanel(current, Modifier.weight(1f), portrait = false)
+                        CPanel(current, Modifier.weight(1f), portrait = false) { BackToLink(history, sections) }
                     }
                 }
             }
@@ -656,12 +721,13 @@ private fun CMenuItem(s: XdSection, selected: Boolean, onSelect: (String) -> Uni
 }
 
 @Composable
-private fun CPanel(section: XdSection?, modifier: Modifier, portrait: Boolean) {
+private fun CPanel(section: XdSection?, modifier: Modifier, portrait: Boolean, top: @Composable () -> Unit = {}) {
     val c = Xd.colors
     if (section == null) { Box(modifier); return }
     val pad = if (portrait) Modifier.padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 18.dp)
     else Modifier.padding(start = 10.dp, end = 22.dp, top = 16.dp, bottom = 18.dp)
     val head: @Composable ColumnScope.() -> Unit = {
+        top()
         if (section.heading != null) Text(section.heading, style = XdText.h2c, color = c.fg, modifier = Modifier.padding(bottom = 12.dp))
         if (section.lead != null) Text(section.lead, style = XdText.bodySm, color = c.fg3, modifier = Modifier.readable().padding(bottom = 12.dp))
     }

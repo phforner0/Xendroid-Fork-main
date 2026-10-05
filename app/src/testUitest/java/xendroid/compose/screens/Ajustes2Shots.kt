@@ -14,9 +14,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import java.io.File
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
 import org.junit.Test
@@ -54,11 +59,28 @@ import xendroid.compose.shots.shot
 import xendroid.compose.ui.about.AboutScreen
 import xendroid.compose.ui.about.DeviceInfo
 import xendroid.compose.ui.design.InputMode
+import xendroid.compose.AppContainer
+import xendroid.compose.driver.CustomDrivers
+import xendroid.compose.patches.GamePatchesViewModel
+import xendroid.compose.settings.ConfigStore
+import xendroid.compose.settings.GameSettingsViewModel
+import xendroid.compose.settings.SettingLevel
+import xendroid.compose.settings.SettingLevelStore
+import xendroid.compose.settings.SettingsViewModel
+import xendroid.compose.ui.compress.GameCompressViewModel
+import xendroid.compose.ui.game.GameScreen
+import xendroid.compose.ui.game.GameScreenLinks
+import xendroid.compose.ui.game.GameSections
+import xendroid.compose.ui.library.LibraryUiState
+import xendroid.compose.ui.settings.SettingsLinks
+import xendroid.compose.ui.settings.SettingsScreen
 
 /**
- * Second round of device feedback, "depois": About with a real phone's core report (a Snapdragon
- * with dozens of CPU features and hundreds of Vulkan extensions) summed up, the full report on
- * request.
+ * Second round of device feedback, "depois": the in-game menu by category, the horizontal HUD,
+ * the modern on-screen controls; Settings with the levels' counts, a search kept to its tab (with
+ * the other tabs' matches), the Summary's search and "Back to…" after a link; About with a real
+ * phone's core report (a Snapdragon with dozens of CPU features and hundreds of Vulkan
+ * extensions) summed up, the full report on request.
  */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -154,6 +176,96 @@ class Ajustes2Shots {
     @Config(qualifiers = Phone.LAND) @Test fun controlsModern() { controls(ControlStyle.MODERN); compose.shot("ajustes-2/depois-controles-moderno") }
     @Config(qualifiers = Phone.LAND) @Test fun controlsClassic() { controls(ControlStyle.CLASSIC); compose.shot("ajustes-2/depois-controles-classico") }
     @Config(qualifiers = Phone.PORT) @Test fun controlsModernPort() { controls(ControlStyle.MODERN, landscape = false); compose.shot("ajustes-2/depois-controles-moderno-retrato") }
+
+    // ------------------------------------------------------------------ Settings
+
+    /** The global config away from the defaults in places, one game with its own values, the
+     *  Essential level; [query] typed in the first search box. */
+    private fun settings(mode: InputMode, section: String? = null, query: String? = null) {
+        CustomDrivers.forced = true
+        val container = AppContainer(Fixture.context)
+        val store = ConfigStore(Fixture.context)
+        store.editGameConfig("4D5307E6") { h -> h.putInt("GPU", "framerate_limit", 30) }
+        store.editLiveConfig { h -> h.putInt("GPU", "anisotropic_override", 4) }
+        SettingLevelStore.write(Fixture.context, SettingLevel.ESSENTIAL)
+        val library = Fixture.library(container)
+        val names = (library.state.value as LibraryUiState.Loaded).games.associate { it.titleId!!.uppercase() to it.name }
+        val vm = container.settingsViewModelFactory().create(SettingsViewModel::class.java)
+        Fixture.settle(30)
+        compose.app(mode) {
+            SettingsScreen(vm, onBack = {}, links = SettingsLinks(onDrivers = {}, onGameSettings = {}, gameName = { names[it] }),
+                initialSection = section)
+        }
+        Fixture.settle(20)
+        compose.waitForIdle()
+        if (query != null) {
+            compose.onAllNodes(hasSetTextAction()).onFirst().performTextInput(query)
+            compose.waitForIdle()
+        }
+    }
+
+    /** Taps [text]; the [last] one, when the section list has the same words as a link. */
+    private fun click(text: String, last: Boolean = false) {
+        val node = compose.onAllNodesWithText(text, substring = true).let { if (last) it.onLast() else it.onFirst() }
+        runCatching { node.performScrollTo() }                      // a link below the fold
+        node.performClick()
+        compose.waitForIdle()
+        Fixture.settle(10)
+        compose.waitForIdle()
+    }
+
+    private fun sheet(mode: InputMode, section: String) {
+        val titleId = "4D5307E6"
+        val container = AppContainer(Fixture.context)
+        ConfigStore(Fixture.context).editGameConfig(titleId) { h ->
+            h.putInt("GPU", "framerate_limit", 30)
+            h.putString("Display", "postprocess_scaling_and_sharpening", "fsr")
+        }
+        SettingLevelStore.write(Fixture.context, SettingLevel.ESSENTIAL)
+        val vm = Fixture.library(container)
+        val game = Fixture.game(vm, titleId)
+        val settings = container.gameSettingsViewModelFactory(titleId).create(GameSettingsViewModel::class.java)
+        val global = container.settingsViewModelFactory().create(SettingsViewModel::class.java)
+        val patches = container.gamePatchesViewModelFactory(titleId).create(GamePatchesViewModel::class.java)
+        val compress = container.gameCompressViewModelFactory().create(GameCompressViewModel::class.java)
+        vm.loadDetails(game)
+        Fixture.settle()
+        compose.app(mode) {
+            GameScreen(game, vm, compress, settings, global, patches, GameScreenLinks(onBack = {}), initialSection = section)
+        }
+        Fixture.settle(30)
+        compose.waitForIdle()
+    }
+
+    @Config(qualifiers = Phone.LAND) @Test fun settingsTabSearch() {
+        settings(InputMode.TOUCH, "set:IMAGE", query = "gpu"); compose.shot("ajustes-2/depois-configuracoes-busca-na-aba")
+    }
+    @Config(qualifiers = Phone.LAND) @Test fun settingsTabSearchOtherTabs() {
+        settings(InputMode.TOUCH, "set:IMAGE", query = "gpu")
+        compose.onNodeWithText(Fixture.context.getString(R.string.xd_set_other_tabs), substring = true, ignoreCase = true).performScrollTo()
+        compose.waitForIdle()
+        compose.shot("ajustes-2/depois-configuracoes-busca-outras-abas")
+    }
+    @Config(qualifiers = Phone.PORT) @Test fun settingsTabSearchPort() {
+        settings(InputMode.TOUCH, "set:PERFORMANCE", query = "gpu"); compose.shot("ajustes-2/depois-configuracoes-busca-na-aba-retrato")
+    }
+    @Config(qualifiers = Phone.LAND) @Test fun settingsSummarySearch() {
+        settings(InputMode.TOUCH, query = "fsr"); compose.shot("ajustes-2/depois-configuracoes-busca-no-resumo")
+    }
+    @Config(qualifiers = Phone.LAND) @Test fun settingsBackAfterALink() {
+        settings(InputMode.TOUCH, query = "fsr")
+        click(Fixture.context.getString(R.string.xd_set_open_tab))
+        compose.shot("ajustes-2/depois-configuracoes-voltar")
+    }
+    @Config(qualifiers = Phone.LAND) @Test fun settingsLevels() { settings(InputMode.TOUCH, "app:ui"); compose.shot("ajustes-2/depois-configuracoes-niveis") }
+    @Config(qualifiers = Phone.LAND) @Test fun settingsTabSearchController() {
+        settings(InputMode.CONTROLLER, "set:IMAGE", query = "gpu"); compose.shot("ajustes-2/depois-configuracoes-busca-controle")
+    }
+    @Config(qualifiers = Phone.LAND) @Test fun sheetAllSettings() {
+        sheet(InputMode.TOUCH, GameSections.OVERVIEW)
+        click(Fixture.context.getString(R.string.xd_lib_all_settings), last = true)
+        compose.shot("ajustes-2/depois-ficha-todos-os-ajustes")
+    }
 
     @Config(qualifiers = Phone.LAND) @Test fun aboutLand() { about(InputMode.TOUCH); compose.shot("ajustes-2/depois-sobre") }
     @Config(qualifiers = Phone.PORT) @Test fun aboutPort() { about(InputMode.TOUCH); compose.shot("ajustes-2/depois-sobre-retrato") }

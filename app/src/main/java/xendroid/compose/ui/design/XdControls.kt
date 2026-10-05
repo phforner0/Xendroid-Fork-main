@@ -190,7 +190,10 @@ fun XdChip(
     }
 }
 
-/** Segmented control (two to six short options); [accent] fills the chosen one in the accent. */
+/**
+ * Segmented control (two to six short options); [accent] fills the chosen one in the accent.
+ * [counts], one per option, show after the labels ("Essential 24").
+ */
 @Composable
 fun <T> XdSegmented(
     options: List<Pair<T, String>>,
@@ -200,6 +203,7 @@ fun <T> XdSegmented(
     accent: Boolean = false,
     enabled: Boolean = true,
     compact: Boolean = false,
+    counts: List<Int>? = null,
 ) {
     val c = Xd.colors
     Row(
@@ -210,7 +214,7 @@ fun <T> XdSegmented(
             .alpha(if (enabled) 1f else 0.4f),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        for ((value, label) in options) {
+        options.forEachIndexed { i, (value, label) ->
             val on = value == selected
             val shape = RoundedCornerShape(8.dp)
             Box(
@@ -224,10 +228,16 @@ fun <T> XdSegmented(
                     .padding(horizontal = if (compact) 8.dp else 11.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    label, style = XdText.chip.copy(fontSize = if (compact) 12.sp else 12.5.sp),
-                    color = if (on) (if (accent) c.onAcc else c.fg) else c.fg2, maxLines = 1,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        label, style = XdText.chip.copy(fontSize = if (compact) 12.sp else 12.5.sp),
+                        color = if (on) (if (accent) c.onAcc else c.fg) else c.fg2, maxLines = 1,
+                    )
+                    counts?.getOrNull(i)?.let { n ->
+                        Text(n.toString(), style = XdText.monoNum, maxLines = 1,
+                            color = if (on) (if (accent) c.onAcc else c.acc) else c.fg3)
+                    }
+                }
             }
         }
     }

@@ -105,7 +105,7 @@ fun FolderBrowserScreen(
     // The place is in the steps below the title; the subtitle says what to do.
     XdSingleScreen(title = title ?: stringResource(if (picksFile) R.string.xd_br_title_file else R.string.fr_choose_folder),
         subtitle = hint ?: stringResource(if (picksFile) R.string.xd_br_pick_note else R.string.xd_br_folder_note),
-        onBack = onCancel, headIcon = XdIcons.folder, scroll = false) {
+        onBack = onCancel, headIcon = XdIcons.folder, scroll = false, showNav = false) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (roots.size > 1) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 roots.forEach { r -> XdChip(r.label, r == root, { current = r.dir }, icon = if (r.removable) XdIcons.sd else XdIcons.phone) }

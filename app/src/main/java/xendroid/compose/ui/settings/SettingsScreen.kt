@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -54,6 +56,7 @@ import xendroid.compose.ui.design.XdKv
 import xendroid.compose.ui.design.XdLink
 import xendroid.compose.ui.design.XdListRow
 import xendroid.compose.ui.design.XdNote
+import xendroid.compose.ui.design.XdSearchField
 import xendroid.compose.ui.design.XdSection
 import xendroid.compose.ui.design.XdSectionedScreen
 import xendroid.compose.ui.design.XdSheet
@@ -143,13 +146,19 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, links: SettingsLin
     val groupGeneral = stringResource(R.string.xd_set_group_general)
     val groupEmulation = stringResource(R.string.xd_set_group_emulation)
     val groupApp = stringResource(R.string.xd_set_group_app)
+    val jump: (xendroid.compose.settings.SettingGroup) -> Unit = { section = "set:${it.name}" }
     val panelFor: @Composable (xendroid.compose.settings.SettingGroup?) -> Unit = { group ->
         XdSettingsPanel(editing, panel, pinned, onPinned, group = group, onToml = { tomlOpen = true },
-            onOpenDrivers = links.onDrivers, onShowOverriding = { overridingOf = it })
+            onOpenDrivers = links.onDrivers, onShowOverriding = { overridingOf = it }, onJump = jump)
     }
     val sections = buildList {
         add(XdSection(Ids.SUMMARY, stringResource(R.string.xd_set_summary), XdIcons.home, group = groupGeneral) {
-            Summary(vm, editing, gameValues, links, onToml = { tomlOpen = true }, onSection = { section = it }, panelLevel = panel)
+            // Round 2: the Summary searches every tab, the results by tab.
+            XdSearchField(panel.query, { panel.query = it }, stringResource(R.string.xd_set_search_everywhere),
+                Modifier.fillMaxWidth().widthIn(max = 560.dp).padding(bottom = 4.dp))
+            if (panel.query.isBlank()) Summary(vm, editing, gameValues, links, onToml = { tomlOpen = true }, onSection = { section = it }, panelLevel = panel)
+            else XdSettingsPanel(editing, panel, pinned, onPinned, onOpenDrivers = links.onDrivers, onShowOverriding = { overridingOf = it },
+                onJump = jump, header = false)
         })
         for (g in SettingCatalog.groups) {
             val changed = SettingCatalog.settings(g).count { editing.changed(it) }
