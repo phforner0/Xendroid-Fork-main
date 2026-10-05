@@ -14,6 +14,7 @@ import xendroid.compose.core.EmulatorRuntime
 /** What a problem report needs to know about this phone, as rows (label, value) and as text to copy. */
 object DeviceInfo {
     @Volatile private var coreText: String? = null
+    private val coreLock = Any()
 
     /**
      * The core's own report (JNI; it creates a Vulkan instance to ask), read once per process and
@@ -21,7 +22,12 @@ object DeviceInfo {
      */
     fun coreReportText(): String? {
         coreText?.let { return it }
-        return runCatching { Emulator.get?.simple_device_info() }.getOrNull()?.ifBlank { null }?.also { coreText = it }
+        // One core call at a time: About asks for the device rows and the full report together,
+        // and the second caller gets the first one's report instead of asking the core again.
+        synchronized(coreLock) {
+            coreText?.let { return it }
+            return runCatching { Emulator.get?.simple_device_info() }.getOrNull()?.ifBlank { null }?.also { coreText = it }
+        }
     }
 
     fun coreReport(): CoreReport? = CoreReport.parse(coreReportText())
