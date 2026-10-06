@@ -132,6 +132,9 @@ class AAudioAudioDriver : public AudioDriver {
   // Samples the downmix pushed past full scale.
   std::atomic<uint64_t> stat_clipped_{0};
   std::atomic<uint32_t> stat_rate_milli_{1000};
+  // The callbacks' own time (rendering, the queue's lock), microseconds.
+  std::atomic<uint64_t> stat_callback_us_sum_{0};
+  std::atomic<uint32_t> stat_callback_us_max_{0};
   void LogAndResetStats();
   // Adds the stream's new xruns to ae::RunStats(); AAudio counts per stream, so
   // the count seen so far restarts with every rebuild. recovery_thread_ only.

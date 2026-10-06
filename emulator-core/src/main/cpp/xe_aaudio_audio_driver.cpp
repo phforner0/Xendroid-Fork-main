@@ -217,6 +217,7 @@ aaudio_data_callback_result_t AAudioAudioDriver::AudioCallback(
     void* audioData,
     int32_t numFrames) {
   SCOPE_profile_cpu_f("apu");
+  const auto callback_begin = std::chrono::steady_clock::now();
 
   auto driver = static_cast<AAudioAudioDriver*>(userdata);
   float* output_buffer = reinterpret_cast<float*>(audioData);
@@ -275,6 +276,18 @@ aaudio_data_callback_result_t AAudioAudioDriver::AudioCallback(
   for (uint32_t i = 0; i < releases; ++i) {
     driver->semaphore_->Release(1, nullptr);
   }
+
+  const uint32_t callback_us = static_cast<uint32_t>(
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - callback_begin)
+          .count());
+  driver->stat_callback_us_sum_.fetch_add(callback_us,
+                                          std::memory_order_relaxed);
+  if (callback_us >
+      driver->stat_callback_us_max_.load(std::memory_order_relaxed)) {
+    driver->stat_callback_us_max_.store(callback_us,
+                                        std::memory_order_relaxed);
+  }
   return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }
 
@@ -330,6 +343,10 @@ void AAudioAudioDriver::LogAndResetStats() {
   const int32_t odd_frames =
       stat_unexpected_frames_.exchange(0, std::memory_order_relaxed);
   const uint64_t clipped = stat_clipped_.exchange(0, std::memory_order_relaxed);
+  const uint64_t callback_us_sum =
+      stat_callback_us_sum_.exchange(0, std::memory_order_relaxed);
+  const uint32_t callback_us_max =
+      stat_callback_us_max_.exchange(0, std::memory_order_relaxed);
   const uint64_t played = (callbacks - gaps) * host_block_samples_;
 
   int32_t xruns = -1;
@@ -342,12 +359,13 @@ void AAudioAudioDriver::LogAndResetStats() {
 
   XELOGI(
       "AAudio: {} cb, {} gaps ({:.1f}%), queue avg {:.2f} max {}, rate {:.3f}, "
-      "xruns {}, clipped {} ({:.3f}%){}",
+      "xruns {}, clipped {} ({:.3f}%), callback {:.0f} us avg {} max{}",
       callbacks, gaps, 100.0 * double(gaps) / double(callbacks),
       double(depth_sum) / double(callbacks), depth_max,
       stat_rate_milli_.load(std::memory_order_relaxed) / 1000.0, xruns,
       clipped,
       played ? 100.0 * double(clipped) / double(played) : 0.0,
+      double(callback_us_sum) / double(callbacks), callback_us_max,
       odd_frames ? fmt::format(", UNEXPECTED framesPerCallback {}", odd_frames)
                  : "");
 }
