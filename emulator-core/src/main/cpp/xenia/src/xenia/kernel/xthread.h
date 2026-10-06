@@ -601,6 +601,11 @@ class XThread : public XObject, public cpu::Thread {
     // Same, for holding the global critical region. Diagnostic only - yielding
     // there would let a co-resident fiber re-enter the recursive lock.
     uint32_t preempt_defers_lock = 0;
+
+    // guest_yield_sleep_us: NtYieldExecution calls that found nothing else to
+    // run, each soon after the last, and the raw tick of the latest.
+    uint32_t empty_yield_streak = 0;
+    uint64_t empty_yield_tick = 0;
   };
   SchedulerLinks& scheduler_links() { return scheduler_links_; }
 

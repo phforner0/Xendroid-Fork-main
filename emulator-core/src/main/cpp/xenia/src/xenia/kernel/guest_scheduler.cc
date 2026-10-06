@@ -40,6 +40,15 @@ DEFINE_uint32(
     "threads of different CPUs - a diagnostic for races that need truly "
     "parallel threads.",
     "Kernel");
+DEFINE_uint32(
+    guest_yield_sleep_us, 0,
+    "Experimental: once a guest thread has called NtYieldExecution with "
+    "nothing else to run on its CPU 256 times in a row, each within 10 us of "
+    "the last (a spin-wait), sleep its dispatch thread this many microseconds "
+    "per further call instead of returning at once, giving the host core "
+    "back. Delays the spinner's reaction to new work by up to as much. 0 - "
+    "off. Read at run time (debug.xendroid.yield_sleep_us on Android).",
+    "Kernel");
 
 namespace xe {
 namespace kernel {
@@ -855,7 +864,25 @@ bool GuestScheduler::YieldExecution() {
   // quantum, as with YieldCurrentThread's fast path: the watchdog preempts a
   // spinner whether or not anything is ready. Testing the clock here instead
   // cost a third of the spinning CPUs' time in clock_gettime.
-  if (NothingElseToRun(XThread::GetCurrentThread())) {
+  XThread* self = XThread::GetCurrentThread();
+  if (NothingElseToRun(self)) {
+    const uint32_t sleep_us = cvars::guest_yield_sleep_us;
+    if (sleep_us && ticks_per_us_ > 0.0) {
+      // A spin-wait is a long run of empty yields close together; a thread
+      // back from doing work between them starts a new run.
+      auto& links = self->scheduler_links();
+      const uint64_t now = Clock::host_tick_count_raw();
+      links.empty_yield_streak =
+          now - links.empty_yield_tick <= uint64_t(ticks_per_us_ * 10.0)
+              ? links.empty_yield_streak + 1
+              : 0;
+      links.empty_yield_tick = now;
+      if (links.empty_yield_streak >= 256) {
+        xe::threading::NanoSleep(uint64_t(sleep_us) * 1000);
+        // The sleep is not a gap in the spin.
+        links.empty_yield_tick = Clock::host_tick_count_raw();
+      }
+    }
     return false;
   }
   return YieldCurrentThread(true);
