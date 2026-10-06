@@ -63,9 +63,9 @@ AAudioAudioDriver::AAudioAudioDriver(Memory* memory,
       channel_samples_(channels == 6 ? 256 : 768),
       submit_samples_(channels * (channels == 6 ? 256 : 768)),
       host_block_samples_(host_frame_channels_ *
-                          (channels == 6 ? 256 : 768)) {
+                          (channels == 6 ? 256 : 768)),
+      renderer_(channels == 6 ? 256 : 768, channels) {
   assert_true(channels == 6 || channels == 2);
-  last_block_.resize(host_block_samples_, 0.0f);
 }
 
 AAudioAudioDriver::~AAudioAudioDriver() {
@@ -190,11 +190,10 @@ void AAudioAudioDriver::Pause() {
 
 void AAudioAudioDriver::Resume() {
   std::unique_lock<std::mutex> stream_guard(stream_mutex_);
-  // Resuming at the rate the drained queue asked for would play slow; block
-  // position and resampler history carry over, so playback stays continuous.
-  rate_ = 1.0f;
-  conceal_gain_ = 1.0f;
-  gap_blocks_ = 0;
+  // Resuming at the rate the drained queue asked for would play slow; the
+  // next callback starts the rate over (block position and resampler history
+  // carry over, so playback stays continuous).
+  rate_reset_.store(true, std::memory_order_release);
   stat_rate_milli_.store(1000, std::memory_order_relaxed);
   if (stream_initialized_ && stream_) {
     AAudioStream_requestStart(stream_);
@@ -232,6 +231,9 @@ aaudio_data_callback_result_t AAudioAudioDriver::AudioCallback(
 
   driver->stat_callbacks_.fetch_add(1, std::memory_order_relaxed);
 
+  if (driver->rate_reset_.exchange(false, std::memory_order_acquire)) {
+    driver->rate_ = 1.0f;
+  }
   // Queue depth steers the resample rate, slewed to avoid zipper noise: a
   // producer below real time bends pitch instead of gapping.
   uint32_t depth_now;
@@ -253,43 +255,30 @@ aaudio_data_callback_result_t AAudioAudioDriver::AudioCallback(
       static_cast<uint32_t>(driver->rate_ * 1000.0f + 0.5f),
       std::memory_order_relaxed);
 
-  int32_t frames_done = 0;
-  uint32_t releases = 0;
-  bool gapped = false;
-  while (frames_done < numFrames) {
-    while (driver->resample_frac_ >= 1.0f) {
-      driver->resample_frac_ -= 1.0f;
-      if (driver->last_block_pos_ >= driver->channel_samples_) {
-        driver->LoadNextBlock(releases, gapped);
-      }
-      driver->prev_l_ = driver->cur_l_;
-      driver->prev_r_ = driver->cur_r_;
-      driver->cur_l_ = driver->last_block_[driver->last_block_pos_ * 2 + 0];
-      driver->cur_r_ = driver->last_block_[driver->last_block_pos_ * 2 + 1];
-      driver->last_block_pos_++;
-    }
-    const float f = driver->resample_frac_;
-    output_buffer[frames_done * 2 + 0] =
-        driver->prev_l_ + f * (driver->cur_l_ - driver->prev_l_);
-    output_buffer[frames_done * 2 + 1] =
-        driver->prev_r_ + f * (driver->cur_r_ - driver->prev_r_);
-    frames_done++;
-    driver->resample_frac_ += driver->rate_;
+  // AAudio has no stream volume control, so the gain is applied in software.
+  const float gain = driver->driver_volume_.load(std::memory_order_relaxed) *
+                     (float(ae::EffectiveVolume()) / 100.0f);
+  const AudioBlockRenderer::Result result = driver->renderer_.Render(
+      output_buffer, numFrames, driver->rate_, gain,
+      [driver]() { return driver->NextGuestBlock(); },
+      [driver](const float* block) { driver->ReturnGuestBlock(block); });
+  if (result.clipped) {
+    driver->stat_clipped_.fetch_add(result.clipped, std::memory_order_relaxed);
   }
 
   // One tick per block consumed, so pacing holds when the callback size is
   // not a whole block. Tick once on underrun to keep the guest engine running.
-  if (releases == 0 && gapped) {
+  uint32_t releases = result.blocks;
+  if (releases == 0 && result.gaps) {
     releases = 1;
   }
   for (uint32_t i = 0; i < releases; ++i) {
     driver->semaphore_->Release(1, nullptr);
   }
-
   return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }
 
-void AAudioAudioDriver::LoadNextBlock(uint32_t& releases, bool& gapped) {
+const float* AAudioAudioDriver::NextGuestBlock() {
   float* buffer = nullptr;
   uint32_t depth = 0;
   {
@@ -314,103 +303,18 @@ void AAudioAudioDriver::LoadNextBlock(uint32_t& releases, bool& gapped) {
     if (played_once_) {
       ae::RunStats().concealed.fetch_add(1, std::memory_order_relaxed);
     }
-    gapped = true;
-    ConcealNextBlock();
-    last_block_pos_ = 0;
-    return;
-  }
-  if (frame_channels_ == 6) {
-    conversion::sequential_6_BE_to_interleaved_2_LE(last_block_.data(), buffer,
-                                                    channel_samples_);
-  } else {
-    // Media player: already interleaved host endian stereo.
-    std::memcpy(last_block_.data(), buffer,
-                host_block_samples_ * sizeof(float));
+    return nullptr;
   }
   if (!played_once_) {
     played_once_ = true;
     ae::RunStats().blocks.fetch_add(1, std::memory_order_relaxed);
   }
-  ApplyGainAndClamp();
-  ApplyFadeIn();
-  last_block_valid_ = true;
-  last_block_pos_ = 0;
-  gap_blocks_ = 0;
-  conceal_gain_ = 1.0f;
-  {
-    std::unique_lock<std::mutex> guard(frames_mutex_);
-    frames_unused_.push(buffer);
-  }
-  ++releases;
+  return buffer;
 }
 
-void AAudioAudioDriver::ConcealNextBlock() {
-  // Nothing to repeat yet: startup, or straight after a mute.
-  if (!last_block_valid_) {
-    std::memset(last_block_.data(), 0, host_block_samples_ * sizeof(float));
-    return;
-  }
-
-  // Repeat the last block, decaying it in place: held flat it would buzz at
-  // the block rate, decayed it fades out instead of slamming to silence.
-  conceal_gain_ *= 0.6f;
-  if (conceal_gain_ < 0.002f) {
-    std::memset(last_block_.data(), 0, host_block_samples_ * sizeof(float));
-    last_block_valid_ = false;
-    gap_blocks_++;
-    fade_in_pending_ = true;
-    return;
-  }
-  const int32_t frames = static_cast<int32_t>(channel_samples_);
-  const float step = frames > 0 ? (0.6f - 1.0f) / frames : 0.0f;
-  for (int32_t f = 0; f < frames; ++f) {
-    const float g = 1.0f + step * f;
-    last_block_[f * 2 + 0] *= g;
-    last_block_[f * 2 + 1] *= g;
-  }
-  gap_blocks_++;
-  fade_in_pending_ = true;
-}
-
-void AAudioAudioDriver::ApplyGainAndClamp() {
-  const uint32_t master = ae::EffectiveVolume();
-  const float gain =
-      driver_volume_.load(std::memory_order_relaxed) * (master / 100.0f);
-
-  // The 5.1->2.0 fold peaks at ~2.9 gain, so loud content can exceed full
-  // scale. Bound it here so the result is the same on every device, and count
-  // it: the fix for persistent clipping is less gain, not a harder limit.
-  uint32_t clipped = 0;
-  for (uint32_t i = 0; i < host_block_samples_; ++i) {
-    float s = last_block_[i] * gain;
-    if (s > 1.0f) {
-      s = 1.0f;
-      ++clipped;
-    } else if (s < -1.0f) {
-      s = -1.0f;
-      ++clipped;
-    }
-    last_block_[i] = s;
-  }
-  if (clipped) {
-    stat_clipped_.fetch_add(clipped, std::memory_order_relaxed);
-  }
-}
-
-void AAudioAudioDriver::ApplyFadeIn() {
-  if (!fade_in_pending_) {
-    return;
-  }
-  fade_in_pending_ = false;
-  // Ramp the first real block back in so the recovery edge is a slope, not a
-  // step. 64 frames is ~1.3ms: inaudible as a level change, enough to kill the
-  // click.
-  const int32_t ramp = 64;
-  for (int32_t f = 0; f < ramp; ++f) {
-    const float g = static_cast<float>(f) / ramp;
-    last_block_[f * 2 + 0] *= g;
-    last_block_[f * 2 + 1] *= g;
-  }
+void AAudioAudioDriver::ReturnGuestBlock(const float* block) {
+  std::unique_lock<std::mutex> guard(frames_mutex_);
+  frames_unused_.push(const_cast<float*>(block));
 }
 
 void AAudioAudioDriver::LogAndResetStats() {

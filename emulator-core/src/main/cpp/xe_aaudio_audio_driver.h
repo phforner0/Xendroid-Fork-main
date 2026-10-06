@@ -21,6 +21,7 @@
 
 #include "xenia/apu/audio_driver.h"
 #include "xenia/base/cvar.h"
+#include "xe_audio_block_renderer.h"
 #include "xe_audio_buffer_tuner.h"
 
 DECLARE_uint32(apu_aaudio_buffer_bursts);
@@ -41,13 +42,13 @@ class AAudioAudioDriver : public AudioDriver {
                     bool need_format_conversion = true);
   ~AAudioAudioDriver() override;
 
-  bool Initialize();
+  bool Initialize() override;
     void Pause() override;
     void Resume() override;
     void SetVolume(float volume) override;
   size_t GetQueuedFrameCount() override;
   void SubmitFrame(float* frame) override;
-  void Shutdown();
+  void Shutdown() override;
 
  protected:
   static aaudio_data_callback_result_t AudioCallback(
@@ -60,12 +61,6 @@ class AAudioAudioDriver : public AudioDriver {
       AAudioStream* stream,
       void* userdata,
       aaudio_result_t error);
-
-  // Callback thread only.
-  void ApplyFadeIn();
-  // AAudio has no stream volume control, so this is done in software.
-  // Callback thread only.
-  void ApplyGainAndClamp();
 
   // (Re)opens the stream on the current default device; caller holds stream_mutex_.
   bool BuildStream();
@@ -108,29 +103,23 @@ class AAudioAudioDriver : public AudioDriver {
   std::stack<float*> frames_unused_ = {};
   std::mutex frames_mutex_ = {};
 
-  // Underrun concealment: silence would put a step at both edges of every
-  // gap, a ~187Hz click train at a 5.3ms block. Callback thread only.
-  std::vector<float> last_block_;
-  bool last_block_valid_ = false;
-  // Frames of last_block_ already handed to the device. A callback size that
-  // is not exactly channel_samples_ would otherwise drop or duplicate audio.
-  uint32_t last_block_pos_ = channel_samples_;
-  uint32_t gap_blocks_ = 0;
+  // Conversion, gain, gap concealment and resampling of the guest blocks
+  // (xe_audio_block_renderer.h). Callback thread only.
+  AudioBlockRenderer renderer_;
   // A guest block has reached the device at least once (run summary counts).
+  // Callback thread only.
   bool played_once_ = false;
-
-  bool fade_in_pending_ = false;
 
   // Rate control state; callback thread only.
   float rate_ = 1.0f;
-  float resample_frac_ = 0.0f;
-  float prev_l_ = 0.0f, prev_r_ = 0.0f;
-  float cur_l_ = 0.0f, cur_r_ = 0.0f;
-  float conceal_gain_ = 1.0f;
+  // Set by Resume, taken by the next callback: the rate starts over at 1 there
+  // (a write from Resume's thread could race a callback still running).
+  std::atomic<bool> rate_reset_{false};
 
-  // Next source block: a queued frame if there is one, else a decayed repeat.
-  void LoadNextBlock(uint32_t& releases, bool& gapped);
-  void ConcealNextBlock();
+  // The next queued guest block, or nullptr; and one given back once played.
+  // Callback thread only (they take frames_mutex_ for the queues).
+  const float* NextGuestBlock();
+  void ReturnGuestBlock(const float* block);
 
   // Written by the realtime callback, drained by recovery_thread_: relaxed
   // atomics only, nothing that could block the callback.
