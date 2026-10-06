@@ -51,6 +51,8 @@ public class Emulator extends xendroid.emulator.Emulator{
     public native String[] changed_settings();
     public native void set_presentation_mode(int mode);
     public native void set_scaling_effect(int effect);
+    // The in-game menu's GPU options (core: gpu_live_options.h), by ordinal; Integer.MIN_VALUE: as configured.
+    public native void set_live_option(int option, int value);
     public native void set_color_filter(int mode);
     /** The in-game menu's Image options; a negative value leaves the Settings value. */
     public native void set_image_tuning(int antialiasing, float casSharpness, float fsrSharpnessReduction, int dither);

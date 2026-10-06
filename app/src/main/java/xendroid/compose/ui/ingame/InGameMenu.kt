@@ -639,6 +639,10 @@ internal fun InGameAction.title(): String = stringResource(
         InGameAction.SUSTAINED_PERFORMANCE -> R.string.menu_t_sustained
         InGameAction.PERFORMANCE_HINTS -> R.string.menu_hints
         InGameAction.BACKGROUND_POLICY -> R.string.menu_background
+        InGameAction.SMOOTH_SHADERS -> R.string.menu_t_smooth_shaders
+        InGameAction.MSAA_4X_AS_2X -> R.string.menu_t_msaa_2x
+        InGameAction.CUTOUT_TRANSPARENCY -> R.string.menu_t_cutout
+        InGameAction.SHADING_RATE -> R.string.menu_t_shading_rate
         InGameAction.PERFORMANCE_HUD -> R.string.menu_t_hud
         InGameAction.HUD_LAYOUT -> R.string.menu_t_hud_layout
         InGameAction.HUD_STYLE -> R.string.menu_t_hud_detail
@@ -669,6 +673,7 @@ internal fun InGameAction.title(): String = stringResource(
         InGameAction.MAKE_GLOBAL -> R.string.menu_t_global
         InGameAction.MARK_SCENE -> R.string.menu_t_mark
         InGameAction.SHARE_LOGS -> R.string.menu_share_logs
+        InGameAction.SCREENSHOT -> R.string.menu_t_screenshot
         InGameAction.RESUME -> R.string.menu_continue
         InGameAction.QUIT -> R.string.menu_exit_game
         InGameAction.MORE_OPTIONS -> R.string.menu_fewer_options

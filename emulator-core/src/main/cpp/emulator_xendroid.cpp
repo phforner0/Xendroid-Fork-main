@@ -23,6 +23,7 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/frame_stats.h"
 #include "xenia/ui/presentation_runtime.h"
+#include "xenia/gpu/gpu_live_options.h"
 #include "third_party/lsfg/lsfg_dll.h"
 #include "xenia/apu/apu_flags.h"
 #include "audio_runtime.h"
@@ -1290,6 +1291,13 @@ static jlongArray j_presenter_work(JNIEnv* env, jobject thiz) {
     if (array) env->SetLongArrayRegion(array, 0, 3, values);
     return array;
 }
+// The in-game menu's GPU options (gpu_live_options.h), from the command
+// processor's next frame.
+static void j_set_live_option(JNIEnv* env, jobject thiz, jint option, jint value) {
+    if (option >= 0 && option < jint(xe::gpu::LiveOption::kCount)) {
+        xe::gpu::LiveOptionValue(xe::gpu::LiveOption(option)).store(int32_t(value), std::memory_order_relaxed);
+    }
+}
 static void j_set_audio_volume(JNIEnv* env, jobject thiz, jint percent) {
     ae::SetSessionVolume(percent);
 }
@@ -2055,6 +2063,7 @@ int register_xendroid_Emulator(JNIEnv* env){
             ,{"changed_settings", "()[Ljava/lang/String;", (void *) j_changed_settings}
             ,{"set_presentation_mode", "(I)V", (void *) j_set_presentation_mode}
             ,{"set_scaling_effect", "(I)V", (void *) j_set_scaling_effect}
+            ,{"set_live_option", "(II)V", (void *) j_set_live_option}
             ,{"set_color_filter", "(I)V", (void *) j_set_color_filter}
             ,{"set_image_tuning", "(IFFI)V", (void *) j_set_image_tuning}
             ,{"active_gpu_label", "()Ljava/lang/String;", (void *) j_active_gpu_label}

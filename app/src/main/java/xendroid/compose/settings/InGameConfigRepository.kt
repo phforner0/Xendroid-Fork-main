@@ -23,6 +23,25 @@ class InGameConfigRepository(private val store: ConfigStore) {
         return FpsConfigSnapshot(titleId, globalLimit, gameLimit)
     }
 
+    /** The in-game menu's GPU options for [titleId] as the core read them at boot: its own value,
+     *  else the global one, else the core's default (switches as 1 and 0, the shading rate 0..3). */
+    fun gpuLiveValues(titleId: String?): Map<xendroid.compose.core.GpuLiveOption, Int> {
+        val game = titleId?.let { store.openGameConfig(it) }
+        val global = store.openLiveSnapshot()
+        try {
+            return xendroid.compose.core.GpuLiveOption.entries.associateWith { option ->
+                val (section, name) = option.key.split('|', limit = 2)
+                val raw = game?.getString(section, name) ?: global.getString(section, name)
+                if (option == xendroid.compose.core.GpuLiveOption.SHADING_RATE) {
+                    ConfigValueShape.parseInt(raw, option.default).coerceIn(0, 3)
+                } else if (ConfigValueShape.parseBool(raw, option.default != 0)) 1 else 0
+            }
+        } finally {
+            game?.closeDiscard()
+            global.closeDiscard()
+        }
+    }
+
     /** Whether guest vblanks are capped at 50/60 Hz for [titleId]: its own setting, else the
      *  global one (on by default). Read when a run starts, as the core read it at boot. */
     fun guestRefreshCap(titleId: String?): Boolean {

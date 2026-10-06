@@ -156,4 +156,18 @@
         <item quantity="one">%1$d kept</item>
         <item quantity="other">%1$d kept</item>
     </plurals>
+    <string name="menu_group_gpu">GPU performance</string>
+    <string name="menu_t_smooth_shaders">Shaders without stutter</string>
+    <string name="menu_smooth_shaders_note">New shaders never hold a frame: a brief pop-in the first time something appears instead of a stall</string>
+    <string name="menu_t_msaa_2x">4× MSAA as 2×</string>
+    <string name="menu_msaa_2x_note">Faster in games with 4× MSAA; edges a little less smooth</string>
+    <string name="menu_t_cutout">Cut-out transparency</string>
+    <string name="menu_cutout_note">Faster foliage, fences and hair, with hard edges</string>
+    <string name="menu_t_shading_rate">Shading rate</string>
+    <string name="menu_shading_rate_full">Every pixel</string>
+    <string name="menu_shading_rate_note">Above 1 pixel, textures and lighting get coarser inside shapes; edges stay sharp</string>
+    <string name="menu_t_screenshot">Screenshot</string>
+    <string name="menu_screenshot_note">The game\'s picture, without the menu or the HUD, saved to Pictures/Xendroid+</string>
+    <string name="host_screenshot_saved">Screenshot saved to Pictures/Xendroid+</string>
+    <string name="host_screenshot_failed">Couldn\'t save the screenshot</string>
 </resources>

@@ -128,7 +128,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val TOUCH_KEY = "HID|show_touch_overlay"
         private const val VOLUME_KEY = "APU|volume"
         private const val IMAGE_LIVE = "image"
-        private val MENU_CONFIG_KEYS = listOf(FPS_KEY, SCALING_KEY, AA_KEY, CAS_KEY, DITHER_KEY, TOUCH_KEY, VOLUME_KEY)
+        private val MENU_CONFIG_KEYS = listOf(FPS_KEY, SCALING_KEY, AA_KEY, CAS_KEY, DITHER_KEY, TOUCH_KEY, VOLUME_KEY) +
+            xendroid.compose.core.GpuLiveOption.entries.map { it.key }
         private val FPS_CHOICES = listOf(0, 30, 45, 60, 90, 120)
         private val HUD_DETAILS = listOf(xendroid.compose.core.HudDetail.COMPACT, xendroid.compose.core.HudDetail.FULL,
             xendroid.compose.core.HudDetail.PANEL)
@@ -405,6 +406,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val sessionChanges = mutableIntStateOf(0)
     /** Round 2: the config keys this game has its own value for (the menu's "this game" tags). */
     private val gameOwnKeys = mutableStateOf<Set<String>>(emptySet())
+    /** The in-game menu's GPU options as the core runs them (read at boot, then the menu's). */
+    private val gpuLive = mutableStateOf<Map<xendroid.compose.core.GpuLiveOption, Int>>(emptyMap())
     /** Round 2: each changed setting's live value before the session's first change of it, for Undo. */
     private val liveBefore = mutableMapOf<String, Any?>()
     /** Round 2: the touch controls' look (the layout file's globals, mirrored for the menu's actions). */
@@ -1626,6 +1629,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                 runCatching { inGameConfig.driverPath(activeTitle) }
                                                     .onFailure { Log.w(TAG, "Reading the driver setting failed", it) }.getOrNull()
                                             }
+                                            gpuLive.value = withContext(Dispatchers.IO) {
+                                                runCatching { inGameConfig.gpuLiveValues(activeTitle) }
+                                                    .onFailure { Log.w(TAG, "Reading the GPU options failed", it) }.getOrNull()
+                                            } ?: emptyMap()
                                             if (bootStatus.value != null) loadingDetails.value = withContext(Dispatchers.IO) {
                                                 runCatching { loadingDetailsOf(activeTitle) }
                                                     .onFailure { Log.w(TAG, "Reading what the game starts with failed", it) }.getOrNull()
@@ -3156,6 +3163,16 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 note = stringResource(R.string.menu_refresh_rate_value, requestedRefresh.value?.let { "${it.roundToInt()} Hz" } ?: stringResource(R.string.menu_auto),
                     ((if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else @Suppress("DEPRECATION") windowManager.defaultDisplay.refreshRate)
                         ?.roundToInt()?.let { "$it Hz" }) ?: "—")),
+            InGameAction.SMOOTH_SHADERS to MenuValue(on = gpuValue(xendroid.compose.core.GpuLiveOption.ASYNC_SKIP_DRAWS) != 0,
+                own = xendroid.compose.core.GpuLiveOption.ASYNC_SKIP_DRAWS.key in own, text = stringResource(R.string.menu_smooth_shaders_note)),
+            InGameAction.MSAA_4X_AS_2X to MenuValue(on = gpuValue(xendroid.compose.core.GpuLiveOption.MSAA_4X_AS_2X) != 0,
+                own = xendroid.compose.core.GpuLiveOption.MSAA_4X_AS_2X.key in own, text = stringResource(R.string.menu_msaa_2x_note)),
+            InGameAction.CUTOUT_TRANSPARENCY to MenuValue(on = gpuValue(xendroid.compose.core.GpuLiveOption.ALPHA_TO_COVERAGE_AS_TEST) != 0,
+                own = xendroid.compose.core.GpuLiveOption.ALPHA_TO_COVERAGE_AS_TEST.key in own, text = stringResource(R.string.menu_cutout_note)),
+            InGameAction.SHADING_RATE to MenuValue(text = when (gpuValue(xendroid.compose.core.GpuLiveOption.SHADING_RATE)) {
+                    1 -> "2×1"; 2 -> "1×2"; 3 -> "2×2"; else -> stringResource(R.string.menu_shading_rate_full) },
+                own = xendroid.compose.core.GpuLiveOption.SHADING_RATE.key in own, note = stringResource(R.string.menu_shading_rate_note)),
+            InGameAction.SCREENSHOT to MenuValue(text = stringResource(R.string.menu_screenshot_note)),
             InGameAction.SUSTAINED_PERFORMANCE to MenuValue(on = sustainedMode.value, enabled = sustainedAvailable.value,
                 text = if (!sustainedAvailable.value) unavailable else null),
             InGameAction.PERFORMANCE_HINTS to MenuValue(on = performanceHints.requested, text = performanceHintsLabel.value),
@@ -3287,6 +3304,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 phoneControllers.toggle()
                 refreshPhoneControllers()
             }
+            InGameAction.SMOOTH_SHADERS -> toggleGpuLive(xendroid.compose.core.GpuLiveOption.ASYNC_SKIP_DRAWS)
+            InGameAction.MSAA_4X_AS_2X -> toggleGpuLive(xendroid.compose.core.GpuLiveOption.MSAA_4X_AS_2X)
+            InGameAction.CUTOUT_TRANSPARENCY -> toggleGpuLive(xendroid.compose.core.GpuLiveOption.ALPHA_TO_COVERAGE_AS_TEST)
+            InGameAction.SCREENSHOT -> takeScreenshot()
             InGameAction.SUSTAINED_PERFORMANCE -> {
                 val enabled = !sustainedMode.value
                 sustainedAvailable.value = sustainedPerformance(this, enabled)
@@ -3467,6 +3488,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         InGameAction.WINFG -> presentationState.value.let { it.requested && it.engine == 0 }
         InGameAction.LSFG -> presentationState.value.let { it.requested && it.engine == 1 }
         InGameAction.SUSTAINED_PERFORMANCE -> sustainedMode.value
+        InGameAction.SMOOTH_SHADERS -> gpuValue(xendroid.compose.core.GpuLiveOption.ASYNC_SKIP_DRAWS) != 0
+        InGameAction.MSAA_4X_AS_2X -> gpuValue(xendroid.compose.core.GpuLiveOption.MSAA_4X_AS_2X) != 0
+        InGameAction.CUTOUT_TRANSPARENCY -> gpuValue(xendroid.compose.core.GpuLiveOption.ALPHA_TO_COVERAGE_AS_TEST) != 0
         InGameAction.PERFORMANCE_HINTS -> performanceHints.requested
         InGameAction.PERFORMANCE_HUD -> performanceOverlayEnabled.value
         InGameAction.TOUCH_CONTROLS -> showTouchOverlay.value == true && !overlayHiddenByController.value
@@ -3500,6 +3524,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun cycleMenuValue(action: InGameAction, step: Int) {
         fun <T> around(list: List<T>, current: T): T = list[(list.indexOf(current).coerceAtLeast(0) + step + list.size) % list.size]
         when (action) {
+            InGameAction.SHADING_RATE -> setGpuLive(xendroid.compose.core.GpuLiveOption.SHADING_RATE, around((0..3).toList(), gpuValue(xendroid.compose.core.GpuLiveOption.SHADING_RATE)))
             InGameAction.SCALING_EFFECT -> {
                 rememberLive(SCALING_KEY, scalingEffect.intValue)
                 scalingEffect.intValue = around((-1..5).toList(), scalingEffect.intValue)
@@ -3801,6 +3826,64 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             InGameChanges.DISPLAY_MODE -> (value as? Int)?.let { session.setPresentationMode(it); presentationState.value = session.presentationState() }
             InGameChanges.COLOR_FILTER -> (value as? Int)?.let { session.setColorFilter(it); presentationState.value = session.presentationState() }
             InGameChanges.REFRESH_HZ -> { requestedRefresh.value = value as? Float; selectRefresh(this, requestedRefresh.value) }
+            else -> xendroid.compose.core.GpuLiveOption.entries.firstOrNull { it.key == key }?.let { option ->
+                (value as? Int)?.let { gpuLive.value = gpuLive.value + (option to it); session.setLiveOption(option, it) }
+            }
+        }
+    }
+
+    private fun gpuValue(option: xendroid.compose.core.GpuLiveOption): Int = gpuLive.value[option] ?: option.default
+
+    /** A GPU option from the in-game menu: in the core from its next frame, and kept for the game. */
+    private fun setGpuLive(option: xendroid.compose.core.GpuLiveOption, value: Int) {
+        rememberLive(option.key, gpuValue(option))
+        gpuLive.value = gpuLive.value + (option to value)
+        session.setLiveOption(option, value)
+        keepChange(option.key, if (option == xendroid.compose.core.GpuLiveOption.SHADING_RATE) value.toString()
+            else xendroid.compose.settings.ConfigValueShape.bool(value != 0))
+        recordEvent("gpu option", "${option.key} = $value")
+    }
+
+    private fun toggleGpuLive(option: xendroid.compose.core.GpuLiveOption) = setGpuLive(option, if (gpuValue(option) != 0) 0 else 1)
+
+    /** The game's picture as its surface holds it (no menu, no HUD), saved to Pictures/Xendroid+. */
+    private fun takeScreenshot() {
+        val view = surfaceView ?: return
+        if (view.width <= 0 || view.height <= 0) return
+        val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+        android.view.PixelCopy.request(view, bitmap, { result ->
+            lifecycleScope.launch {
+                val saved = result == android.view.PixelCopy.SUCCESS && withContext(Dispatchers.IO) {
+                    runCatching { saveScreenshot(bitmap) }.onFailure { Log.w(TAG, "Saving the screenshot failed", it) }.isSuccess
+                }
+                bitmap.recycle()
+                if (!saved) Log.w(TAG, "Screenshot not taken (PixelCopy result $result)")
+                Toast.makeText(this@EmulatorHostActivity,
+                    getString(if (saved) R.string.host_screenshot_saved else R.string.host_screenshot_failed), Toast.LENGTH_SHORT).show()
+            }
+        }, android.os.Handler(mainLooper))
+    }
+
+    private fun saveScreenshot(bitmap: android.graphics.Bitmap) {
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "Xendroid+_${activeTitleState.value ?: "game"}_$stamp.png")
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Xendroid+")
+            put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val resolver = contentResolver
+        val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: error("MediaStore refused the entry")
+        try {
+            resolver.openOutputStream(uri)?.use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                ?: error("MediaStore gave no stream")
+            values.clear()
+            values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        } catch (t: Throwable) {
+            resolver.delete(uri, null, null)
+            throw t
         }
     }
 

@@ -32,6 +32,7 @@
 #include "xenia/base/xxhash.h"
 #include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/gpu_flags.h"
+#include "xenia/gpu/gpu_live_options.h"
 #include "xenia/gpu/packet_disassembler.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/shader.h"
@@ -62,6 +63,7 @@ DECLARE_bool(spirv_specialize_no_alpha);
 DECLARE_bool(vulkan_texture_load_coalesced);
 DECLARE_bool(vulkan_texture_load_to_image);
 DECLARE_bool(vulkan_direct_host_resolve);
+DECLARE_bool(vulkan_async_skip_draws);
 DECLARE_bool(merge_tiling_bands);
 DECLARE_bool(merge_tiling_bands_call_sites);
 DECLARE_bool(merge_tiling_bands_log);
@@ -335,6 +337,33 @@ void PollDebugPropertyOverride(const char* property, const char* cvar_name,
 }
 #endif
 
+// The in-game menu's GPU options (gpu_live_options.h), every frame: they
+// change only when the player picks another value.
+void ApplyLiveOptions() {
+  auto apply_bool = [](LiveOption option, const char* cvar_name, bool& cvar) {
+    const int32_t value =
+        LiveOptionValue(option).load(std::memory_order_relaxed);
+    if (value == kLiveOptionUnset || cvar == (value != 0)) {
+      return;
+    }
+    cvar = value != 0;
+    XELOGI("In-game menu: {} = {}", cvar_name, cvar);
+  };
+  apply_bool(LiveOption::kAsyncSkipDraws, "vulkan_async_skip_draws",
+             cvars::vulkan_async_skip_draws);
+  apply_bool(LiveOption::kMsaa4xAs2x, "msaa_4x_as_2x", cvars::msaa_4x_as_2x);
+  apply_bool(LiveOption::kAlphaToCoverageAsAlphaTest,
+             "alpha_to_coverage_as_alpha_test",
+             cvars::alpha_to_coverage_as_alpha_test);
+  const int32_t shading_rate =
+      LiveOptionValue(LiveOption::kShadingRate).load(std::memory_order_relaxed);
+  if (shading_rate >= 0 && shading_rate <= 3 &&
+      cvars::vulkan_shading_rate != shading_rate) {
+    cvars::vulkan_shading_rate = shading_rate;
+    XELOGI("In-game menu: vulkan_shading_rate = {}", shading_rate);
+  }
+}
+
 // On-device A/B switches that need no title restart (the per-game config is
 // only applied at launch), e.g. `adb shell setprop
 // debug.xendroid.resolve_clear_in_guest_pass 0|1`. An empty value stops the
@@ -344,6 +373,7 @@ void PollDebugPropertyOverride(const char* property, const char* cvar_name,
 // Polled every 30 guest frames from the command processor thread, which is
 // the only reader of these cvars.
 void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
+  ApplyLiveOptions();
 #if defined(__ANDROID__)
   static uint32_t frames_since_poll = 0;
   if (++frames_since_poll < 30) {

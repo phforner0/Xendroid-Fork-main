@@ -156,4 +156,18 @@
         <item quantity="one">%1$d guardada</item>
         <item quantity="other">%1$d guardadas</item>
     </plurals>
+    <string name="menu_group_gpu">Desempenho da GPU</string>
+    <string name="menu_t_smooth_shaders">Shaders sem travadas</string>
+    <string name="menu_smooth_shaders_note">Nenhum quadro espera um shader novo: na primeira vez que algo aparece, um breve pop-in em vez de uma travada</string>
+    <string name="menu_t_msaa_2x">MSAA 4× como 2×</string>
+    <string name="menu_msaa_2x_note">Mais rápido nos jogos com MSAA 4×; bordas um pouco menos suaves</string>
+    <string name="menu_t_cutout">Transparência recortada</string>
+    <string name="menu_cutout_note">Folhagens, grades e cabelos mais rápidos, com bordas duras</string>
+    <string name="menu_t_shading_rate">Taxa de sombreamento</string>
+    <string name="menu_shading_rate_full">Todo pixel</string>
+    <string name="menu_shading_rate_note">Acima de 1 pixel, texturas e luz ficam mais grossas dentro das formas; as bordas continuam nítidas</string>
+    <string name="menu_t_screenshot">Capturar tela</string>
+    <string name="menu_screenshot_note">A imagem do jogo, sem o menu e o HUD, salva em Imagens/Xendroid+</string>
+    <string name="host_screenshot_saved">Captura salva em Imagens/Xendroid+</string>
+    <string name="host_screenshot_failed">Não foi possível salvar a captura</string>
 </resources>
