@@ -1,0 +1,27 @@
+{
+  "name": "xendroid-plus-site",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Site oficial do Xendroid+: landing page, documentação e ferramenta interativa, gerados a partir do repositório.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check-site.mjs",
+    "serve": "node scripts/serve.mjs",
+    "test": "node --test tests/",
+    "ci": "node scripts/build.mjs --strict && node scripts/check-site.mjs && node --test tests/"
+  },
+  "dependencies": {
+    "markdown-it": "15.0.2",
+    "minisearch": "7.2.0",
+    "smol-toml": "1.9.0",
+    "subset-font": "2.9.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "playwright": "1.63.0"
+  }
+}
