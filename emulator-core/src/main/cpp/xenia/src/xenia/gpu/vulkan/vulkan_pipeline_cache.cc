@@ -77,14 +77,17 @@ DEFINE_int32(
     "0 to disable multithreaded pipeline creation.",
     "Vulkan");
 DEFINE_bool(
-    vulkan_async_skip_draws, false,
+    vulkan_async_skip_draws, true,
     "With asynchronous shader compilation: don't wait for pipeline creation "
     "at the submission boundary - draws whose pipeline hasn't finished "
     "compiling yet are dropped for that submission (brief pop-in of new "
     "objects instead of any wait). When false, the GPU thread waits at the "
     "end of each submission until every pipeline it recorded is ready, so no "
-    "draw is ever lost.",
+    "draw is ever lost. On since 2026-10-06: entering Gears of War 3's Raven's "
+    "Nest with empty caches stalled 1.7 s waiting, 0.28 s with it, and every "
+    "draw was back within a second. The in-game menu switches it live.",
     "Vulkan");
+UPDATE_from_bool(vulkan_async_skip_draws, 2026, 10, 6, 12, false);
 
 DEFINE_bool(
     vulkan_placeholder_pipelines, false,
