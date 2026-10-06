@@ -26,7 +26,6 @@
     <string name="menu_unknown">desconhecido</string>
 
     <string name="menu_fg_experimental">Interpolação experimental no host; cadência e latência no aparelho ainda não validadas.</string>
-    <string name="menu_fg_gated">A geração de quadros segue restrita a builds de desenvolvimento até a validação no aparelho.</string>
     <string name="menu_graphics_note">“Esticar na próxima abertura” fica salvo; os modos de tela valem na hora para esta sessão. Quadros enviados não são a exibição medida.</string>
     <string name="menu_frame_limit_title">Limite de quadros · esta sessão</string>
     <string name="menu_live_limit">Limite agora: %1$s</string>

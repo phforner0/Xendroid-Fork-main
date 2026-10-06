@@ -160,11 +160,11 @@ val advancedActions: Set<InGameAction> = setOf(
     InGameAction.GYRO_CALIBRATE, InGameAction.UNBUFFERED_INPUT, InGameAction.MARK_SCENE,
 )
 
-/** L02: hidden in Player mode (engine internals and experiments); build gates still apply. */
+/** L02: hidden in Player mode (engine internals). Frame generation is not among them: it is in
+ *  every build and mode, off until the player turns it on. */
 val developerActions: Set<InGameAction> = setOf(
-    InGameAction.WINFG, InGameAction.WINFG_PRESET, InGameAction.LSFG, InGameAction.IMPORT_LSFG_DLL,
-    InGameAction.CLEAR_LSFG_CACHE, InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET, InGameAction.PERFORMANCE_HINTS,
-    InGameAction.BACKGROUND_POLICY, InGameAction.SUSTAINED_PERFORMANCE, InGameAction.UNBUFFERED_INPUT,
+    InGameAction.PERFORMANCE_HINTS, InGameAction.BACKGROUND_POLICY, InGameAction.SUSTAINED_PERFORMANCE,
+    InGameAction.UNBUFFERED_INPUT,
 )
 
 /** The group [action] sits in on [page]; null when it is not on that page (More options). */

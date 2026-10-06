@@ -26,7 +26,6 @@
     <string name="menu_unknown">unknown</string>
 
     <string name="menu_fg_experimental">Experimental host interpolation; hardware cadence/latency remain unvalidated.</string>
-    <string name="menu_fg_gated">Frame generation remains gated to developer/debug builds pending hardware validation.</string>
     <string name="menu_graphics_note">Stretch next launch is persistent; display modes apply live to this session. Submitted frames are not measured scanout.</string>
     <string name="menu_frame_limit_title">Frame limit · this session</string>
     <string name="menu_live_limit">Live limit: %1$s</string>

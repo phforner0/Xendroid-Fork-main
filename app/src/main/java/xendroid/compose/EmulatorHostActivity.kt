@@ -1690,7 +1690,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     } else {
                                         lastGenerated = -1L
                                     }
-                                    if (BuildConfig.DEBUG) fgNotes.value = frameGenerationNotes(fgNow)
+                                    fgNotes.value = frameGenerationNotes(fgNow)
                                     fgBudgetLabel.value = fgGovernor.current.takeIf {
                                         it.verdict != xendroid.compose.core.FrameGenerationGovernor.Verdict.OFF
                                     }?.let { "Budget (advisory, never acts): ${it.text}" }
@@ -3149,13 +3149,13 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     xendroid.compose.driver.DriverIdentity.InGame.OTHER_FOR_NEXT_START -> stringResource(R.string.menu_driver_next, label)
                 }
             }),
-            InGameAction.WINFG to MenuValue(on = presentation.requested && presentation.engine == 0, enabled = BuildConfig.DEBUG),
+            InGameAction.WINFG to MenuValue(on = presentation.requested && presentation.engine == 0),
             InGameAction.WINFG_PRESET to MenuValue(text = stringResource(listOf(R.string.menu_preset_quality, R.string.menu_preset_balanced,
-                R.string.menu_preset_performance)[fgPreset.intValue.coerceIn(0, 2)]), enabled = BuildConfig.DEBUG),
+                R.string.menu_preset_performance)[fgPreset.intValue.coerceIn(0, 2)])),
             InGameAction.LSFG to MenuValue(on = presentation.requested && presentation.engine == 1,
-                enabled = BuildConfig.DEBUG && lsfgCache.value != null && !importingLsfg),
-            InGameAction.LSFG_MULTIPLIER to MenuValue(text = "${lsfgMultiplier.intValue}×", enabled = BuildConfig.DEBUG),
-            InGameAction.LSFG_TARGET to MenuValue(text = lsfgTargetText(), enabled = BuildConfig.DEBUG),
+                enabled = lsfgCache.value != null && !importingLsfg),
+            InGameAction.LSFG_MULTIPLIER to MenuValue(text = "${lsfgMultiplier.intValue}×"),
+            InGameAction.LSFG_TARGET to MenuValue(text = lsfgTargetText()),
             // Performance
             InGameAction.FPS_LIMIT to MenuValue(options = FPS_CHOICES.map { if (it == 0) stringResource(R.string.menu_unlimited) else "$it" },
                 selected = FPS_CHOICES.indexOf(fpsLimitState.intValue), own = FPS_KEY in own,
@@ -3251,10 +3251,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 add(presentation.label)
                 fgBudgetLabel.value?.let(::add)
                 addAll(fgNotes.value)
-                add(stringResource(R.string.menu_fg_experimental))
             }
+            add(stringResource(R.string.menu_fg_experimental))
             add(stringResource(R.string.menu_image_live_note))
-            if (!BuildConfig.DEBUG && developer) add(stringResource(R.string.menu_fg_gated))
         }
         val notes = mapOf(
             InGamePage.GRAPHICS to graphicsNotes,
@@ -3288,7 +3287,6 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             menuState.value = menuState.value.toggleAdvanced()
             return
         }
-        if (!BuildConfig.DEBUG && (action == InGameAction.WINFG || action == InGameAction.LSFG)) return
         when (action) {
             InGameAction.PERFORMANCE_HINTS -> performanceHints.requested = !performanceHints.requested
             InGameAction.EXTERNAL_DISPLAY -> externalDisplay?.cycle()
@@ -3333,6 +3331,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 if (session.presentationState().engine == 1) {
                     session.setFrameGeneration(false, fgPreset.intValue, currentOutputHz())
                     restoreGenerationCap()
+                    releaseFrameGenerationRefresh()
                 }
                 lifecycleScope.launch {
                     val deleted = withContext(Dispatchers.IO) { runCatching { LsfgAssets.clear(applicationContext) } }
@@ -3606,7 +3605,6 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** Frame generation by LSFG: on or off, a multiplier by hand or an output target (15d). */
     private fun runLsfg(action: InGameAction) {
-        if (!BuildConfig.DEBUG) return
         when (action) {
             InGameAction.LSFG_MULTIPLIER -> {
                 // A multiplier chosen by hand ends the target (15d).
@@ -3621,14 +3619,20 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         val running = current.requested && current.engine == 1
         if (action != InGameAction.LSFG && !running) return
         val enabled = if (action == InGameAction.LSFG) !running else true
-        val hz = currentOutputHz()
         // 15d: a target picks the multiplier and caps the game at target ÷ multiplier, planned
-        // from the player's own limit (never from a cap frame generation put there).
-        val plan = xendroid.compose.core.FrameGenerationTarget.plan(lsfgTarget.intValue, hz,
+        // from the player's own limit (never from a cap frame generation put there), against
+        // what the display can do rather than the rate it shows right now.
+        val plan = xendroid.compose.core.FrameGenerationTarget.plan(lsfgTarget.intValue,
+            requestedRefresh.value ?: displayRates().maxOrNull() ?: currentOutputHz(),
             generationCap.playerLimit(session.fpsLimit()))
         if (plan != null) lsfgMultiplier.intValue = plan.multiplier
+        val hz = when {
+            !enabled -> currentOutputHz()
+            plan != null -> frameGenerationRefresh(plan.output.toDouble())
+            else -> frameGenerationRefresh(guestFpsNow() * lsfgMultiplier.intValue)
+        }
         when {
-            !enabled -> restoreGenerationCap()
+            !enabled -> { restoreGenerationCap(); releaseFrameGenerationRefresh() }
             plan != null -> prepareExactCap(plan.cap)
             else -> prepareGenerationCap(hz, lsfgMultiplier.intValue)
         }
@@ -3640,14 +3644,40 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** Frame generation by Win-FG: on or off, or its preset while it runs. */
     private fun runWinFg(action: InGameAction) {
-        if (!BuildConfig.DEBUG) return
         val state = session.presentationState()
         if (action == InGameAction.WINFG_PRESET && state.engine == 1) return
         val enabled = if (action == InGameAction.WINFG) !(state.requested && state.engine == 0) else state.requested
-        val hz = currentOutputHz()
-        if (enabled) prepareGenerationCap(hz) else restoreGenerationCap()
+        val hz = if (enabled) frameGenerationRefresh(guestFpsNow() * 2) else currentOutputHz()
+        if (enabled) prepareGenerationCap(hz) else { restoreGenerationCap(); releaseFrameGenerationRefresh() }
         session.setFrameGeneration(enabled, fgPreset.intValue, hz)
         presentationState.value = session.presentationState()
+    }
+
+    /** The display's rates at its current resolution, lowest first. */
+    private fun displayRates(): List<Float> =
+        ((if (Build.VERSION.SDK_INT >= 30) display else @Suppress("DEPRECATION") windowManager.defaultDisplay)
+            ?.let { refreshChoices(it).map { choice -> choice.hz } }).orEmpty()
+
+    /** The game's frame rate now, or the last one seen running (the menu pauses it). */
+    private fun guestFpsNow(): Double = session.averageFps().takeIf { it > 0 } ?: lastGuestFps.takeIf { it > 0 } ?: 30.0
+
+    /**
+     * The display rate frame generation gets for [outputFps] frames a second: the player's own
+     * choice, or with Auto the display's lowest rate that holds them, asked of the display until
+     * [releaseFrameGenerationRefresh]. Not the rate it shows right now: HyperOS's dynamic refresh
+     * lowers it while the picture is still (the menu open), and generation then judged the game
+     * too fast for the display and switched itself off.
+     */
+    private fun frameGenerationRefresh(outputFps: Double): Float {
+        requestedRefresh.value?.let { return it }
+        val rates = displayRates()
+        val hz = rates.firstOrNull { it * 1.025f >= outputFps } ?: rates.maxOrNull() ?: return currentOutputHz()
+        selectRefresh(this, hz)
+        return hz
+    }
+
+    private fun releaseFrameGenerationRefresh() {
+        selectRefresh(this, requestedRefresh.value)
     }
 
     private fun setDisplayMode(mode: Int) {
