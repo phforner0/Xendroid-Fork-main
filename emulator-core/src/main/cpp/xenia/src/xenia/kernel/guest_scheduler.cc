@@ -814,13 +814,8 @@ bool GuestScheduler::YieldCurrentThread(bool quantum_end, bool to_lower) {
   // elsewhere (ready_summary, repoll_now, preempt_requested, the watchdog).
   // The reads are lock-free and may be stale; a stale "idle" just means the
   // next call takes the slow path.
-  if (!quantum_end && !links.preempted && self->suspend_count() == 0 &&
-      !self->thread_state()->context()->preempt_requested) {
-    const Cpu& cpu = cpus_[t_current_cpu];
-    if (cpu.ready_summary.load(std::memory_order_relaxed) == 0 &&
-        !cpu.repoll_now.load(std::memory_order_relaxed)) {
-      return false;  // nothing else ran, which is exactly what we report
-    }
+  if (!quantum_end && NothingElseToRun(self)) {
+    return false;  // nothing else ran, which is exactly what we report
   }
   // A slice cut short by a higher-priority thread is not a quantum end, that
   // thread re-runs at the head instead.
@@ -849,6 +844,31 @@ bool GuestScheduler::YieldCurrentThread(bool quantum_end, bool to_lower) {
          cpus_[cpu_index].switch_seq.load(std::memory_order_relaxed) -
                  seq_before >
              1;
+}
+
+bool GuestScheduler::YieldExecution() {
+  if (!OnDispatchThread("YieldExecution")) {
+    return false;
+  }
+  ExitIfTerminated();
+  // Blocked waiters due a timed re-poll wait for the slice end, at most a
+  // quantum, as with YieldCurrentThread's fast path: the watchdog preempts a
+  // spinner whether or not anything is ready. Testing the clock here instead
+  // cost a third of the spinning CPUs' time in clock_gettime.
+  if (NothingElseToRun(XThread::GetCurrentThread())) {
+    return false;
+  }
+  return YieldCurrentThread(true);
+}
+
+bool GuestScheduler::NothingElseToRun(XThread* self) const {
+  if (self->scheduler_links().preempted || self->suspend_count() != 0 ||
+      self->thread_state()->context()->preempt_requested) {
+    return false;
+  }
+  const Cpu& cpu = cpus_[t_current_cpu];
+  return cpu.ready_summary.load(std::memory_order_relaxed) == 0 &&
+         !cpu.repoll_now.load(std::memory_order_relaxed);
 }
 
 void GuestScheduler::SpinYield(std::chrono::milliseconds host_sleep) {
