@@ -18,9 +18,11 @@
 #include "third_party/lsfg/lsfg_engine.h"
 #include "third_party/lsfg/lsfg_vkd.h"
 #include <chrono>
+#include <cstdlib>
 #if XE_PLATFORM_ANDROID || XE_PLATFORM_xendroid
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <sys/system_properties.h>
 #endif
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
@@ -1515,6 +1517,13 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
     }
   } work_sample;
   if (paint_context_.swapchain_frame_generation_policy != RuntimePresentation().frame_generation_requested.load()) {
+    if (paint_context_.swapchain_frame_generation_policy) {
+      // Switched off - by the player, or by itself (the error says why).
+      const auto& runtime = RuntimePresentation();
+      XELOGI("Frame generation: off (state {}, error {}), display {:.1f} Hz, guest output every {:.1f} ms",
+             runtime.frame_generation_state.load(), runtime.frame_generation_error.load(),
+             runtime.display_hz.load(), runtime.guest_period_ns.load() / 1e6);
+    }
     return PaintResult::kNotPresentedConnectionOutdated;
   }
   // Begin the submission in place of the one not currently potentially used on
@@ -1634,6 +1643,7 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
   GuestOutputProperties guest_output_properties;
   GuestOutputPaintConfig guest_output_paint_config;
   std::shared_ptr<GuestOutputImage> guest_output_image;
+  uint64_t guest_output_sequence = 0;
   {
     uint32_t guest_output_mailbox_index;
     std::unique_lock<std::mutex> guest_output_consumer_lock(
@@ -1644,6 +1654,10 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
                       .ever_successfully_refreshed);
       guest_output_image =
           guest_output_images_[guest_output_mailbox_index].image;
+      // Which guest frame it holds: frame generation takes each one in once.
+      guest_output_sequence =
+          guest_output_images_[guest_output_mailbox_index]
+              .last_refresher_submission;
     }
     // Incremented the reference count of the guest output image - safe to leave
     // the consumer critical section now as everything here either will be using
@@ -1653,7 +1667,8 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
 
   if (guest_output_image) {
     if (fg_scheduled_paint_ && RuntimePresentation().frame_generation_requested.load()) {
-      if (!PrepareGeneratedFrame(draw_command_buffer, guest_output_image, guest_output_properties)) {
+      if (!PrepareGeneratedFrame(draw_command_buffer, guest_output_image, guest_output_properties,
+                                 guest_output_sequence)) {
         RuntimePresentation().frame_generation_requested = false;
         RuntimePresentation().frame_generation_state = int(FrameGenerationState::kFailed);
       }

@@ -37,6 +37,13 @@ struct VulkanPresenter::FrameGenContext {
   uint32_t timestamp_valid_bits = 0;  // of the graphics/compute queue family
   const VulkanDevice* device;
   int preset = -1;
+  // last_refresher_submission of the guest output last taken in as an input.
+  uint64_t ingested_sequence = UINT64_MAX;
+  // This cycle's first synthetic output generated from the newest input (LSFG's later
+  // outputs are generations of it).
+  bool cycle_generated = false;
+  // debug.xendroid.winfg_stage when frame generation was switched on.
+  uint32_t stage = 0;
   std::vector<std::shared_ptr<GuestOutputImage>> source_references;
 
   explicit FrameGenContext(VulkanDevice* d) : device(d) {
@@ -104,8 +111,40 @@ void VulkanPresenter::ResetFrameGeneration() {
   fg_context_.reset();
 }
 
+// debug.xendroid.winfg_stage: on-device bisection of frame generation, read when it is
+// switched on. Bits: 1 = Win-FG without its global-motion pre-warp (C1), 2 = without its
+// flow regularization (C2), 4 = no generation (the synthetic outputs show the newest real
+// frame: only the thread, the copies and the FIFO swapchain run), 8 = no GPU timestamps.
+constexpr uint32_t kFrameGenerationStageNoGlobalMotion = 1;
+constexpr uint32_t kFrameGenerationStageNoFlowRegularization = 2;
+constexpr uint32_t kFrameGenerationStageNoGeneration = 4;
+constexpr uint32_t kFrameGenerationStageNoTimestamps = 8;
+static uint32_t FrameGenerationStage() {
+#if XE_PLATFORM_ANDROID || XE_PLATFORM_xendroid
+  char value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.winfg_stage", value) > 0) {
+    return uint32_t(std::strtoul(value, nullptr, 0));
+  }
+#endif
+  return 0;
+}
+
+// The Win-FG preset for an input size: the chosen one, or a coarser one when its finest
+// flow level would pass 640x360 (+10%). The flow search costs per pixel of that level, so
+// at 2x and 3x resolution scales Quality searched 4 and 9 times the pixels it does at 1x.
+static int WinfgPresetForExtent(int preset, VkExtent2D extent) {
+  const uint64_t pixels = uint64_t(extent.width) * extent.height;
+  for (int p = std::clamp(preset, 0, 2); p < 2; ++p) {
+    if ((pixels >> (2 * winfg::FrameGen::flowFinestForPreset(p))) <= 640 * 360 * 11 / 10) {
+      return p;
+    }
+  }
+  return 2;
+}
+
 bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
-    std::shared_ptr<GuestOutputImage>& source, GuestOutputProperties& properties) {
+    std::shared_ptr<GuestOutputImage>& source, GuestOutputProperties& properties,
+    uint64_t source_sequence) {
   auto& runtime = RuntimePresentation();
   const auto& f = vulkan_device_->functions();
   const auto& ifn = vulkan_device_->vulkan_instance()->functions();
@@ -117,7 +156,16 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
       fg_context_->epoch != runtime.configuration_epoch.load())) ResetFrameGeneration();
   const auto now = std::chrono::steady_clock::now();
   if (fg_context_ && fg_generated_phase_ && fg_context_->last_input.time_since_epoch().count() &&
-      now - fg_context_->last_input > std::chrono::milliseconds(250)) ResetFrameGeneration();
+      now - fg_context_->last_input > std::chrono::milliseconds(250)) {
+    // A pause (loading, a menu): the newest input is from before it, so generation starts
+    // over from the next two frames. The engine and its pipelines stay - recreating them
+    // (10 compute pipelines for Win-FG, compiled again) cost a hitch after every pause.
+    fg_context_->current_initialized = false;
+    fg_context_->previous_initialized = false;
+    fg_context_->have_previous = false;
+    fg_context_->last_input = {};
+    if (fg_context_->lsfg_engine) fg_context_->lsfg_engine->reset();
+  }
   if (fg_context_) fg_context_->source_references.clear();
   if (!fg_context_) {
     VkFormatProperties source_format, rgba_format, float_format, flow_format;
@@ -135,6 +183,10 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
     fg_context_ = std::make_shared<FrameGenContext>(vulkan_device_);
     fg_context_->kind = runtime.frame_generation_engine.load();
     fg_context_->epoch = runtime.configuration_epoch.load();
+    fg_context_->stage = FrameGenerationStage();
+    XELOGI("Frame generation: {} on, {}x output{}", fg_context_->kind == 1 ? "LSFG" : "Win-FG",
+           fg_context_->kind == 1 ? runtime.frame_generation_multiplier.load() : 2,
+           fg_context_->stage ? fmt::format(" (winfg_stage {})", fg_context_->stage) : std::string());
     auto queue = vulkan_device_->AcquireQueue(vulkan_device_->queue_family_graphics_compute(), 0);
     if (fg_context_->kind == 0 && !fg_context_->engine.init(&fg_context_->dd, &fg_context_->id, vulkan_device_->physical_device(), device,
         vulkan_device_->queue_family_graphics_compute(), queue.queue())) {
@@ -169,7 +221,8 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
     std::vector<VkQueueFamilyProperties> queues(families);
     ifn.vkGetPhysicalDeviceQueueFamilyProperties(vulkan_device_->physical_device(), &families, queues.data());
     const uint32_t valid_bits = queues[vulkan_device_->queue_family_graphics_compute()].timestampValidBits;
-    if (valid_bits && vulkan_device_->properties().timestampPeriod > 0) {
+    if (valid_bits && vulkan_device_->properties().timestampPeriod > 0 &&
+        !(fg_context_->stage & kFrameGenerationStageNoTimestamps)) {
       VkQueryPoolCreateInfo info{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
       info.queryType = VK_QUERY_TYPE_TIMESTAMP; info.queryCount = 2;
       if (f.vkCreateQueryPool(device, &info, nullptr, &fg_context_->timestamps) == VK_SUCCESS) {
@@ -192,14 +245,22 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
         : -1);
     context.query_pending = false;
   }
-  if (!fg_generated_phase_ && context.current && context.current_initialized) {
-    source = context.current; properties = context.properties;
-    return true;
+  const bool fresh = source_sequence != context.ingested_sequence;
+  if (!fg_generated_phase_) {
+    // The real output, the guest output itself. A guest frame no synthetic output took in
+    // (its slot was skipped as late, or it came after it) is taken in here without
+    // generating, so it is shown when due and the next cycle starts from it. Before, the
+    // copy in context.current was shown, which still held the previous frame.
+    context.cycle_generated = false;
+    return !fresh || TakeInGuestOutput(cmd, source, properties, source_sequence, false);
   }
-  if (fg_generation_index_ > 1 && context.kind == 1 && context.current_initialized) {
-    properties = context.properties;
-    source = context.current;
-    if (uint32_t(fg_generation_index_) > context.planned_generations) return true;
+  if (fg_generation_index_ > 1) {
+    // LSFG's later outputs: further generations of the frame this cycle's first one took in.
+    // Without one the newest real frame is shown again.
+    if (context.kind != 1 || !context.cycle_generated ||
+        uint32_t(fg_generation_index_) > context.planned_generations) {
+      return true;
+    }
     VkImageMemoryBarrier before{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     before.image = context.generated->image(); before.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     before.newLayout = VK_IMAGE_LAYOUT_GENERAL; before.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -210,11 +271,40 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
         context.current->extent().width, context.current->extent().height);
     std::swap(before.oldLayout, before.newLayout); std::swap(before.srcAccessMask, before.dstAccessMask);
     f.vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &before);
+    properties = context.properties;
     source = context.generated; fg_actual_synthetic_ = true;
     return true;
   }
+  // The cycle's first synthetic output. With no guest frame since the last output (the real
+  // output took it in), the newest real frame is shown again: a frame between the two before
+  // it would step back in time.
+  return !fresh || TakeInGuestOutput(cmd, source, properties, source_sequence, true);
+}
+
+// The guest output becomes the newest input (the one before it the older); with `generate`,
+// the frame between them is made and becomes `source`. Otherwise `source` stays the guest
+// output (and LSFG only takes the frame in).
+bool VulkanPresenter::TakeInGuestOutput(VkCommandBuffer cmd,
+    std::shared_ptr<GuestOutputImage>& source, GuestOutputProperties& properties,
+    uint64_t source_sequence, bool generate) {
+  auto& runtime = RuntimePresentation();
+  const auto& f = vulkan_device_->functions();
+  auto& context = *fg_context_;
   const auto extent = source->extent();
-  context.last_input = now;
+  context.last_input = std::chrono::steady_clock::now();
+  // Win-FG's preset for the input size and the stage's switches, logged when it changes.
+  auto configure_winfg = [&]() {
+    const int requested_preset = runtime.frame_generation_preset.load();
+    const int preset = WinfgPresetForExtent(requested_preset, extent);
+    winfg::Config cfg; cfg.enabled = true; cfg.model = 3; cfg.multiplier = 2; cfg.perfPreset = preset;
+    if (context.stage & kFrameGenerationStageNoGlobalMotion) cfg.gmMode = 2;
+    if (context.stage & kFrameGenerationStageNoFlowRegularization) cfg.frMode = 2;
+    context.engine.configure(cfg); context.preset = preset;
+    XELOGI("Frame generation: Win-FG preset {} at {}x{}{}", preset, extent.width, extent.height,
+           preset != requested_preset ? fmt::format(" (preset {} chosen, coarser for the size)", requested_preset)
+                                      : std::string());
+  };
+  context.ingested_sequence = source_sequence;
   if (!context.current || context.current->extent().width != extent.width || context.current->extent().height != extent.height) {
     context.previous = GuestOutputImage::Create(vulkan_device_, extent.width, extent.height, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
@@ -223,9 +313,16 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
     context.generated = GuestOutputImage::Create(vulkan_device_, extent.width, extent.height, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_STORAGE_BIT);
     context.have_previous = false; context.current_initialized = false; context.previous_initialized = false; context.generated_initialized = false;
+    context.preset = -1;
     if (context.lsfg_engine) context.lsfg_engine->forgetTargets();
     if (!context.current || !context.previous || !context.generated) { runtime.frame_generation_error = 3; return false; }
-    if (context.kind == 0 && !context.engine.onResize(extent, VK_FORMAT_R8G8B8A8_UNORM)) { runtime.frame_generation_error = 3; return false; }
+    if (context.kind == 0) {
+      // Configured before its images exist, so the preset's finest flow level sizes them
+      // at once. Configured after them, a preset other than Balanced rebuilt them in the
+      // middle of recording the first generated frame, a full device wait included.
+      configure_winfg();
+      if (!context.engine.onResize(extent, VK_FORMAT_R8G8B8A8_UNORM)) { runtime.frame_generation_error = 3; return false; }
+    }
     if (context.kind == 1 && !context.lsfg_engine->prepare(extent.width, extent.height, VK_FORMAT_R8G8B8A8_UNORM)) {
       runtime.frame_generation_error = 3; return false;
     }
@@ -257,9 +354,11 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
   barrier(context.current->image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
   context.current_initialized = true;
   context.source_references.push_back(source);
-  source = context.current;
   if (context.kind == 1) {
-    const auto generations = context.lsfg_engine->plan(runtime.frame_generation_multiplier.load() - 1, ++context.source_frames);
+    // A frame taken in without generating still goes through the pacer and the engine, which
+    // primes its history before generating again.
+    const auto generations = context.lsfg_engine->plan(
+        generate ? runtime.frame_generation_multiplier.load() - 1 : 0, ++context.source_frames);
     context.planned_generations = generations;
     // Timed: this source frame's processing plus its first generated frame. A warm-up
     // pass (no generation yet) is not a generation pass and stays out of the figures.
@@ -272,7 +371,10 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
     context.lsfg_engine->process(cmd, context.current->image(), extent.width, extent.height, generations);
     barrier(context.current->image(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
-    if (!generations) { runtime.frame_generation_state = int(FrameGenerationState::kWarmingUp); return true; }
+    if (!generations) {
+      if (generate) runtime.frame_generation_state = int(FrameGenerationState::kWarmingUp);
+      return true;
+    }
     barrier(context.generated->image(), context.generated_initialized ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
     context.lsfg_engine->generateInto(cmd, 0, 0, context.generated->image(), context.generated->view(), extent.width, extent.height);
@@ -281,19 +383,23 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
       context.query_pending = true;
     }
     barrier(context.generated->image(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
-    context.generated_initialized = true; source = context.generated;
+    context.generated_initialized = true; context.cycle_generated = true;
+    source = context.generated;
     fg_actual_synthetic_ = true;
     runtime.frame_generation_state = int(FrameGenerationState::kRunning);
     return true;
   }
+  if (!generate) return true;
   if (!context.have_previous) {
     runtime.frame_generation_state = int(FrameGenerationState::kWarmingUp);
     return true;
   }
-  const int preset = runtime.frame_generation_preset.load();
-  if (context.preset != preset) {
-    winfg::Config cfg; cfg.enabled = true; cfg.model = 3; cfg.multiplier = 2; cfg.perfPreset = preset;
-    context.engine.configure(cfg); context.preset = preset;
+  if (context.stage & kFrameGenerationStageNoGeneration) {
+    runtime.frame_generation_state = int(FrameGenerationState::kRunning);
+    return true;
+  }
+  if (context.preset != WinfgPresetForExtent(runtime.frame_generation_preset.load(), extent)) {
+    configure_winfg();
   }
   barrier(context.generated->image(), context.generated_initialized ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
       VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
@@ -310,7 +416,7 @@ bool VulkanPresenter::PrepareGeneratedFrame(VkCommandBuffer cmd,
   }
   barrier(context.generated->image(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
       VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
-  context.generated_initialized = true;
+  context.generated_initialized = true; context.cycle_generated = true;
   source = context.generated;
   fg_actual_synthetic_ = true;
   runtime.frame_generation_state = int(FrameGenerationState::kRunning);

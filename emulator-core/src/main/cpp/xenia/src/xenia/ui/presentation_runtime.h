@@ -48,6 +48,9 @@ struct PresentationRuntime {
   // API, driverID/name/info, pipelineCacheUUID), set when the presenter starts.
   std::string driver_identity;
   std::atomic<float> display_hz{60.0f};
+  // The guest output period the frame-generation thread measured last (its cadence), for
+  // the log line when generation stops.
+  std::atomic<int64_t> guest_period_ns{0};
   std::atomic<uint64_t> generated_submissions{0};
   std::atomic<uint64_t> dropped_guest_notifications{0};
   // Synthetic outputs not painted because the presenter was already past their
@@ -118,25 +121,52 @@ inline OutputRectangle CalculateOutputRectangle(DisplayMode mode, uint32_t sourc
 
 // Pure cadence estimator used by the worker and host tests. Never extrapolates an
 // unbounded present queue; a long pause resets history rather than generating stale frames.
+// The guest output period: the mean of the last kWindow intervals. Games deliver their
+// frames on vblanks, so a 30 fps one alternates 16.7 and 50 ms intervals at times; the
+// mean of a window is 33.3 ms, where a moving average of the last few swung below 29 ms
+// and the 30 fps game was judged too fast for a 60 Hz display. A gap (pause, loading)
+// starts the window over at the 30 fps default.
 class FrameCadence {
  public:
+  static constexpr int kWindow = 32;
   int64_t Observe(int64_t now_ns) {
     if (last_ns_ && now_ns > last_ns_) {
       const int64_t delta = now_ns - last_ns_;
-      if (delta > 250000000) period_ns_ = 33333333;
-      else if (delta >= 4000000) period_ns_ = (period_ns_ * 3 + delta) / 4;
+      if (delta > 250000000) {
+        Clear();
+      } else if (delta >= 4000000) {
+        sum_ns_ += delta - deltas_[next_];
+        deltas_[next_] = delta;
+        next_ = (next_ + 1) % kWindow;
+        count_ = std::min(count_ + 1, kWindow);
+        period_ns_ = sum_ns_ / count_;
+      }
     }
     last_ns_ = now_ns;
     return std::clamp<int64_t>(period_ns_ / 2, 2000000, 50000000);
   }
+  // Within 10%: a 30 fps game's window can sit near 32 ms on vblank-quantized frames,
+  // and a little over the display rate only queues a present in FIFO. The app caps the
+  // game at the display rate / multiplier when generation starts; this catches a game
+  // clearly faster than that.
   bool FitsRefresh(float hz, int multiplier = 2) const {
-    return hz > 0 && multiplier >= 2 && double(period_ns_) * hz >= 975000000.0 * multiplier;
+    return hz > 0 && multiplier >= 2 && double(period_ns_) * hz >= 900000000.0 * multiplier;
   }
-  void Reset() { last_ns_ = 0; period_ns_ = 33333333; }
+  // The window holds kWindow intervals: enough to judge the cadence.
+  bool Full() const { return count_ == kWindow; }
+  void Reset() { last_ns_ = 0; Clear(); }
   int64_t period_ns() const { return period_ns_; }
  private:
+  void Clear() {
+    for (int64_t& delta : deltas_) delta = 0;
+    sum_ns_ = 0; next_ = 0; count_ = 0; period_ns_ = 33333333;
+  }
   int64_t last_ns_ = 0;
   int64_t period_ns_ = 33333333;
+  int64_t deltas_[kWindow] = {};
+  int64_t sum_ns_ = 0;
+  int next_ = 0;
+  int count_ = 0;
 };
 
 // Decisions of the frame-generation presenter thread, free of Vulkan and of the
@@ -156,6 +186,7 @@ class FrameGenerationSchedule {
   };
 
   bool HasPending(uint64_t notification) const { return notification != consumed_; }
+  int64_t period_ns() const { return cadence_.period_ns(); }
 
   Cycle Begin(uint64_t notification, int64_t arrival_ns, uint64_t epoch, int multiplier,
               float display_hz, int64_t now_ns) {
@@ -167,13 +198,11 @@ class FrameGenerationSchedule {
       epoch_ = epoch;
       has_epoch_ = true;
       cadence_.Reset();
-      observed_ = 0;
     }
     const int64_t half_period = cadence_.Observe(arrival_ns);
     cycle.multiplier = std::clamp(multiplier, 2, 4);
-    if (observed_ < kWarmupObservations) ++observed_;
-    cycle.stop = observed_ >= kWarmupObservations &&
-                 !cadence_.FitsRefresh(display_hz, cycle.multiplier);
+    // Judged once the window is full, so never on the burst after a pause either.
+    cycle.stop = cadence_.Full() && !cadence_.FitsRefresh(display_hz, cycle.multiplier);
     cycle.begin_ns = now_ns;
     cycle.step_ns = half_period * 2 / cycle.multiplier;
     return cycle;
@@ -192,10 +221,8 @@ class FrameGenerationSchedule {
   }
 
  private:
-  static constexpr unsigned kWarmupObservations = 5;
   FrameCadence cadence_;
   uint64_t consumed_ = 0;
-  unsigned observed_ = 0;
   uint64_t epoch_ = 0;
   bool has_epoch_ = false;
 };
@@ -252,6 +279,7 @@ void RunFrameGenerationLoop(FrameGenerationQueue& queue, PresentationRuntime& ru
         queue.notification, queue.arrival_ns, runtime.configuration_epoch.load(), engine_multiplier,
         runtime.display_hz.load(), SteadyNowNs());
     if (cycle.dropped) runtime.dropped_guest_notifications.fetch_add(cycle.dropped);
+    runtime.guest_period_ns.store(schedule.period_ns(), std::memory_order_relaxed);
     if (cycle.stop) {
       runtime.frame_generation_error = 5;
       runtime.frame_generation_state = int(FrameGenerationState::kFailed);

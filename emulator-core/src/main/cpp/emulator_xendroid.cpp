@@ -1313,6 +1313,8 @@ static void j_set_frame_generation(JNIEnv* env, jobject thiz, jboolean enabled, 
     runtime.configuration_epoch.fetch_add(1);
     runtime.frame_generation_state = enabled ? int(xe::ui::FrameGenerationState::kWarmingUp) : 0;
     runtime.frame_generation_requested = enabled;
+    XELOGI("Frame generation: Win-FG {} from the app, preset {}, display {:.1f} Hz", enabled ? "requested" : "off",
+           runtime.frame_generation_preset.load(), runtime.display_hz.load());
 }
 static jlongArray j_presentation_state(JNIEnv* env, jobject thiz) {
     const auto& runtime = xe::ui::RuntimePresentation();
@@ -1415,6 +1417,8 @@ static void j_set_lsfg(JNIEnv* env, jobject thiz, jboolean enabled, jstring cach
     runtime.generation_gpu_ms = -1.0;
     runtime.configuration_epoch.fetch_add(1);
     runtime.frame_generation_requested = enabled;
+    XELOGI("Frame generation: LSFG {} from the app, {}x, display {:.1f} Hz", enabled ? "requested" : "off",
+           runtime.frame_generation_multiplier.load(), runtime.display_hz.load());
 }
 
 // EFFECTIVE Display|show_debug_overlay, i.e. the live cvar AFTER any per-game config

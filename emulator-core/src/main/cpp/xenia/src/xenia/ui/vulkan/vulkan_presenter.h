@@ -257,8 +257,11 @@ class VulkanPresenter final : public Presenter {
   int fg_generation_index_ = 0;
   void FrameGenerationThread();
   void StopFrameGenerationThread();
+  // source_sequence: the guest output's last_refresher_submission, which guest frame it is.
   bool PrepareGeneratedFrame(VkCommandBuffer command, std::shared_ptr<GuestOutputImage>& image,
-                             GuestOutputProperties& properties);
+                             GuestOutputProperties& properties, uint64_t source_sequence);
+  bool TakeInGuestOutput(VkCommandBuffer command, std::shared_ptr<GuestOutputImage>& image,
+                         GuestOutputProperties& properties, uint64_t source_sequence, bool generate);
   void ResetFrameGeneration();
 
   struct GuestOutputPaintRectangleConstants {

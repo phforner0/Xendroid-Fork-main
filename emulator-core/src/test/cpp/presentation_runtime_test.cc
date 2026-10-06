@@ -204,17 +204,34 @@ static void ReplacedNotificationsAreDroppedNotQueued() {
   assert(cycle.dropped == 0);
 }
 
-// A guest faster than refresh/multiplier stops FG, but only after warm-up, and a
-// new configuration epoch starts the judgement over.
+// A guest faster than refresh/multiplier stops FG, but only once the cadence window
+// is full, and a new configuration epoch starts the judgement over.
 static void CadenceOverTheDisplayStopsAfterWarmup() {
   FrameGenerationSchedule schedule;
-  int64_t t = 0;
-  for (uint64_t n = 1; n <= 4; ++n, t += 16666667) assert(!schedule.Begin(n, t, 1, 2, 60.0f, t).stop);
-  assert(schedule.Begin(5, t, 1, 2, 60.0f, t).stop);
+  int64_t t = 1000 * kMs;
+  const uint64_t full = FrameCadence::kWindow + 1;  // the first arrival has no interval
+  for (uint64_t n = 1; n < full; ++n, t += 16666667) assert(!schedule.Begin(n, t, 1, 2, 60.0f, t).stop);
+  assert(schedule.Begin(full, t, 1, 2, 60.0f, t).stop);
   t += 16666667;
   // New epoch (e.g. the user raised the display Hz): warm-up again.
-  for (uint64_t n = 6; n <= 9; ++n, t += 16666667) assert(!schedule.Begin(n, t, 2, 2, 120.0f, t).stop);
-  assert(!schedule.Begin(10, t, 2, 2, 120.0f, t).stop);  // 60 fps x2 fits 120 Hz
+  for (uint64_t n = full + 1; n <= full + 40; ++n, t += 16666667) {
+    assert(!schedule.Begin(n, t, 2, 2, 120.0f, t).stop);  // 60 fps x2 fits 120 Hz
+  }
+}
+
+// A 30 fps guest whose frames land on vblanks (16.7 and 50 ms apart in turns, and
+// runs of either) fits a 60 Hz display at 2x: the window's mean is 33.3 ms. With a
+// moving average of the last few it swung under 29 ms and generation stopped.
+static void JitteryThirtyFpsFitsSixtyHz() {
+  FrameGenerationSchedule schedule;
+  int64_t t = 1000 * kMs;
+  const int64_t pattern[] = {16666667, 50000000, 16666667, 16666667, 50000000, 50000000,
+                             33333333, 16666667, 50000000, 33333333};
+  for (uint64_t n = 1; n <= 300; ++n) {
+    assert(!schedule.Begin(n, t, 1, 2, 60.0f, t).stop);
+    t += pattern[n % 10];
+  }
+  assert(schedule.period_ns() > 32 * kMs && schedule.period_ns() < 35 * kMs);
 }
 
 // A pause leaves a long gap: the cadence falls back to its default instead of
@@ -289,6 +306,7 @@ int main() {
   SteadyCadenceSpacesOutputsEvenly();
   ReplacedNotificationsAreDroppedNotQueued();
   CadenceOverTheDisplayStopsAfterWarmup();
+  JitteryThirtyFpsFitsSixtyHz();
   PauseResetsTheCadence();
   MultiplierIsClampedAndLateSyntheticFramesAreSkipped();
   TimestampsHonourValidBitsAndWrap();
