@@ -236,6 +236,15 @@ static const Quirk kQuirks[] = {
      "4x depth-only draws into the 1x surface of their samples"},
     {0x4541098E, "vulkan_samples_as_pixels_simple_ps", true,
      "4x draws with simple pixel shaders into the 1x surface"},
+    // Its worker threads spin on NtYieldExecution whenever they have no job:
+    // the 6 guest CPU threads took 460-490% of a core standing still at the
+    // 30 fps cap, the phone ~10.7 W, and the SoC throttles within minutes (big
+    // cores capped from 2.8-3.2 to ~2.07 GHz, the GPU 4 steps down). Sleeping
+    // 50 us per empty yield once a spin is under way: 255-296%, the same 30
+    // fps and GPU time (runtime switch interleaved in one session; 20 us:
+    // 9.8 W against 10.7 W unplugged, 2026-10-06).
+    {0x4541098E, "guest_yield_sleep_us", int64_t(50),
+     "spinning workers give the host core back"},
 };
 
 // Same path/priority as a per-game config file.
