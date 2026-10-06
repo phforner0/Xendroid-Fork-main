@@ -126,6 +126,8 @@ private:
     // so of3_expand consumes the cleaned field with no binding change (⇒ skipping
     // C2 leaves flowLvl_ byte-identical to pre-C2).
     Img flowRegA_, flowRegB_;
+    // XenDroid: the coarsest flow level's predictor, all zeros (see ensureScratch).
+    Img flowZero_;
 
     // ── C1 global-motion state ────────────────────────────────────────────────
     // Host-visible SSBOs the reduce shader writes per-thread partials into; the

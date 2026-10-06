@@ -52,7 +52,7 @@ layout(binding = 1) uniform GM {
     vec4 gmLin;    // running estimate p1,p2,p3,p4  (linearization point for THIS reduce)
     vec4 gmLinT;   // tx,ty, engaged, pad
     vec4 gmApp;    // applied p1,p2,p3,p4            (unused here)
-    vec4 gmAppT;   // tx,ty, pad, pad               (unused here)
+    vec4 gmAppT;   // tx,ty unused here; zw: this level's size (XenDroid)
 };
 
 layout(binding = 32) uniform sampler2D uPrev;   // template T (prev luma, level L) R32F
@@ -69,7 +69,9 @@ void main() {
     uint gtid = gl_GlobalInvocationID.x;
     if (gtid >= NT) return;
 
-    ivec2 dim = textureSize(uPrev, 0);
+    // XenDroid: the level's size from the UBO, not textureSize() - asking a texture
+    // its size hung an Adreno 825 under Turnip.
+    ivec2 dim = ivec2(gmAppT.zw);
     uint total = uint(dim.x) * uint(dim.y);
     vec2 invDim = 1.0 / vec2(dim);
 

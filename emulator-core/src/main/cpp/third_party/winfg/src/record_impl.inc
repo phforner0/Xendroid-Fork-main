@@ -166,7 +166,7 @@ static bool ensureScratch(FrameGen* fg, const DeviceDispatch* dd, VkDevice dev,
                           const FrameGen::Pipe& pSynth, const FrameGen::Pipe& pGmReduce,
                           const FrameGen::Pipe& pGmPrewarp, const FrameGen::Pipe& pFlowReg,
                           FrameGen::Img& flowRegA, FrameGen::Img& flowRegB, VkBuffer* gmSsbo,
-                          int kLevels, const Config& cfg);
+                          FrameGen::Img& flowZero, int kLevels, const Config& cfg);
 
 // Tear down the lazily-built scratch (all UBO buffers + every descriptor set) so a
 // live perf_preset rebuild neither leaks them nor exhausts the descriptor pool.
@@ -327,7 +327,7 @@ bool FrameGen::record(VkCommandBuffer cmd, VkImageView prevView, VkImageView cur
         if (!ensureScratch(this, dd_, device_, memProps_, descPool_, linear_, extent_,
                       pyrA_, pyrB_, pyrAs_, flowLvl_, flowExpA_, flowExpB_,
                       pLuma_, pDown_, flowP, expandP, pSynth_, pGmReduce_, pGmPrewarp_,
-                      pFlowReg_, flowRegA_, flowRegB_, gmSsbo_, kLevels, cfg_)) return false;
+                      pFlowReg_, flowRegA_, flowRegB_, gmSsbo_, flowZero_, kLevels, cfg_)) return false;
     }
 
     // ── C1: solve the global-motion affine (reads the SSBO the caller fence-waited) ──
@@ -341,6 +341,10 @@ bool FrameGen::record(VkCommandBuffer cmd, VkImageView prevView, VkImageView cur
             g.app[0]=(float)gmRun_[0]; g.app[1]=(float)gmRun_[1]; g.app[2]=(float)gmRun_[2]; g.app[3]=(float)gmRun_[3];
             g.appT[0]=(float)gmRun_[4]; g.appT[1]=(float)gmRun_[5];
         } // else app/appT stay 0 -> identity -> prewarp/expand are pre-C1 no-ops
+        // XenDroid: appT.zw = the reduce level's size, which of3_gm_reduce reads (instead of
+        // asking the texture, textureSize() hung an Adreno 825 under Turnip).
+        const VkExtent2D gmExtent = levelExtent(extent_, kGmLevel);
+        g.appT[2] = (float)gmExtent.width; g.appT[3] = (float)gmExtent.height;
         std::memcpy(g_scratch.gmUboPtr[gmSlot], &g, sizeof(g));
     }
     // Log engage state + estimated global translation periodically (tag win-fg).
@@ -404,6 +408,17 @@ bool FrameGen::record(VkCommandBuffer cmd, VkImageView prevView, VkImageView cur
             b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
             dd_->CmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
         }
+        // XenDroid: the coarsest level's zero predictor (a tiny image, 20x11 at 720p).
+        VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED; b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        b.srcAccessMask = 0; b.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        b.image = flowZero_.image; b.subresourceRange = rng;
+        b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        dd_->CmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+        dd_->CmdClearColorImage(cmd, flowZero_.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &rng);
+        b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dd_->CmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
     }
 
     // 1) luma of curr/prev at full res
@@ -420,7 +435,8 @@ bool FrameGen::record(VkCommandBuffer cmd, VkImageView prevView, VkImageView cur
     //     Reads raw prev/curr luma at kGmLevel; writes per-thread partials. A
     //     compute→host barrier makes the write visible to the CPU readback that
     //     happens when this slot comes round again (~1-2 frames later).
-    if (gmBuffersReady_ && g_scratch.sGmReduce[gmSlot]) {
+    // XenDroid: not with global motion off (its estimate is never read then).
+    if (gmBuffersReady_ && cfg_.gmMode != 2 && g_scratch.sGmReduce[gmSlot]) {
         dd_->CmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pGmReduce_.pipeline);
         dd_->CmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pGmReduce_.layout, 0, 1, &g_scratch.sGmReduce[gmSlot], 0, nullptr);
         dd_->CmdDispatch(cmd, (uint32_t)(kGmThreads / 64), 1, 1);
@@ -521,14 +537,16 @@ static bool ensureScratch(FrameGen* fg, const DeviceDispatch* dd, VkDevice dev,
                           const FrameGen::Pipe& pSynth, const FrameGen::Pipe& pGmReduce,
                           const FrameGen::Pipe& pGmPrewarp, const FrameGen::Pipe& pFlowReg,
                           FrameGen::Img& flowRegA, FrameGen::Img& flowRegB, VkBuffer* gmSsbo,
-                          int kLevels, const Config& cfg) {
+                          FrameGen::Img& flowZero, int kLevels, const Config& cfg) {
     auto& S = g_scratch;
     S = ScratchState{};
     const auto GEN = VK_IMAGE_LAYOUT_GENERAL;
 
     makeUbo(dd, dev, mp, sizeof(SynthUBO), S.synthUbo, S.synthUboMem, S.synthUboPtr);
     makeUbo(dd, dev, mp, sizeof(FlowUBO), S.expandUbo, S.expandUboMem, S.expandUboPtr);
-    if (S.expandUboPtr) { FlowUBO u{cfg.flowScale, 0, 0.6f, 1.6f}; std::memcpy(S.expandUboPtr, &u, sizeof(u)); }
+    // XenDroid: `level` = the finest solved level, which of3_expand sizes it by (instead of
+    // asking the texture, textureSize() hung an Adreno 825 under Turnip).
+    if (S.expandUboPtr) { FlowUBO u{cfg.flowScale, (uint32_t)fg->flowFinest(), 0.6f, 1.6f}; std::memcpy(S.expandUboPtr, &u, sizeof(u)); }
     // C2: flow-reg UBO (params refreshed each frame in record() for hot-reload).
     makeUbo(dd, dev, mp, sizeof(FlowRegUBO), S.flowRegUbo, S.flowRegUboMem, S.flowRegUboPtr);
     if (S.flowRegUboPtr) { FlowRegUBO fu{cfg.frDt, cfg.frLambda, cfg.frEdge, cfg.frEps}; std::memcpy(S.flowRegUboPtr, &fu, sizeof(fu)); }
@@ -567,12 +585,16 @@ static bool ensureScratch(FrameGen* fg, const DeviceDispatch* dd, VkDevice dev,
     S.sFlow.resize(kLevels);
     for (int l = 0; l < kLevels; ++l) {
         S.sFlow[l] = allocSet(dd, dev, pool, pFlow.setLayout);
-        int pred = (l + 1 < kLevels) ? l + 1 : l;
+        // XenDroid: the coarsest level has no coarser predictor. Upstream it read the image
+        // it writes (flowLvl[l] bound as both its sampled predictor and its storage output, a
+        // data race within the dispatch); it reads an all-zero image of its own instead,
+        // what the cleared level held.
+        const VkImageView predView = (l + 1 < kLevels) ? flowLvl[l + 1].view : flowZero.view;
         VkImageView currLvl = (l >= fg->flowFinest()) ? pyrAs[l].view : pyrA[l].view;
         wUbo(dd, dev, S.sFlow[l], 0, S.flowUbo[l], sizeof(FlowUBO));
         wImg(dd, dev, S.sFlow[l], 32, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, pyrB[l].view, samp, GEN);
         wImg(dd, dev, S.sFlow[l], 33, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, currLvl, samp, GEN);
-        wImg(dd, dev, S.sFlow[l], 34, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, flowLvl[pred].view, samp, GEN);
+        wImg(dd, dev, S.sFlow[l], 34, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, predView, samp, GEN);
         wImg(dd, dev, S.sFlow[l], 48, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, flowLvl[l].view, VK_NULL_HANDLE, GEN);
     }
 

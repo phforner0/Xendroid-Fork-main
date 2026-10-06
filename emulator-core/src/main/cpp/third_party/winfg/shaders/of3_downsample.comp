@@ -21,14 +21,16 @@ void main() {
     ivec2 dim = imageSize(uDst);
     if (gid.x >= dim.x || gid.y >= dim.y) return;
 
-    // Sample the 4 source texels covering this destination texel (box filter).
-    vec2 srcDim = vec2(textureSize(uSrc, 0));
-    vec2 base = (vec2(gid) * 2.0 + 1.0) / srcDim; // centre of the 2x2 footprint
-    vec2 h = 0.5 / srcDim;
-    float a = textureLod(uSrc, base + vec2(-h.x, -h.y), 0.0).r;
-    float b = textureLod(uSrc, base + vec2( h.x, -h.y), 0.0).r;
-    float c = textureLod(uSrc, base + vec2(-h.x,  h.y), 0.0).r;
-    float d = textureLod(uSrc, base + vec2( h.x,  h.y), 0.0).r;
+    // The 4 source texels covering this destination texel (box filter).
+    // XenDroid: fetched, without textureSize() - asking a texture its size (getsize)
+    // hung an Adreno 825 under Turnip within frames. The destination is half the source
+    // rounded down, so 2*gid+1 stays inside a source of 2+ texels, and these are the
+    // texel centres the bilinear taps sampled: the same result.
+    ivec2 p = gid * 2;
+    float a = texelFetch(uSrc, p, 0).r;
+    float b = texelFetch(uSrc, p + ivec2(1, 0), 0).r;
+    float c = texelFetch(uSrc, p + ivec2(0, 1), 0).r;
+    float d = texelFetch(uSrc, p + ivec2(1, 1), 0).r;
 
     imageStore(uDst, gid, vec4((a + b + c + d) * 0.25, 0.0, 0.0, 0.0));
 }

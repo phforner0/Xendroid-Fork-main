@@ -193,6 +193,7 @@ bool FrameGen::onResize(VkExtent2D extent, VkFormat /*colorFormat*/, bool force)
     for (auto& i : flowLvl_) destroyImage(i); flowLvl_.clear();
     destroyImage(flowExpA_); destroyImage(flowExpB_);
     destroyImage(flowRegA_); destroyImage(flowRegB_);   // C2
+    destroyImage(flowZero_);
     extent_ = extent; ready_ = false;
 
     const VkImageUsageFlags lumaUsage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
@@ -217,6 +218,7 @@ bool FrameGen::onResize(VkExtent2D extent, VkFormat /*colorFormat*/, bool force)
     // C2: TV-L1 ping-pong scratch at the finest solved flow level (perf_preset-driven res).
     if (!makeImage(flowRegA_, levelExtent(extent, flowFinest_), VK_FORMAT_R16G16B16A16_SFLOAT, regUsage)) return false;
     if (!makeImage(flowRegB_, levelExtent(extent, flowFinest_), VK_FORMAT_R16G16B16A16_SFLOAT, regUsage)) return false;
+    if (!makeImage(flowZero_, levelExtent(extent, kLevels - 1), VK_FORMAT_R16G16B16A16_SFLOAT, flowUsage)) return false;
     ready_ = true;
     WFG_LOGI("framegen resized to %ux%u (%d pyramid levels, kFlowFinest=%d perf_preset=%d)",
              extent.width, extent.height, kLevels, flowFinest_, cfg_.perfPreset);
@@ -252,6 +254,7 @@ void FrameGen::destroy() {
     for (auto& i : flowLvl_) destroyImage(i); flowLvl_.clear();
     destroyImage(flowExpA_); destroyImage(flowExpB_);
     destroyImage(flowRegA_); destroyImage(flowRegB_);   // C2
+    destroyImage(flowZero_);
     destroyPipe(pLuma_); destroyPipe(pDown_); destroyPipe(pFlow_); destroyPipe(pFlowM4_);
     destroyPipe(pExpand_); destroyPipe(pExpandM4_); destroyPipe(pSynth_);
     destroyPipe(pGmReduce_); destroyPipe(pGmPrewarp_);

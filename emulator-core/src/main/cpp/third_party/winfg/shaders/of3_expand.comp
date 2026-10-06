@@ -74,7 +74,9 @@ void main() {
     // Kills speckle outliers that produce the crawling / melting look during
     // smooth pans, without the softening that a Gaussian would introduce.
     // Cost: 5 flow reads + 2 med5 (18 min/max) per output pixel, negligible.
-    vec2 fs = 1.0 / vec2(textureSize(uFlowFine, 0));
+    // XenDroid: the finest solved level's size from its level (the UBO's), not from
+    // textureSize() - asking a texture its size hung an Adreno 825 under Turnip.
+    vec2 fs = 1.0 / vec2(max(dim >> ivec2(int(level)), ivec2(1)));
     vec2 c  = textureLod(uFlowFine, uv,                    0.0).xy;
     vec2 xm = textureLod(uFlowFine, uv - vec2(fs.x, 0.0), 0.0).xy;
     vec2 xp = textureLod(uFlowFine, uv + vec2(fs.x, 0.0), 0.0).xy;
