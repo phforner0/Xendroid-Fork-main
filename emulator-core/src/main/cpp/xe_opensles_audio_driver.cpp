@@ -8,6 +8,9 @@
  */
 
 #include "xe_opensles_audio_driver.h"
+
+#include <algorithm>
+#include <cstring>
 #include "audio_runtime.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/assert.h"
@@ -19,8 +22,19 @@ namespace xe {
 namespace apu {
 namespace opensles {
 
-OpenSLESAudioDriver::OpenSLESAudioDriver(Memory* memory, xe::threading::Semaphore* semaphore)
-    : semaphore_(semaphore) {}
+OpenSLESAudioDriver::OpenSLESAudioDriver(Memory* memory, xe::threading::Semaphore* semaphore,
+                                         uint32_t frequency, uint32_t channels)
+    : semaphore_(semaphore),
+      frame_frequency_(frequency),
+      frame_channels_(channels),
+      channel_samples_(channels == 6 ? 256 : 768),
+      submit_samples_(channels * (channels == 6 ? 256 : 768)),
+      renderer_(channels == 6 ? 256 : 768, channels) {
+    assert_true(channels == 6 || channels == 2);
+    for (auto& output : output_) {
+        output.resize(size_t(host_frame_channels_) * channel_samples_, 0.0f);
+    }
+}
 
 OpenSLESAudioDriver::~OpenSLESAudioDriver() {
 }
@@ -65,8 +79,9 @@ bool OpenSLESAudioDriver::Initialize() {
 
     SLAndroidDataFormat_PCM_EX format_pcm = {
         SL_ANDROID_DATAFORMAT_PCM_EX,
-        2,
-        SL_SAMPLINGRATE_48,
+        host_frame_channels_,
+        // milliHertz: the song's own rate for the media player.
+        frame_frequency_ * 1000,
         SL_PCMSAMPLEFORMAT_FIXED_32,
         SL_PCMSAMPLEFORMAT_FIXED_32,
         SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT,
@@ -79,15 +94,13 @@ bool OpenSLESAudioDriver::Initialize() {
     SLDataLocator_OutputMix locator_outputmix = {SL_DATALOCATOR_OUTPUTMIX, sl_output_mix_};
     SLDataSink audioSnk = {&locator_outputmix, NULL};
 
+    // The volume is applied to the samples (SetVolume), the player's only interface is
+    // its buffer queue.
     const SLInterfaceID interfaceIds[] = {
-        SL_IID_BUFFERQUEUE,
-        SL_IID_EFFECTSEND,
-        SL_IID_VOLUME
+        SL_IID_BUFFERQUEUE
     };
 
     const SLboolean interfaceRequired[] = {
-        SL_BOOLEAN_TRUE,
-        SL_BOOLEAN_TRUE,
         SL_BOOLEAN_TRUE
     };
 
@@ -124,22 +137,10 @@ bool OpenSLESAudioDriver::Initialize() {
         return false;
     }
 
-    r = (*sl_player_)->GetInterface(sl_player_, SL_IID_EFFECTSEND, &sl_player_effect_send_);
-    if (r != SL_RESULT_SUCCESS) {
-        XELOGE("GetInterface effect send failed: {}", r);
-        return false;
-    }
-
-    r = (*sl_player_)->GetInterface(sl_player_, SL_IID_VOLUME, &sl_player_volume_);
-    if (r != SL_RESULT_SUCCESS) {
-        XELOGE("GetInterface volume failed: {}", r);
-        return false;
-    }
-
     {
         std::unique_lock<std::mutex> guard(frames_mutex_);
         for (int i = 0; i < 2; i++) {
-            float* buffer = new float[x360_frame_channels_ * channel_samples_];
+            float* buffer = new float[submit_samples_];
             frames_unused_.push(buffer);
         }
     }
@@ -150,19 +151,25 @@ bool OpenSLESAudioDriver::Initialize() {
         return false;
     }
 
+    // Both buffers queued before playback starts, so from then on only the player's thread
+    // renders.
+    for (uint32_t i = 0; i < kOutputBuffers; ++i) {
+        RenderAndEnqueue();
+    }
+
     r = (*sl_player_play_)->SetPlayState(sl_player_play_, SL_PLAYSTATE_PLAYING);
     if (r != SL_RESULT_SUCCESS) {
         XELOGE("SetPlayState failed: {}", r);
         return false;
     }
 
-    PlayerCallback(sl_player_buffer_queue_, this);
-
     return true;
 }
 
 void OpenSLESAudioDriver::Pause() {
-    SLresult r = (*sl_player_play_)->SetPlayState(sl_player_play_, SL_PLAYSTATE_STOPPED);
+    // Paused, not stopped: the player holds its place and its queue for Resume. (Stopped,
+    // it still resumed on the POCO F7, but a stop is the end of playback.)
+    SLresult r = (*sl_player_play_)->SetPlayState(sl_player_play_, SL_PLAYSTATE_PAUSED);
     if (r != SL_RESULT_SUCCESS) {
         XELOGE("SetPlayState failed: {}", r);
     }
@@ -176,77 +183,81 @@ void OpenSLESAudioDriver::Resume() {
 }
 
 void OpenSLESAudioDriver::SetVolume(float volume) {
-    SLresult r = (*sl_player_volume_)->SetVolumeLevel(sl_player_volume_, static_cast<SLmillibel>(volume * 100.0f));
-    if (r != SL_RESULT_SUCCESS) {
-        XELOGE("SetVolumeLevel failed: {}", r);
-    }
+    // In software, like AAudio. SetVolumeLevel took volume * 100 mB (0 to +1 dB), which
+    // attenuated nothing.
+    driver_volume_.store(std::clamp(volume, 0.0f, 1.0f), std::memory_order_relaxed);
 }
 
 void OpenSLESAudioDriver::PlayerCallback(SLAndroidSimpleBufferQueueItf buffer_queue, void* context) {
   SCOPE_profile_cpu_f("apu");
-
   auto driver = static_cast<OpenSLESAudioDriver*>(context);
-  std::unique_lock<std::mutex> guard(driver->frames_mutex_);
+  driver->RenderAndEnqueue();
+  // A credit per buffer played, a real block or a concealed gap, as AAudio does: the
+  // worker spends one on every guest callback, also on one that submits nothing, and
+  // without the gaps' credits those were lost for good. With every credit already back,
+  // the release fails at the semaphore's maximum, harmlessly.
+  driver->semaphore_->Release(1, nullptr);
+}
 
-  constexpr size_t output_frame_size=OpenSLESAudioDriver::host_frame_channels_ * OpenSLESAudioDriver::channel_samples_;
-  static float output_frame[output_frame_size]={0};
+void OpenSLESAudioDriver::RenderAndEnqueue() {
+  std::vector<float>& output = output_[next_output_];
+  next_output_ = (next_output_ + 1) % kOutputBuffers;
+  const float gain = driver_volume_.load(std::memory_order_relaxed) *
+                     (float(ae::EffectiveVolume()) / 100.0f);
+  renderer_.Render(output.data(), int32_t(channel_samples_), 1.0f, gain,
+                   [this]() { return NextGuestBlock(); },
+                   [this](const float* block) { ReturnGuestBlock(block); });
+  (*sl_player_buffer_queue_)->Enqueue(sl_player_buffer_queue_, output.data(),
+                                      SLuint32(output.size() * sizeof(float)));
+}
 
+const float* OpenSLESAudioDriver::NextGuestBlock() {
   // Run summary (C02): startup silence before the guest's first block is not
   // an underrun; every empty queue after it is one.
   auto& run_stats = ae::RunStats();
   run_stats.backend.store(2, std::memory_order_relaxed);
-  if (driver->played_once_) {
+  if (played_once_) {
     run_stats.blocks.fetch_add(1, std::memory_order_relaxed);
   }
-  if (driver->frames_queued_.empty()) {
-    if (driver->played_once_) {
+  float* buffer = nullptr;
+  {
+    std::unique_lock<std::mutex> guard(frames_mutex_);
+    if (!frames_queued_.empty()) {
+      buffer = frames_queued_.front();
+      frames_queued_.pop();
+    }
+  }
+  if (!buffer) {
+    if (played_once_) {
       run_stats.concealed.fetch_add(1, std::memory_order_relaxed);
     }
-    std::memset(output_frame, 0, sizeof(output_frame));
-    (*buffer_queue)->Enqueue(buffer_queue, output_frame, sizeof(output_frame));
-    return;
-  } else {
-    if (!driver->played_once_) {
-      driver->played_once_ = true;
-      run_stats.blocks.fetch_add(1, std::memory_order_relaxed);
-    }
-    auto buffer = driver->frames_queued_.front();
-    driver->frames_queued_.pop();
-
-    if (ae::EffectiveVolume() == 0) {
-      std::memset(output_frame, 0, sizeof(output_frame));
-    } else {
-      conversion::sequential_6_BE_to_interleaved_2_LE(
-          output_frame, buffer, driver->channel_samples_);
-      const float gain = ae::EffectiveVolume() / 100.0f;
-      for (float& sample : output_frame) sample *= gain;
-    }
-
-    driver->frames_unused_.push(buffer);
+    return nullptr;
   }
+  if (!played_once_) {
+    played_once_ = true;
+    run_stats.blocks.fetch_add(1, std::memory_order_relaxed);
+  }
+  return buffer;
+}
 
-  (*buffer_queue)->Enqueue(buffer_queue, output_frame, sizeof(output_frame));
-
-  auto ret = driver->semaphore_->Release(1, nullptr);
-  assert_true(ret);
+void OpenSLESAudioDriver::ReturnGuestBlock(const float* block) {
+  std::unique_lock<std::mutex> guard(frames_mutex_);
+  frames_unused_.push(const_cast<float*>(block));
 }
 
 void OpenSLESAudioDriver::SubmitFrame(float* samples) {
-    const auto input_frame = samples;
-  constexpr auto x360_frame_samples = x360_frame_channels_ * channel_samples_;
   float* output_frame;
-
   {
     std::unique_lock<std::mutex> guard(frames_mutex_);
     if (frames_unused_.empty()) {
-      output_frame = new float[x360_frame_samples];
+      output_frame = new float[submit_samples_];
     } else {
       output_frame = frames_unused_.top();
       frames_unused_.pop();
     }
   }
 
-  std::memcpy(output_frame, input_frame, x360_frame_samples * sizeof(float));
+  std::memcpy(output_frame, samples, submit_samples_ * sizeof(float));
 
   {
     std::unique_lock<std::mutex> guard(frames_mutex_);
@@ -265,8 +276,6 @@ void OpenSLESAudioDriver::Shutdown() {
         sl_player_ = nullptr;
         sl_player_play_ = nullptr;
         sl_player_buffer_queue_ = nullptr;
-        sl_player_effect_send_ = nullptr;
-        sl_player_volume_ = nullptr;
     }
 
     if (sl_output_mix_) {

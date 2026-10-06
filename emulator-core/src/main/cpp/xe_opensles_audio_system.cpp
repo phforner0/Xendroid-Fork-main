@@ -39,8 +39,10 @@ OpenSLESAudioSystem::OpenSLESAudioSystem(cpu::Processor *processor)
     AudioDriver* OpenSLESAudioSystem::CreateDriver(xe::threading::Semaphore* semaphore,
                                                  uint32_t frequency, uint32_t channels,
                                                  bool need_format_conversion){
-        //FIXME
-        return new OpenSLESAudioDriver(memory_, semaphore);
+        // The media player's driver plays the song's own format: interleaved host endian
+        // stereo at its rate. Built as a game driver, the song was byte swapped and folded
+        // as 5.1 - full scale noise over the game's audio.
+        return new OpenSLESAudioDriver(memory_, semaphore, frequency, channels);
     }
 
     void OpenSLESAudioSystem::DestroyDriver(AudioDriver* driver) {
