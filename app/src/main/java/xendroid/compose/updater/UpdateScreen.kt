@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -250,7 +251,8 @@ private fun AvailableCard(release: FeedRelease, state: UpdateState, onLater: (()
             asset?.sha256?.let { XdBadge(it.take(7), modifier = Modifier.align(Alignment.CenterVertically)) }
             asset?.let { Text(Formatter.formatShortFileSize(context, it.size), style = XdText.note, color = c.fg3, modifier = Modifier.align(Alignment.CenterVertically)) }
         }
-        val notes = release.notes?.let(::cleanChangelog)?.lines()?.map { it.trim().removePrefix("•").trim() }?.filter { it.isNotEmpty() }.orEmpty()
+        val language = LocalConfiguration.current.locales[0].toLanguageTag()
+        val notes = release.notes?.let { updateNotes(it, language) }.orEmpty()
         if (notes.isEmpty()) Text(stringResource(R.string.upd_no_changelog), style = XdText.note, color = c.fg3)
         else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             notes.take(12).forEach { Text("• $it", style = XdText.bodySm, color = c.fg2) }
