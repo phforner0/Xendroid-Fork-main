@@ -15,7 +15,7 @@ function tourPanels(site) {
         'A ficha de cada jogo junta Jogar, Iniciar com… (perfil, driver, executável, sem patches ou sem os ajustes do jogo, só nesta abertura), as sessões, os patches e os saves.',
         'Com um controle conectado, a interface troca sozinha para o modo controle: carrossel de capas, abas por LB e RB e dicas de botão sempre à vista.',
       ],
-      links: [['docs/interface/', 'Interface do app'], ['simulador/#biblioteca', 'Ver no simulador']],
+      links: [['docs/interface/', 'Interface do app'], ['simulador/#library', 'Ver no simulador']],
     },
     {
       id: 'menu', tab: 'Menu em jogo e HUD', shot: 'menu-imagem', title: 'Ajustes no meio do jogo, guardados para ele',

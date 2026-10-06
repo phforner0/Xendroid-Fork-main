@@ -194,7 +194,7 @@ site.docs.sort((a, b) => (sectionOrder.get(a.section) - sectionOrder.get(b.secti
 const fmtSize = n => `${(n / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`;
 const values = {
   estavel: v.stable ? {
-    build: v.stable.build, nome: v.stable.label, tag: v.stable.tag, commit: v.stable.short,
+    build: v.stable.build, nome: v.stable.label.toLowerCase(), tag: v.stable.tag, commit: v.stable.short,
     data: new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: 'America/Sao_Paulo' }).format(new Date(v.stable.date)),
     apk: v.stable.apk ? { nome: v.stable.apk.name, tamanho: fmtSize(v.stable.apk.size), sha256: v.stable.apk.sha256 || 'não publicado', url: v.stable.apk.url } : {},
     url: v.stable.url,

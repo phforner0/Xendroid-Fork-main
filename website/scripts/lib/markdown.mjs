@@ -163,7 +163,9 @@ export function createMarkdown(ctx) {
   return {
     /** Renderiza o corpo (sem front matter) e devolve html, títulos e seções para a busca. */
     render(body, env) {
-      const withData = body.replace(/\{\{(?!>)\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (m, p) => {
+      // \{{x}} escreve {{x}} literal (para documentar a própria sintaxe)
+      const withData = body.replace(/(\\?)\{\{(?!>)\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (m, bs, p) => {
+        if (bs) return m.slice(1);
         const v = p.split('.').reduce((o, k) => (o == null ? undefined : o[k]), ctx.data);
         if (v === undefined || v === null) throw new Error(`${env.file}: valor desconhecido {{${p}}}`);
         return String(v);

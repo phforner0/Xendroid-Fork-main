@@ -34,6 +34,7 @@ export function langText(t, pageLang = 'pt-BR') {
 export const ICONS = {
   download: '<path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/>',
   arrowR: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  chevD: '<path d="M6 9.5l6 6 6-6"/>',
   external: '<path d="M14 5h5v5M19 5l-8 8"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',

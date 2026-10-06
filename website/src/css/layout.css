@@ -67,7 +67,7 @@
 .search-btn:hover { color: var(--fg-2); border-color: var(--fg-3); }
 .search-btn kbd { font-size: .74rem; }
 .menu-btn { display: none; }
-@media (max-width: 1040px) { .header-dl { display: none; } }
+@media (max-width: 1040px) { .header-tools .header-dl { display: none; } }
 
 @media (max-width: 880px) {
   .menu-btn { display: inline-grid; }

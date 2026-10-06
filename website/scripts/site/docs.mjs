@@ -5,7 +5,7 @@ import { rel } from '../lib/paths.mjs';
 function sidebar(site, current) {
   const r = to => rel(current, to);
   return html`<aside class="docs-side" aria-label="Documentação">
-  <button class="docs-side-toggle" type="button" aria-expanded="false" aria-controls="docs-nav">Páginas da documentação ${icon('arrowR', 18)}</button>
+  <button class="docs-side-toggle" type="button" aria-expanded="false" aria-controls="docs-nav">Páginas da documentação ${icon('chevD', 18)}</button>
   <nav id="docs-nav">
     <ul><li><a class="home" href="${r('docs/')}"${current === 'docs/' ? raw(' aria-current="page"') : ''}>Visão geral</a></li></ul>
     ${site.config.docSections.map(sec => {
