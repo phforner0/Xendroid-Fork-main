@@ -10,6 +10,9 @@ export const GAME_SOURCES = {
   quirks: 'emulator-core/src/main/cpp/xenia/src/xenia/game_quirks.cc',
   compat: 'GAME_COMPAT.md',
   readmePt: 'README.pt-BR.md',
+  // base de compatibilidade do Xenia para PC, vendorizada: usada só para dar nome a um Title ID,
+  // nunca como estado de compatibilidade do Xendroid+
+  titles: 'emulator-core/src/main/cpp/xenia/assets/game-compatibility/master.json',
 };
 
 /** Rótulo de versão no nome do arquivo: "Halo 4 (TU10).patch.toml" → "TU10". */
@@ -78,10 +81,46 @@ export function extractGames(root) {
   // medições do README em pt-BR (tabela da seção "## Desempenho")
   const perf = readPerfTable(path.join(root, GAME_SOURCES.readmePt));
 
+  // nomes por Title ID: o nome do arquivo de patch, senão a base vendorizada do Xenia
+  const upstream = new Map();
+  const titlesFile = path.join(root, GAME_SOURCES.titles);
+  if (fs.existsSync(titlesFile)) {
+    try {
+      for (const t of JSON.parse(fs.readFileSync(titlesFile, 'utf8'))) {
+        const id = String(t.id || '').toUpperCase();
+        if (/^[0-9A-F]{8}$/.test(id) && t.title && !upstream.has(id)) upstream.set(id, String(t.title).trim());
+      }
+    } catch (e) {
+      problems.push({ level: 'warn', msg: `${GAME_SOURCES.titles}: não deu para ler (${e.message})` });
+    }
+  }
+  const nameOf = id => {
+    const g = byId.get(id);
+    if (g && g.names.length) return { name: [...g.names].sort((a, b) => a.length - b.length)[0], from: 'patch' };
+    const c = compatNotes.find(n => n.titleId === id);
+    if (c) return { name: c.name, from: 'GAME_COMPAT.md' };
+    if (upstream.has(id)) return { name: upstream.get(id), from: 'master.json' };
+    return null;
+  };
+
+  // correções automáticas agrupadas por jogo, na ordem do arquivo
+  const quirkTitles = [];
+  for (const q of quirks) {
+    let t = quirkTitles.find(x => x.titleId === q.titleId);
+    if (!t) {
+      const n = nameOf(q.titleId);
+      t = { titleId: q.titleId, name: n ? n.name : null, nameFrom: n ? n.from : null, entries: [] };
+      if (!n) problems.push({ level: 'warn', msg: `quirk de ${q.titleId} sem nome conhecido (patch, GAME_COMPAT.md ou master.json)` });
+      quirkTitles.push(t);
+    }
+    t.entries.push({ cvar: q.cvar, type: q.type, value: q.value, note: q.note, line: q.line });
+  }
+
   return {
     patches: [...byId.values()].sort((a, b) => a.titleId.localeCompare(b.titleId)),
     patchFileCount: files.length,
     quirks,
+    quirkTitles,
     compatNotes,
     perf,
     problems,

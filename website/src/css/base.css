@@ -1,4 +1,6 @@
-/* ---------- base ---------- */
+/* ---------- base ----------
+   As regras de elementos (títulos, links, código, tabelas) não valem dentro do simulador (.sim),
+   que traz o próprio CSS do app; por isso o :not(.sim *). */
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-padding-top: 84px; }
 body {
@@ -11,24 +13,27 @@ body {
   overflow-x: clip;
 }
 img, svg, video { max-width: 100%; }
-img { height: auto; }
-h1, h2, h3, h4 { font-family: var(--f-display); font-weight: 700; line-height: 1.08; letter-spacing: .005em; text-wrap: balance; margin: 0; }
-h1 { font-size: var(--step-4); }
-h2 { font-size: var(--step-3); }
-h3 { font-size: var(--step-2); font-weight: 600; }
-h4 { font-size: var(--step-1); font-weight: 600; }
-p { margin: 0; }
-a { color: var(--accent-text); text-decoration-thickness: 1px; text-underline-offset: 3px; }
-a:hover { text-decoration-thickness: 2px; }
-code, kbd, samp, pre { font-family: var(--f-mono); font-size: .9em; }
-:not(pre) > code {
+button, input, select, textarea { font: inherit; color: inherit; }
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+:where(h1, h2, h3, h4):not(.sim *) { font-family: var(--f-display); font-weight: 700; line-height: 1.08; letter-spacing: .005em; text-wrap: balance; margin: 0; }
+:where(h1):not(.sim *) { font-size: var(--step-4); }
+:where(h2):not(.sim *) { font-size: var(--step-3); }
+:where(h3):not(.sim *) { font-size: var(--step-2); font-weight: 600; line-height: 1.15; }
+:where(h4):not(.sim *) { font-size: var(--step-1); font-weight: 600; line-height: 1.2; }
+:where(p):not(.sim *) { margin: 0; }
+:where(img):not(.sim *) { height: auto; }
+:where(a):not(.sim *) { color: var(--accent-text); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+:where(a):not(.sim *):hover { text-decoration-thickness: 2px; }
+:where(code, kbd, samp, pre):not(.sim *) { font-family: var(--f-mono); font-size: .9em; }
+:where(:not(pre) > code):not(.sim *) {
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: .08em .38em;
   overflow-wrap: anywhere;
 }
-kbd {
+:where(kbd):not(.sim *) {
   display: inline-block;
   min-width: 1.6em;
   padding: .05em .4em;
@@ -42,9 +47,8 @@ kbd {
   line-height: 1.5;
   text-align: center;
 }
-hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+:where(hr):not(.sim *) { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
+:where(table):not(.sim *) { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 
 /* foco sempre visível para teclado */
 :focus { outline: none; }
@@ -78,11 +82,13 @@ table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nu
   border: 0;
 }
 
-.i { display: inline-block; flex: none; vertical-align: middle; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.xi { display: inline-block; flex: none; vertical-align: middle; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 
-.mono { font-family: var(--f-mono); font-size: .9em; }
-.muted { color: var(--fg-3); }
+.u-mono { font-family: var(--f-mono); font-size: .9em; }
+.u-muted { color: var(--fg-3); }
 .wrap { width: 100%; max-width: var(--max); margin-inline: auto; padding-inline: var(--gutter); }
+
+[hidden] { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

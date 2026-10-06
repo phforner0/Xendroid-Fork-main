@@ -33,6 +33,7 @@ export default {
     '/emulator-core/src/main/java/',
     '/emulator-core/src/main/cpp/*.cpp', '/emulator-core/src/main/cpp/*.h',
     '/emulator-core/src/main/cpp/xenia/src/xenia/',
+    '/emulator-core/src/main/cpp/xenia/assets/game-compatibility/',
     '/patches/xenia-canary/patches/',
     '/docs/assets/', '/docs/ui-redesign/',
     '/performance-tests/',

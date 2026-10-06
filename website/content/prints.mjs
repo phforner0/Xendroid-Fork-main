@@ -1,0 +1,48 @@
+// Prints reais do app usados no site. Vêm dos testes de tela (Roborazzi) em
+// docs/ui-redesign/prints/app/, desenhados a partir do código Compose com dados de exemplo
+// (capas geradas, perfis e sessões fictícios). O build confere se cada arquivo existe e
+// converte para WebP; o texto alternativo descreve o que a tela mostra.
+const P = 'docs/ui-redesign/prints/app';
+
+export const PRINTS = {
+  'biblioteca': { src: `${P}/base/depois-biblioteca-paisagem.png`, alt: 'Biblioteca no modo toque, deitada: trilho com as áreas do app à esquerda, busca, filtros, grade de capas e, à direita, o painel do jogo escolhido com Jogar e os ajustes rápidos.' },
+  'biblioteca-retrato': { src: `${P}/base/depois-biblioteca-retrato.png`, alt: 'Biblioteca no modo toque, em pé: grade de capas com a barra de áreas embaixo.' },
+  'biblioteca-controle': { src: `${P}/base/depois-biblioteca-controle.png`, alt: 'Biblioteca no modo controle: carrossel de capas grandes, abas no topo trocadas por LB e RB, a cor da capa ao fundo e as dicas de botão embaixo.' },
+  'ficha': { src: `${P}/base/depois-ficha-paisagem.png`, alt: 'Ficha do jogo: seções à esquerda (visão geral, grupos de ajustes, desempenho, patches e conteúdo, saves e dados) e, no topo, Iniciar com e Jogar.' },
+  'ficha-desempenho': { src: `${P}/ajustes-2/depois-ficha-desempenho-sessoes.png`, alt: 'Seção Desempenho da ficha: a sessão mostrada, gráficos de FPS por segundo e de tempo de quadro e a linha do tempo da execução.' },
+  'ficha-patches': { src: `${P}/ajustes-2/depois-ficha-patches-por-versao.png`, alt: 'Patches da ficha em grupos: para a sua versão do jogo, para outras versões e sem versão indicada.' },
+  'iniciar-com': { src: `${P}/base/depois-iniciar-com.png`, alt: 'Folha Iniciar com: perfil, driver, executável, sem patches, ignorar os ajustes do jogo e linha de comando extra, só para esta abertura.' },
+  'menu-imagem': { src: `${P}/ajustes-2/depois-menu-imagem.png`, alt: 'Menu em jogo na categoria Imagem: trilho com Imagem, Desempenho, HUD, Controles e Sessão, e as opções de tela e efeitos com o valor de cada linha.' },
+  'menu-sessao': { src: `${P}/ajustes-2/depois-menu-sessao.png`, alt: 'Menu em jogo na categoria Sessão: som, ajustes guardados para o jogo com Desfazer, pausar ao abrir o menu, continuar e sair do jogo.' },
+  'hud': { src: `${P}/ajustes-2/depois-hud-horizontal.png`, alt: 'HUD de desempenho em barra no topo da tela, com FPS, tempo de quadro e métricas coloridas.' },
+  'configuracoes': { src: `${P}/ajustes-2/depois-configuracoes-niveis.png`, alt: 'Configurações na seção Interface: modo da interface (Automático, Toque, Controle), ajustes mostrados (Essencial, Avançado e Tudo, com quantos ajustes cada nível mostra), botões nos menus e sugestões ao fim da sessão.' },
+  'configuracoes-imagem': { src: `${P}/lote1/depois-configuracoes-imagem.png`, alt: 'Configurações no grupo Imagem: cada ajuste com o valor, a origem (padrão ou alterado) e se muda ao vivo ou na próxima abertura.' },
+  'configuracoes-busca': { src: `${P}/ajustes-2/depois-configuracoes-busca-na-aba.png`, alt: 'Busca dentro de uma aba das Configurações, com os resultados de outras abas embaixo.' },
+  'drivers': { src: `${P}/lote1/depois-drivers.png`, alt: 'Drivers de GPU: o driver escolhido e o que a última sessão carregou, pacotes instalados, para baixar, fontes e opções do Turnip.' },
+  'drivers-baixar': { src: `${P}/ajustes-1/depois-drivers-para-baixar.png`, alt: 'Drivers para baixar: pacotes das fontes do GitHub com tamanho, data e o selo de SHA-256 publicado.' },
+  'controles': { src: `${P}/lote3/depois-controles.png`, alt: 'Área Controles: quem joga como P1 a P4, opções do toque, controles físicos, vibração e movimento, telefones e as ferramentas.' },
+  'controles-moderno': { src: `${P}/ajustes-2/depois-controles-moderno.png`, alt: 'Controles de toque no visual Moderno sobre o jogo: botões de vidro escuro com as letras A, B, X e Y coloridas.' },
+  'mapeamento': { src: `${P}/lote3/depois-mapeamento.png`, alt: 'Mapeamento de teclas: o controle desenhado e a lista dos 16 botões com a tecla de cada um.' },
+  'testar-controles': { src: `${P}/lote3/depois-testar-controles.png`, alt: 'Testar controles: o controle desenhado acende o que é apertado, com analógicos, gatilhos e zona morta.' },
+  'celular-controle': { src: `${P}/lote3/depois-celular-como-controle.png`, alt: 'Celular como controle: endereço do jogo, código de 6 dígitos, nome mostrado e Conectar.' },
+  'perfis': { src: `${P}/lote4/depois-perfis.png`, alt: 'Perfis: cartões com avatar, gamertag, idioma, região e o perfil ativo como P1.' },
+  'saves': { src: `${P}/lote4/depois-saves.png`, alt: 'Saves de um jogo por perfil, com exportar, importar e a pasta de sincronização.' },
+  'conteudo': { src: `${P}/lote5/depois-conteudo.png`, alt: 'Área Conteúdo: DLC e title updates instalados por jogo, com tamanhos.' },
+  'instalar-conteudo': { src: `${P}/lote5/depois-instalar-conteudo.png`, alt: 'Instalar conteúdo: pacotes achados em Downloads e nas pastas de conteúdo, com o jogo e o tipo de cada um.' },
+  'diagnostico': { src: `${P}/lote5/depois-diagnostico.png`, alt: 'Diagnóstico: sessões guardadas, como cada uma terminou e o resumo da sessão escolhida.' },
+  'diagnostico-resumo': { src: `${P}/lote5/depois-diagnostico-resumo.png`, alt: 'Antes de compartilhar uma sessão: o que vai no arquivo e o que sai (caminhos, gamertags, endereços e tokens).' },
+  'comparar': { src: `${P}/lote5/depois-comparar-execucoes.png`, alt: 'Comparar execuções: execuções marcadas A ou B, o resultado por par e os avisos.' },
+  'sugestoes': { src: `${P}/ajustes-2/depois-sugestoes-fim-da-sessao.png`, alt: 'Folha de sugestões ao fim da sessão, com o motivo em números e Aplicar neste jogo.' },
+  'primeira-abertura': { src: `${P}/lote6/depois-primeira-abertura.png`, alt: 'Assistente da primeira abertura, passo Este telefone: verificações de GPU Vulkan, ARM de 64 bits, Android e pasta de jogos.' },
+  'primeira-abertura-jogos': { src: `${P}/lote6/depois-primeira-abertura-jogos.png`, alt: 'Assistente da primeira abertura, passo Seus jogos: a pasta escolhida, a busca e as capas encontradas.' },
+  'pastas': { src: `${P}/ajustes-2/depois-pastas-de-jogos-padrao.png`, alt: 'Pastas de jogos com Criar pastas padrão: XenDroid/Jogos, TU e DLC.' },
+  'navegador': { src: `${P}/lote6/depois-navegador-de-pastas.png`, alt: 'Navegador de pastas: armazenamento interno e cartão SD, o caminho em passos e quantos jogos há em cada pasta.' },
+  'sem-vulkan': { src: `${P}/lote6/depois-sem-vulkan.png`, alt: 'Tela Este aparelho não tem GPU Vulkan, com as verificações e Copiar os dados do aparelho.' },
+  'atualizador': { src: `${P}/lote6/depois-atualizador.png`, alt: 'Atualizações do app: versão instalada, canal, última procura e o cartão da atualização com as etapas baixar, conferir o SHA-256 e instalar.' },
+  'sobre': { src: `${P}/ajustes-2/depois-sobre.png`, alt: 'Sobre: versão, o aparelho em tabela com copiar tudo, atalhos e créditos.' },
+  'carregamento': { src: `${P}/lote2/depois-carregamento.png`, alt: 'Carregamento do jogo com as etapas da abertura, o tempo de cada uma e o que vale nesta abertura.' },
+  'falha-ao-abrir': { src: `${P}/lote2/depois-falha-ao-abrir.png`, alt: 'Falha ao abrir: o motivo numa frase, as últimas linhas do log e o próximo passo.' },
+  'mensagem': { src: `${P}/lote7/depois-mensagem.png`, alt: 'Painel de mensagem do jogo, com o título, o texto e as opções em linhas inteiras.' },
+  'teclado': { src: `${P}/lote7/depois-teclado.png`, alt: 'Teclado do jogo: o pedido, o campo com o limite de caracteres e a grade de teclas.' },
+  'troca-de-disco': { src: `${P}/lote7/depois-troca-de-disco.png`, alt: 'Troca de disco: o disco pedido em destaque e os discos encontrados.' },
+};

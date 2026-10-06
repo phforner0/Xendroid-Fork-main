@@ -68,7 +68,7 @@ export const ICONS = {
 export function icon(name, size = 20, cls = '') {
   const p = ICONS[name];
   if (!p) throw new Error(`ícone desconhecido: ${name}`);
-  return raw(`<svg class="i${cls ? ' ' + cls : ''}" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${p}</svg>`);
+  return raw(`<svg class="xi${cls ? ' ' + cls : ''}" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${p}</svg>`);
 }
 
 /** Bytes em MB/KB no formato brasileiro. */

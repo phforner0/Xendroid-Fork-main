@@ -17,6 +17,7 @@ export const SETTINGS_SOURCES = {
   texts: `${APP}/ui/settings/SettingTexts.kt`,
   xd: `${APP}/ui/settings/XdSettings.kt`,
   turnip: `${APP}/settings/TurnipFlags.kt`,
+  drivers: `${APP}/ui/drivers/DriversScreen.kt`,
   buttons: `${APP}/data/GameButtons.kt`,
   res: 'app/src/main/res',
   template: 'emulator-core/src/main/assets/config/default_config.toml',
@@ -393,11 +394,23 @@ export function extractSettings(root) {
   // ---------- flags do Turnip ----------
   const tf = reader(root, S.turnip);
   const exclusive = listItems(tf.valueOf('EXCLUSIVE'), tf).map(n => literal(n, tf));
-  const turnipFlags = listItems(tf.valueOf('KNOWN'), tf).map(f => ({
-    name: literal(f.args[0].value, tf),
-    help: { text: literal(f.args[1].value, tf), lang: 'en' },
-    exclusive: exclusive.includes(literal(f.args[0].value, tf)),
-  }));
+  // a tela Drivers mostra a ajuda de cada flag no idioma do app (turnipHelp em DriversScreen.kt)
+  const helpRes = new Map();
+  const drv = fs.readFileSync(path.join(root, S.drivers), 'utf8');
+  const helpFn = /fun turnipHelp\([^)]*\)[^{=]*=\s*when\s*\(\w+\)\s*\{([\s\S]*?)\n\}/.exec(drv);
+  if (helpFn) for (const m of helpFn[1].matchAll(/"([\w-]+)"\s*->\s*stringResource\(R\.string\.(\w+)\)/g)) helpRes.set(m[1], m[2]);
+  else problems.push({ level: 'warn', msg: `${S.drivers}: turnipHelp não encontrado; as flags ficam com a ajuda em inglês` });
+  const turnipFlags = listItems(tf.valueOf('KNOWN'), tf).map(f => {
+    const name = literal(f.args[0].value, tf);
+    const res = helpRes.get(name);
+    const pt = res ? strings.get(res) : null;
+    return {
+      name,
+      help: pt || { text: literal(f.args[1].value, tf), lang: 'en' },
+      helpEnglish: literal(f.args[1].value, tf),
+      exclusive: exclusive.includes(name),
+    };
+  });
 
   // ---------- botões mapeáveis ----------
   const gb = reader(root, S.buttons);

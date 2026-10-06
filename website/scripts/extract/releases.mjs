@@ -15,10 +15,17 @@ async function getJson(url, token) {
     for (const [k, v] of Object.entries(headers)) args.push('-H', `${k}: ${v}`);
     args.push(url);
     const out = execFileSync('curl', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
-    const split = out.indexOf('\r\n\r\n');
-    const head = out.slice(0, split);
+    // o proxy acrescenta o próprio bloco de cabeçalhos ("Connection established") antes do da API
+    let rest = out;
+    let head = '';
+    while (/^HTTP\/\S+ \d{3}/.test(rest)) {
+      const split = rest.indexOf('\r\n\r\n');
+      if (split < 0) break;
+      head = rest.slice(0, split);
+      rest = rest.slice(split + 4);
+    }
     const link = /^link:\s*(.+)$/im.exec(head)?.[1] || '';
-    return { body: JSON.parse(out.slice(split + 4)), link };
+    return { body: JSON.parse(rest), link };
   }
   const res = await fetch(url, { headers });
   if (!res.ok) throw new Error(`GitHub ${res.status} em ${url}: ${(await res.text()).slice(0, 200)}`);
@@ -63,8 +70,9 @@ function simplify(r, repo) {
  * modo estrito, usa a cópia guardada (marcada como tal). No modo estrito (CI), uma falha
  * interrompe o build.
  */
-export async function readReleases({ repo, token, cacheFile, strict }) {
+export async function readReleases({ repo, token, cacheFile, strict, offline = false }) {
   try {
+    if (offline) throw new Error('modo sem rede (--offline)');
     const all = [];
     let url = `https://api.github.com/repos/${repo}/releases?per_page=100`;
     for (let page = 0; url && page < 20; page++) {
