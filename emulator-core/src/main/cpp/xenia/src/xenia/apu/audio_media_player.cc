@@ -8,6 +8,8 @@
  */
 
 #include "xenia/apu/audio_media_player.h"
+
+#include <algorithm>
 #include "xenia/apu/audio_driver.h"
 #include "xenia/apu/audio_system.h"
 #include "xenia/apu/xma_context.h"
@@ -68,80 +70,84 @@ int32_t InitializeAndOpenAvCodec(std::span<uint8_t> song_data,
   return ret;
 }
 
-void ConvertAudioFrame(AVFrame* frame, int channel_count,
+// The song's frame as interleaved stereo floats, whatever its channels: the
+// media player's driver plays stereo, and one built for the song's own count
+// read past its blocks (mono: twice the samples there were) or folded
+// interleaved 5.1 as the guest's big endian kind. Mono goes to both sides;
+// more channels keep front left and right, with the front centre at -3 dB.
+void ConvertAudioFrame(AVFrame* frame, const AVChannelLayout& stream_layout,
                        std::vector<float>* framebuffer) {
-  framebuffer->reserve(frame->nb_samples * channel_count);
+  const AVChannelLayout& layout =
+      frame->ch_layout.nb_channels > 0 ? frame->ch_layout : stream_layout;
+  const int channels = std::max(layout.nb_channels, 1);
+  const size_t frames = size_t(std::max(frame->nb_samples, 0));
+  framebuffer->reserve(framebuffer->size() + frames * 2);
 
+  // Planar and packed integer formats too: FFmpeg hands these back for WMA
+  // and MP3, and leaving them unhandled left the frame buffer holding whatever
+  // was there before, which the driver played as full-scale noise.
+  float scale;
   switch (frame->format) {
-    case AV_SAMPLE_FMT_FLTP: {
-      for (int sample = 0; sample < frame->nb_samples; sample++) {
-        for (int ch = 0; ch < channel_count; ch++) {
-          float sampleValue = reinterpret_cast<float*>(frame->data[ch])[sample];
-          framebuffer->push_back(sampleValue);
-        }
-      }
+    case AV_SAMPLE_FMT_FLT:
+    case AV_SAMPLE_FMT_FLTP:
+      scale = 1.0f;
       break;
-    }
-
-    case AV_SAMPLE_FMT_FLT: {
-      float* frameData = reinterpret_cast<float*>(frame->data[0]);
-      framebuffer->insert(framebuffer->end(), frameData,
-                          frameData + frame->nb_samples * channel_count);
-
+    case AV_SAMPLE_FMT_S16:
+    case AV_SAMPLE_FMT_S16P:
+      scale = 1.0f / 32768.0f;
       break;
-    }
-
-    // Planar and packed integer formats. FFmpeg hands these back for WMA and
-    // MP3, and leaving them unhandled left the frame buffer holding whatever
-    // was there before: the driver then played uninitialised floats as
-    // full-scale noise over the game's own audio.
-    case AV_SAMPLE_FMT_S16P: {
-      for (int sample = 0; sample < frame->nb_samples; sample++) {
-        for (int ch = 0; ch < channel_count; ch++) {
-          const int16_t v =
-              reinterpret_cast<int16_t*>(frame->data[ch])[sample];
-          framebuffer->push_back(float(v) / 32768.0f);
-        }
-      }
+    case AV_SAMPLE_FMT_S32:
+    case AV_SAMPLE_FMT_S32P:
+      scale = 1.0f / 2147483648.0f;
       break;
-    }
-
-    case AV_SAMPLE_FMT_S16: {
-      const int16_t* d = reinterpret_cast<int16_t*>(frame->data[0]);
-      const int count = frame->nb_samples * channel_count;
-      for (int i = 0; i < count; i++) {
-        framebuffer->push_back(float(d[i]) / 32768.0f);
-      }
-      break;
-    }
-
-    case AV_SAMPLE_FMT_S32P: {
-      for (int sample = 0; sample < frame->nb_samples; sample++) {
-        for (int ch = 0; ch < channel_count; ch++) {
-          const int32_t v =
-              reinterpret_cast<int32_t*>(frame->data[ch])[sample];
-          framebuffer->push_back(float(v) / 2147483648.0f);
-        }
-      }
-      break;
-    }
-
-    case AV_SAMPLE_FMT_S32: {
-      const int32_t* d = reinterpret_cast<int32_t*>(frame->data[0]);
-      const int count = frame->nb_samples * channel_count;
-      for (int i = 0; i < count; i++) {
-        framebuffer->push_back(float(d[i]) / 2147483648.0f);
-      }
-      break;
-    }
-
     default:
       // Silence beats noise: without this the buffer keeps stale samples.
       XELOGW("XMP: unhandled sample format {}, substituting silence",
              int(frame->format));
-      framebuffer->insert(framebuffer->end(),
-                          size_t(frame->nb_samples) * channel_count, 0.0f);
-      break;
+      framebuffer->insert(framebuffer->end(), frames * 2, 0.0f);
+      return;
+  }
+  const bool planar =
+      av_sample_fmt_is_planar(static_cast<AVSampleFormat>(frame->format));
+  const int format = frame->format;
+  // extended_data: data[] holds only the first 8 planes.
+  auto sample = [&](int channel, size_t index) -> float {
+    const uint8_t* plane = frame->extended_data[planar ? channel : 0];
+    const size_t at = planar ? index : index * channels + channel;
+    switch (format) {
+      case AV_SAMPLE_FMT_FLT:
+      case AV_SAMPLE_FMT_FLTP:
+        return reinterpret_cast<const float*>(plane)[at];
+      case AV_SAMPLE_FMT_S16:
+      case AV_SAMPLE_FMT_S16P:
+        return float(reinterpret_cast<const int16_t*>(plane)[at]) * scale;
+      default:
+        return float(reinterpret_cast<const int32_t*>(plane)[at]) * scale;
+    }
+  };
+
+  int left = 0, right = channels > 1 ? 1 : 0, center = -1;
+  if (channels > 2) {
+    const int fl =
+        av_channel_layout_index_from_channel(&layout, AV_CHAN_FRONT_LEFT);
+    const int fr =
+        av_channel_layout_index_from_channel(&layout, AV_CHAN_FRONT_RIGHT);
+    const int fc =
+        av_channel_layout_index_from_channel(&layout, AV_CHAN_FRONT_CENTER);
+    left = fl >= 0 ? fl : 0;
+    right = fr >= 0 ? fr : 1;
+    center = fc;
+  }
+  for (size_t i = 0; i < frames; ++i) {
+    float l = sample(left, i);
+    float r = sample(right, i);
+    if (center >= 0) {
+      const float c = 0.707106781f * sample(center, i);
+      l += c;
+      r += c;
+    }
+    framebuffer->push_back(l);
+    framebuffer->push_back(r);
   }
 }
 
@@ -180,7 +186,7 @@ ProcessAudioResult ProcessAudioLoop(AudioMediaPlayer* player,
           break;
         }
 
-        ConvertAudioFrame(frame, avctx->ch_layout.nb_channels, &frameBuffer);
+        ConvertAudioFrame(frame, avctx->ch_layout, &frameBuffer);
         player->ProcessAudioBuffer(&frameBuffer);
       }
     }
@@ -286,8 +292,8 @@ void AudioMediaPlayer::Play() {
   AVCodecContext* codecContext = nullptr;
   InitializeAndOpenAvCodec(song_buffer, formatContext, codecContext);
 
-  if (!SetupDriver(codecContext->sample_rate,
-                   codecContext->ch_layout.nb_channels)) {
+  // Stereo whatever the song's channels: ConvertAudioFrame folds them.
+  if (!SetupDriver(codecContext->sample_rate, 2)) {
     XELOGE("Driver initialization failed!");
     avcodec_free_context(&codecContext);
     av_freep(&formatContext->pb->buffer);
@@ -351,8 +357,12 @@ void AudioMediaPlayer::Pause() {
     return;
   }
 
-  if (driver_) {
-    driver_->Pause();
+  {
+    // DeleteDriver frees the driver under this lock, on the player's thread.
+    std::unique_lock<xe_mutex> guard(driver_mutex_);
+    if (driver_) {
+      driver_->Pause();
+    }
   }
   state_ = XmpApp::State::kPaused;
   OnStateChanged();
@@ -363,8 +373,11 @@ void AudioMediaPlayer::Stop(bool change_state, bool force) {
     return;
   }
 
-  if (driver_ && IsPaused()) {
-    driver_->Resume();
+  if (IsPaused()) {
+    std::unique_lock<xe_mutex> guard(driver_mutex_);
+    if (driver_) {
+      driver_->Resume();
+    }
   }
 
   state_ = XmpApp::State::kIdle;
@@ -389,8 +402,11 @@ void AudioMediaPlayer::Continue() {
 
   state_ = XmpApp::State::kPlaying;
   resume_fence_.Signal();
-  if (driver_) {
-    driver_->Resume();
+  {
+    std::unique_lock<xe_mutex> guard(driver_mutex_);
+    if (driver_) {
+      driver_->Resume();
+    }
   }
   OnStateChanged();
 }
@@ -606,9 +622,10 @@ bool AudioMediaPlayer::SetupDriver(uint32_t sample_rate, uint32_t channels) {
   }
 
   if (!driver_->Initialize()) {
-    driver_semaphore_.reset();
+    // The driver before its semaphore, as in DeleteDriver.
     driver_->Shutdown();
     driver_.reset();
+    driver_semaphore_.reset();
     return false;
   }
 
@@ -618,12 +635,12 @@ bool AudioMediaPlayer::SetupDriver(uint32_t sample_rate, uint32_t channels) {
 void AudioMediaPlayer::DeleteDriver() {
   std::unique_lock<xe_mutex> guard(driver_mutex_);
   if (driver_) {
-    if (driver_semaphore_) {
-      driver_semaphore_.reset();
-    }
-
+    // The driver first: its device callbacks (AAudio, OpenSL ES, on threads of
+    // their own) release the semaphore until it is shut down. Freed first, the
+    // semaphore could be released after it was gone.
     driver_->Shutdown();
     driver_.reset();
+    driver_semaphore_.reset();
   }
 }
 
