@@ -1,6 +1,8 @@
 // AudioBlockRenderer (xe_audio_block_renderer.h): the Android drivers' block processing with
 // a real signal - exact passthrough, the 5.1 fold and its byte order, the media player's
-// stereo, gain bounds, gaps concealed without steps, and the resampler across block edges.
+// stereo, gain bounds and NaN, gaps concealed without steps on both paths, the resampler
+// across block edges, and one block or gap per callback of a block's length (OpenSL ES's
+// pacing).
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -60,6 +62,14 @@ float LargestStep(const std::vector<float>& out) {
   float worst = 0.0f;
   for (size_t i = 2; i < out.size(); ++i) worst = std::max(worst, std::fabs(out[i] - out[i - 2]));
   return worst;
+}
+
+// The largest step a sine of `amp` and `step` radians a frame can take through the renderer
+// without a discontinuity: its own, plus the slope of the fade-in after a gap (amp over the
+// ramp's frames; the concealment's cosine is gentler). Repeating the last block, a gap stepped
+// 11 times the sine's own.
+float SmoothBound(double amp, double step) {
+  return float(amp * step + amp / AudioBlockRenderer::kFadeInFrames) * 1.001f;
 }
 
 // At rate 1 the output is the input, two frames late, bit for bit.
@@ -133,7 +143,7 @@ void GapsAreConcealedWithoutSteps() {
     AudioBlockRenderer::Result total;
     auto out = Render(renderer, blocks, kFrames, callback, 1.0f, 1.0f, &total);
     assert(total.gaps >= 5 && total.blocks == uint32_t(count - 5));
-    assert(LargestStep(out) <= float(amp * step) * 1.05f);
+    assert(LargestStep(out) <= SmoothBound(amp, step));
     // The 2nd to 4th missing blocks of the long gap are silence.
     for (uint32_t f = 21 * kFrames + 2; f < 24 * kFrames + 2; ++f) assert(out[size_t(f) * 2] == 0.0f);
     // Block 30 plays at full level.
@@ -157,8 +167,57 @@ void ResamplingIsContinuous() {
   for (float rate : {0.9f, 0.97f, 1.0f}) {
     AudioBlockRenderer renderer(kFrames, 6);
     auto out = Render(renderer, blocks, kFrames, 192, rate);
-    assert(LargestStep(out) <= float(amp * step) * 1.05f);
+    assert(LargestStep(out) <= SmoothBound(amp, step));
   }
+}
+
+// A NaN from the guest is silenced and counted, not played.
+void NanIsSilenced() {
+  auto block = GameBlock([](uint32_t c, uint32_t s) { return c == 0 && s == 7 ? std::nanf("") : 0.25f; });
+  AudioBlockRenderer renderer(kFrames, 6);
+  AudioBlockRenderer::Result total;
+  auto out = Render(renderer, {block.data(), block.data()}, kFrames, int32_t(kFrames), 1.0f, 1.0f, &total);
+  for (float sample : out) assert(!std::isnan(sample));
+  assert(total.clipped == 2);  // left channel, frame 7, of each block
+}
+
+// At rate 1, a callback of a block's length takes exactly one block or one gap: OpenSL ES
+// returns one credit per buffer on that.
+void OneBlockOrGapPerBlockLongCallback() {
+  for (uint32_t channels : {6u, 2u}) {
+    const uint32_t frames = channels == 6 ? kFrames : 768;
+    std::vector<float> block(size_t(frames) * channels, 0.1f);
+    AudioBlockRenderer renderer(frames, channels);
+    std::vector<float> out(size_t(frames) * 2);
+    int next = 0;
+    for (int call = 0; call < 40; ++call) {
+      auto result = renderer.Render(out.data(), int32_t(frames), 1.0f, 1.0f,
+          [&]() -> const float* { return (next++ % 5 == 3) ? nullptr : block.data(); },
+          [](const float*) {});
+      assert(result.blocks + result.gaps == 1);
+    }
+  }
+}
+
+// The media player's path (768 frames of stereo) conceals gaps without steps too.
+void PlayerGapsAreConcealedWithoutSteps() {
+  const uint32_t frames = 768;
+  const double amp = 0.5, step = 2.0 * 3.14159265358979 * 440.0 / 44100.0;
+  std::vector<std::vector<float>> song;
+  for (int b = 0; b < 16; ++b) {
+    std::vector<float> block(size_t(frames) * 2);
+    for (uint32_t f = 0; f < frames; ++f) {
+      const float v = float(amp * std::sin(step * double(b * frames + f)));
+      block[size_t(f) * 2] = v;
+      block[size_t(f) * 2 + 1] = -v;
+    }
+    song.push_back(std::move(block));
+  }
+  std::vector<const float*> blocks;
+  for (int b = 0; b < 16; ++b) blocks.push_back(b == 5 || b == 9 || b == 10 ? nullptr : song[b].data());
+  AudioBlockRenderer renderer(frames, 2);
+  auto out = Render(renderer, blocks, frames, int32_t(frames));
+  assert(LargestStep(out) <= SmoothBound(amp, step));
 }
 
 }  // namespace
@@ -170,6 +229,9 @@ int main() {
   GainIsBoundedAndCounted();
   GapsAreConcealedWithoutSteps();
   ResamplingIsContinuous();
+  NanIsSilenced();
+  OneBlockOrGapPerBlockLongCallback();
+  PlayerGapsAreConcealedWithoutSteps();
   std::printf("audio_block_renderer_test: ok\n");
   return 0;
 }

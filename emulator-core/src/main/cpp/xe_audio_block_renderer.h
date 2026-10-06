@@ -86,7 +86,8 @@ class AudioBlockRenderer {
 
   // The 5.1 fold peaks at ~2.9x a channel, so loud content can pass full scale. Bounded here
   // so the result is the same on every device, and counted: the fix for persistent clipping is
-  // less gain, not a harder limit.
+  // less gain, not a harder limit. A NaN from the guest passes both bounds: it is silenced (and
+  // counted) instead of reaching the device and the next gap's concealment.
   uint32_t GainAndClamp(float gain) {
     uint32_t clipped = 0;
     for (float& sample : block_) {
@@ -96,6 +97,9 @@ class AudioBlockRenderer {
         ++clipped;
       } else if (s < -1.0f) {
         s = -1.0f;
+        ++clipped;
+      } else if (std::isnan(s)) {
+        s = 0.0f;
         ++clipped;
       }
       sample = s;
