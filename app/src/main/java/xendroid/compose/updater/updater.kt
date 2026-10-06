@@ -156,11 +156,40 @@ internal fun downloadFailureText(context: Context, e: UpdateDownloadException): 
     UpdateDownloadException.Reason.NOT_KEPT -> context.getString(R.string.upd_err_not_kept)
 }
 
+/**
+ * What the update card lists for a release, one line each. Notes written by
+ * tools/release_notes.py carry a short summary per language in hidden
+ * `<!-- update-summary:<language>` blocks: the app's language is picked, then the same
+ * language in another region, then English. Other notes (GitHub's generated "What's
+ * Changed") are read up to their Full Changelog line, as text.
+ */
+fun updateNotes(text: String, language: String): List<String> {
+    val summaries = Regex("<!--\\s*update-summary:([A-Za-z-]+)\\s*\\n(.*?)-->", RegexOption.DOT_MATCHES_ALL)
+        .findAll(text).associate { it.groupValues[1] to it.groupValues[2] }
+    val base = language.substringBefore('-')
+    val summary = summaries[language]
+        ?: summaries.entries.firstOrNull { it.key.substringBefore('-').equals(base, ignoreCase = true) }?.value
+        ?: summaries["en"]
+        ?: summaries.values.firstOrNull()
+    return (summary ?: cleanChangelog(text)).lines()
+        .map { it.trim().removePrefix("•").trim().removePrefix("* ").removePrefix("- ").trim() }
+        .filter { it.isNotEmpty() }
+}
+
 fun cleanChangelog(text: String): String {
     return text
         .replace(Regex("(?s)\\*\\*Full Changelog\\*\\*:.*"), "")
+        .replace(Regex("(?s)<!--.*?-->|<details>.*?</details>"), "")
+        // GitHub's generated lines: "* Title by @author in <pull request URL>" is the title.
+        .replace(Regex("(?m)^\\* (.+) by @[\\w-]+ in https?://\\S+$"), "* $1")
+        .replace(Regex("(?m)^\\* @[\\w-]+ made their first contribution.*$"), "")
+        // Headings, HTML, tables and images say nothing on a card.
+        .replace(Regex("(?m)^\\s*(#|<|\\||!\\[).*$"), "")
+        .replace(Regex("!\\[[^\\]]*]\\([^)]*\\)"), "")
+        .replace(Regex("\\[([^\\]]*)]\\([^)]*\\)"), "$1")
         .replace(Regex("https?://\\S+"), "")
-        .replace("## What's Changed", "")
+        .replace(Regex("(?m)^\\s*>\\s?"), "")
+        .replace("**", "").replace("`", "")
         .replace(Regex("\\* "), "• ")
         .replace(Regex("\n{3,}"), "\n\n")
         .trim()
