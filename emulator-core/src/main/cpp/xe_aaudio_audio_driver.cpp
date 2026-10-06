@@ -74,6 +74,12 @@ AAudioAudioDriver::~AAudioAudioDriver() {
 }
 
 bool AAudioAudioDriver::Initialize() {
+  // The game's 5.1 or the media player's stereo: blocks of any other count
+  // would be read past their end (the constructor's assert is gone in release).
+  if (frame_channels_ != 6 && frame_channels_ != 2) {
+    XELOGE("AAudio: {} channels, not 2 or 6", frame_channels_);
+    return false;
+  }
   {
     std::unique_lock<std::mutex> guard(frames_mutex_);
     for (int i = 0; i < 2; i++) {

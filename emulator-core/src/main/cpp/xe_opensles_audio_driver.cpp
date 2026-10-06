@@ -40,6 +40,12 @@ OpenSLESAudioDriver::~OpenSLESAudioDriver() {
 }
 
 bool OpenSLESAudioDriver::Initialize() {
+    // The game's 5.1 or the media player's stereo: blocks of any other count
+    // would be read past their end (the constructor's assert is gone in release).
+    if (frame_channels_ != 6 && frame_channels_ != 2) {
+        XELOGE("OpenSL ES: {} channels, not 2 or 6", frame_channels_);
+        return false;
+    }
     SLresult r;
 
     r = slCreateEngine(&sl_object_, 0, nullptr, 0, nullptr, nullptr);
