@@ -606,9 +606,10 @@ bool AudioMediaPlayer::SetupDriver(uint32_t sample_rate, uint32_t channels) {
   }
 
   if (!driver_->Initialize()) {
-    driver_semaphore_.reset();
+    // The driver before its semaphore, as in DeleteDriver.
     driver_->Shutdown();
     driver_.reset();
+    driver_semaphore_.reset();
     return false;
   }
 
@@ -618,12 +619,12 @@ bool AudioMediaPlayer::SetupDriver(uint32_t sample_rate, uint32_t channels) {
 void AudioMediaPlayer::DeleteDriver() {
   std::unique_lock<xe_mutex> guard(driver_mutex_);
   if (driver_) {
-    if (driver_semaphore_) {
-      driver_semaphore_.reset();
-    }
-
+    // The driver first: its device callbacks (AAudio, OpenSL ES, on threads of
+    // their own) release the semaphore until it is shut down. Freed first, the
+    // semaphore could be released after it was gone.
     driver_->Shutdown();
     driver_.reset();
+    driver_semaphore_.reset();
   }
 }
 
