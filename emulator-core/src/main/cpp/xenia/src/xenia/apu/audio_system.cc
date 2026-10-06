@@ -487,7 +487,13 @@ X_STATUS AudioSystem::RegisterClient(uint32_t callback, uint32_t callback_arg,
   auto global_lock = global_critical_region_.Acquire();
 
   auto index = FindFreeClient();
-  assert_true(index >= 0);
+  if (index < 0) {
+    // Every client slot is taken: indexing the semaphores with -1 wrote outside
+    // them (the assert is compiled out of release builds).
+    XELOGE("AudioSystem::RegisterClient: all {} clients in use",
+           kMaximumClientCount);
+    return X_STATUS_UNSUCCESSFUL;
+  }
 
   auto client_semaphore = client_semaphores_[index].get();
   auto ret = client_semaphore->Release(queued_frames_, nullptr);
@@ -498,6 +504,12 @@ X_STATUS AudioSystem::RegisterClient(uint32_t callback, uint32_t callback_arg,
   if (XFAILED(result)) {
     XELOGE("AudioSystem::RegisterClient: CreateDriver failed for index={}",
            index);
+    // Take the credits back, as UnregisterClient does: left in the semaphore,
+    // the next client of this slot found it full and its own release failed.
+    while (xe::threading::Wait(client_semaphore, false,
+                               std::chrono::milliseconds(0)) ==
+           xe::threading::WaitResult::kSuccess) {
+    }
     return result;
   }
   assert_not_null(driver);
