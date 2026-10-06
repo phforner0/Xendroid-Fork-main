@@ -167,6 +167,8 @@ class EmulatorSession {
     fun presentationState(): PresentationState = if (booted) PresentationState.decode(core.presentation_state()) else PresentationState()
     fun setPresentationMode(mode: Int) { if (booted) core.set_presentation_mode(mode) }
     fun setScalingEffect(effect: Int) { if (booted) core.set_scaling_effect(effect) }
+    /** The in-game menu's GPU options ([GpuLiveOption]), from the core's next frame. */
+    fun setLiveOption(option: GpuLiveOption, value: Int) { if (booted) core.set_live_option(option.ordinal, value) }
     fun setColorFilter(mode: Int) { if (booted) core.set_color_filter(mode) }
     /** The in-game menu's Image options (negative: the Settings value), from the next frame. */
     fun setImageTuning(t: ImageTuning) {

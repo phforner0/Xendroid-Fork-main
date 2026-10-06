@@ -128,7 +128,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val TOUCH_KEY = "HID|show_touch_overlay"
         private const val VOLUME_KEY = "APU|volume"
         private const val IMAGE_LIVE = "image"
-        private val MENU_CONFIG_KEYS = listOf(FPS_KEY, SCALING_KEY, AA_KEY, CAS_KEY, DITHER_KEY, TOUCH_KEY, VOLUME_KEY)
+        private val MENU_CONFIG_KEYS = listOf(FPS_KEY, SCALING_KEY, AA_KEY, CAS_KEY, DITHER_KEY, TOUCH_KEY, VOLUME_KEY) +
+            xendroid.compose.core.GpuLiveOption.entries.map { it.key }
         private val FPS_CHOICES = listOf(0, 30, 45, 60, 90, 120)
         private val HUD_DETAILS = listOf(xendroid.compose.core.HudDetail.COMPACT, xendroid.compose.core.HudDetail.FULL,
             xendroid.compose.core.HudDetail.PANEL)
@@ -405,6 +406,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val sessionChanges = mutableIntStateOf(0)
     /** Round 2: the config keys this game has its own value for (the menu's "this game" tags). */
     private val gameOwnKeys = mutableStateOf<Set<String>>(emptySet())
+    /** The in-game menu's GPU options as the core runs them (read at boot, then the menu's). */
+    private val gpuLive = mutableStateOf<Map<xendroid.compose.core.GpuLiveOption, Int>>(emptyMap())
     /** Round 2: each changed setting's live value before the session's first change of it, for Undo. */
     private val liveBefore = mutableMapOf<String, Any?>()
     /** Round 2: the touch controls' look (the layout file's globals, mirrored for the menu's actions). */
@@ -654,7 +657,15 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 xendroid.compose.core.HudDetail.parse(prefs.getString("performance_overlay_detail", null),
                     prefs.getBoolean("performance_overlay_compact", false))
             }
-            val savedMetrics = getSharedPreferences("fps_overlay", MODE_PRIVATE).getStringSet("hud_metrics", null)
+            val overlayPrefs = getSharedPreferences("fps_overlay", MODE_PRIVATE)
+            val savedMetrics = overlayPrefs.getStringSet("hud_metrics", null)?.let { saved ->
+                // The power row became three (power, charge, battery time): who had it keeps seeing all of it.
+                if (overlayPrefs.getBoolean("hud_power_split", false)) saved else {
+                    val split = if (HudMetric.POWER.name in saved) saved + setOf(HudMetric.BATTERY_LEVEL.name, HudMetric.BATTERY_TIME.name) else saved
+                    overlayPrefs.edit().putStringSet("hud_metrics", split).putBoolean("hud_power_split", true).apply()
+                    split
+                }
+            }
             if (savedMetrics != null) hudMetrics.value = HudMetric.entries.filter { it.name in savedMetrics }.toSet()
             hudLook.value = xendroid.compose.core.HudPlacements.read(HudPreferences.of(this@EmulatorHostActivity), null).look
             hudStyle.value = xendroid.compose.core.HudStyle.read(HudPreferences.of(this@EmulatorHostActivity))
@@ -1626,6 +1637,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                                 runCatching { inGameConfig.driverPath(activeTitle) }
                                                     .onFailure { Log.w(TAG, "Reading the driver setting failed", it) }.getOrNull()
                                             }
+                                            gpuLive.value = withContext(Dispatchers.IO) {
+                                                runCatching { inGameConfig.gpuLiveValues(activeTitle) }
+                                                    .onFailure { Log.w(TAG, "Reading the GPU options failed", it) }.getOrNull()
+                                            } ?: emptyMap()
                                             if (bootStatus.value != null) loadingDetails.value = withContext(Dispatchers.IO) {
                                                 runCatching { loadingDetailsOf(activeTitle) }
                                                     .onFailure { Log.w(TAG, "Reading what the game starts with failed", it) }.getOrNull()
@@ -1675,7 +1690,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                                     } else {
                                         lastGenerated = -1L
                                     }
-                                    if (BuildConfig.DEBUG) fgNotes.value = frameGenerationNotes(fgNow)
+                                    fgNotes.value = frameGenerationNotes(fgNow)
                                     fgBudgetLabel.value = fgGovernor.current.takeIf {
                                         it.verdict != xendroid.compose.core.FrameGenerationGovernor.Verdict.OFF
                                     }?.let { "Budget (advisory, never acts): ${it.text}" }
@@ -3093,6 +3108,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 HudMetric.BATTERY_TEMPERATURE -> stringResource(R.string.menu_chip_battery)
                 HudMetric.SOC_TEMPERATURE -> "SoC"
                 HudMetric.POWER -> stringResource(R.string.menu_chip_power)
+                HudMetric.BATTERY_LEVEL -> stringResource(R.string.menu_chip_charge)
+                HudMetric.BATTERY_TIME -> stringResource(R.string.menu_chip_battery_time)
                 HudMetric.HOST_SUBMISSIONS -> "Vulkan"
                 else -> metric.label
             }
@@ -3132,13 +3149,13 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                     xendroid.compose.driver.DriverIdentity.InGame.OTHER_FOR_NEXT_START -> stringResource(R.string.menu_driver_next, label)
                 }
             }),
-            InGameAction.WINFG to MenuValue(on = presentation.requested && presentation.engine == 0, enabled = BuildConfig.DEBUG),
+            InGameAction.WINFG to MenuValue(on = presentation.requested && presentation.engine == 0),
             InGameAction.WINFG_PRESET to MenuValue(text = stringResource(listOf(R.string.menu_preset_quality, R.string.menu_preset_balanced,
-                R.string.menu_preset_performance)[fgPreset.intValue.coerceIn(0, 2)]), enabled = BuildConfig.DEBUG),
+                R.string.menu_preset_performance)[fgPreset.intValue.coerceIn(0, 2)])),
             InGameAction.LSFG to MenuValue(on = presentation.requested && presentation.engine == 1,
-                enabled = BuildConfig.DEBUG && lsfgCache.value != null && !importingLsfg),
-            InGameAction.LSFG_MULTIPLIER to MenuValue(text = "${lsfgMultiplier.intValue}×", enabled = BuildConfig.DEBUG),
-            InGameAction.LSFG_TARGET to MenuValue(text = lsfgTargetText(), enabled = BuildConfig.DEBUG),
+                enabled = lsfgCache.value != null && !importingLsfg),
+            InGameAction.LSFG_MULTIPLIER to MenuValue(text = "${lsfgMultiplier.intValue}×"),
+            InGameAction.LSFG_TARGET to MenuValue(text = lsfgTargetText()),
             // Performance
             InGameAction.FPS_LIMIT to MenuValue(options = FPS_CHOICES.map { if (it == 0) stringResource(R.string.menu_unlimited) else "$it" },
                 selected = FPS_CHOICES.indexOf(fpsLimitState.intValue), own = FPS_KEY in own,
@@ -3156,6 +3173,16 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 note = stringResource(R.string.menu_refresh_rate_value, requestedRefresh.value?.let { "${it.roundToInt()} Hz" } ?: stringResource(R.string.menu_auto),
                     ((if (Build.VERSION.SDK_INT >= 30) display?.refreshRate else @Suppress("DEPRECATION") windowManager.defaultDisplay.refreshRate)
                         ?.roundToInt()?.let { "$it Hz" }) ?: "—")),
+            InGameAction.SMOOTH_SHADERS to MenuValue(on = gpuValue(xendroid.compose.core.GpuLiveOption.ASYNC_SKIP_DRAWS) != 0,
+                own = xendroid.compose.core.GpuLiveOption.ASYNC_SKIP_DRAWS.key in own, text = stringResource(R.string.menu_smooth_shaders_note)),
+            InGameAction.MSAA_4X_AS_2X to MenuValue(on = gpuValue(xendroid.compose.core.GpuLiveOption.MSAA_4X_AS_2X) != 0,
+                own = xendroid.compose.core.GpuLiveOption.MSAA_4X_AS_2X.key in own, text = stringResource(R.string.menu_msaa_2x_note)),
+            InGameAction.CUTOUT_TRANSPARENCY to MenuValue(on = gpuValue(xendroid.compose.core.GpuLiveOption.ALPHA_TO_COVERAGE_AS_TEST) != 0,
+                own = xendroid.compose.core.GpuLiveOption.ALPHA_TO_COVERAGE_AS_TEST.key in own, text = stringResource(R.string.menu_cutout_note)),
+            InGameAction.SHADING_RATE to MenuValue(text = when (gpuValue(xendroid.compose.core.GpuLiveOption.SHADING_RATE)) {
+                    1 -> "2×1"; 2 -> "1×2"; 3 -> "2×2"; else -> stringResource(R.string.menu_shading_rate_full) },
+                own = xendroid.compose.core.GpuLiveOption.SHADING_RATE.key in own, note = stringResource(R.string.menu_shading_rate_note)),
+            InGameAction.SCREENSHOT to MenuValue(text = stringResource(R.string.menu_screenshot_note)),
             InGameAction.SUSTAINED_PERFORMANCE to MenuValue(on = sustainedMode.value, enabled = sustainedAvailable.value,
                 text = if (!sustainedAvailable.value) unavailable else null),
             InGameAction.PERFORMANCE_HINTS to MenuValue(on = performanceHints.requested, text = performanceHintsLabel.value),
@@ -3224,10 +3251,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 add(presentation.label)
                 fgBudgetLabel.value?.let(::add)
                 addAll(fgNotes.value)
-                add(stringResource(R.string.menu_fg_experimental))
             }
+            add(stringResource(R.string.menu_fg_experimental))
             add(stringResource(R.string.menu_image_live_note))
-            if (!BuildConfig.DEBUG && developer) add(stringResource(R.string.menu_fg_gated))
         }
         val notes = mapOf(
             InGamePage.GRAPHICS to graphicsNotes,
@@ -3261,7 +3287,6 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             menuState.value = menuState.value.toggleAdvanced()
             return
         }
-        if (!BuildConfig.DEBUG && (action == InGameAction.WINFG || action == InGameAction.LSFG)) return
         when (action) {
             InGameAction.PERFORMANCE_HINTS -> performanceHints.requested = !performanceHints.requested
             InGameAction.EXTERNAL_DISPLAY -> externalDisplay?.cycle()
@@ -3287,6 +3312,10 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 phoneControllers.toggle()
                 refreshPhoneControllers()
             }
+            InGameAction.SMOOTH_SHADERS -> toggleGpuLive(xendroid.compose.core.GpuLiveOption.ASYNC_SKIP_DRAWS)
+            InGameAction.MSAA_4X_AS_2X -> toggleGpuLive(xendroid.compose.core.GpuLiveOption.MSAA_4X_AS_2X)
+            InGameAction.CUTOUT_TRANSPARENCY -> toggleGpuLive(xendroid.compose.core.GpuLiveOption.ALPHA_TO_COVERAGE_AS_TEST)
+            InGameAction.SCREENSHOT -> takeScreenshot()
             InGameAction.SUSTAINED_PERFORMANCE -> {
                 val enabled = !sustainedMode.value
                 sustainedAvailable.value = sustainedPerformance(this, enabled)
@@ -3302,6 +3331,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 if (session.presentationState().engine == 1) {
                     session.setFrameGeneration(false, fgPreset.intValue, currentOutputHz())
                     restoreGenerationCap()
+                    releaseFrameGenerationRefresh()
                 }
                 lifecycleScope.launch {
                     val deleted = withContext(Dispatchers.IO) { runCatching { LsfgAssets.clear(applicationContext) } }
@@ -3467,6 +3497,9 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         InGameAction.WINFG -> presentationState.value.let { it.requested && it.engine == 0 }
         InGameAction.LSFG -> presentationState.value.let { it.requested && it.engine == 1 }
         InGameAction.SUSTAINED_PERFORMANCE -> sustainedMode.value
+        InGameAction.SMOOTH_SHADERS -> gpuValue(xendroid.compose.core.GpuLiveOption.ASYNC_SKIP_DRAWS) != 0
+        InGameAction.MSAA_4X_AS_2X -> gpuValue(xendroid.compose.core.GpuLiveOption.MSAA_4X_AS_2X) != 0
+        InGameAction.CUTOUT_TRANSPARENCY -> gpuValue(xendroid.compose.core.GpuLiveOption.ALPHA_TO_COVERAGE_AS_TEST) != 0
         InGameAction.PERFORMANCE_HINTS -> performanceHints.requested
         InGameAction.PERFORMANCE_HUD -> performanceOverlayEnabled.value
         InGameAction.TOUCH_CONTROLS -> showTouchOverlay.value == true && !overlayHiddenByController.value
@@ -3500,6 +3533,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun cycleMenuValue(action: InGameAction, step: Int) {
         fun <T> around(list: List<T>, current: T): T = list[(list.indexOf(current).coerceAtLeast(0) + step + list.size) % list.size]
         when (action) {
+            InGameAction.SHADING_RATE -> setGpuLive(xendroid.compose.core.GpuLiveOption.SHADING_RATE, around((0..3).toList(), gpuValue(xendroid.compose.core.GpuLiveOption.SHADING_RATE)))
             InGameAction.SCALING_EFFECT -> {
                 rememberLive(SCALING_KEY, scalingEffect.intValue)
                 scalingEffect.intValue = around((-1..5).toList(), scalingEffect.intValue)
@@ -3571,7 +3605,6 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** Frame generation by LSFG: on or off, a multiplier by hand or an output target (15d). */
     private fun runLsfg(action: InGameAction) {
-        if (!BuildConfig.DEBUG) return
         when (action) {
             InGameAction.LSFG_MULTIPLIER -> {
                 // A multiplier chosen by hand ends the target (15d).
@@ -3586,14 +3619,20 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
         val running = current.requested && current.engine == 1
         if (action != InGameAction.LSFG && !running) return
         val enabled = if (action == InGameAction.LSFG) !running else true
-        val hz = currentOutputHz()
         // 15d: a target picks the multiplier and caps the game at target ÷ multiplier, planned
-        // from the player's own limit (never from a cap frame generation put there).
-        val plan = xendroid.compose.core.FrameGenerationTarget.plan(lsfgTarget.intValue, hz,
+        // from the player's own limit (never from a cap frame generation put there), against
+        // what the display can do rather than the rate it shows right now.
+        val plan = xendroid.compose.core.FrameGenerationTarget.plan(lsfgTarget.intValue,
+            requestedRefresh.value ?: displayRates().maxOrNull() ?: currentOutputHz(),
             generationCap.playerLimit(session.fpsLimit()))
         if (plan != null) lsfgMultiplier.intValue = plan.multiplier
+        val hz = when {
+            !enabled -> currentOutputHz()
+            plan != null -> frameGenerationRefresh(plan.output.toDouble())
+            else -> frameGenerationRefresh(guestFpsNow() * lsfgMultiplier.intValue)
+        }
         when {
-            !enabled -> restoreGenerationCap()
+            !enabled -> { restoreGenerationCap(); releaseFrameGenerationRefresh() }
             plan != null -> prepareExactCap(plan.cap)
             else -> prepareGenerationCap(hz, lsfgMultiplier.intValue)
         }
@@ -3605,14 +3644,40 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** Frame generation by Win-FG: on or off, or its preset while it runs. */
     private fun runWinFg(action: InGameAction) {
-        if (!BuildConfig.DEBUG) return
         val state = session.presentationState()
         if (action == InGameAction.WINFG_PRESET && state.engine == 1) return
         val enabled = if (action == InGameAction.WINFG) !(state.requested && state.engine == 0) else state.requested
-        val hz = currentOutputHz()
-        if (enabled) prepareGenerationCap(hz) else restoreGenerationCap()
+        val hz = if (enabled) frameGenerationRefresh(guestFpsNow() * 2) else currentOutputHz()
+        if (enabled) prepareGenerationCap(hz) else { restoreGenerationCap(); releaseFrameGenerationRefresh() }
         session.setFrameGeneration(enabled, fgPreset.intValue, hz)
         presentationState.value = session.presentationState()
+    }
+
+    /** The display's rates at its current resolution, lowest first. */
+    private fun displayRates(): List<Float> =
+        ((if (Build.VERSION.SDK_INT >= 30) display else @Suppress("DEPRECATION") windowManager.defaultDisplay)
+            ?.let { refreshChoices(it).map { choice -> choice.hz } }).orEmpty()
+
+    /** The game's frame rate now, or the last one seen running (the menu pauses it). */
+    private fun guestFpsNow(): Double = session.averageFps().takeIf { it > 0 } ?: lastGuestFps.takeIf { it > 0 } ?: 30.0
+
+    /**
+     * The display rate frame generation gets for [outputFps] frames a second: the player's own
+     * choice, or with Auto the display's lowest rate that holds them, asked of the display until
+     * [releaseFrameGenerationRefresh]. Not the rate it shows right now: HyperOS's dynamic refresh
+     * lowers it while the picture is still (the menu open), and generation then judged the game
+     * too fast for the display and switched itself off.
+     */
+    private fun frameGenerationRefresh(outputFps: Double): Float {
+        requestedRefresh.value?.let { return it }
+        val rates = displayRates()
+        val hz = rates.firstOrNull { it * 1.025f >= outputFps } ?: rates.maxOrNull() ?: return currentOutputHz()
+        selectRefresh(this, hz)
+        return hz
+    }
+
+    private fun releaseFrameGenerationRefresh() {
+        selectRefresh(this, requestedRefresh.value)
     }
 
     private fun setDisplayMode(mode: Int) {
@@ -3653,7 +3718,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** The HUD's chips in the menu: its metrics, then the FPS graph (null), then (developer) Vulkan submissions. */
     private fun hudChipMetrics(): List<HudMetric?> = listOf(HudMetric.CPU, HudMetric.GPU, HudMetric.RAM, HudMetric.GPU_MEMORY,
-        HudMetric.BATTERY_TEMPERATURE, HudMetric.SOC_TEMPERATURE, HudMetric.POWER, null) +
+        HudMetric.BATTERY_TEMPERATURE, HudMetric.SOC_TEMPERATURE, HudMetric.POWER, HudMetric.BATTERY_LEVEL, HudMetric.BATTERY_TIME, null) +
         if (menuState.value.developer) listOf(HudMetric.HOST_SUBMISSIONS) else emptyList()
 
     private fun toggleHudChip(index: Int) {
@@ -3801,6 +3866,64 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
             InGameChanges.DISPLAY_MODE -> (value as? Int)?.let { session.setPresentationMode(it); presentationState.value = session.presentationState() }
             InGameChanges.COLOR_FILTER -> (value as? Int)?.let { session.setColorFilter(it); presentationState.value = session.presentationState() }
             InGameChanges.REFRESH_HZ -> { requestedRefresh.value = value as? Float; selectRefresh(this, requestedRefresh.value) }
+            else -> xendroid.compose.core.GpuLiveOption.entries.firstOrNull { it.key == key }?.let { option ->
+                (value as? Int)?.let { gpuLive.value = gpuLive.value + (option to it); session.setLiveOption(option, it) }
+            }
+        }
+    }
+
+    private fun gpuValue(option: xendroid.compose.core.GpuLiveOption): Int = gpuLive.value[option] ?: option.default
+
+    /** A GPU option from the in-game menu: in the core from its next frame, and kept for the game. */
+    private fun setGpuLive(option: xendroid.compose.core.GpuLiveOption, value: Int) {
+        rememberLive(option.key, gpuValue(option))
+        gpuLive.value = gpuLive.value + (option to value)
+        session.setLiveOption(option, value)
+        keepChange(option.key, if (option == xendroid.compose.core.GpuLiveOption.SHADING_RATE) value.toString()
+            else xendroid.compose.settings.ConfigValueShape.bool(value != 0))
+        recordEvent("gpu option", "${option.key} = $value")
+    }
+
+    private fun toggleGpuLive(option: xendroid.compose.core.GpuLiveOption) = setGpuLive(option, if (gpuValue(option) != 0) 0 else 1)
+
+    /** The game's picture as its surface holds it (no menu, no HUD), saved to Pictures/Xendroid+. */
+    private fun takeScreenshot() {
+        val view = surfaceView ?: return
+        if (view.width <= 0 || view.height <= 0) return
+        val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+        android.view.PixelCopy.request(view, bitmap, { result ->
+            lifecycleScope.launch {
+                val saved = result == android.view.PixelCopy.SUCCESS && withContext(Dispatchers.IO) {
+                    runCatching { saveScreenshot(bitmap) }.onFailure { Log.w(TAG, "Saving the screenshot failed", it) }.isSuccess
+                }
+                bitmap.recycle()
+                if (!saved) Log.w(TAG, "Screenshot not taken (PixelCopy result $result)")
+                Toast.makeText(this@EmulatorHostActivity,
+                    getString(if (saved) R.string.host_screenshot_saved else R.string.host_screenshot_failed), Toast.LENGTH_SHORT).show()
+            }
+        }, android.os.Handler(mainLooper))
+    }
+
+    private fun saveScreenshot(bitmap: android.graphics.Bitmap) {
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "Xendroid+_${activeTitleState.value ?: "game"}_$stamp.png")
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Xendroid+")
+            put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val resolver = contentResolver
+        val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: error("MediaStore refused the entry")
+        try {
+            resolver.openOutputStream(uri)?.use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                ?: error("MediaStore gave no stream")
+            values.clear()
+            values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        } catch (t: Throwable) {
+            resolver.delete(uri, null, null)
+            throw t
         }
     }
 

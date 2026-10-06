@@ -26,7 +26,6 @@
     <string name="menu_unknown">unknown</string>
 
     <string name="menu_fg_experimental">Experimental host interpolation; hardware cadence/latency remain unvalidated.</string>
-    <string name="menu_fg_gated">Frame generation remains gated to developer/debug builds pending hardware validation.</string>
     <string name="menu_graphics_note">Stretch next launch is persistent; display modes apply live to this session. Submitted frames are not measured scanout.</string>
     <string name="menu_frame_limit_title">Frame limit · this session</string>
     <string name="menu_live_limit">Live limit: %1$s</string>
@@ -1120,7 +1119,7 @@
     <string name="set_option_off">Off</string>
     <string name="ge_hide_with_controller">Hide while a controller plays P1</string>
     <string name="ge_hide_with_controller_desc">Its first button or stick push hides them; they come back when it disconnects or from the menu. Touching the screen does not bring them back.</string>
-    <string name="menu_metric_power">Power and battery time</string>
+    <string name="menu_metric_power">Power</string>
     <string name="lib_shader_cache">Clear shader cache</string>
     <string name="lib_shader_cache_none">Nothing cached for this game yet</string>
     <string name="lib_shader_cache_title">Clear this game\'s shader cache?</string>

@@ -26,7 +26,6 @@
     <string name="menu_unknown">desconhecido</string>
 
     <string name="menu_fg_experimental">Interpolação experimental no host; cadência e latência no aparelho ainda não validadas.</string>
-    <string name="menu_fg_gated">A geração de quadros segue restrita a builds de desenvolvimento até a validação no aparelho.</string>
     <string name="menu_graphics_note">“Esticar na próxima abertura” fica salvo; os modos de tela valem na hora para esta sessão. Quadros enviados não são a exibição medida.</string>
     <string name="menu_frame_limit_title">Limite de quadros · esta sessão</string>
     <string name="menu_live_limit">Limite agora: %1$s</string>
@@ -1155,7 +1154,7 @@
     <string name="set_option_off">Desligada</string>
     <string name="ge_hide_with_controller">Esconder enquanto um controle joga como P1</string>
     <string name="ge_hide_with_controller_desc">O primeiro botão ou movimento do stick esconde os controles; eles voltam quando o controle desconecta ou pelo menu. Tocar na tela não os traz de volta.</string>
-    <string name="menu_metric_power">Potência e tempo de bateria</string>
+    <string name="menu_metric_power">Potência</string>
     <string name="lib_shader_cache">Limpar cache de shaders</string>
     <string name="lib_shader_cache_none">Nada em cache para este jogo ainda</string>
     <string name="lib_shader_cache_title">Limpar o cache de shaders deste jogo?</string>

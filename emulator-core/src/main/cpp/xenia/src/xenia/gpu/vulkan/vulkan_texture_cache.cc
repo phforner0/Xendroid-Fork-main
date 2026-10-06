@@ -1410,15 +1410,38 @@ std::unique_ptr<TextureCache::Texture> VulkanTextureCache::CreateTexture(
   // formats an in-pass resolve can produce are supported.
   VkFormat resolve_dest_uint_format = VK_FORMAT_UNDEFINED;
   if (ShouldPromoteToResolveDest(key)) {
+    // The resolve stores texels packed in the guest format, which the image
+    // takes as they are only where its upload is a plain copy: k_11_11_10 and
+    // the float fallbacks of the 16-bit normalized formats share these host
+    // formats but convert as they load. Depth is the exception - its direct
+    // resolve writes the converted value. (Gears of War 3's k_16_16_16_16
+    // resolves would need 64bpp variants of the direct resolve storing into
+    // the texture; promoted without them, those textures would only lose
+    // their framebuffer compression.)
+    const LoadShaderIndex load_shader = GetLoadShaderForKey(key);
     switch (formats[0]) {
+      case VK_FORMAT_R32_SFLOAT:
+        if (load_shader == kLoadShaderIndexDepthUnorm ||
+            load_shader == kLoadShaderIndexDepthFloat) {
+          resolve_dest_uint_format = VK_FORMAT_R32_UINT;
+          break;
+        }
+        [[fallthrough]];
       case VK_FORMAT_R8G8B8A8_UNORM:
       case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
-      case VK_FORMAT_R32_SFLOAT:
-        resolve_dest_uint_format = VK_FORMAT_R32_UINT;
+      // Gears of War 3 resolves its 640x360 k_16_16_FLOAT buffers each frame.
+      case VK_FORMAT_R16G16_UNORM:
+      case VK_FORMAT_R16G16_SNORM:
+      case VK_FORMAT_R16G16_SFLOAT:
+        if (load_shader == kLoadShaderIndex32bpb) {
+          resolve_dest_uint_format = VK_FORMAT_R32_UINT;
+        }
         break;
       case VK_FORMAT_R32G32_SFLOAT:
       case VK_FORMAT_R16G16B16A16_SFLOAT:
-        resolve_dest_uint_format = VK_FORMAT_R32G32_UINT;
+        if (load_shader == kLoadShaderIndex64bpb) {
+          resolve_dest_uint_format = VK_FORMAT_R32G32_UINT;
+        }
         break;
       default:
         break;

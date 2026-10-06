@@ -48,6 +48,10 @@ enum class InGameAction(val kind: RowKind) {
     // Performance
     FPS_LIMIT(RowKind.CHOICE), REFRESH_RATE(RowKind.CYCLE), SUSTAINED_PERFORMANCE(RowKind.TOGGLE),
     PERFORMANCE_HINTS(RowKind.TOGGLE), BACKGROUND_POLICY(RowKind.CYCLE),
+    /** GPU options switched live ([xendroid.compose.core.GpuLiveOption]): shaders that never stall
+     *  the frame, 4x MSAA kept as 2x, cut-out transparency and the shading rate. */
+    SMOOTH_SHADERS(RowKind.TOGGLE), MSAA_4X_AS_2X(RowKind.TOGGLE), CUTOUT_TRANSPARENCY(RowKind.TOGGLE),
+    SHADING_RATE(RowKind.CYCLE),
 
     // HUD
     PERFORMANCE_HUD(RowKind.TOGGLE),
@@ -96,6 +100,8 @@ enum class InGameAction(val kind: RowKind) {
     /** C07: a numbered scene marker in the run's timeline, to line A/B runs up. */
     MARK_SCENE(RowKind.BUTTON),
     SHARE_LOGS(RowKind.BUTTON), RESUME(RowKind.BUTTON), QUIT(RowKind.BUTTON),
+    /** The game's picture as it is on screen, without the menu or the HUD, saved to Pictures. */
+    SCREENSHOT(RowKind.BUTTON),
 
     /** U01: shows or hides the category's advanced options (it stays where it is in the list). */
     MORE_OPTIONS(RowKind.BUTTON),
@@ -116,6 +122,8 @@ val inGamePageGroups: Map<InGamePage, List<MenuGroup>> = mapOf(
     ),
     InGamePage.SYSTEM to listOf(
         MenuGroup(R.string.menu_group_frames, listOf(InGameAction.FPS_LIMIT, InGameAction.REFRESH_RATE)),
+        MenuGroup(R.string.menu_group_gpu, listOf(InGameAction.SMOOTH_SHADERS, InGameAction.MSAA_4X_AS_2X,
+            InGameAction.CUTOUT_TRANSPARENCY, InGameAction.SHADING_RATE)),
         MenuGroup(R.string.menu_group_power, listOf(InGameAction.SUSTAINED_PERFORMANCE, InGameAction.PERFORMANCE_HINTS,
             InGameAction.BACKGROUND_POLICY)),
     ),
@@ -136,8 +144,8 @@ val inGamePageGroups: Map<InGamePage, List<MenuGroup>> = mapOf(
         MenuGroup(R.string.menu_group_sound, listOf(InGameAction.VOLUME, InGameAction.MUTE)),
         MenuGroup(R.string.menu_group_game_changes, listOf(InGameAction.AUTO_SAVE, InGameAction.UNDO_SESSION, InGameAction.MAKE_GLOBAL)),
         MenuGroup(R.string.menu_group_menu, listOf(InGameAction.PAUSE_ON_OPEN)),
-        MenuGroup(R.string.menu_group_session, listOf(InGameAction.MARK_SCENE, InGameAction.SHARE_LOGS, InGameAction.RESUME,
-            InGameAction.QUIT)),
+        MenuGroup(R.string.menu_group_session, listOf(InGameAction.SCREENSHOT, InGameAction.MARK_SCENE, InGameAction.SHARE_LOGS,
+            InGameAction.RESUME, InGameAction.QUIT)),
     ),
 )
 
@@ -152,11 +160,11 @@ val advancedActions: Set<InGameAction> = setOf(
     InGameAction.GYRO_CALIBRATE, InGameAction.UNBUFFERED_INPUT, InGameAction.MARK_SCENE,
 )
 
-/** L02: hidden in Player mode (engine internals and experiments); build gates still apply. */
+/** L02: hidden in Player mode (engine internals). Frame generation is not among them: it is in
+ *  every build and mode, off until the player turns it on. */
 val developerActions: Set<InGameAction> = setOf(
-    InGameAction.WINFG, InGameAction.WINFG_PRESET, InGameAction.LSFG, InGameAction.IMPORT_LSFG_DLL,
-    InGameAction.CLEAR_LSFG_CACHE, InGameAction.LSFG_MULTIPLIER, InGameAction.LSFG_TARGET, InGameAction.PERFORMANCE_HINTS,
-    InGameAction.BACKGROUND_POLICY, InGameAction.SUSTAINED_PERFORMANCE, InGameAction.UNBUFFERED_INPUT,
+    InGameAction.PERFORMANCE_HINTS, InGameAction.BACKGROUND_POLICY, InGameAction.SUSTAINED_PERFORMANCE,
+    InGameAction.UNBUFFERED_INPUT,
 )
 
 /** The group [action] sits in on [page]; null when it is not on that page (More options). */

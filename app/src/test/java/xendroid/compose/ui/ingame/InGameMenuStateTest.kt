@@ -74,14 +74,16 @@ class InGameMenuStateTest {
         val player = InGameMenuState(developer = false).show(pause = true)
         val graphics = player.actions(InGamePage.GRAPHICS)
         assertTrue(graphics.none { it in developerActions })
-        assertTrue(InGameAction.WINFG !in graphics && InGameAction.LSFG !in graphics)
+        // Frame generation is for players too.
+        assertTrue(InGameAction.WINFG in graphics && InGameAction.LSFG in graphics)
         assertTrue(InGameAction.DISPLAY_MODE in graphics && InGameAction.SCALING_EFFECT in graphics && InGameAction.DRIVER_INFO in graphics)
         assertEquals(graphics.size, player.count)
         // Wrapping navigation stays inside the shown actions.
         assertEquals(graphics.last(), player.move(-1).action)
-        // Open, the advanced list still has no developer option: dither, the colour filter and stretch.
+        // Open, the advanced list still has no developer option: dither, the colour filter, stretch
+        // and LSFG's multiplier, target, import and cache.
         val graphicsOpen = player.toggleAdvanced()
-        assertEquals(3, graphicsOpen.advancedCount())
+        assertEquals(7, graphicsOpen.advancedCount())
         assertTrue(graphicsOpen.actions().none { it in developerActions })
         assertTrue(InGameAction.STRETCH in graphicsOpen.actions())
         assertTrue(InGameAction.PHONE_CONTROLLERS in player.actions(InGamePage.CONTROLS))

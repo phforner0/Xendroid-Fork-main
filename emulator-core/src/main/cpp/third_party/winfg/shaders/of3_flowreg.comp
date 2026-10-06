@@ -84,7 +84,9 @@ float fetchL(ivec2 p, ivec2 dim) {
 
 void main() {
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 dim = textureSize(uFlowIn, 0);
+    // XenDroid: the output's size (the same level as the input), not textureSize() -
+    // asking a texture its size hung an Adreno 825 under Turnip.
+    ivec2 dim = imageSize(uFlowOut);
     if (gid.x >= dim.x || gid.y >= dim.y) return;
 
     float dt        = params.x;
@@ -101,7 +103,7 @@ void main() {
 
     // ── Edge-aware weight g from the luma gradient (Perona-Malik / Weickert) ────
     // Luma level res == flow level res (both at kFlowFinest), so index 1:1.
-    ivec2 ldim = textureSize(uLuma, 0);
+    ivec2 ldim = dim;
     float lL = fetchL(gid + ivec2(-1, 0), ldim);
     float lR = fetchL(gid + ivec2( 1, 0), ldim);
     float lU = fetchL(gid + ivec2( 0,-1), ldim);
