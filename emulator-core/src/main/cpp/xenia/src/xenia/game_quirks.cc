@@ -245,6 +245,14 @@ static const Quirk kQuirks[] = {
     // 9.8 W against 10.7 W unplugged, 2026-10-06).
     {0x4541098E, "guest_yield_sleep_us", int64_t(50),
      "spinning workers give the host core back"},
+    // Exact: it copies the scene into one k_10_11_11 texture 7.5-9.5 times a
+    // frame and samples it after each copy, reloading the whole 1152x720 every
+    // time; with the resolves storing into it (and into its other resolve
+    // destinations), reloads 1.8-2.4 -> 0.02-0.08 ms, GPU time 28.5 -> 26.9
+    // ms a frame, the same image (runtime switch interleaved in one session,
+    // 2026-10-06).
+    {0x4541098E, "vulkan_direct_host_resolve_to_texture", true,
+     "resolves store straight into their textures"},
 };
 
 // Same path/priority as a per-game config file.
