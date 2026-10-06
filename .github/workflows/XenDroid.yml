@@ -255,12 +255,40 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      # The merged pull requests' descriptions, for their release notes.
+      pull-requests: read
 
     steps:
+    # Before the download: checkout cleans the workspace.
+    - name: Checkout the release notes script
+      uses: actions/checkout@v4
+      with:
+        sparse-checkout: tools/release_notes.py
+        sparse-checkout-cone-mode: false
+
     - name: Download APK
       uses: actions/download-artifact@v4
       with:
         name: ${{ needs.apk.outputs.name }}
+
+    # The notes the merged pull requests wrote (tools/release_notes.py). If the script
+    # fails, the release still goes out, with GitHub's generated notes.
+    - name: Release notes
+      id: notes
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: XenDroid-v${{ github.run_number }}-${{ needs.apk.outputs.sha }}
+        APK: ${{ needs.apk.outputs.apk }}
+      run: |
+        if python3 tools/release_notes.py --repo "$GITHUB_REPOSITORY" --tag "$TAG" \
+            --sha "$GITHUB_SHA" --build "$GITHUB_RUN_NUMBER" --apk "$APK" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            > "$RUNNER_TEMP/release-notes.md"; then
+          echo "path=$RUNNER_TEMP/release-notes.md" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/release-notes.md" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "::warning::The release notes script failed: GitHub's generated notes are used."
+        fi
 
     - name: Create GitHub release
       uses: softprops/action-gh-release@v2
@@ -269,5 +297,6 @@ jobs:
         tag_name: XenDroid-v${{ github.run_number }}-${{ needs.apk.outputs.sha }}
         name: Xendroid+ ${{ needs.apk.outputs.sha }} (build ${{ github.run_number }})
         target_commitish: ${{ github.sha }}
-        generate_release_notes: true
+        body_path: ${{ steps.notes.outputs.path }}
+        generate_release_notes: ${{ steps.notes.outputs.path == '' }}
         files: ${{ needs.apk.outputs.apk }}
