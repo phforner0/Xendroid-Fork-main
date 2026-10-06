@@ -246,7 +246,12 @@ internal data class HudSample(
     val socCelsius: Float? = null,
     val power: PowerReading? = null,
     val gpuMemory: Long? = null,
+    /** With frame generation on: the frames per second reaching the screen (the game's and the generated ones). */
+    val fgFps: Double? = null,
 )
+
+/** The rows that need the battery's readings. */
+private val POWER_METRICS = setOf(HudMetric.POWER, HudMetric.BATTERY_LEVEL, HudMetric.BATTERY_TIME)
 
 /** A row of the HUD: what is measured and its value; [tone] colours the value. */
 private data class HudLine(val label: String, val value: AnnotatedString, val tone: HudTone = HudTone.NORMAL, val metric: HudMetric? = null)
@@ -323,6 +328,7 @@ fun FpsOverlay(
     var socTemp by remember { mutableStateOf<Float?>(null) }
     var power by remember { mutableStateOf<PowerReading?>(null) }
     var gpuMemory by remember { mutableStateOf<Long?>(null) }
+    var fgFps by remember { mutableStateOf<Double?>(null) }
     val batteryEstimate = remember { BatteryTimeEstimate() }
 
     LaunchedEffect(pollHz, compact, metrics) {
@@ -336,12 +342,25 @@ fun FpsOverlay(
         var previousGpu: GpuCounter? = null
         var gpuSource: GpuSource? = null
         var tick = 0L
+        var previousGenerated = -1L
+        var previousGeneratedNs = 0L
 
         while (true) {
             val currentFps = session.averageFps()
             val currentFrameMs = session.lastFrameTimeMs()
 
             if (keepHistory) history = (history + currentFps.toFloat()).takeLast(HISTORY)
+            // Frame generation, once a second: the game's frames plus the generated ones, what the
+            // arrow after the FPS shows; null while it is off or warming up.
+            val generatedNs = SystemClock.elapsedRealtimeNanos()
+            if (generatedNs - previousGeneratedNs >= 1_000_000_000L) {
+                val state = runCatching { session.presentationState() }.getOrNull()
+                val active = state != null && state.requested && state.state == 2
+                fgFps = if (active && previousGenerated >= 0 && state!!.generated >= previousGenerated)
+                    currentFps + (state.generated - previousGenerated) * 1e9 / (generatedNs - previousGeneratedNs) else null
+                previousGenerated = if (active) state!!.generated else -1L
+                previousGeneratedNs = generatedNs
+            }
             if (compact) {
                 fps = currentFps
                 frameMs = currentFrameMs
@@ -405,7 +424,7 @@ fun FpsOverlay(
                 val sTemp = if (HudMetric.SOC_TEMPERATURE in metrics) readCpuSocTemperature() else null
                 val ram = if (HudMetric.RAM in metrics) readRamUsage(context) else (0L to 0L)
                 // The fuel gauge once a second: four binder calls are not worth 4 Hz.
-                if (HudMetric.POWER in metrics && tick % pollHz.coerceIn(1, 10) == 0L) {
+                if (metrics.any { it in POWER_METRICS } && tick % pollHz.coerceIn(1, 10) == 0L) {
                     val battery = runCatching { readBatterySample(context) }.getOrNull()
                     nextPower = battery?.let {
                         val left = batteryEstimate.sample(SystemClock.elapsedRealtime(), it.percent, it.chargeRaw,
@@ -436,7 +455,7 @@ fun FpsOverlay(
         }
     }
 
-    val sample = HudSample(fps, frameMs, presentSubmissionsPerSecond, cpu, gpu, ramUsed, ramTotal, batTemp, socTemp, power, gpuMemory)
+    val sample = HudSample(fps, frameMs, presentSubmissionsPerSecond, cpu, gpu, ramUsed, ramTotal, batTemp, socTemp, power, gpuMemory, fgFps)
     val graph = if (style.graph) history else null
     if (style.layout == HudLayout.HORIZONTAL) {
         // Round 2: a bar along the top or the bottom; a pinch sizes it, kept for this game.
@@ -491,6 +510,10 @@ private fun hudLines(sample: HudSample, metrics: Set<HudMetric>): List<HudLine> 
     return buildList {
         add(HudLine("FPS", buildAnnotatedString {
             withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(fmt("%.0f", sample.fps)) }
+            sample.fgFps?.let { shown ->
+                withStyle(SpanStyle(color = HudLabel)) { append(" → ") }
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(fmt("%.0f", shown)) }
+            }
             withStyle(SpanStyle(color = HudLabel)) { append(" · ") }
             append(fmt("%.1f ms", sample.frameMs))
         }, HudTone.GOOD, null))
@@ -516,15 +539,19 @@ private fun hudLines(sample: HudSample, metrics: Set<HudMetric>): List<HudLine> 
             add(HudLine("SoC", AnnotatedString(fmt("%.0f °C", t)),
                 when { t >= 95f -> HudTone.BAD; t >= 80f -> HudTone.WARN; else -> HudTone.NORMAL }, HudMetric.SOC_TEMPERATURE))
         }
-        if (HudMetric.POWER in metrics) sample.power?.let { p ->
-            val parts = listOfNotNull(
-                if (p.pluggedIn) charging else p.watts?.let { fmt("%.1f W", it) },
-                p.percent?.let { "$it%" },
-                if (p.pluggedIn) p.minutesToFull?.let { fullIn.format(BatteryReadout.duration(it)) }
-                else p.minutesLeft?.let { "~" + BatteryReadout.duration(it) },
-            )
-            if (parts.isNotEmpty()) add(HudLine(stringResource(R.string.xd_hud_power), AnnotatedString(parts.joinToString(" · ")),
-                metric = HudMetric.POWER))
+        sample.power?.let { p ->
+            if (HudMetric.POWER in metrics) (if (p.pluggedIn) charging else p.watts?.let { fmt("%.1f W", it) })?.let {
+                add(HudLine(stringResource(R.string.xd_hud_power), AnnotatedString(it), metric = HudMetric.POWER))
+            }
+            if (HudMetric.BATTERY_LEVEL in metrics) p.percent?.let { level ->
+                add(HudLine(stringResource(R.string.xd_hud_charge), AnnotatedString("$level%"), when {
+                    p.pluggedIn -> HudTone.NORMAL; level <= 15 -> HudTone.BAD; level <= 25 -> HudTone.WARN; else -> HudTone.NORMAL
+                }, HudMetric.BATTERY_LEVEL))
+            }
+            if (HudMetric.BATTERY_TIME in metrics) (if (p.pluggedIn) p.minutesToFull?.let { fullIn.format(BatteryReadout.duration(it)) }
+                else p.minutesLeft?.let { "~" + BatteryReadout.duration(it) })?.let {
+                add(HudLine(stringResource(R.string.xd_hud_battery_time), AnnotatedString(it), metric = HudMetric.BATTERY_TIME))
+            }
         }
     }
 }
@@ -538,6 +565,8 @@ private fun metricColor(metric: HudMetric?): Color = when (metric) {
     HudMetric.RAM -> Color(0xFFC79BFF)
     HudMetric.BATTERY_TEMPERATURE, HudMetric.SOC_TEMPERATURE -> Color(0xFF6EE7D8)
     HudMetric.POWER -> Color(0xFFF3CF55)
+    HudMetric.BATTERY_LEVEL -> Color(0xFF9BE37F)
+    HudMetric.BATTERY_TIME -> Color(0xFFFFD58A)
     HudMetric.HOST_SUBMISSIONS -> Color(0xFFB8C4BD)
 }
 
@@ -594,6 +623,10 @@ internal fun HudView(
         if (compact) {
             Text(buildAnnotatedString {
                 withStyle(SpanStyle(color = lerp(HudText, HudGood, style.colors))) { append(fmt("%.0f", sample.fps)) }
+                sample.fgFps?.let { shown ->
+                    withStyle(SpanStyle(color = HudLabel)) { append(" → ") }
+                    withStyle(SpanStyle(color = lerp(HudText, HudGood, style.colors))) { append(fmt("%.0f", shown)) }
+                }
                 append(" FPS")
                 withStyle(SpanStyle(color = HudLabel)) { append(" · ") }
                 append(fmt("%.1f ms", sample.frameMs))

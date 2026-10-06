@@ -170,4 +170,8 @@
     <string name="menu_screenshot_note">A imagem do jogo, sem o menu e o HUD, salva em Imagens/Xendroid+</string>
     <string name="host_screenshot_saved">Captura salva em Imagens/Xendroid+</string>
     <string name="host_screenshot_failed">Não foi possível salvar a captura</string>
+    <string name="xd_hud_charge">Carga</string>
+    <string name="xd_hud_battery_time">Autonomia</string>
+    <string name="menu_chip_charge">Carga</string>
+    <string name="menu_chip_battery_time">Autonomia</string>
 </resources>

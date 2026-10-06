@@ -1155,7 +1155,7 @@
     <string name="set_option_off">Desligada</string>
     <string name="ge_hide_with_controller">Esconder enquanto um controle joga como P1</string>
     <string name="ge_hide_with_controller_desc">O primeiro botão ou movimento do stick esconde os controles; eles voltam quando o controle desconecta ou pelo menu. Tocar na tela não os traz de volta.</string>
-    <string name="menu_metric_power">Potência e tempo de bateria</string>
+    <string name="menu_metric_power">Potência</string>
     <string name="lib_shader_cache">Limpar cache de shaders</string>
     <string name="lib_shader_cache_none">Nada em cache para este jogo ainda</string>
     <string name="lib_shader_cache_title">Limpar o cache de shaders deste jogo?</string>

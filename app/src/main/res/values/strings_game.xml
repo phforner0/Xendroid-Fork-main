@@ -170,4 +170,8 @@
     <string name="menu_screenshot_note">The game\'s picture, without the menu or the HUD, saved to Pictures/Xendroid+</string>
     <string name="host_screenshot_saved">Screenshot saved to Pictures/Xendroid+</string>
     <string name="host_screenshot_failed">Couldn\'t save the screenshot</string>
+    <string name="xd_hud_charge">Charge</string>
+    <string name="xd_hud_battery_time">Battery time</string>
+    <string name="menu_chip_charge">Charge</string>
+    <string name="menu_chip_battery_time">Battery time</string>
 </resources>

@@ -657,7 +657,15 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 xendroid.compose.core.HudDetail.parse(prefs.getString("performance_overlay_detail", null),
                     prefs.getBoolean("performance_overlay_compact", false))
             }
-            val savedMetrics = getSharedPreferences("fps_overlay", MODE_PRIVATE).getStringSet("hud_metrics", null)
+            val overlayPrefs = getSharedPreferences("fps_overlay", MODE_PRIVATE)
+            val savedMetrics = overlayPrefs.getStringSet("hud_metrics", null)?.let { saved ->
+                // The power row became three (power, charge, battery time): who had it keeps seeing all of it.
+                if (overlayPrefs.getBoolean("hud_power_split", false)) saved else {
+                    val split = if (HudMetric.POWER.name in saved) saved + setOf(HudMetric.BATTERY_LEVEL.name, HudMetric.BATTERY_TIME.name) else saved
+                    overlayPrefs.edit().putStringSet("hud_metrics", split).putBoolean("hud_power_split", true).apply()
+                    split
+                }
+            }
             if (savedMetrics != null) hudMetrics.value = HudMetric.entries.filter { it.name in savedMetrics }.toSet()
             hudLook.value = xendroid.compose.core.HudPlacements.read(HudPreferences.of(this@EmulatorHostActivity), null).look
             hudStyle.value = xendroid.compose.core.HudStyle.read(HudPreferences.of(this@EmulatorHostActivity))
@@ -3100,6 +3108,8 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
                 HudMetric.BATTERY_TEMPERATURE -> stringResource(R.string.menu_chip_battery)
                 HudMetric.SOC_TEMPERATURE -> "SoC"
                 HudMetric.POWER -> stringResource(R.string.menu_chip_power)
+                HudMetric.BATTERY_LEVEL -> stringResource(R.string.menu_chip_charge)
+                HudMetric.BATTERY_TIME -> stringResource(R.string.menu_chip_battery_time)
                 HudMetric.HOST_SUBMISSIONS -> "Vulkan"
                 else -> metric.label
             }
@@ -3678,7 +3688,7 @@ class EmulatorHostActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** The HUD's chips in the menu: its metrics, then the FPS graph (null), then (developer) Vulkan submissions. */
     private fun hudChipMetrics(): List<HudMetric?> = listOf(HudMetric.CPU, HudMetric.GPU, HudMetric.RAM, HudMetric.GPU_MEMORY,
-        HudMetric.BATTERY_TEMPERATURE, HudMetric.SOC_TEMPERATURE, HudMetric.POWER, null) +
+        HudMetric.BATTERY_TEMPERATURE, HudMetric.SOC_TEMPERATURE, HudMetric.POWER, HudMetric.BATTERY_LEVEL, HudMetric.BATTERY_TIME, null) +
         if (menuState.value.developer) listOf(HudMetric.HOST_SUBMISSIONS) else emptyList()
 
     private fun toggleHudChip(index: Int) {
