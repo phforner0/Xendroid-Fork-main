@@ -1457,6 +1457,13 @@ std::unique_ptr<TextureCache::Texture> VulkanTextureCache::CreateTexture(
           resolve_dest_uint_format = VK_FORMAT_R32G32_UINT;
         }
         break;
+      // The other exception: unsigned k_10_11_11, whose expansion to 16 bits
+      // per component a variant of the full color direct resolve stores.
+      case VK_FORMAT_R16G16B16A16_UNORM:
+        if (load_shader == kLoadShaderIndexR11G11B10ToRGBA16) {
+          resolve_dest_uint_format = VK_FORMAT_R32G32_UINT;
+        }
+        break;
       default:
         break;
     }

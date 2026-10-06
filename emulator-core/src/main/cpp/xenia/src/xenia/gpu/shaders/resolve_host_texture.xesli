@@ -21,8 +21,16 @@
     #error Direct host resolves into textures are unscaled SPIR-V only.
   #endif
 
+  #if XE_RESOLVE_HOST_TEXTURE_R11G11B10
+// k_10_11_11 destinations: the upload expands the packed pixels to 16 bits per
+// component, so the texture is stored that expansion, through the R32G32_UINT
+// alias of its R16G16B16A16_UNORM image.
+layout(set = 3, binding = 0, rg32ui) uniform writeonly uimage2D
+    xe_resolve_host_texture;
+  #else
 layout(set = 3, binding = 0, r32ui) uniform writeonly uimage2D
     xe_resolve_host_texture;
+  #endif
 
 // Stores the texels at origin + pixel_index + (0...3, 0), none outside the
 // texture (a strip may overhang it).
@@ -33,11 +41,22 @@ void XeResolveHostTextureStore4(int2_xe origin, uint2_xe pixel_index,
   if (position.y < 0 || position.y >= size.y) {
     return;
   }
+  #if XE_RESOLVE_HOST_TEXTURE_R11G11B10
+  // The RG and BA dwords of texels 0 and 1, then of texels 2 and 3.
+  uint4_xe expanded_01 = XeR11G11B10UNormToRGBA16(texels.xy);
+  uint4_xe expanded_23 = XeR11G11B10UNormToRGBA16(texels.zw);
+  #endif
   for (int i = 0; i < 4; ++i) {
     int x = position.x + i;
     if (x >= 0 && x < size.x) {
+  #if XE_RESOLVE_HOST_TEXTURE_R11G11B10
+      uint4_xe expanded = i < 2 ? expanded_01 : expanded_23;
+      imageStore(xe_resolve_host_texture, int2_xe(x, position.y),
+                 uint4_xe((i & 1) != 0 ? expanded.zw : expanded.xy, 0u, 0u));
+  #else
       imageStore(xe_resolve_host_texture, int2_xe(x, position.y),
                  uint4_xe(texels[i], 0u, 0u, 0u));
+  #endif
     }
   }
 }

@@ -506,8 +506,11 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
     kFastColor4px,
     kFullColor32bpp,
     kDepth4px,
+    // Full color into a k_10_11_11 texture, storing the expansion to 16 bits
+    // per component its upload makes (float sources only).
+    kFullColor32bppR11G11B10,
   };
-  static constexpr size_t kDirectHostResolveTextureKindCount = 3;
+  static constexpr size_t kDirectHostResolveTextureKindCount = 4;
   static const DirectHostResolveShaderCode kDirectHostResolveTextureShaders
       [kDirectHostResolveTextureKindCount][kDirectHostResolveMsaaCount]
       [kDirectHostResolveSourceUintCount];
