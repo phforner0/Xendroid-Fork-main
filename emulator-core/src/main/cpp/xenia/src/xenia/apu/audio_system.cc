@@ -593,13 +593,23 @@ bool AudioSystem::GetClientPerformance(size_t index,
 void AudioSystem::UnregisterClient(size_t index) {
   SCOPE_profile_cpu_f("apu");
 
-  assert_true(index < kMaximumClientCount);
+  // The index comes from the guest's handle, as in SubmitFrame: one out of
+  // range was written outside the clients, and a client unregistered twice had
+  // its null driver destroyed (the assert is gone in release builds).
+  if (index >= kMaximumClientCount) {
+    XELOGE("AudioSystem::UnregisterClient: index {} out of range", index);
+    return;
+  }
   AudioDriver* driver_to_destroy;
   {
     auto global_lock = global_critical_region_.Acquire();
-    XELOGI(
-        "AudioSystem::UnregisterClient: index={}, driver={:p}", index,
-        index < kMaximumClientCount ? (void*)clients_[index].driver : nullptr);
+    if (!clients_[index].in_use) {
+      XELOGW("AudioSystem::UnregisterClient: client {} is not registered",
+             index);
+      return;
+    }
+    XELOGI("AudioSystem::UnregisterClient: index={}, driver={:p}", index,
+           (void*)clients_[index].driver);
     driver_to_destroy = clients_[index].driver;
     // Leak wrapped_callback_arg: in-flight callback may hold this pointer.
     clients_[index].driver = nullptr;
@@ -668,7 +678,10 @@ bool AudioSystem::Restore(ByteStream* stream) {
   uint32_t num_clients = stream->Read<uint32_t>();
   for (uint32_t i = 0; i < num_clients; i++) {
     auto id = stream->Read<uint32_t>();
-    assert_true(id < kMaximumClientCount);
+    if (id >= kMaximumClientCount) {
+      XELOGE("AudioSystem::Restore - client index {} out of range", id);
+      return false;
+    }
 
     auto& client = clients_[id];
 
@@ -695,6 +708,14 @@ bool AudioSystem::Restore(ByteStream* stream) {
           "AudioSystem::Restore - Call to CreateDriver failed with status "
           "{:08X}",
           status);
+      // As in RegisterClient: the slot left unused and its credits taken back,
+      // not in use without a driver.
+      client.in_use = false;
+      client.callback = 0;
+      while (xe::threading::Wait(client_semaphore, false,
+                                 std::chrono::milliseconds(0)) ==
+             xe::threading::WaitResult::kSuccess) {
+      }
       return false;
     }
 
