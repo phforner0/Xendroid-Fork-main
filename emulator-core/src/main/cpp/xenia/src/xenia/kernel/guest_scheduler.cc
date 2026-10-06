@@ -40,6 +40,15 @@ DEFINE_uint32(
     "threads of different CPUs - a diagnostic for races that need truly "
     "parallel threads.",
     "Kernel");
+DEFINE_uint32(
+    guest_yield_sleep_us, 0,
+    "Experimental: once a guest thread has called NtYieldExecution with "
+    "nothing else to run on its CPU 256 times in a row, each within 10 us of "
+    "the last (a spin-wait), sleep its dispatch thread this many microseconds "
+    "per further call instead of returning at once, giving the host core "
+    "back. Delays the spinner's reaction to new work by up to as much. 0 - "
+    "off. Read at run time (debug.xendroid.yield_sleep_us on Android).",
+    "Kernel");
 
 namespace xe {
 namespace kernel {
@@ -814,13 +823,8 @@ bool GuestScheduler::YieldCurrentThread(bool quantum_end, bool to_lower) {
   // elsewhere (ready_summary, repoll_now, preempt_requested, the watchdog).
   // The reads are lock-free and may be stale; a stale "idle" just means the
   // next call takes the slow path.
-  if (!quantum_end && !links.preempted && self->suspend_count() == 0 &&
-      !self->thread_state()->context()->preempt_requested) {
-    const Cpu& cpu = cpus_[t_current_cpu];
-    if (cpu.ready_summary.load(std::memory_order_relaxed) == 0 &&
-        !cpu.repoll_now.load(std::memory_order_relaxed)) {
-      return false;  // nothing else ran, which is exactly what we report
-    }
+  if (!quantum_end && NothingElseToRun(self)) {
+    return false;  // nothing else ran, which is exactly what we report
   }
   // A slice cut short by a higher-priority thread is not a quantum end, that
   // thread re-runs at the head instead.
@@ -849,6 +853,49 @@ bool GuestScheduler::YieldCurrentThread(bool quantum_end, bool to_lower) {
          cpus_[cpu_index].switch_seq.load(std::memory_order_relaxed) -
                  seq_before >
              1;
+}
+
+bool GuestScheduler::YieldExecution() {
+  if (!OnDispatchThread("YieldExecution")) {
+    return false;
+  }
+  ExitIfTerminated();
+  // Blocked waiters due a timed re-poll wait for the slice end, at most a
+  // quantum, as with YieldCurrentThread's fast path: the watchdog preempts a
+  // spinner whether or not anything is ready. Testing the clock here instead
+  // cost a third of the spinning CPUs' time in clock_gettime.
+  XThread* self = XThread::GetCurrentThread();
+  if (NothingElseToRun(self)) {
+    const uint32_t sleep_us = cvars::guest_yield_sleep_us;
+    if (sleep_us && ticks_per_us_ > 0.0) {
+      // A spin-wait is a long run of empty yields close together; a thread
+      // back from doing work between them starts a new run.
+      auto& links = self->scheduler_links();
+      const uint64_t now = Clock::host_tick_count_raw();
+      links.empty_yield_streak =
+          now - links.empty_yield_tick <= uint64_t(ticks_per_us_ * 10.0)
+              ? links.empty_yield_streak + 1
+              : 0;
+      links.empty_yield_tick = now;
+      if (links.empty_yield_streak >= 256) {
+        xe::threading::NanoSleep(uint64_t(sleep_us) * 1000);
+        // The sleep is not a gap in the spin.
+        links.empty_yield_tick = Clock::host_tick_count_raw();
+      }
+    }
+    return false;
+  }
+  return YieldCurrentThread(true);
+}
+
+bool GuestScheduler::NothingElseToRun(XThread* self) const {
+  if (self->scheduler_links().preempted || self->suspend_count() != 0 ||
+      self->thread_state()->context()->preempt_requested) {
+    return false;
+  }
+  const Cpu& cpu = cpus_[t_current_cpu];
+  return cpu.ready_summary.load(std::memory_order_relaxed) == 0 &&
+         !cpu.repoll_now.load(std::memory_order_relaxed);
 }
 
 void GuestScheduler::SpinYield(std::chrono::milliseconds host_sleep) {
