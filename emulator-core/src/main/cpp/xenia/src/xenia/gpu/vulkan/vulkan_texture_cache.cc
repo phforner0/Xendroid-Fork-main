@@ -59,17 +59,20 @@ DEFINE_bool(
 
 DEFINE_bool(
     vulkan_texture_load_coalesced, true,
-    "Load unscaled 32-bit-per-block textures (including depth) with the "
-    "threads along X of a group taking interleaved 16-byte columns, so every "
-    "load and store instruction of a wave covers whole cache lines. Results "
-    "are identical. Forza Horizon on an Adreno 825: untiling -42%, +3.7% fps.",
+    "Load unscaled 32-bit-per-block textures (including depth, and 10:11:11 "
+    "and 11:11:10 expanded to 16 bits per component) with the threads along X "
+    "of a group taking interleaved 16-byte columns, so every load and store "
+    "instruction of a wave covers whole cache lines. Results are identical. "
+    "Forza Horizon on an Adreno 825: untiling -42%, +3.7% fps.",
     "Vulkan");
 
 DEFINE_bool(
     vulkan_texture_load_to_image, false,
     "Load unscaled single-level 2D textures of the 32-bit-per-block load "
     "shaders (including depth) straight into the image through an R32_UINT "
-    "storage alias, instead of into a buffer copied to the image afterwards. "
+    "storage alias, and those of 10:11:11 and 11:11:10 (expanded to 16 bits "
+    "per component) through an R32G32_UINT one, instead of into a buffer "
+    "copied to the image afterwards. "
     "At startup, also creates those textures with the storage alias (kept for "
     "the session); switching it later only changes the load path. Results are "
     "identical. Off by default: where STORAGE usage costs the texture's "
@@ -148,13 +151,21 @@ namespace shaders {
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_dxt5_rgba8_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_dxt5a_r8_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_gbgr8_rgb8_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r10g11b11_rgba16_coalesced_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r10g11b11_rgba16_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r10g11b11_rgba16_image_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r10g11b11_rgba16_scaled_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r10g11b11_rgba16_snorm_coalesced_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r10g11b11_rgba16_snorm_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r10g11b11_rgba16_snorm_image_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r10g11b11_rgba16_snorm_scaled_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r11g11b10_rgba16_coalesced_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r11g11b10_rgba16_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r11g11b10_rgba16_image_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r11g11b10_rgba16_scaled_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r11g11b10_rgba16_snorm_coalesced_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r11g11b10_rgba16_snorm_cs.h"
+#include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r11g11b10_rgba16_snorm_image_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r11g11b10_rgba16_snorm_scaled_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r16_snorm_float_cs.h"
 #include "xenia/gpu/shaders/bytecode/vulkan_spirv/texture_load_r16_snorm_float_scaled_cs.h"
@@ -1447,26 +1458,45 @@ std::unique_ptr<TextureCache::Texture> VulkanTextureCache::CreateTexture(
         break;
     }
   }
-  // Texture loads straight into the image store through the same kind of
-  // R32_UINT alias (one view serves both).
+  // Texture loads straight into the image store through the same kind of uint
+  // alias (one view serves both): R32_UINT for the 32-bit host formats,
+  // R32G32_UINT for the 16-bit-per-component expansions of 10:11:11 and
+  // 11:11:10.
   bool load_to_image_storage = false;
+  VkFormat load_storage_uint_format = VK_FORMAT_UNDEFINED;
   if (IsLoadToImageCandidate(key)) {
     switch (formats[0]) {
       case VK_FORMAT_R8G8B8A8_UNORM:
       case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
       case VK_FORMAT_R32_SFLOAT:
-        load_to_image_storage =
-            resolve_dest_uint_format == VK_FORMAT_UNDEFINED ||
-            resolve_dest_uint_format == VK_FORMAT_R32_UINT;
+        load_storage_uint_format = VK_FORMAT_R32_UINT;
+        break;
+      case VK_FORMAT_R16G16B16A16_UNORM:
+      case VK_FORMAT_R16G16B16A16_SNORM:
+        switch (GetLoadShaderForKey(key)) {
+          case kLoadShaderIndexR10G11B11ToRGBA16:
+          case kLoadShaderIndexR10G11B11ToRGBA16SNorm:
+          case kLoadShaderIndexR11G11B10ToRGBA16:
+          case kLoadShaderIndexR11G11B10ToRGBA16SNorm:
+            load_storage_uint_format = VK_FORMAT_R32G32_UINT;
+            break;
+          default:
+            break;
+        }
         break;
       default:
         break;
     }
+    load_to_image_storage =
+        load_storage_uint_format != VK_FORMAT_UNDEFINED &&
+        (resolve_dest_uint_format == VK_FORMAT_UNDEFINED ||
+         resolve_dest_uint_format == load_storage_uint_format);
   }
   VkFormat storage_uint_format =
       resolve_dest_uint_format != VK_FORMAT_UNDEFINED
           ? resolve_dest_uint_format
-          : (load_to_image_storage ? VK_FORMAT_R32_UINT : VK_FORMAT_UNDEFINED);
+          : (load_to_image_storage ? load_storage_uint_format
+                                   : VK_FORMAT_UNDEFINED);
 
   VkImageCreateInfo image_create_info;
   VkImageCreateInfo* image_create_info_last = &image_create_info;
@@ -2281,7 +2311,7 @@ bool VulkanTextureCache::LoadTextureDataFromResidentMemoryUpload(
     loop_level_last = level_stored_last;
   }
 
-  // Straight into the image through its R32_UINT alias: only the base level of
+  // Straight into the image through its uint alias: only the base level of
   // a single-level 2D texture, not in a packed mip tail (which is loaded whole
   // to copy regions out of it).
   const bool load_to_image =
@@ -4074,6 +4104,22 @@ bool VulkanTextureCache::Initialize() {
   load_shader_code_coalesced[kLoadShaderIndexDepthFloat] =
       std::make_pair(shaders::texture_load_depth_float_coalesced_cs,
                      sizeof(shaders::texture_load_depth_float_coalesced_cs));
+  // And of the 10:11:11 and 11:11:10 loads expanding to 16 bits per component
+  // (their guest side; 8 host bytes per texel).
+  load_shader_code_coalesced[kLoadShaderIndexR10G11B11ToRGBA16] =
+      std::make_pair(shaders::texture_load_r10g11b11_rgba16_coalesced_cs,
+                     sizeof(shaders::texture_load_r10g11b11_rgba16_coalesced_cs));
+  load_shader_code_coalesced[kLoadShaderIndexR10G11B11ToRGBA16SNorm] =
+      std::make_pair(
+          shaders::texture_load_r10g11b11_rgba16_snorm_coalesced_cs,
+          sizeof(shaders::texture_load_r10g11b11_rgba16_snorm_coalesced_cs));
+  load_shader_code_coalesced[kLoadShaderIndexR11G11B10ToRGBA16] =
+      std::make_pair(shaders::texture_load_r11g11b10_rgba16_coalesced_cs,
+                     sizeof(shaders::texture_load_r11g11b10_rgba16_coalesced_cs));
+  load_shader_code_coalesced[kLoadShaderIndexR11G11B10ToRGBA16SNorm] =
+      std::make_pair(
+          shaders::texture_load_r11g11b10_rgba16_snorm_coalesced_cs,
+          sizeof(shaders::texture_load_r11g11b10_rgba16_snorm_coalesced_cs));
   // Their variants storing into the image (vulkan_texture_load_to_image).
   std::pair<const uint32_t*, size_t> load_shader_code_image[kLoadShaderCount] =
       {};
@@ -4086,6 +4132,21 @@ bool VulkanTextureCache::Initialize() {
   load_shader_code_image[kLoadShaderIndexDepthFloat] =
       std::make_pair(shaders::texture_load_depth_float_image_cs,
                      sizeof(shaders::texture_load_depth_float_image_cs));
+  // Through an R32G32_UINT alias of the R16G16B16A16 image.
+  load_shader_code_image[kLoadShaderIndexR10G11B11ToRGBA16] =
+      std::make_pair(shaders::texture_load_r10g11b11_rgba16_image_cs,
+                     sizeof(shaders::texture_load_r10g11b11_rgba16_image_cs));
+  load_shader_code_image[kLoadShaderIndexR10G11B11ToRGBA16SNorm] =
+      std::make_pair(
+          shaders::texture_load_r10g11b11_rgba16_snorm_image_cs,
+          sizeof(shaders::texture_load_r10g11b11_rgba16_snorm_image_cs));
+  load_shader_code_image[kLoadShaderIndexR11G11B10ToRGBA16] =
+      std::make_pair(shaders::texture_load_r11g11b10_rgba16_image_cs,
+                     sizeof(shaders::texture_load_r11g11b10_rgba16_image_cs));
+  load_shader_code_image[kLoadShaderIndexR11G11B10ToRGBA16SNorm] =
+      std::make_pair(
+          shaders::texture_load_r11g11b10_rgba16_snorm_image_cs,
+          sizeof(shaders::texture_load_r11g11b10_rgba16_snorm_image_cs));
 
   for (size_t i = 0; i < kLoadShaderCount; ++i) {
     if (!load_shaders_needed[i]) {
