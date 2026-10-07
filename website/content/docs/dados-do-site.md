@@ -47,9 +47,9 @@ Um problema que torna o site errado (um dado que não pôde ser lido, um link qu
 
 O site é publicado pelo GitHub Pages com o workflow `.github/workflows/pages.yml`, que roda:
 
-- a cada push no `main` que muda o site, o app, o núcleo, os patches ou o README;
-- quando o workflow do APK termina no `main`, o que cobre as releases novas (as releases criadas pelo próprio CI não disparam outros workflows);
-- quando uma release é publicada ou editada à mão;
+- a cada push no `main` que muda o site ou um arquivo que ele lê: o app, o núcleo, os patches, os README e os documentos;
+- quando o workflow do APK termina com sucesso no `main`, o que cobre as releases novas (as releases criadas pelo próprio CI não disparam outros workflows);
+- uma vez por dia, para pegar releases publicadas ou editadas à mão;
 - sob pedido, pela aba Actions.
 
 Num pull request, o workflow só gera e confere o site, sem publicar. O token do GitHub Actions é usado só durante o build, para ler as releases; ele nunca chega às páginas.

@@ -26,17 +26,19 @@ export default {
   /** Caminhos do repositório que alimentam o site (o workflow do Pages observa os mesmos). */
   sparsePaths: [
     '/website/',
-    '/README.md', '/README.pt-BR.md', '/BUILD.md', '/GAME_COMPAT.md', '/THIRD-PARTY-NOTICES.md',
+    '/README.md', '/README.pt-BR.md', '/BUILD.md', '/GAME_COMPAT.md', '/THIRD-PARTY-NOTICES.md', '/local.properties.example',
     '/app/build.gradle', '/app/src/main/',
     '/emulator-core/build.gradle',
-    '/emulator-core/src/main/assets/config/',
+    '/emulator-core/src/main/assets/',
     '/emulator-core/src/main/java/',
     '/emulator-core/src/main/cpp/*.cpp', '/emulator-core/src/main/cpp/*.h',
+    '/emulator-core/src/main/cpp/xenia/LICENSE',
     '/emulator-core/src/main/cpp/xenia/src/xenia/',
     '/emulator-core/src/main/cpp/xenia/assets/game-compatibility/',
     '/patches/xenia-canary/patches/',
-    '/docs/assets/', '/docs/ui-redesign/',
+    '/docs/',
     '/performance-tests/',
+    '/tools/',
     '/.github/',
   ],
 };

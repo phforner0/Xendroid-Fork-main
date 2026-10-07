@@ -59,6 +59,27 @@ function pngSize(file) {
 }
 
 const t0 = Date.now();
+// O workflow do Pages baixa só os caminhos de sparsePaths e roda quando um deles muda: as três
+// listas precisam ser iguais, ou o CI deixa de ver um arquivo que o site lê.
+{
+  const wfFile = path.join(ROOT, '.github/workflows/pages.yml');
+  if (!fs.existsSync(wfFile)) warn('.github/workflows/pages.yml não existe: nada publica o site');
+  else {
+    const wf = fs.readFileSync(wfFile, 'utf8');
+    const diff = (what, got, want) => {
+      const missing = want.filter(x => !got.includes(x)), extra = got.filter(x => !want.includes(x));
+      if (missing.length || extra.length) error(`.github/workflows/pages.yml: ${what} difere de sparsePaths em site.config.mjs (falta: ${missing.join(', ') || 'nada'}; sobra: ${extra.join(', ') || 'nada'})`);
+    };
+    const sparse = /\n\s*sparse-checkout: \|\n((?:[ \t]+\S.*\n)+)/.exec(wf);
+    diff('o checkout esparso', sparse ? sparse[1].split('\n').map(s => s.trim()).filter(Boolean) : [], config.sparsePaths);
+    const filters = config.sparsePaths.map(p => p.replace(/^\//, '').replace(/\/$/, '/**'));
+    for (const ev of ['push', 'pull_request']) {
+      const m = new RegExp(`\\n  ${ev}:\\n(?:    .*\\n)*?    paths:\\n((?:      - .*\\n)+)`).exec(wf);
+      diff(`a lista paths de ${ev}`, m ? m[1].split('\n').map(s => s.replace(/^\s*-\s*/, '').replace(/^'(.*)'$/, '$1').trim()).filter(Boolean) : [], filters);
+    }
+  }
+}
+
 console.log('lendo os dados do repositório…');
 const data = await loadData({ root: ROOT, config, strict, cacheDir: CACHE, offline });
 problems.push(...data.problems);

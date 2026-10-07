@@ -93,10 +93,25 @@ No texto:
 ## Publicação
 
 O workflow `.github/workflows/pages.yml` gera o site com `npm run ci` e publica no GitHub Pages.
-Ele roda em pushes no `main` que mudam o site ou o app, quando o workflow do APK termina no
-`main` (o que cobre as releases novas), quando uma release é publicada e sob pedido. Em pull
-requests ele só gera e confere.
+Ele roda:
+
+- em pushes no `main` que mudam o site ou um arquivo que o site lê (a lista `sparsePaths` de
+  `site.config.mjs`);
+- quando o workflow do APK (“Xendroid+”) termina com sucesso no `main`, o que cobre as releases
+  que ele publica (uma release criada com o token do próprio workflow não dispara outros
+  workflows, mas o fim da execução dispara);
+- uma vez por dia, para pegar releases publicadas ou editadas à mão;
+- sob pedido, em **Actions → Site → Run workflow**.
+
+Em pull requests ele só gera, confere e testa, sem publicar.
+
+O checkout traz a história completa sem o conteúdo dos arquivos e baixa só os caminhos de
+`sparsePaths`. Essa lista aparece três vezes no workflow (no checkout e nos filtros de push e
+de pull request); o build confere que as três são iguais a `sparsePaths` e para se divergirem.
+O único segredo é o `GITHUB_TOKEN` do próprio workflow, usado só no build para ler a API de
+releases; nada dele vai para as páginas.
 
 Para ativar: em **Settings → Pages** do repositório, escolha **GitHub Actions** como fonte.
 O endereço fica `https://<dono>.github.io/<repositório>/`; o workflow passa esse endereço ao
-build (`SITE_URL` e `SITE_BASE_PATH`), então o site funciona em qualquer subdiretório.
+build (`SITE_URL` e `SITE_BASE_PATH`), então o site funciona em qualquer subdiretório, e
+um domínio próprio configurado no Pages muda os dois sozinho.
