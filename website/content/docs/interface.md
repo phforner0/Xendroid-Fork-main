@@ -119,4 +119,4 @@ Os **saves** de cada jogo ficam na ficha → **Saves e dados**: por perfil, com 
 
 ## Ver no simulador
 
-O [simulador](ferramenta:library) mostra estas telas no navegador, nos dois modos. Comece pela [biblioteca](ferramenta:library), pela [ficha](ferramenta:game) ou pelo [menu em jogo](ferramenta:ingame).
+O [simulador](ferramenta:library) mostra estas telas no navegador, nos dois modos. Comece pela [biblioteca](ferramenta:library), pela [ficha](ferramenta:game) ou pelo [menu em jogo](ferramenta:ingame). O que nele é dado real e o que é exemplo está em [Usar o simulador](doc:simulador).

@@ -368,6 +368,7 @@ export function simulatorPage(site, assets) {
       <div class="ch-keys"><span><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> mover</span><span><kbd>Enter</kbd> abrir ou mudar</span><span><kbd>Esc</kbd> voltar</span><span><kbd>Q</kbd><kbd>E</kbd> abas e seções (LB/RB)</span><span><kbd>F</kbd> favoritar (Y)</span><span><kbd>I</kbd> ficha (X)</span><span><kbd>M</kbd> menu (Start)</span><span><kbd>/</kbd> buscar jogos</span></div>
       <p>Clique na tela do aparelho (ou chegue nela com <kbd>Tab</kbd>) para usar o teclado; <kbd>Tab</kbd> sai dela. Um controle conectado ao computador funciona pela Gamepad API e, em Automático, troca para o modo controle, como no app.</p>
       <p>Mudanças ficam só nesta página: recarregar volta aos exemplos. O endereço guarda a tela aberta, para dar para mandar um link direto (por exemplo, <a href="#drivers">#drivers</a>).</p>
+      <p>O que é dado real e o que é exemplo, as anotações e o arquivo de configuração por jogo: <a href="${r('docs/simulador/')}">Usar o simulador</a>.</p>
     </article>
   </section>
 </div>`;
