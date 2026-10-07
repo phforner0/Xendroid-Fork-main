@@ -253,6 +253,13 @@ static const Quirk kQuirks[] = {
     // 2026-10-06).
     {0x4541098E, "vulkan_direct_host_resolve_to_texture", true,
      "resolves store straight into their textures"},
+    // 2D fetches with the LOD the host computes instead of 4 coarse
+    // derivatives and an explicit-gradient sample: main pass 12.8 -> 11.0 ms,
+    // the 640x4096 passes 2.0 -> 1.5 ms, GPU time ~26.4 -> 24.4 ms a frame,
+    // the same image standing on the deck (one restart A/B pair at the same
+    // temperature, 2026-10-06).
+    {0x4541098E, "spirv_texture_implicit_lod", true,
+     "2D texture fetches with the host's LOD"},
 };
 
 // Same path/priority as a per-game config file.
