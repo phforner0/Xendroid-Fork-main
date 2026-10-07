@@ -13,7 +13,7 @@ Este site é gerado a partir do repositório do Xendroid+. O que dá para ler do
 - **Estável**: o commit da release mais recente publicada no GitHub, hoje a {{estavel.nome}} (`{{estavel.commit}}`). É a versão que a página inicial oferece para baixar e a base da documentação e do simulador.
 - **Desenvolvimento**: o commit do `main` em que o site é gerado (`{{dev.commit}}`).
 
-O build lê as duas separadamente: a estável numa árvore de trabalho própria, no commit da release. Quando o `main` não mudou o app depois da release, as duas dão os mesmos dados e o site diz isso. Quando mudou, a referência de ajustes lista as diferenças, os trechos da documentação marcados com uma versão dizem a partir de qual build valem, e os dados das duas são publicados em `dados/estavel.json` e `dados/desenvolvimento.json`.
+O build lê as duas separadamente: a estável numa árvore de trabalho própria, no commit da release. Quando as duas dão os mesmos dados (o `main` mudou só o site, um workflow ou comentários do código), o site mostra uma versão só e diz isso. Quando mudou, a referência de ajustes lista as diferenças, os trechos da documentação marcados com uma versão dizem a partir de qual build valem, e os dados das duas são publicados em `dados/estavel.json` e `dados/desenvolvimento.json`.
 
 ## O que é lido do código
 

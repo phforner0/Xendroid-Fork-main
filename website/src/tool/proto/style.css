@@ -407,6 +407,7 @@ body.full .full-exit{display:flex;position:fixed;left:6px;top:50%;transform:tran
 .b-dbody h4{margin:0 0 2px;display:flex;align-items:center;gap:6px;font:700 11px/1 var(--f-body);letter-spacing:.11em;text-transform:uppercase;color:var(--fg3)}
 .b-dbody h4 .link{margin-left:auto;letter-spacing:0;text-transform:none;font-size:12px}
 @container screen (orientation: portrait){
+  .b-lib{grid-template-columns:minmax(0,1fr)}
   .b-detail{display:none}
   .b-tools{flex-wrap:wrap}
   .b-tools .search{flex:1 1 100%}

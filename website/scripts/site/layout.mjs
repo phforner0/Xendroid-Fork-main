@@ -136,7 +136,7 @@ function footer(site, page, r) {
       <p>O Xendroid+ é um projeto de código aberto, sem fins comerciais, criado e mantido por <a href="https://github.com/phforner0" rel="noopener">phforner0</a>. Continua o XenDroid, de rfandango, e usa o núcleo do <a href="https://github.com/xenia-project/xenia" rel="noopener">Xenia</a>. Não tem vínculo com a Microsoft nem é endossado por ela; Xbox e Xbox 360 são marcas da Microsoft Corporation.</p>
       <p>Nenhum jogo, imagem de disco, firmware, arquivo de sistema ou chave é incluído ou distribuído. Use apenas cópias de jogos que você possui.</p>
     </div>
-    <p class="footer-meta">Gerado em ${fmtDate(site.builtAt)} a partir do commit ${dev.short}.${stable ? ` Estável: ${stable.label.toLowerCase()} (${stable.short}).` : ''}${site.data.sameChannels ? ' O main não tem mudanças no app depois dela.' : ''}</p>
+    <p class="footer-meta">Gerado em ${fmtDate(site.builtAt)} a partir do commit ${dev.short}.${stable ? ` Estável: ${stable.label.toLowerCase()} (${stable.short}).` : ''}${site.data.sameChannels ? ' O main atual tem os mesmos ajustes e dados.' : ''}</p>
   </div>
 </footer>`;
 }

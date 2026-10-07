@@ -27,6 +27,16 @@ test('cada tela abre nos modos toque e controle, deitado e em pé', async () => 
         assert.equal(state.screen, r, `a barra mostra a tela ${r}`);
         assert.ok(state.cls.includes(`mode-${mode}`), `${r}: modo ${mode}`);
         assert.ok(state.size > 400, `${r} (${mode}, ${orient}) está vazia`);
+        if (orient === 'port') {
+          // em pé, nenhuma área da tela fica espremida numa coluna (larguras de layout, sem a escala do aparelho)
+          const narrow = await page.evaluate(() => {
+            const W = document.getElementById('app').clientWidth;
+            return [...document.querySelectorAll('#app .shell > *, #app .b-lib > *, #app .shell .body:not(.single) > *')]
+              .filter(el => getComputedStyle(el).display !== 'none' && el.offsetWidth > 0 && el.offsetWidth < W * 0.9)
+              .map(el => `${el.className || el.tagName.toLowerCase()} com ${el.offsetWidth}px de ${W}px`);
+          });
+          assert.deepEqual(narrow, [], `${r} em pé (${mode})`);
+        }
       }
       const box = await page.locator('#screen').boundingBox();
       assert.equal(box.height > box.width, orient === 'port', `orientação ${orient}`);

@@ -72,3 +72,13 @@ test('cada ajuste publicado existe no esquema do app da release', () => {
   const schema = atStable('app/src/main/java/xendroid/compose/settings/SettingsSchema.kt');
   for (const s of est.ajustes) assert.ok(schema.includes(`"${s.name}"`), `${s.section}|${s.name} não está no SettingsSchema.kt`);
 });
+
+test('duas versões só contam como diferentes quando os dados publicados mudam', async () => {
+  const { fingerprint } = await import('../scripts/data.mjs');
+  const base = { settings: { settings: [{ key: 'GPU|framerate_limit', default: '60', source: 'SettingsSchema.kt:10' }] }, app: { package: 'x', sources: { appId: 'build.gradle:66' } }, games: { names: new Set(['b', 'a']) }, template: { v: 1n }, problems: [{ msg: 'a' }] };
+  const moved = { ...base, settings: { settings: [{ ...base.settings.settings[0], source: 'SettingsSchema.kt:12' }] }, app: { ...base.app, sources: { appId: 'build.gradle:70' } }, games: { names: new Set(['a', 'b']) }, problems: [] };
+  assert.equal(fingerprint(moved), fingerprint(base), 'linhas do código, avisos e a ordem de um conjunto não contam');
+  const changed = { ...base, settings: { settings: [{ ...base.settings.settings[0], default: '30' }] } };
+  assert.notEqual(fingerprint(changed), fingerprint(base), 'um padrão diferente conta');
+  assert.notEqual(fingerprint({ ...base, template: { v: 2n } }), fingerprint(base), 'números grandes entram na comparação');
+});

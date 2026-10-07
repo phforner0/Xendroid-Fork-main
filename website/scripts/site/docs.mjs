@@ -33,7 +33,7 @@ function versionLine(site, doc) {
   if (stable) {
     parts.push(html`<span class="tag ok">${icon('tag', 14)}${stable.label}</span>`);
     parts.push(site.data.sameChannels
-      ? html`<span>Vale para a ${stable.label.toLowerCase()} e para o main atual, que não mudou o app depois dela.</span>`
+      ? html`<span>Vale para a ${stable.label.toLowerCase()} e para o main atual, que tem os mesmos ajustes e dados.</span>`
       : html`<span>Escrita para a ${stable.label.toLowerCase()}; trechos marcados valem só no desenvolvimento.</span>`);
   }
   return html`<p class="page-meta">${parts}</p>`;
