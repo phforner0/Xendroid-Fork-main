@@ -288,6 +288,17 @@ static const Quirk kQuirks[] = {
     // temperature, 2026-10-06).
     {0x4541098E, "spirv_texture_implicit_lod", true,
      "2D texture fetches with the host's LOD"},
+    // Without the Shader Model 3 "0 * x = 0" emulation and the 21-bit
+    // rounding in pixel shaders, and the former in vertex shaders, as for
+    // Forza Horizon: main pass 11.4 -> 9.9 ms, the 640x4096 passes 1.57 ->
+    // 1.32 ms, GPU time 24.8 -> 23.5 ms a frame with the phone hotter. The
+    // same image standing on the deck at night in the rain with the lighting
+    // right - no black or white pixels; the colored specks flickering on the
+    // pistol's emblem are there with either (restart A/B pair, 2026-10-07).
+    {0x4541098E, "spirv_ps_relaxed_math", int64_t(3),
+     "no SM3 zero-multiply or 21-bit rounding emulation in pixel shaders"},
+    {0x4541098E, "spirv_vs_relaxed_math", int64_t(1),
+     "no SM3 zero-multiply emulation in vertex shaders"},
 };
 
 // Same path/priority as a per-game config file.
