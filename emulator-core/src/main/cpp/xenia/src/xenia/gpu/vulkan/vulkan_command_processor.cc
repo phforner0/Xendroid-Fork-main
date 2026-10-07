@@ -24,6 +24,7 @@
 
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_order.h"
+#include "xenia/base/filesystem.h"
 #include "xenia/base/frame_stats.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
@@ -46,6 +47,7 @@
 #include "xenia/gpu/vulkan/vulkan_shared_memory.h"
 #include "xenia/gpu/vulkan/vulkan_zpd_query_pool.h"
 #include "xenia/gpu/xenos.h"
+#include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/ui/vulkan/vulkan_instance.h"
@@ -2738,6 +2740,200 @@ void VulkanCommandProcessor::ReassertGpuPowerControlIfDue() {
 #endif
 }
 
+void VulkanCommandProcessor::PollFrameDump() {
+  // The frame being dumped ends with this swap.
+  if (frame_dump_file_) {
+    std::fclose(frame_dump_file_);
+    frame_dump_file_ = nullptr;
+    XELOGI("FrameDump: {} draws and {} resolves in {}", frame_dump_draws_,
+           frame_dump_resolves_, xe::path_to_utf8(frame_dump_dir_));
+  }
+#if defined(__ANDROID__)
+  static uint32_t frames_since_poll = 0;
+  if (++frames_since_poll < 15) {
+    return;
+  }
+  frames_since_poll = 0;
+  char value[PROP_VALUE_MAX] = {};
+  __system_property_get("debug.xendroid.frame_dump", value);
+  if (frame_dump_value_ == value) {
+    return;
+  }
+  frame_dump_value_ = value;
+  if (!value[0] || !std::strcmp(value, "0") || !kernel_state_) {
+    return;
+  }
+  frame_dump_dir_ =
+      kernel_state_->emulator()->storage_root() / "frame_dump" / value;
+  std::error_code error_code;
+  std::filesystem::create_directories(frame_dump_dir_, error_code);
+  frame_dump_file_ =
+      xe::filesystem::OpenFile(frame_dump_dir_ / "frame.txt", "w");
+  if (!frame_dump_file_) {
+    XELOGE("FrameDump: can't create {}",
+           xe::path_to_utf8(frame_dump_dir_ / "frame.txt"));
+    return;
+  }
+  frame_dump_draws_ = 0;
+  frame_dump_resolves_ = 0;
+  frame_dump_shaders_.clear();
+  XELOGI("FrameDump: dumping the next frame to {}",
+         xe::path_to_utf8(frame_dump_dir_));
+#endif
+}
+
+void VulkanCommandProcessor::DumpFrameDraw(const VulkanShader& vertex_shader,
+                                           const VulkanShader* pixel_shader,
+                                           xenos::PrimitiveType prim_type,
+                                           uint32_t index_count) {
+  const RegisterFile& regs = *register_file_;
+  // Raw registers, decoded by the reader.
+  std::string line = fmt::format(
+      "D {} after_resolve {} prim {} count {} vs {:016X} ps {:016X} "
+      "mode {:08X} surface {:08X} color {:08X} {:08X} {:08X} {:08X} "
+      "mask {:08X} depth {:08X} depthcontrol {:08X} stencilref {:08X} "
+      "blend {:08X} {:08X} {:08X} {:08X} colorcontrol {:08X} "
+      "sc_mode {:08X} window_offset {:08X}",
+      frame_dump_draws_++, frame_dump_resolves_, uint32_t(prim_type),
+      index_count, vertex_shader.ucode_data_hash(),
+      pixel_shader ? pixel_shader->ucode_data_hash() : 0,
+      regs.values[XE_GPU_REG_RB_MODECONTROL],
+      regs.values[XE_GPU_REG_RB_SURFACE_INFO],
+      regs.values[XE_GPU_REG_RB_COLOR_INFO],
+      regs.values[XE_GPU_REG_RB_COLOR1_INFO],
+      regs.values[XE_GPU_REG_RB_COLOR2_INFO],
+      regs.values[XE_GPU_REG_RB_COLOR3_INFO],
+      regs.values[XE_GPU_REG_RB_COLOR_MASK],
+      regs.values[XE_GPU_REG_RB_DEPTH_INFO],
+      regs.values[XE_GPU_REG_RB_DEPTHCONTROL],
+      regs.values[XE_GPU_REG_RB_STENCILREFMASK],
+      regs.values[XE_GPU_REG_RB_BLENDCONTROL0],
+      regs.values[XE_GPU_REG_RB_BLENDCONTROL1],
+      regs.values[XE_GPU_REG_RB_BLENDCONTROL2],
+      regs.values[XE_GPU_REG_RB_BLENDCONTROL3],
+      regs.values[XE_GPU_REG_RB_COLORCONTROL],
+      regs.values[XE_GPU_REG_PA_SU_SC_MODE_CNTL],
+      regs.values[XE_GPU_REG_PA_SC_WINDOW_OFFSET]);
+  // The six dwords of the fetch constant of every texture the shaders sample.
+  auto append_textures = [&](const char* stage, const VulkanShader& shader) {
+    for (const Shader::TextureBinding& binding : shader.texture_bindings()) {
+      const xenos::xe_gpu_texture_fetch_t fetch =
+          regs.GetTextureFetch(binding.fetch_constant);
+      line += fmt::format(
+          " {}{}:{:08X}:{:08X}:{:08X}:{:08X}:{:08X}:{:08X}", stage,
+          binding.fetch_constant, fetch.dword_0, fetch.dword_1, fetch.dword_2,
+          fetch.dword_3, fetch.dword_4, fetch.dword_5);
+    }
+  };
+  append_textures("vt", vertex_shader);
+  if (pixel_shader) {
+    append_textures("pt", *pixel_shader);
+    // The float constants the pixel shader reads (from c256 of the register
+    // file, where Direct3D 9 puts them).
+    const Shader::ConstantRegisterMap& constants =
+        pixel_shader->constant_register_map();
+    for (uint32_t i = 0; i < 256; ++i) {
+      if (!(constants.float_bitmap[i >> 6] & (uint64_t(1) << (i & 63)))) {
+        continue;
+      }
+      const uint32_t* value =
+          &regs.values[XE_GPU_REG_SHADER_CONSTANT_000_X + (256 + i) * 4];
+      float components[4];
+      std::memcpy(components, value, sizeof(components));
+      line += fmt::format(" pc{}={:g},{:g},{:g},{:g}", i, components[0],
+                          components[1], components[2], components[3]);
+    }
+  }
+  line += '\n';
+  std::fwrite(line.data(), 1, line.size(), frame_dump_file_);
+  // The microcode of each shader once, as disassembled by the analysis.
+  auto dump_shader = [&](const char* stage, const VulkanShader& shader) {
+    if (!frame_dump_shaders_.insert(shader.ucode_data_hash()).second) {
+      return;
+    }
+    FILE* file = xe::filesystem::OpenFile(
+        frame_dump_dir_ /
+            fmt::format("{}_{:016X}.txt", stage, shader.ucode_data_hash()),
+        "w");
+    if (file) {
+      const std::string& disassembly = shader.ucode_disassembly();
+      std::fwrite(disassembly.data(), 1, disassembly.size(), file);
+      std::fclose(file);
+    }
+  };
+  dump_shader("vs", vertex_shader);
+  if (pixel_shader) {
+    dump_shader("ps", *pixel_shader);
+  }
+}
+
+void VulkanCommandProcessor::DumpFrameResolve(uint32_t written_address,
+                                              uint32_t written_length) {
+  const draw_util::ResolveInfo& info = render_target_cache_->last_resolve_info();
+  const bool is_depth = info.IsCopyingDepth();
+  const draw_util::ResolveEdramInfo& edram_info =
+      is_depth ? info.depth_edram_info : info.color_edram_info;
+  const uint32_t index = frame_dump_resolves_++;
+  std::string line = fmt::format(
+      "R {} after_draw {} copy_control {:08X} src {} base {} pitch {} msaa {} "
+      "format {} 64bpp {} rect {},{} {}x{} dest {:08X} pitch {} height {} "
+      "offset {},{} info {:08X} format {} endian {} number {} exp_bias {} "
+      "swap {} sample {} written {:08X} {} clear_color {:08X}{:08X} "
+      "clear_depth {:08X}",
+      index, frame_dump_draws_, info.rb_copy_control.value,
+      is_depth ? "depth" : "color", uint32_t(edram_info.base_tiles),
+      uint32_t(edram_info.pitch_tiles),
+      1u << uint32_t(edram_info.msaa_samples), uint32_t(edram_info.format),
+      uint32_t(edram_info.format_is_64bpp),
+      uint32_t(info.coordinate_info.edram_offset_x_div_8) * 8,
+      uint32_t(info.coordinate_info.edram_offset_y_div_8) * 8,
+      uint32_t(info.coordinate_info.width_div_8) * 8, info.height_div_8 * 8,
+      info.copy_dest_base,
+      uint32_t(info.copy_dest_coordinate_info.pitch_aligned_div_32) * 32,
+      uint32_t(info.copy_dest_coordinate_info.height_aligned_div_32) * 32,
+      uint32_t(info.copy_dest_coordinate_info.offset_x_div_8) * 8,
+      uint32_t(info.copy_dest_coordinate_info.offset_y_div_8) * 8,
+      info.copy_dest_info.value,
+      uint32_t(info.copy_dest_info.copy_dest_format),
+      uint32_t(info.copy_dest_info.copy_dest_endian),
+      uint32_t(info.copy_dest_info.copy_dest_number),
+      int32_t(info.copy_dest_info.copy_dest_exp_bias),
+      uint32_t(info.copy_dest_info.copy_dest_swap),
+      uint32_t(info.copy_dest_coordinate_info.copy_sample_select),
+      written_address, written_length, info.rb_color_clear,
+      info.rb_color_clear_lo, info.rb_depth_clear);
+  bool read = false;
+  if (written_length && shared_memory_->IsHostMapped()) {
+    // Like the first uma readback of a destination: make the resolve visible
+    // to the host and drain, then go on in a new submission.
+    PushBufferMemoryBarrier(
+        shared_memory_->buffer(), 0, VK_WHOLE_SIZE,
+        guest_shader_pipeline_stages_ | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_HOST_BIT,
+        VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+        VK_ACCESS_HOST_READ_BIT, VK_QUEUE_FAMILY_IGNORED,
+        VK_QUEUE_FAMILY_IGNORED, false);
+    SubmitBarriers(true);
+    if (AwaitAllQueueOperationsCompletion()) {
+      std::vector<uint8_t> bytes(written_length);
+      if (shared_memory_->ReadHostMapped(written_address, written_length,
+                                         bytes.data())) {
+        FILE* file = xe::filesystem::OpenFile(
+            frame_dump_dir_ / fmt::format("r{:03}.bin", index), "wb");
+        if (file) {
+          std::fwrite(bytes.data(), 1, bytes.size(), file);
+          std::fclose(file);
+          read = true;
+        }
+      }
+    }
+    BeginSubmission(true);
+  }
+  line += read ? " data\n" : " no_data\n";
+  std::fwrite(line.data(), 1, line.size(), frame_dump_file_);
+}
+
 void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                                        uint32_t frontbuffer_width,
                                        uint32_t frontbuffer_height) {
@@ -2748,6 +2944,7 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
   xe::RecordGuestPresent();
 
   PollDebugPropertyOverrides(*this);
+  PollFrameDump();
   ReassertGpuPowerControlIfDue();
 
   if (!pipeline_use_.empty()) {
@@ -4776,6 +4973,9 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   if (memexport_used_pixel) {
     draw_util::AddMemExportRanges(regs, *pixel_shader, memexport_ranges_);
   }
+  if (frame_dump_file_) {
+    DumpFrameDraw(*vertex_shader, pixel_shader, prim_type, index_count);
+  }
 
   // A pixel shader that may kill pixels leaves covered pixels unwritten, and
   // only a pixel shader does the alpha test (skip_overwritten_transfers).
@@ -6407,6 +6607,9 @@ bool VulkanCommandProcessor::IssueCopy() {
   ++submission_in_progress_.resolve_count;
   ++vk_frame_sync_stats_.resolves;
   resolve_since_pass_end_ = true;
+  if (frame_dump_file_) {
+    DumpFrameResolve(written_address, written_length);
+  }
 
   // The resolve wrote the device buffer. Drop any stale memexport marks so the
   // output isn't overwritten with guest RAM by a later texture load.

@@ -16,6 +16,7 @@
 #include <climits>
 #include <cstdint>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <memory>
@@ -844,6 +845,24 @@ class VulkanCommandProcessor final : public CommandProcessor {
   VkFrameSyncStats& vk_frame_sync_stats() { return vk_frame_sync_stats_; }
 
  private:
+  // debug.xendroid.frame_dump: a new value dumps the next frame to
+  // <storage root>/frame_dump/<value>/ - frame.txt with a line per draw (its
+  // shaders, render target registers and texture fetch constants) and per
+  // resolve (where it copied from and to), and r<index>.bin with the bytes each
+  // resolve wrote to guest memory. Each resolve drains the GPU to read them.
+  void PollFrameDump();
+  void DumpFrameDraw(const VulkanShader& vertex_shader,
+                     const VulkanShader* pixel_shader,
+                     xenos::PrimitiveType prim_type, uint32_t index_count);
+  void DumpFrameResolve(uint32_t written_address, uint32_t written_length);
+  std::string frame_dump_value_;
+  std::filesystem::path frame_dump_dir_;
+  FILE* frame_dump_file_ = nullptr;
+  uint32_t frame_dump_draws_ = 0;
+  uint32_t frame_dump_resolves_ = 0;
+  // Shaders whose microcode disassembly is already in the dump directory.
+  std::unordered_set<uint64_t> frame_dump_shaders_;
+
   struct SubmissionWork {
     uint32_t draws = 0;
     uint32_t resolves = 0;
