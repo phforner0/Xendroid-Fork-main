@@ -68,7 +68,12 @@ DEFINE_bool(
     "for 16-bit). Costs a per-component rescale inside every texture fetch that "
     "requests it, which is measurable where fragment shading is the "
     "bottleneck. Off samples everything as normalized, which is what the "
-    "emulator did before upstream implemented this.",
+    "emulator did before upstream implemented this. Crysis 3 samples its "
+    "k_2_10_10_10 and k_10_11_11 scene copies with the bit set and turns "
+    "entirely white when it is honoured (2026-10-06). The shaders have the "
+    "rescale only if this was on when they were translated; "
+    "debug.xendroid.texture_integer_num_format switches the host side at run "
+    "time on Android.",
     "GPU");
 
 DEFINE_bool(tiled_shared_memory, true,

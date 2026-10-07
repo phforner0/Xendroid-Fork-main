@@ -62,6 +62,7 @@ DECLARE_bool(vulkan_resolve_clear_in_guest_pass);
 DECLARE_bool(spirv_specialize_no_alpha);
 DECLARE_bool(vulkan_texture_load_coalesced);
 DECLARE_bool(vulkan_texture_load_to_image);
+DECLARE_bool(texture_integer_num_format);
 DECLARE_bool(vulkan_direct_host_resolve);
 DECLARE_bool(vulkan_async_skip_draws);
 DECLARE_bool(merge_tiling_bands);
@@ -476,6 +477,11 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.texture_sign_classes",
                             "vulkan_texture_sign_classes",
                             cvars::vulkan_texture_sign_classes);
+  // Read per texture binding; the shaders have the rescale only if it was on
+  // when they were translated (launch with it on to compare both ways).
+  PollDebugPropertyOverride("debug.xendroid.texture_integer_num_format",
+                            "texture_integer_num_format",
+                            cvars::texture_integer_num_format);
   // Both texture load switches at once, for A/Bs of the load paths: 0 - the
   // original untiling into a buffer copied to the image, 1 - coalesced
   // untiling, 2 - coalesced straight into the image (which only has the
