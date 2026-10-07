@@ -3,7 +3,7 @@ title: Compilar e contribuir
 description: Ferramentas e versões, primeira configuração, comandos de build e de teste, o que o CI confere e como uma mudança vira release.
 section: projeto
 order: 1
-conferido: e179885e7
+conferido: 29ef9e7c7
 fontes: [BUILD.md, app/build.gradle, emulator-core/build.gradle, local.properties.example, .github/workflows/XenDroid.yml, .github/workflows/checks.yml, .github/pull_request_template.md, tools/release_notes.py, tools/check-apk.py, tools/check-jni.py]
 ---
 
@@ -86,7 +86,7 @@ O CI compila o APK e roda as checagens rápidas, mas não roda os testes de unid
 ## O que o CI confere
 
 - **Checks** (todo pull request para o `main`): sintaxe dos scripts Python, shell e PowerShell de `tools/`, as ligações JNI e o lint dos workflows (actionlint).
-- **Xendroid+** (pull requests e pushes no `main`, exceto mudanças só em documentação, `tools/` e testes de desempenho): compila o APK. Num pull request gera o pacote de teste `{{app.pacoteTeste}}` (depurável, instala ao lado); no `main`, o pacote publicado, assinado e conferido pelo `tools/check-apk.py`, e publica a release.
+- **Xendroid+** (pull requests e pushes no `main`, exceto mudanças só em documentação, no site (`website/`), em `tools/` e nos testes de desempenho): compila o APK. Num pull request gera o pacote de teste `{{app.pacoteTeste}}` (depurável, instala ao lado); no `main`, o pacote publicado, assinado e conferido pelo `tools/check-apk.py`, e publica a release.
 - **Site** (`website/`): este site tem o próprio workflow, que gera e publica as páginas (veja [Dados do site](doc:dados-do-site#publicacao)).
 
 ## Da mudança à release

@@ -110,3 +110,29 @@
 }
 
 main:focus { outline: none; }
+
+/* ---------- idioma ---------- */
+.lang-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: var(--radius-s);
+  color: var(--fg-2);
+  font: 600 .9rem var(--f-body);
+  letter-spacing: .04em;
+  text-decoration: none;
+}
+.lang-btn:hover { color: var(--fg); background: var(--panel-2); }
+.footer-lang { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: var(--step--1); color: var(--fg-3); }
+.footer-lang a { color: var(--fg-2); }
+.footer-lang a[aria-current="true"] { color: var(--fg); font-weight: 600; text-decoration: none; }
+.lang-hint {
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  font-size: var(--step--1);
+}
+.lang-hint .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; min-height: 44px; padding-block: 6px; }
+.lang-hint p { margin: 0; color: var(--fg-2); }
+.lang-hint .icon-btn { width: 32px; height: 32px; margin-left: auto; }

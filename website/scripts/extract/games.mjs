@@ -10,6 +10,7 @@ export const GAME_SOURCES = {
   quirks: 'emulator-core/src/main/cpp/xenia/src/xenia/game_quirks.cc',
   compat: 'GAME_COMPAT.md',
   readmePt: 'README.pt-BR.md',
+  readmeEn: 'README.md',
   // base de compatibilidade do Xenia para PC, vendorizada: usada só para dar nome a um Title ID,
   // nunca como estado de compatibilidade do Xendroid+
   titles: 'emulator-core/src/main/cpp/xenia/assets/game-compatibility/master.json',
@@ -78,8 +79,12 @@ export function extractGames(root) {
     });
   }
 
-  // medições do README em pt-BR (tabela da seção "## Desempenho")
-  const perf = readPerfTable(path.join(root, GAME_SOURCES.readmePt));
+  // medições do README (tabela da seção "## Desempenho" do pt-BR e "## Performance snapshot" do inglês)
+  const perf = readPerfTable(path.join(root, GAME_SOURCES.readmePt), 'Desempenho');
+  const perfEn = readPerfTable(path.join(root, GAME_SOURCES.readmeEn), 'Performance snapshot');
+  if (perf && perfEn && (perf.rows.length !== perfEn.rows.length || perf.rows.some((r, i) => r[perf.header[0]] !== perfEn.rows[i][perfEn.header[0]]))) {
+    problems.push({ level: 'warn', msg: 'as tabelas de desempenho do README.md e do README.pt-BR.md têm jogos diferentes' });
+  }
 
   // nomes por Title ID: o nome do arquivo de patch, senão a base vendorizada do Xenia
   const upstream = new Map();
@@ -123,15 +128,16 @@ export function extractGames(root) {
     quirkTitles,
     compatNotes,
     perf,
+    perfEn,
     problems,
   };
 }
 
-/** Tabela de medições do README.pt-BR.md, com o parágrafo de contexto que a precede. */
-export function readPerfTable(file) {
+/** Tabela de medições de um README, com o parágrafo de contexto que a precede. */
+export function readPerfTable(file, heading) {
   if (!fs.existsSync(file)) return null;
   const md = fs.readFileSync(file, 'utf8');
-  const head = /^## Desempenho\s*$/m.exec(md);
+  const head = new RegExp(`^## ${heading}\\s*$`, 'm').exec(md);
   if (!head) return null;
   const start = head.index;
   const section = md.slice(start, md.indexOf('\n## ', start + 5) < 0 ? undefined : md.indexOf('\n## ', start + 5));
@@ -148,5 +154,5 @@ export function readPerfTable(file) {
     rows.push(Object.fromEntries(header.map((h, k) => [h, cells[k] ?? ''])));
   }
   const after = lines.slice(tableAt + rows.length + 2).join(' ').replace(/\s+/g, ' ').trim();
-  return { context, header, rows, after, source: 'README.pt-BR.md' };
+  return { context, header, rows, after, source: path.basename(file) };
 }

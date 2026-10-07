@@ -15,7 +15,7 @@ import { git, headInfo, fetchCommit, isAncestor, worktreeFor, firstParentLog } f
 /** Caminhos do código que mudam os dados de um canal (fora deles, as duas versões dão o mesmo). */
 const CHANNEL_PATHS = ['app/', 'emulator-core/', 'patches/', 'README.md', 'README.pt-BR.md', 'GAME_COMPAT.md', '.github/workflows/XenDroid.yml'];
 
-function extractChannel(root) {
+export function extractChannel(root) {
   const settings = extractSettings(root);
   const app = extractApp(root);
   const games = extractGames(root);
@@ -39,15 +39,29 @@ function sameData(root, a, b) {
   return git(root, ['diff', '--quiet', a, b, '--', ...CHANNEL_PATHS], { allowFail: true }) !== null;
 }
 
-/** Commits do main ainda sem release, sem os que só mexem no site. */
+/**
+ * O que o site publica de um canal, para comparar dois: sem as posições no código (um comentário
+ * ou uma linha a mais no workflow mudam a linha, não o dado) e sem os avisos.
+ */
+export function fingerprint(ch) {
+  return JSON.stringify(ch, (k, v) => {
+    if (k === 'source' || k === 'sources' || k === 'problems') return undefined;
+    if (typeof v === 'bigint') return `${v}n`;
+    if (v instanceof Set) return [...v].map(String).sort();
+    if (v instanceof Map) return Object.fromEntries([...v].map(([a, b]) => [String(a), b]));
+    return v;
+  });
+}
+
+/** Commits do main ainda sem release que mudam o app (o que entra no APK). */
+const APP_PATHS = /^(app|emulator-core|patches)\//;
 function unreleasedCommits(root, from) {
   const log = firstParentLog(root, from, 'HEAD');
   if (!log) return null;
   return log.filter(c => {
     const files = git(root, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-m', '--first-parent', c.sha], { allowFail: true });
     if (files == null) return true;
-    const list = files.split('\n').filter(Boolean);
-    return list.length === 0 || list.some(f => !f.startsWith('website/') && !f.startsWith('.github/workflows/pages.yml'));
+    return files.split('\n').some(f => APP_PATHS.test(f));
   });
 }
 
@@ -79,6 +93,9 @@ export async function loadData({ root, config, strict, cacheDir, offline }) {
 
   const dev = extractChannel(root);
   const est = stableRoot ? (same ? dev : extractChannel(stableRoot)) : null;
+  // arquivos mudaram (o workflow, um comentário), mas os dados publicados são os mesmos: um canal só,
+  // com a extração da estável, cujas linhas batem com os links para o código da release
+  if (est && !same && fingerprint(est) === fingerprint(dev)) same = true;
   for (const [id, ch] of [['desenvolvimento', dev], ['estavel', est]]) {
     if (!ch) continue;
     for (const p of ch.problems) problems.push({ ...p, msg: `[${id}] ${p.msg}` });

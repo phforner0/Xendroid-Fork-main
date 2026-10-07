@@ -58,15 +58,17 @@ export function readStringsDir(dir) {
   return { strings, plurals };
 }
 
-/** Textos em pt-BR com o inglês como reserva, como o Android resolve num aparelho em português. */
+/** Textos em pt-BR com o inglês como reserva, como o Android resolve num aparelho em português;
+ *  `en` traz o texto de um aparelho em inglês (values/). */
 export function readAppStrings(resDir) {
   const en = readStringsDir(path.join(resDir, 'values'));
   const pt = readStringsDir(path.join(resDir, 'values-pt-rBR'));
   return {
-    /** Texto mostrado num aparelho em pt-BR e o idioma em que ele está. */
+    /** Texto mostrado num aparelho em pt-BR, o idioma em que ele está e o texto em inglês. */
     get(name) {
-      if (pt.strings.has(name)) return { text: pt.strings.get(name).value, lang: 'pt-BR' };
-      if (en.strings.has(name)) return { text: en.strings.get(name).value, lang: 'en' };
+      const english = en.strings.has(name) ? en.strings.get(name).value : null;
+      if (pt.strings.has(name)) return { text: pt.strings.get(name).value, lang: 'pt-BR', en: english ?? pt.strings.get(name).value };
+      if (english != null) return { text: english, lang: 'en' };
       return null;
     },
     has(name) { return pt.strings.has(name) || en.strings.has(name); },

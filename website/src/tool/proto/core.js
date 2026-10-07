@@ -169,7 +169,7 @@ action('copy-text', el => { const pre = document.getElementById('toml-pre'); if 
 action('col-toggle', el => { const g = curGame(), v = el.dataset.v, i = g.cols.indexOf(v); if (i >= 0) g.cols.splice(i, 1); else g.cols.push(v); render(); });
 action('cache-clear', () => { const g = curGame(); S.modal = null; toast(`Cache de shaders limpo: ${g.cache[1]} MB`); g.cache = [0, 0]; render(); });
 action('rate-pick', el => { S.mp.rs = el.dataset.v; el.parentElement.querySelectorAll('.radio').forEach(b => b.setAttribute('aria-checked', String(b === el))); const sv = app.querySelector('[data-k="rt-save"]'); if (sv) sv.disabled = false; });
-action('rate', () => { const g = curGame(); if (!S.mp.rs) return; const note = (document.getElementById('rate-note') || {}).value || ''; g.compat = { s: S.mp.rs, note: note.trim().slice(0, 500), date: new Date().toLocaleDateString('pt-BR'), build: XDR.versoes.estavel ? XDR.versoes.estavel.commit : 'local', gpu: DRIVERS.gpu, drv: label(DEF['Vulkan.vulkan_lib_path'], effOf(g, 'Vulkan.vulkan_lib_path')) }; S.modal = null; toast('Avaliação guardada neste aparelho'); render(); });
+action('rate', () => { const g = curGame(); if (!S.mp.rs) return; const note = (document.getElementById('rate-note') || {}).value || ''; g.compat = { s: S.mp.rs, note: note.trim().slice(0, 500), date: new Date().toLocaleDateString(LANG), build: XDR.versoes.estavel ? XDR.versoes.estavel.commit : 'local', gpu: DRIVERS.gpu, drv: label(DEF['Vulkan.vulkan_lib_path'], effOf(g, 'Vulkan.vulkan_lib_path')) }; S.modal = null; toast('Avaliação guardada neste aparelho'); render(); });
 action('tg-local', el => { el.setAttribute('aria-checked', el.getAttribute('aria-checked') === 'true' ? 'false' : 'true'); });
 action('lf', el => { S.lf = el.dataset.v; render(); });
 action('sort', el => { S.sort = el.dataset.v; render(); });
@@ -439,7 +439,8 @@ document.getElementById('pins').addEventListener('click', e => { const b = e.tar
 
 function screenTitle(n) { return SCREENS[n] ? SCREENS[n].title : n; }
 const SIM = document.getElementById('sim');
-const PRINT_BASE = '../';
+/* da pasta do simulador até a raiz do site (simulator/ ou pt-br/simulador/), dado pelo build */
+const PRINT_BASE = XDR.raiz || '../';
 const codeLink = f => `<a href="${XDR.repo}/blob/${XDR.ref}/app/src/main/java/xendroid/compose/${f}" rel="noopener"><code>${esc(f.split('/').pop())}</code></a>`;
 function updateChrome() {
   document.querySelectorAll('[data-cact="mode"]').forEach(b => b.setAttribute('aria-pressed', b.closest('.full-exit') ? b.dataset.v === S.mode : b.dataset.v === S.modePref));

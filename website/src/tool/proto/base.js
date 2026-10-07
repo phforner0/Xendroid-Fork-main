@@ -7,7 +7,10 @@ const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const norm = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-const nf = n => Number(n).toLocaleString('pt-BR');
+/* idioma das telas: o build gera os scripts em pt-BR e em inglês (XDR_SIM.idioma) */
+const LANG = (window.XDR_SIM && window.XDR_SIM.idioma) || 'pt-BR';
+const DEC = LANG === 'pt-BR' ? ',' : '.';
+const nf = n => Number(n).toLocaleString(LANG);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const store = {
   get(k, d) { try { const v = localStorage.getItem('xdr-' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },

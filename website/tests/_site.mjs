@@ -12,18 +12,26 @@ export const SITE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 export const DIST = path.join(SITE, 'dist');
 export const BASE = config.basePath;
 
-/** As páginas geradas, como caminhos relativos à base ('' é a página inicial). */
-export function pages() {
+function indexPages() {
   const out = [];
   (function walk(dir) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) walk(p);
-      else if (e.name === 'index.html') out.push(path.relative(DIST, dir).split(path.sep).join('/'));
+      else if (e.name === 'index.html') out.push({ path: path.relative(DIST, dir).split(path.sep).join('/'), redirect: /<meta http-equiv="refresh"/.test(fs.readFileSync(p, 'utf8')) });
     }
   })(DIST);
-  return out.map(p => (p ? `${p}/` : '')).sort();
+  return out.map(p => ({ ...p, path: p.path ? `${p.path}/` : '' })).sort((a, b) => a.path.localeCompare(b.path));
 }
+
+/** As páginas geradas, como caminhos relativos à base ('' é a página inicial; pt-br/ é o português). */
+export function pages() { return indexPages().filter(p => !p.redirect).map(p => p.path); }
+
+/** Os endereços antigos (português na raiz, antes da versão bilíngue) que só redirecionam. */
+export function redirects() { return indexPages().filter(p => p.redirect).map(p => p.path); }
+
+/** Idioma de uma página pelo caminho: pt-br/ é português, o resto é inglês. */
+export const langOf = p => (p.startsWith('pt-br/') ? 'pt-BR' : 'en');
 
 export function readJson(rel) { return JSON.parse(fs.readFileSync(path.join(DIST, rel), 'utf8')); }
 

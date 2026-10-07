@@ -15,7 +15,7 @@ Como cada jogo roda depende do jogo, do aparelho e do driver da GPU. Alguns tít
 
 ## 1. Instale o APK
 
-Baixe o APK da {{estavel.nome}} na [página inicial](doc:instalacao#baixar) ou nas releases do GitHub e instale. O passo a passo, com a conferência do SHA-256 e a permissão de instalar apps, está em [Instalar e atualizar](doc:instalacao).
+Baixe o APK da {{estavel.nome}} pelo [link de download](doc:instalacao#baixar) ou nas releases do GitHub e instale. O passo a passo, com a conferência do SHA-256 e a permissão de instalar apps, está em [Instalar e atualizar](doc:instalacao).
 
 ## 2. Siga o assistente da primeira abertura
 

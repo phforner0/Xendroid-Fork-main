@@ -3,7 +3,7 @@ title: Instalar e atualizar
 description: Baixar o APK publicado, conferir o SHA-256, instalar e manter o app atualizado pelo próprio Xendroid+.
 section: comecar
 order: 2
-conferido: e179885e7
+conferido: 29ef9e7c7
 fontes: [app/build.gradle, app/src/main/java/xendroid/compose/updater/updater.kt, app/src/main/java/xendroid/compose/updater/ReleaseFeed.kt, app/src/main/java/xendroid/compose/updater/ReleaseTags.kt, app/src/main/java/xendroid/compose/updater/UpdateInstaller.kt, app/src/main/java/xendroid/compose/updater/UpdateScreen.kt, .github/workflows/XenDroid.yml]
 ---
 

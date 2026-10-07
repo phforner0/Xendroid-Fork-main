@@ -454,7 +454,7 @@ export function normalize(s, raw) {
   }
 }
 
-/** optionText: o rótulo de uma opção num aparelho em pt-BR. */
+/** optionText: o rótulo de uma opção num aparelho em pt-BR (text) e num em inglês (en). */
 function optionLabel(s, value, rule, str) {
   const english = (s.englishOptions.find(o => o[0] === value) || [value, value])[1];
   const en = { text: english, lang: 'en' };
@@ -463,7 +463,7 @@ function optionLabel(s, value, rule, str) {
     case 'map': {
       const x = rule.map[value];
       if (!x) return en;
-      return x.res ? str(x.res) : { text: x.literal, lang: 'pt-BR' };
+      return x.res ? str(x.res) : { text: x.literal, lang: 'pt-BR', en: x.literal };
     }
     case 'turnip': {
       const flags = value.split(',').map(f => f.trim().toLowerCase()).filter(f => /^[a-z0-9_]{1,40}$/.test(f));
@@ -472,19 +472,21 @@ function optionLabel(s, value, rule, str) {
     case 'upToPx': {
       const n = parseInt(value, 10);
       if (Number.isNaN(n)) return en;
-      return n === 0 ? str(rule.off) : { text: formatAndroid(str(rule.template).text, n), lang: 'pt-BR' };
+      const tpl = str(rule.template);
+      return n === 0 ? str(rule.off) : { text: formatAndroid(tpl.text, n), lang: 'pt-BR', en: formatAndroid(tpl.en ?? tpl.text, n) };
     }
     case 'language': {
       // java.util.Locale(english).displayLanguage com a primeira letra maiúscula
-      let name = '';
-      try { name = new Intl.DisplayNames(['pt-BR'], { type: 'language' }).of(english) || ''; } catch { name = ''; }
-      if (!name || name === english) return en;
-      return { text: name[0].toUpperCase() + name.slice(1), lang: 'pt-BR' };
+      const display = loc => { try { return new Intl.DisplayNames([loc], { type: 'language' }).of(english) || ''; } catch { return ''; } };
+      const up = s => s[0].toUpperCase() + s.slice(1);
+      const name = display('pt-BR'), nameEn = display('en');
+      if (!name || name === english) return nameEn && nameEn !== english ? { text: english, lang: 'en', en: up(nameEn) } : en;
+      return { text: up(name), lang: 'pt-BR', en: nameEn && nameEn !== english ? up(nameEn) : english };
     }
     case 'country': {
-      let name = '';
-      try { name = new Intl.DisplayNames(['pt-BR'], { type: 'region' }).of(english) || ''; } catch { name = ''; }
-      return name && name !== english ? { text: name, lang: 'pt-BR' } : en;
+      const display = loc => { try { return new Intl.DisplayNames([loc], { type: 'region' }).of(english) || ''; } catch { return ''; } };
+      const name = display('pt-BR'), nameEn = display('en');
+      return name && name !== english ? { text: name, lang: 'pt-BR', en: nameEn && nameEn !== english ? nameEn : english } : { ...en, en: nameEn && nameEn !== english ? nameEn : english };
     }
     default: return en;
   }

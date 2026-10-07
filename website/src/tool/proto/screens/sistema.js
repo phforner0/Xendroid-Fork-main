@@ -47,7 +47,7 @@ function shortSize(b) {
   const u = ['B', 'kB', 'MB', 'GB', 'TB']; let r = Math.max(0, b), i = 0;
   while (r > 900 && i < u.length - 1) { r /= 1000; i++; }
   const d = i === 0 || r >= 10 ? 0 : r < 1 ? 2 : 1;
-  return `${r.toFixed(d).replace('.', ',')} ${u[i]}`;
+  return `${r.toFixed(d).replace('.', DEC)} ${u[i]}`;
 }
 /** DateUtils.getRelativeTimeSpanString em minutos, como o app mostra a última procura. */
 function agoText(t) {

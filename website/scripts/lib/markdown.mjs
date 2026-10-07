@@ -66,14 +66,18 @@ function containerPlugin(md) {
   }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
 }
 
-const CALLOUT = { nota: ['Nota', 'info'], aviso: ['Atenção', 'warn'], dica: ['Dica', 'check'] };
+const CALLOUT = {
+  pt: { nota: ['Nota', 'info'], aviso: ['Atenção', 'warn'], dica: ['Dica', 'check'], detalhes: 'Mais detalhes', anchor: 'Link para esta seção' },
+  en: { nota: ['Note', 'info'], aviso: ['Warning', 'warn'], dica: ['Tip', 'check'], detalhes: 'More details', anchor: 'Link to this section' },
+};
 
 /**
- * Cria o renderizador. `ctx` traz: data (para {{ }}), resolveDoc(slug, anchor) → url ou erro,
+ * Cria o renderizador. `ctx` traz: lang ('en' ou 'pt', para os rótulos), data (para {{ }}), resolveDoc(slug, anchor) → url ou erro,
  * repoUrl(path) → url, toolUrl(tela) → url, version(sha) → { label, kind } e icon(name).
  */
 export function createMarkdown(ctx) {
   const md = new MarkdownIt({ html: true, linkify: false, typographer: false });
+  const T = CALLOUT[ctx.lang || 'pt'];
   containerPlugin(md);
 
   // ids e âncoras nos títulos h2–h4
@@ -105,7 +109,7 @@ export function createMarkdown(ctx) {
   md.renderer.rules.heading_close = (tokens, idx) => {
     const open = tokens.slice(0, idx).reverse().find(t => t.type === 'heading_open');
     if (!open || !open.meta) return `</${tokens[idx].tag}>\n`;
-    return ` <a class="anchor" href="#${open.meta.id}" aria-label="Link para esta seção: ${esc(open.meta.text)}">#</a></${tokens[idx].tag}>\n`;
+    return ` <a class="anchor" href="#${open.meta.id}" aria-label="${T.anchor}: ${esc(open.meta.text)}">#</a></${tokens[idx].tag}>\n`;
   };
 
   md.renderer.rules.xdr_container_open = (tokens, idx) => {
@@ -115,8 +119,8 @@ export function createMarkdown(ctx) {
       const v = ctx.version(args);
       return `<div class="callout version ${v.kind}" role="note"><p class="callout-title">${ctx.icon(v.kind === 'dev' ? 'flask' : 'tag', 18)}<span>${esc(v.label)}</span></p>\n`;
     }
-    if (t.info === 'detalhes') return `<details class="more"><summary>${esc(title || 'Mais detalhes')}</summary>\n`;
-    const c = CALLOUT[t.info];
+    if (t.info === 'detalhes') return `<details class="more"><summary>${esc(title || T.detalhes)}</summary>\n`;
+    const c = Array.isArray(T[t.info]) ? T[t.info] : null;
     if (!c) throw new Error(`tipo de bloco desconhecido: ::: ${t.info}`);
     return `<div class="callout ${t.info}" role="note"><p class="callout-title">${ctx.icon(c[1], 18)}<span>${esc(title || c[0])}</span></p>\n`;
   };

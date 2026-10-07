@@ -388,7 +388,7 @@ function ptInput(p, t) {
   const r = k ? .05 : .92;
   return { pressed, lx: Math.cos(t * 1.3) * r, ly: Math.sin(t * 1.3) * r, rx: k ? Math.sin(t * .9) * .85 : .04, ry: k ? Math.cos(t * .7) * .5 : -.03, lt: Math.max(0, Math.sin(t * 1.7)), rt: Math.max(0, Math.sin(t * 1.7 + 2.2)), gyro: p.gyro ? [Math.sin(t * 2) * .41, Math.cos(t * 1.4) * .22, Math.sin(t * .8) * .09] : null };
 }
-const n2 = v => (v < 0 ? '−' : '') + Math.abs(v).toFixed(2).replace('.', ',');
+const n2 = v => (v < 0 ? '−' : '') + Math.abs(v).toFixed(2).replace('.', DEC);
 function ptCardHTML(p) {
   const dl = dzOf('left'), dr = dzOf('right'), opts = PT.src === 'real' ? [] : [['', 'padrão'], ['off', 'desligada'], ['low', 'baixa'], ['medium', 'média'], ['high', 'alta']];
   return `<section class="card pt" data-pad="${p.id}">

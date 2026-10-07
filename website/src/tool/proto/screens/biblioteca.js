@@ -66,7 +66,7 @@ function viewBLib() {
       <div class="b-tools">
         <label class="search" data-note="search">${ic('search', 18)}<input id="b-q" type="search" placeholder="Buscar jogos ou Title ID" value="${esc(S.q)}" data-k="b-q" autocomplete="off" spellcheck="false"></label>
         ${isPortrait() ? '' : sortSelect()}
-        <div class="seg" role="group" aria-label="Tamanho das capas" data-note="density">${[['P', 'Pequenas'], ['M', 'Médias'], ['G', 'Grandes']].map(([d, t]) => `<button data-act="density" data-v="${d}" aria-pressed="${S.bDensity === d}" aria-label="Capas ${t}" data-k="den-${d}">${d}</button>`).join('')}</div>
+        <div class="seg" role="group" aria-label="Tamanho das capas" data-note="density">${[['P', 'Pequenas'], ['M', 'Médias'], ['G', 'Grandes']].map(([d, t]) => `<button data-act="density" data-v="${d}" aria-pressed="${S.bDensity === d}" aria-label="Capas ${t}" data-k="den-${d}">${t.charAt(0)}</button>`).join('')}</div>
         <button class="ibtn" data-act="modal" data-v="libmenu" data-k="b-menu" aria-label="Mais">${ic('more')}</button>
       </div>
       <div class="b-chips" data-sk="b-chips" data-note="chips">${filterChips('bf')}${isPortrait() ? '<span class="sepr" aria-hidden="true"></span>' + sortSelect() : ''}</div>

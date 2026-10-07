@@ -115,7 +115,7 @@ function igRows(g) {
       ]],
       ['TV e tela externa', [
         { id: 'tv', kind: 'button', t: 'TV ou tela externa', sub: 'TV · tela do telefone', act: 'ig-toast', msg: 'No app, abre a escolha da tela de apresentação (TV ou monitor conectado).' },
-        { id: 'tvMargin', kind: 'cycle', t: 'Margem da TV', vals: TV_M.map(v => String(v).replace('.', ',') + '%') },
+        { id: 'tvMargin', kind: 'cycle', t: 'Margem da TV', vals: TV_M.map(v => String(v).replace('.', DEC) + '%') },
       ]],
       ['Geração de quadros', [
         { id: 'winfg', kind: 'toggle', t: 'Win-FG 2×', badge: 'experimental', note: 'fg' },
@@ -338,7 +338,7 @@ function hudHTML(preview) {
   if (!preview && !IG.hud) return '';
   const g = curGame(), st = perfOf(g), fps = fpsNow(g), capF = fps === '0' ? 60 : Number(fps);
   const t = (Date.now() - IG.t0) / 1000, f = Math.max(1, Math.min(st ? st.p50 : capF, capF) - (Math.sin(t) > .85 ? 1 : 0));
-  const ms = (1000 / f).toFixed(1).replace('.', ','), fg = IG.winfg ? 2 : IG.lsfg ? IG.lsfgMul : 1;
+  const ms = (1000 / f).toFixed(1).replace('.', DEC), fg = IG.winfg ? 2 : IG.lsfg ? IG.lsfgMul : 1;
   const fpsLine = fg > 1 ? `<b>${f} → ${Math.min(120, f * fg)}</b> FPS` : `<b>${f}</b> FPS`;
   const M = { vk: ['Envios Vulkan', `${f}/s`], cpu: ['CPU', '42%'], gpu: ['GPU', '76%'], gmem: ['Mem. GPU (total)', '1,3 GB'], ram: ['RAM', '6,1 / 10,7 GB'], bat: ['Bateria', '38,5 °C'], soc: ['SoC', '64 °C'], pwr: ['Potência', '5,8 W'], chg: ['Carga', '81%'], time: ['Autonomia', '~2 h 22 min'] };
   const order = ['vk', 'cpu', 'gpu', 'gmem', 'ram', 'bat', 'soc', 'pwr', 'chg', 'time'].filter(k => IG.metrics.has(k) && !(k === 'vk' && player()));
@@ -352,7 +352,7 @@ function hudHTML(preview) {
   return `<div class="${cls} panel" style="${style}"${note}>
     <section><h6>Agora</h6><div class="hud2-l f">${fpsLine} <span class="k">·</span> ${ms} ms</div>${lines}${graph}</section>
     <section><h6>Ritmo</h6><div>Últimos 10 s: p50 ${ms} · p99 ${st ? st.ft99 : 34}</div><div>Sessão: FPS mediano ${st ? st.p50 : f}, baixo ${st ? st.p5 : f - 2}</div></section>
-    <section><h6>Trabalho</h6><div>Pipelines criados: ${nf(g.perf ? g.perf.pipes[0] : 1200)} (${g.perf ? String(g.perf.pipes[1]).replace('.', ',') : '4,0'} s)</div><div>Áudio: sem falhas</div><div class="w">Calor: perto do limite do aparelho</div></section>
+    <section><h6>Trabalho</h6><div>Pipelines criados: ${nf(g.perf ? g.perf.pipes[0] : 1200)} (${g.perf ? String(g.perf.pipes[1]).replace('.', DEC) : '4,0'} s)</div><div>Áudio: sem falhas</div><div class="w">Calor: perto do limite do aparelho</div></section>
     <section><h6>Ajustes em vigor</h6><div>Driver: ${esc(DRIVERS.lastRun.drv)}</div><div>Limite de FPS: ${fps === '0' ? 'Sem limite' : fps + ' FPS'} · tela 120 Hz</div><div>${inEffectLines(g).length ? `Alterados do padrão (${inEffectLines(g).length}):` : 'Alterados do padrão: nenhum'}</div></section>
   </div>`;
 }
