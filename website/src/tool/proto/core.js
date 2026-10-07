@@ -238,11 +238,11 @@ modal('more', () => { const g = curGame(); return { html: sheetHead(esc(g.name))
   </ul>` }; });
 /* menu ⋮ da biblioteca (LibraryMenu em GameLibraryScreen.kt) */
 modal('libmenu', () => ({ html: sheetHead('Biblioteca') + `<ul class="menu">
-    <li><button data-act="go" data-v="browse" data-k="lm-add">${ic('plus', 19)}<span>Adicionar pasta de jogos</span></button></li>
+    <li><button data-act="br-add" data-v="library" data-k="lm-add">${ic('plus', 19)}<span>Adicionar pasta de jogos</span></button></li>
     <li><button data-act="go" data-v="folders" data-k="lm-folders">${ic('folder', 19)}<span>Pastas de jogos</span></button></li>
-    <li><button data-act="go" data-v="missing" data-k="lm-missing">${ic('inbox', 19)}<span>Jogos que saíram da biblioteca (3)</span></button></li>
+    ${missingCount() ? `<li><button data-act="go" data-v="missing" data-k="lm-missing">${ic('inbox', 19)}<span>Jogos que saíram da biblioteca (${missingCount()})</span></button></li>` : ''}
     <li><button data-act="toast" data-msg="Procurando jogos nas pastas… (simulação)" data-k="lm-rescan">${ic('refresh', 19)}<span>Procurar de novo nas pastas</span></button></li>
-    <li><button data-act="go" data-v="firstrun" data-k="lm-setup">${ic('wand', 19)}<span>Assistente de configuração</span></button></li>
+    <li><button data-act="ab-setup" data-k="lm-setup">${ic('wand', 19)}<span>Assistente de configuração</span></button></li>
     <li><button data-act="toast" data-msg="No app, abre a pasta de dados no gerenciador de arquivos do Android." data-k="lm-data">${ic('folder', 19)}<span>Abrir dados do usuário</span></button></li>
     <li><button data-act="go" data-v="update" data-k="lm-upd">${ic('download', 19)}<span>Procurar atualizações</span></button></li>
   </ul><p class="note" data-note="libmenu">Adicionar pasta e Pastas de jogos só aparecem no Android 11 ou mais novo.</p>` }));

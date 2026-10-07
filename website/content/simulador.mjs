@@ -169,7 +169,7 @@ export const SIM_SCREENS = {
     prints: ['pastas'],
   },
   browse: {
-    what: 'O navegador de pastas: armazenamento interno e cartões, o caminho em passos clicáveis e quantos jogos há em cada pasta antes de escolher. Também escolhe um arquivo.',
+    what: 'O navegador de pastas: armazenamento interno e cartões, o caminho em passos clicáveis, quantos jogos há em cada pasta antes de escolher e Nova pasta. Também escolhe um arquivo (um pacote em Conteúdo ou o jogo que mudou de lugar).',
     where: 'Ao adicionar uma pasta de jogos, escolher um pacote ou procurar um jogo que mudou de lugar.',
     c: 'Igual.',
     code: ['ui/library/FolderBrowserScreen.kt', 'data/FolderGames.kt'],
@@ -190,7 +190,7 @@ export const SIM_SCREENS = {
     prints: ['sem-vulkan'],
   },
   update: {
-    what: 'As atualizações do app: versão instalada, canal, última procura e o cartão da atualização com as notas e as etapas baixar, conferir o SHA-256 e instalar. O seletor Estado, na barra do simulador, troca o exemplo.',
+    what: 'As atualizações do app: versão instalada, canal, última procura e o cartão da atualização com o resumo e as etapas baixar, conferir o SHA-256 e instalar. Aqui a build anterior faz o papel da instalada, e a oferecida é a estável publicada, com título, tamanho, SHA-256 e resumo da própria release. O seletor Estado, na barra do simulador, troca o exemplo.',
     where: 'Configurações → Atualizações; menu ⋮ da biblioteca → Procurar atualizações; Sobre.',
     c: 'Igual.',
     code: ['updater/UpdateScreen.kt', 'updater/updater.kt', 'updater/ReleaseFeed.kt'],

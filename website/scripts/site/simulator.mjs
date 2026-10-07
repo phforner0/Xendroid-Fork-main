@@ -82,6 +82,69 @@ function readmeNumbers(row) {
   return { t, range, low: dip ? Number(dip[1]) : range ? range[0] : null, lowShare: dip ? 0.08 : 0.05 };
 }
 
+/** As linhas do cartão de atualização do app (updater.kt, updateNotes e cleanChangelog), em pt-BR. */
+export function updateNotes(text, language = 'pt-BR') {
+  const summaries = {};
+  for (const m of String(text || '').matchAll(/<!--\s*update-summary:([A-Za-z-]+)\s*\n([\s\S]*?)-->/g)) summaries[m[1]] = m[2];
+  const base = language.split('-')[0].toLowerCase();
+  const summary = summaries[language]
+    ?? (Object.entries(summaries).find(([k]) => k.split('-')[0].toLowerCase() === base) || [])[1]
+    ?? summaries.en
+    ?? Object.values(summaries)[0];
+  return (summary ?? cleanChangelog(text || '')).split('\n')
+    .map(l => l.trim().replace(/^•/, '').trim().replace(/^\* /, '').replace(/^- /, '').trim())
+    .filter(Boolean);
+}
+
+function cleanChangelog(text) {
+  return text
+    .replace(/\*\*Full Changelog\*\*:[\s\S]*/, '')
+    .replace(/<!--[\s\S]*?-->|<details>[\s\S]*?<\/details>/g, '')
+    .replace(/^\* (.+) by @[\w-]+ in https?:\/\/\S+$/gm, '* $1')
+    .replace(/^\* @[\w-]+ made their first contribution.*$/gm, '')
+    .replace(/^\s*(#|<|\||!\[).*$/gm, '')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)]\([^)]*\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replaceAll('**', '').replaceAll('`', '')
+    .replace(/\* /g, '• ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** O que o atualizador simulado mostra: a release estável oferecida a quem tem a anterior. */
+function updateData(releases, stable) {
+  const numbered = releases.filter(r => !r.prerelease && !r.draft && r.build != null && r.apk);
+  const offer = stable && numbered.find(r => r.tag === stable.tag);
+  if (!offer) return null;
+  const before = numbered.find(r => r.build < offer.build) || null;
+  const pick = r => ({ build: r.build, commit: r.tagSha || r.commit.slice(0, 8), tag: r.tag });
+  return {
+    instalada: before ? pick(before) : pick(offer),
+    oferecida: {
+      ...pick(offer),
+      titulo: offer.name || offer.tag,
+      url: offer.url,
+      apk: { nome: offer.apk.name, bytes: offer.apk.size, sha256: offer.apk.sha256 || null },
+      notas: updateNotes(offer.body).slice(0, 12),
+    },
+  };
+}
+
+/** A lista de licenças que o app abre em Sobre (assets/licenses.html, em inglês). */
+function licensesFromHtml(htmlText) {
+  const strip = s => s.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+  const lists = [...htmlText.matchAll(/<ul>([\s\S]*?)<\/ul>/g)].map(m => [...m[1].matchAll(/<li>([\s\S]*?)<\/li>/g)].map(x => x[1]));
+  const projetos = (lists[0] || []).map(li => {
+    const a = /<a href="([^"]+)">([^<]+)<\/a>/.exec(li);
+    return a ? { n: strip(a[2]), url: a[1] } : { n: strip(li), url: null };
+  });
+  const motores = (lists[1] || []).map(strip);
+  const notas = [...htmlText.matchAll(/<p>([\s\S]*?)<\/p>/g)].map(m => strip(m[1])).slice(1);
+  return { projetos, motores, notas };
+}
+
 /** Isola o CSS do protótipo sob um seletor: :root, html e body viram o próprio seletor. */
 export function scopeCss(css, scope) {
   const out = [];
@@ -177,6 +240,11 @@ export function writeSimulator(site, { SITE, ROOT, write, copy, error }) {
     return { id: BUTTON_IDS[b.englishLabel] || b.englishLabel, label: b.englishLabel, tecla: b.defaultKey.replace(/^KEYCODE_/, '') };
   });
 
+  const licPath = path.join(ROOT, 'emulator-core/src/main/assets/licenses.html');
+  const licencas = fs.existsSync(licPath) ? licensesFromHtml(fs.readFileSync(licPath, 'utf8')) : null;
+  if (!licencas || !licencas.projetos.length) error('simulador: a lista de licenças do app (emulator-core/src/main/assets/licenses.html) não foi lida');
+  if (stable && !updateData(site.data.releases.releases, stable)) error(`simulador: a release estável ${stable.tag} não tem número de build ou APK para o atualizador`);
+
   const estLabel = stable ? stable.label : 'Versão publicada';
   const canais = { estavel: channelData(est, estLabel) };
   if (!same) canais.desenvolvimento = channelData(dev, `Desenvolvimento (${site.v.dev.short})`);
@@ -196,7 +264,9 @@ export function writeSimulator(site, { SITE, ROOT, write, copy, error }) {
     botoes,
     fonteDrivers: est.app.driverSource,
     maxFontes: est.app.driverSourcesMax,
-    app: { pacote: est.app.package, pastaDados: est.app.dataRoot, pastaConfig: est.app.gameConfigDir, configGlobal: est.app.globalConfig },
+    app: { pacote: est.app.package, pastaDados: est.app.dataRoot, pastaConfig: est.app.gameConfigDir, configGlobal: est.app.globalConfig, repoAtualizacoes: est.app.updateRepo, minSdk: est.app.minSdk },
+    atualizacao: updateData(site.data.releases.releases, stable),
+    licencas,
     telas: Object.fromEntries(SIM_SCREENS.map(id => [id, { ...META[id], prints: (META[id] || { prints: [] }).prints.map(p => ({ id: p, alt: PRINTS[p] ? PRINTS[p].alt : '', ...(site.printFiles[p] || {}) })) }])),
     grupos: SIM_GROUPS,
     repo: site.config.repoUrl,

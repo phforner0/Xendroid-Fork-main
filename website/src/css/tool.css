@@ -194,3 +194,42 @@ html.sim-full .site-header, html.sim-full .site-footer { visibility: hidden; }
 .sim .app .tcl.classic .tc-abxy .a { background: #3f9a3a; } .sim .app .tcl.classic .tc-abxy .b { background: #c23b33; }
 .sim .app .tcl.classic .tc-abxy .x { background: #2f6fd1; } .sim .app .tcl.classic .tc-abxy .y { background: #d0a417; }
 .sim .app .hud2 .hud2-l.f { justify-content: flex-start; gap: 6px; }
+
+/* telas de sistema (sistema.js) */
+.sim .app .xlogo { display: inline-block; flex: none; background: url(../brand/mark-128.webp) center / contain no-repeat; }
+.sim .app .b-rail .logo { background: url(../brand/mark-64.webp) center / contain no-repeat; box-shadow: none; border-radius: 0; }
+.sim .app .shell.norail { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.sim .app .lead2 { margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--fg2); max-width: 62ch; }
+.sim .app .card .chk-l li { background: none; padding: 6px 2px; }
+.sim .app .fr-side .xlogo { margin-bottom: -4px; }
+.sim .app .fr-name { font: 700 20px/1 var(--f-disp); }
+.sim .app .fr-fold { gap: 10px; flex-wrap: nowrap; }
+.sim .app .fr-fold .ic { color: var(--fg3); flex: none; }
+.sim .app .fr-fold b { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.sim .app .strip .cover .nm, .sim .app .ms-cover .cover .nm { display: none; }
+.sim .app .fd b { display: block; font: 600 14px/1.3 var(--f-body); }
+.sim .app .fd-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.sim .app .fd.away > .ic { color: var(--st-ingame); }
+.sim .app .ms-cover { display: block; width: 44px; flex: none; }
+.sim .app .drow .path { font: 500 11.5px/1.4 var(--f-mono); color: var(--fg3); overflow-wrap: anywhere; }
+.sim .app .up-rel { gap: 8px; align-items: center; }
+.sim .app .up-rel b { font: 700 18px/1.15 var(--f-disp); }
+.sim .app .card .up-hero b { font-size: 22px; }
+.sim .app .ab-l { margin: 3px 0 0; font-size: 13.5px; color: var(--fg2); }
+.sim .app .ab-h { margin: 12px 0 6px; font-size: 13.5px; }
+.sim .app .ab-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sim .app .ab-chips code { font: 500 11px/1.4 var(--f-mono); padding: 3px 7px; border-radius: 6px; background: var(--s1); color: var(--fg2); }
+.sim .app .card ul.menu { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.sim .app .card ul.menu button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 10px; border-radius: 12px; font-weight: 600; text-align: left; }
+.sim .app .card ul.menu button span { flex: 1; }
+.sim .app .card ul.menu button > .ic:last-child { color: var(--fg3); }
+.sim .app .card ul.menu button:hover { background: var(--s2); }
+.sim .app .lic { max-height: 46vh; overflow-y: auto; font-size: 13px; line-height: 1.45; color: var(--fg2); }
+.sim .app .lic p { margin: 0 0 8px; }
+.sim .app .lic ul { margin: 4px 0 12px; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; }
+.sim .app .lic h3 { margin: 4px 0; font-size: 14px; color: var(--fg); }
+.sim .app .lic a { color: var(--acc); }
+.sim .app .card .up-hero small { font: 500 12.5px/1.45 var(--f-body); }
+.sim .app .warn-t { color: var(--st-ingame); }
+.sim .app .strip .cover > span, .sim .app .ms-cover .cover > span { display: none; }
+@container screen (orientation: portrait) { .sim .app .fr-steps button[aria-current="step"] span.t { display: inline; } }

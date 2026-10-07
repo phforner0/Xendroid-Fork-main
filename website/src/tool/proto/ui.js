@@ -393,7 +393,7 @@ function single(def) {
       ${hints(def.hints || [['A', 'Selecionar', 'a'], ['B', 'Voltar', 'back'], ['≡', 'Menu', 'guide']])}
     </div>`;
   }
-  return `<div class="shell">${rail()}
+  return `<div class="shell${def.noRail ? ' norail' : ''}">${def.noRail ? '' : rail()}
     <div class="main">
       <header class="topbar">${def.noBack ? '' : `<button class="ibtn" data-act="back" data-k="g-back" aria-label="Voltar">${ic('back')}</button>`}<div class="tt"><h1>${esc(def.title)}</h1>${def.sub ? `<div class="ids plain">${def.sub}</div>` : ''}</div>${def.actions ? `<div class="tacts">${def.actions}</div>` : ''}</header>
       <div class="body single" data-sk="single-${def.key}" id="secbody">${def.body('b')}</div>
