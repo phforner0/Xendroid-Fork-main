@@ -253,6 +253,17 @@ static const Quirk kQuirks[] = {
      "resolves honour their integer destinations"},
     {0x4541098E, "texture_integer_num_format", true,
      "integer texture fetches return integers"},
+    // Half of the textures it draws on the deck (114-128 of ~260 in frame
+    // dumps) were placed by the GPU, in pages its loading screen had resolved
+    // to: valid only in the GPU's copy, the guest memory still holding the
+    // loading screen (its hint text included). Its streaming writes into the
+    // same pool - guest stores and file reads straight into it - invalidated
+    // whole pages, and their reupload from guest memory put that in place of
+    // the neighbouring textures: in one of four launches Psycho was drawn
+    // blue. The GPU's data in those pages is kept now; the image and GPU time
+    // as before (24.8 ms a frame, 2026-10-07).
+    {0x4541098E, "shared_memory_preserve_gpu_writes", true,
+     "CPU writes keep the GPU's data in their pages"},
     // Its worker threads spin on NtYieldExecution whenever they have no job:
     // the 6 guest CPU threads took 460-490% of a core standing still at the
     // 30 fps cap, the phone ~10.7 W, and the SoC throttles within minutes (big
