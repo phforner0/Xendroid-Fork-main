@@ -10,6 +10,7 @@ export const APP_SOURCES = [
   '.github/workflows/XenDroid.yml',
   'emulator-core/src/main/java/xendroid/compose/Application.java',
   'app/src/main/java/xendroid/compose/settings/ConfigStore.kt',
+  'app/src/main/java/xendroid/compose/driver/DriverSources.kt',
 ];
 
 /** Nível da API do Android → versão (developer.android.com/tools/releases/platforms). */
@@ -51,6 +52,8 @@ export function extractApp(root) {
   const a = 'emulator-core/src/main/java/xendroid/compose/Application.java';
   const dataDir = find(a, /getExternalFilesDir\("(\w+)"\)/, 'a pasta de dados do app');
   const globalConfig = find(a, /get_global_config_file\(\)\s*\{\s*return new File\(Application\.get_app_data_dir\(\),"([\w.-]+)"\)/, 'o arquivo da config global');
+  const driverSource = find('app/src/main/java/xendroid/compose/driver/DriverSources.kt', /const val DEFAULT = "([\w./-]+)"/, 'a fonte padrão de drivers');
+  const driverMax = find('app/src/main/java/xendroid/compose/driver/DriverSources.kt', /const val MAX = (\d+)/, 'o limite de fontes de drivers');
   const gameConfig = find('app/src/main/java/xendroid/compose/settings/ConfigStore.kt', /File\(File\(globalConfigFile\(\)\.parentFile, "(\w+)"\), "\$\{titleId\.uppercase\(\)\}(\.config\.toml)"\)/, 'o caminho da config por jogo');
 
   const v = f => (f ? f.value : null);
@@ -75,11 +78,13 @@ export function extractApp(root) {
     communityUrl: v(community),
     catalogUrl: v(catalog),
     patchesDir: v(patches),
+    driverSource: v(driverSource),
+    driverSourcesMax: Number(v(driverMax)),
     dataRoot,
     globalConfig: dataRoot && v(globalConfig) ? `${dataRoot}/${v(globalConfig)}` : null,
     gameConfigDir: dataRoot && gameDir ? `${dataRoot}/${gameDir}` : null,
     gameConfigPattern: dataRoot && gameDir ? `${dataRoot}/${gameDir}/<TITLE ID>.config.toml` : null,
-    sources: Object.fromEntries(Object.entries({ appId, releaseSuffix, minSdk, targetSdk, abi, updateRepo, community, catalog, patches, testSuffix, dataDir, globalConfig, gameConfig })
+    sources: Object.fromEntries(Object.entries({ appId, releaseSuffix, minSdk, targetSdk, abi, updateRepo, community, catalog, patches, testSuffix, dataDir, globalConfig, gameConfig, driverSource, driverMax })
       .filter(([, f]) => f).map(([k, f]) => [k, f.source])),
     problems,
   };

@@ -1,0 +1,97 @@
+/* ---------- simulador: a moldura do site em volta do protótipo ----------
+   O CSS do protótipo vem isolado sob .sim (scripts/site/simulator.mjs). Aqui os tokens da
+   moldura (--ch-*) passam a ser os do site, para seguir o tema claro ou escuro; a tela do
+   aparelho continua escura, como o app. */
+.sim {
+  --ch-bg: var(--bg);
+  --ch-panel: var(--panel);
+  --ch-panel2: var(--panel-2);
+  --ch-line: var(--line-2);
+  --ch-fg: var(--fg);
+  --ch-fg2: var(--fg-2);
+  --ch-fg3: var(--fg-3);
+  --ch-acc: var(--accent-text);
+  --ch-on-acc: var(--accent-ink);
+  color-scheme: inherit;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 1rem/1.55 var(--f-body);
+}
+.sim .app { color-scheme: dark; }
+.sim .k-app { --k: #7bd77d; --kt: var(--ok); }
+.sim .k-dif { --k: #e8c55a; --kt: var(--warn); }
+.sim .k-sim { --k: #80b8ff; --kt: var(--info); }
+.sim .nkind { color: var(--kt); }
+
+.sim-intro { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px 40px; align-items: end; padding-block: 34px 20px; }
+.sim-intro h1 { font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); margin-bottom: 12px; }
+.sim-intro .lead { color: var(--fg-2); font-size: var(--step-1); line-height: 1.5; max-width: 62ch; }
+.sim-note { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-left: 3px solid var(--info); border-radius: 0 var(--radius-s) var(--radius-s) 0; background: var(--panel); color: var(--fg-2); font-size: var(--step--1); }
+.sim-note .xi { flex: none; margin-top: 2px; color: var(--info); }
+.sim-note b { color: var(--fg); }
+@media (max-width: 900px) { .sim-intro { grid-template-columns: minmax(0, 1fr); } }
+
+/* barra do simulador, presa embaixo do cabeçalho do site */
+.sim .ch-bar {
+  top: calc(61px + env(safe-area-inset-top, 0px));
+  z-index: 40;
+  justify-content: center;
+  padding: 10px var(--gutter);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.sim .ch-field { display: inline-flex; align-items: center; gap: 8px; font-size: .82rem; font-weight: 600; color: var(--fg-3); }
+.sim .ch-sel { height: 36px; color: var(--fg); background-color: var(--panel); border-color: var(--line-2); }
+.sim .ch-sel option, .sim .ch-sel optgroup { background: var(--panel); color: var(--fg); }
+.sim .ch-seg { background: var(--panel); border-color: var(--line-2); }
+.sim .ch-seg button { min-height: 32px; color: var(--fg-2); }
+.sim .ch-seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+.sim .ch-tg { min-height: 36px; background: var(--panel); border-color: var(--line-2); color: var(--fg-2); }
+.sim .ch-tg i { background: var(--panel-3); }
+.sim .ch-tg[aria-pressed="true"] i { background: var(--accent); }
+.sim .ch-tag { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-2); font-size: .8rem; color: var(--fg-2); }
+.sim .ch-tag .ic { color: var(--accent-text); }
+.sim .ch-pad { color: var(--fg-3); }
+.sim .ch-pad.on { color: var(--accent-text); }
+.sim .ch-bar :focus-visible, .sim .ch-info :focus-visible, .sim .full-exit :focus-visible { outline: 2.5px solid var(--accent); outline-offset: 2px; }
+
+/* palco: o aparelho escalado, com a tela focável para o teclado */
+.sim .stage { background: radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--fg) 6%, var(--bg)), var(--bg) 70%); padding-block: 22px 14px; }
+.sim .screen:focus { outline: none; }
+.sim .screen:focus-visible { outline: 3px solid var(--accent); outline-offset: 6px; }
+.sim .device { box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 0 0 4px #0c0f0e, var(--shadow); }
+
+/* informações da tela */
+.sim .ch-info { max-width: var(--max); padding-block: 18px 40px; }
+.sim .ch-card { background: var(--panel); border-color: var(--line); color: var(--fg); }
+.sim .ch-card h2 { margin: 0 0 12px; font: 700 .78rem/1.3 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--fg-3); }
+.sim #ch-dir h2 { font: 700 clamp(1.6rem, 1.3rem + 1vw, 2rem)/1.08 var(--f-display); letter-spacing: 0; text-transform: none; color: var(--fg); }
+.sim .ch-eyebrow { color: var(--accent-text); }
+.sim .ch-card p { color: var(--fg-2); }
+.sim .ch-card a { color: var(--accent-text); }
+.sim .ch-dl dt { color: var(--fg-3); }
+.sim .ch-dl dd { color: var(--fg-2); }
+.sim .ch-dl code, .sim .ch-card code { color: var(--fg); font-size: .82rem; }
+.sim .ch-sub { margin: 16px 0 8px !important; font-size: .82rem; font-weight: 600; color: var(--fg-3) !important; }
+.sim .ch-prints > div { display: flex; flex-wrap: wrap; gap: 10px; }
+.sim .ch-prints a { display: block; width: 168px; max-width: calc(50% - 5px); border-radius: 10px; overflow: hidden; border: 1px solid var(--line-2); background: #0f1214; }
+.sim .ch-prints a:hover { border-color: var(--fg-3); }
+.sim .ch-prints img { display: block; width: 100%; height: 96px; object-fit: cover; object-position: top left; }
+.sim .legend { color: var(--fg-3); }
+.sim .notes li { color: var(--fg-2); }
+.sim .empty-notes { color: var(--fg-3); }
+.sim .lotes { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.sim .lote { background: var(--panel-2); border-color: var(--line); }
+.sim .lote h3 { margin: 0 0 6px; font: 700 .95rem/1.3 var(--f-body); color: var(--fg); }
+.sim .lote ul { list-style: none; margin: 0; padding: 0; }
+.sim .lote button { color: var(--fg-2); text-decoration-color: var(--line-2); min-height: 28px; }
+.sim .lote button:hover { color: var(--fg); }
+.sim .lote button[aria-current="true"] { color: var(--accent-text); font-weight: 600; }
+.sim .ch-keys { color: var(--fg-2); }
+.sim .ch-keys kbd { background: var(--panel-2); border-color: var(--line-2); color: var(--fg); }
+.sim .tnotes { margin: 4px 0 0; padding-left: 18px; }
+
+/* tela cheia: o cabeçalho do site sai do caminho */
+html.sim-full { overflow: hidden; }
+html.sim-full .site-header, html.sim-full .site-footer { visibility: hidden; }

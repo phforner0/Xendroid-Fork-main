@@ -299,6 +299,7 @@ const css = ['tokens', 'base', 'layout', 'components', 'landing', 'docs'].map(n 
 write('assets/css/site.css', css);
 for (const f of fs.readdirSync(path.join(SITE, 'src/js'))) copy(path.join(SITE, 'src/js', f), `assets/js/${f}`);
 copy(path.join(SITE, 'node_modules/minisearch/dist/es/index.js'), 'assets/js/vendor/minisearch.js');
+site.printFiles = Object.fromEntries(Object.entries(printOut).map(([id, p]) => [id, { file: p.file, w: p.w, h: p.h }]));
 const simAssets = writeSimulator(site, { SITE, ROOT, OUT, write, copy, error, warn });
 site.assetVersion = sha1(css + fs.readFileSync(path.join(SITE, 'src/js/site.js'), 'utf8') + simAssets.hash).slice(0, 10);
 

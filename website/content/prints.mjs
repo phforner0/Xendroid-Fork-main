@@ -22,6 +22,8 @@ export const PRINTS = {
   'drivers-baixar': { src: `${P}/ajustes-1/depois-drivers-para-baixar.png`, alt: 'Drivers para baixar: pacotes das fontes do GitHub com tamanho, data e o selo de SHA-256 publicado.' },
   'controles': { src: `${P}/lote3/depois-controles.png`, alt: 'Área Controles: quem joga como P1 a P4, opções do toque, controles físicos, vibração e movimento, telefones e as ferramentas.' },
   'controles-moderno': { src: `${P}/ajustes-2/depois-controles-moderno.png`, alt: 'Controles de toque no visual Moderno sobre o jogo: botões de vidro escuro com as letras A, B, X e Y coloridas.' },
+  'editor-toque': { src: `${P}/lote3/depois-editor-de-toque.png`, alt: 'Editor de toque: os controles sobre uma grade e o painel do controle escolhido, com tamanho, zona morta e mostrar ou esconder.' },
+  'jogos-que-sairam': { src: `${P}/lote6/depois-jogos-que-sairam.png`, alt: 'Jogos que saíram da biblioteca: capa guardada, motivo, tempo jogado, Title ID e o caminho de antes.' },
   'mapeamento': { src: `${P}/lote3/depois-mapeamento.png`, alt: 'Mapeamento de teclas: o controle desenhado e a lista dos 16 botões com a tecla de cada um.' },
   'testar-controles': { src: `${P}/lote3/depois-testar-controles.png`, alt: 'Testar controles: o controle desenhado acende o que é apertado, com analógicos, gatilhos e zona morta.' },
   'celular-controle': { src: `${P}/lote3/depois-celular-como-controle.png`, alt: 'Celular como controle: endereço do jogo, código de 6 dígitos, nome mostrado e Conectar.' },
