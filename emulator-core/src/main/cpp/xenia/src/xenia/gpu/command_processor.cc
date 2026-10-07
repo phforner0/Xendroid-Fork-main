@@ -24,6 +24,7 @@
 #include "xenia/base/cvar.h"
 
 DECLARE_int32(spin_park_mode);
+DECLARE_uint32(guest_yield_sleep_us);
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/byte_stream.h"
@@ -835,6 +836,16 @@ void CommandProcessor::BinTracePoll() {
     if (cvars::spin_park_mode != mode) {
       cvars::spin_park_mode = mode;
       XELOGI("debug.xendroid.spin_park: spin_park_mode = {}", mode);
+    }
+  }
+  // Read by the guest scheduler's NtYieldExecution at run time.
+  if (__system_property_get("debug.xendroid.yield_sleep_us", value) > 0 &&
+      value[0] >= '0' && value[0] <= '9') {
+    const uint32_t sleep_us = uint32_t(std::min(std::atoi(value), 1000));
+    if (cvars::guest_yield_sleep_us != sleep_us) {
+      cvars::guest_yield_sleep_us = sleep_us;
+      XELOGI("debug.xendroid.yield_sleep_us: guest_yield_sleep_us = {}",
+             sleep_us);
     }
   }
   // debug.xendroid.wrm_log N: log the next N PM4_WAIT_REG_MEM waits that were

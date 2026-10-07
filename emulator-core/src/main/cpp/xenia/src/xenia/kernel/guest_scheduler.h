@@ -125,6 +125,13 @@ class GuestScheduler {
   // NtYieldExecution can report NO_YIELD_PERFORMED like NT.
   bool YieldCurrentThread(bool quantum_end, bool to_lower = true);
 
+  // NtYieldExecution. NT ends the quantum and switches only when another
+  // thread is ready, returning NO_YIELD_PERFORMED at once otherwise, so with
+  // nothing else to run on this CPU this returns false without the dispatcher
+  // round trip of YieldCurrentThread(true). Titles spin on it from every CPU
+  // (Crysis 3's workers), and each round trip takes lock_ four times.
+  bool YieldExecution();
+
   // Parks the running guest fiber on its CPU's blocked list and yields. Returns
   // once the dispatcher re-readies it so the wait can re-poll. A single-object
   // wait on an epoch-bumping type is re-readied only when the epoch moves past
@@ -242,6 +249,10 @@ class GuestScheduler {
   // |except| is the only ready thread. Used to honor a voluntary yield.
   static XThread* HighestReadyExcept(const Cpu& cpu, XThread* except);
   void SwitchTo(XThread* next);
+  // Lock-free test for the yield fast paths: nothing ready or due a re-poll on
+  // this CPU, and no preemption or suspend owed by |self|. May be stale, see
+  // YieldCurrentThread.
+  bool NothingElseToRun(XThread* self) const;
   // |poked| distinguishes a wake-driven pass from a timed one, so the
   // missed-wake tripwire only counts rescues the backstop alone made.
   void RereadyBlocked(int cpu_index, bool poked = false);

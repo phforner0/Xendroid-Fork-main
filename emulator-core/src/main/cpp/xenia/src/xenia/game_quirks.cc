@@ -224,6 +224,27 @@ static const Quirk kQuirks[] = {
      "4x depth-only shadow draws into the 1x surface of their samples"},
     {0x4D5308AB, "vulkan_samples_as_pixels_simple_ps", true,
      "4x draws with simple pixel shaders into the 1x surface"},
+    // Crysis 3 (CryENGINE 3) moves one 1350-tile depth surface between 1x and
+    // 4x MSAA 47 times each way a frame on the deck of its first checkpoint:
+    // 156 transfers (45100 tiles) and 211 render passes a frame, GPU-bound at
+    // ~22 fps (39.6 ms of GPU a frame). Into the 1x surfaces of their samples,
+    // 46 transfers (8400 tiles) and 109 render passes: GPU time -15%, +10%
+    // fps over all arms, -17% and +18% against the neighboring ones, the same
+    // image standing in the rain (fork.ui, runtime switches interleaved in one
+    // session, 2026-10-06). The depth draws alone save only 1.1 ms.
+    {0x4541098E, "vulkan_depth_4x_as_1x", true,
+     "4x depth-only draws into the 1x surface of their samples"},
+    {0x4541098E, "vulkan_samples_as_pixels_simple_ps", true,
+     "4x draws with simple pixel shaders into the 1x surface"},
+    // Its worker threads spin on NtYieldExecution whenever they have no job:
+    // the 6 guest CPU threads took 460-490% of a core standing still at the
+    // 30 fps cap, the phone ~10.7 W, and the SoC throttles within minutes (big
+    // cores capped from 2.8-3.2 to ~2.07 GHz, the GPU 4 steps down). Sleeping
+    // 50 us per empty yield once a spin is under way: 255-296%, the same 30
+    // fps and GPU time (runtime switch interleaved in one session; 20 us:
+    // 9.8 W against 10.7 W unplugged, 2026-10-06).
+    {0x4541098E, "guest_yield_sleep_us", int64_t(50),
+     "spinning workers give the host core back"},
 };
 
 // Same path/priority as a per-game config file.
