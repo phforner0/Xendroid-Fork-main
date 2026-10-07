@@ -149,6 +149,11 @@ export function createMarkdown(ctx) {
   };
 
   // tabelas roláveis no celular
+  // um código longo sem espaços (um SHA-256) pode quebrar a linha; chaves curtas não quebram
+  md.renderer.rules.code_inline = (tokens, idx) => {
+    const c = tokens[idx].content;
+    return `<code${c.length > 32 && !/\s/.test(c) ? ' class="long"' : ''}>${esc(c)}</code>`;
+  };
   md.renderer.rules.table_open = () => '<div class="table-wrap" tabindex="0"><table>\n';
   md.renderer.rules.table_close = () => '</table></div>\n';
 

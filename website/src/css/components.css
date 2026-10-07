@@ -76,6 +76,7 @@
 .table-wrap tbody th { font: 600 .95rem/1.45 var(--f-body); letter-spacing: 0; text-transform: none; color: var(--fg); background: transparent; white-space: normal; }
 .table-wrap tr:last-child td, .table-wrap tr:last-child th { border-bottom: 0; }
 .table-wrap td code { white-space: nowrap; }
+code.long, .table-wrap td code.long { white-space: normal; overflow-wrap: anywhere; }
 
 /* ---------- código ---------- */
 .code { position: relative; margin: 1.2rem 0; }
