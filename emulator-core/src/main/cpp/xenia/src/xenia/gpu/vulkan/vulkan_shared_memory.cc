@@ -582,6 +582,14 @@ void VulkanSharedMemory::Use(Usage usage,
   last_written_range_ = written_range;
 }
 
+bool VulkanSharedMemory::CopyToGuestMemory(uint32_t start, uint32_t length) {
+  // Zero-copy: the GPU wrote guest memory itself.
+  if (zero_copy_ || host_mapped_data_ == nullptr) {
+    return false;
+  }
+  return ReadHostMapped(start, length, memory().TranslatePhysical(start));
+}
+
 bool VulkanSharedMemory::ReadHostMapped(uint32_t guest_address, uint32_t length,
                                         void* dest) const {
   if (host_mapped_data_ == nullptr || !length) {
