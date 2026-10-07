@@ -1,0 +1,101 @@
+/* Bancada de testes: páginas como folhas de especificação sobre grafite, com a interface real do
+   app em destaque. Cores e fontes vêm do sistema de design do app (ui/design/XdTheme.kt);
+   o tema escuro é o da marca, o claro é para leitura longa. */
+:root {
+  /* cor (escuro, padrão) */
+  --bg: #0f1214;
+  --panel: #15191c;
+  --panel-2: #1b2024;
+  --panel-3: #252b30;
+  --line: rgba(205, 220, 232, .10);
+  --line-2: rgba(205, 220, 232, .19);
+  --fg: #edf1f3;
+  --fg-2: #b6c1c8;
+  --fg-3: #8b979e;
+  --accent: #74d863;
+  --accent-ink: #062a08;
+  --accent-text: #8fe57f;
+  --accent-soft: rgba(116, 216, 99, .14);
+  --ok: #7bd77d;
+  --warn: #e8c55a;
+  --err: #ff9ea2;
+  --info: #80b8ff;
+  --changed: #c7a0ff;
+  --shadow: 0 18px 50px rgba(0, 0, 0, .45);
+  --stage: #0b0e0f;
+  /* tipo */
+  --f-body: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-display: "Barlow Semi Condensed", "Barlow", "Arial Narrow", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --step--1: .875rem;
+  --step-0: 1rem;
+  --step-1: 1.2rem;
+  --step-2: 1.5rem;
+  --step-3: clamp(1.75rem, 1.2rem + 1.8vw, 2.35rem);
+  --step-4: clamp(2.5rem, 1.6rem + 4vw, 4.4rem);
+  /* espaço */
+  --gutter: clamp(16px, 4vw, 32px);
+  --radius: 14px;
+  --radius-s: 9px;
+  --max: 1180px;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f2f4f1;
+    --panel: #ffffff;
+    --panel-2: #e8ebe7;
+    --panel-3: #dce0db;
+    --line: rgba(19, 23, 26, .11);
+    --line-2: rgba(19, 23, 26, .21);
+    --fg: #12161a;
+    --fg-2: #39434a;
+    --fg-3: #56626a;
+    --accent: #74d863;
+    --accent-ink: #062a08;
+    --accent-text: #23701a;
+    --accent-soft: rgba(56, 150, 40, .12);
+    --ok: #2e7d32;
+    --warn: #8a6100;
+    --err: #b3261e;
+    --info: #1f5fbf;
+    --changed: #6b3fb5;
+    --shadow: 0 16px 40px rgba(20, 30, 25, .14);
+    --stage: #0f1214;
+    color-scheme: light;
+  }
+}
+
+:root[data-theme="light"] {
+  --bg: #f2f4f1;
+  --panel: #ffffff;
+  --panel-2: #e8ebe7;
+  --panel-3: #dce0db;
+  --line: rgba(19, 23, 26, .11);
+  --line-2: rgba(19, 23, 26, .21);
+  --fg: #12161a;
+  --fg-2: #39434a;
+  --fg-3: #56626a;
+  --accent: #74d863;
+  --accent-ink: #062a08;
+  --accent-text: #23701a;
+  --accent-soft: rgba(56, 150, 40, .12);
+  --ok: #2e7d32;
+  --warn: #8a6100;
+  --err: #b3261e;
+  --info: #1f5fbf;
+  --changed: #6b3fb5;
+  --shadow: 0 16px 40px rgba(20, 30, 25, .14);
+  --stage: #0f1214;
+  color-scheme: light;
+}
+
+/* Fontes do próprio app (app/src/main/res/font, OFL), recortadas no build */
+@font-face { font-family: "Barlow"; font-weight: 400; font-style: normal; font-display: swap; src: url("../fonts/barlow-400.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 500; font-style: normal; font-display: swap; src: url("../fonts/barlow-500.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-style: normal; font-display: swap; src: url("../fonts/barlow-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 700; font-style: normal; font-display: swap; src: url("../fonts/barlow-700.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 600; font-style: normal; font-display: swap; src: url("../fonts/barlow-semi-condensed-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; font-style: normal; font-display: swap; src: url("../fonts/barlow-semi-condensed-700.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400 600; font-style: normal; font-display: swap; src: url("../fonts/jetbrains-mono.woff2") format("woff2"); }

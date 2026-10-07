@@ -1,0 +1,97 @@
+/* ---------- documentação ---------- */
+.docs { display: grid; grid-template-columns: 250px minmax(0, 1fr) 220px; gap: clamp(24px, 3vw, 48px); align-items: start; padding-block: 28px 0; }
+.docs-side, .docs-toc { position: sticky; top: calc(76px + env(safe-area-inset-top, 0px)); max-height: calc(100vh - 96px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+
+/* barra lateral */
+.docs-side nav { display: grid; gap: 18px; padding-bottom: 24px; }
+.docs-side h2 { font: 700 .74rem/1.3 var(--f-body); letter-spacing: .13em; text-transform: uppercase; color: var(--fg-3); margin: 0 0 6px 10px; }
+.docs-side ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.docs-side a { display: block; padding: 6px 10px; border-radius: var(--radius-s); color: var(--fg-2); text-decoration: none; font-size: .96rem; line-height: 1.35; }
+.docs-side a:hover { color: var(--fg); background: var(--panel); }
+.docs-side a[aria-current="page"] { color: var(--fg); background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); font-weight: 600; }
+.docs-side .home { font-weight: 600; color: var(--fg); }
+.docs-side-toggle { display: none; }
+
+/* conteúdo */
+.docs-main { min-width: 0; max-width: 780px; padding-bottom: 40px; }
+.crumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; font-size: var(--step--1); color: var(--fg-3); }
+.crumbs a { color: var(--fg-3); }
+.docs-main > header { display: grid; gap: 14px; padding-bottom: 22px; margin-bottom: 26px; border-bottom: 1px solid var(--line); }
+.docs-main > header h1 { font-size: clamp(2.2rem, 1.6rem + 2.6vw, 3.2rem); }
+.docs-main > header .desc { font-size: var(--step-1); line-height: 1.5; color: var(--fg-2); }
+.page-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: var(--step--1); color: var(--fg-3); }
+.page-meta a { color: var(--fg-3); }
+.page-meta a:hover { color: var(--fg-2); }
+
+/* texto corrido em Markdown */
+.prose { font-size: 1.04rem; }
+.prose > * + * { margin-top: 1.05em; }
+.prose h2 { margin-top: 2.4em; padding-top: .2em; font-size: clamp(1.55rem, 1.3rem + 1vw, 1.95rem); }
+.prose h3 { margin-top: 1.9em; font-size: var(--step-1); font-weight: 700; }
+.prose h4 { margin-top: 1.5em; font-size: 1.05rem; font-weight: 700; font-family: var(--f-body); }
+.prose h2 + *, .prose h3 + *, .prose h4 + * { margin-top: .7em; }
+.prose p, .prose li { max-width: 72ch; }
+.prose ul, .prose ol { padding-left: 1.3em; }
+.prose li + li { margin-top: .35em; }
+.prose li > ul, .prose li > ol { margin-top: .35em; }
+.prose li::marker { color: var(--fg-3); }
+.prose strong { font-weight: 650; color: var(--fg); }
+.prose blockquote { margin-inline: 0; padding-left: 16px; border-left: 3px solid var(--line-2); color: var(--fg-2); }
+.prose a.ext::after { content: "↗"; display: inline-block; margin-left: 2px; font-size: .78em; text-decoration: none; color: var(--fg-3); }
+.prose dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 18px; }
+.prose dt { font-weight: 600; }
+.prose dd { margin: 0; color: var(--fg-2); }
+.prose .shot { margin-block: 1.6em; }
+.prose .table-wrap { margin-block: 1.3em; }
+
+/* referência gerada: um ajuste por bloco */
+.setting { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.setting:first-of-type { border-top: 1px solid var(--line); }
+.setting h4 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin: 0 0 4px; font-family: var(--f-body); font-size: 1.05rem; }
+.setting .key { font: 500 .82rem/1.4 var(--f-mono); color: var(--fg-3); min-width: 0; overflow-wrap: anywhere; }
+.setting p { color: var(--fg-2); }
+.setting .facts-line { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: .88rem; color: var(--fg-3); }
+.setting .facts-line b { color: var(--fg-2); font-weight: 600; }
+.setting .opts { margin-top: 6px; font-size: .9rem; color: var(--fg-2); }
+
+/* índice da página */
+.docs-toc h2 { font: 700 .74rem/1.3 var(--f-body); letter-spacing: .13em; text-transform: uppercase; color: var(--fg-3); margin-bottom: 8px; }
+.docs-toc ol { list-style: none; margin: 0; padding: 0 0 24px; border-left: 1px solid var(--line); }
+.docs-toc a { display: block; padding: 4px 0 4px 12px; margin-left: -1px; border-left: 2px solid transparent; color: var(--fg-3); text-decoration: none; font-size: .9rem; line-height: 1.35; }
+.docs-toc .l3 a { padding-left: 24px; font-size: .86rem; }
+.docs-toc a:hover { color: var(--fg); }
+.docs-toc a.on { color: var(--fg); border-left-color: var(--accent); }
+
+/* anterior / próxima */
+.pager { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 48px; }
+.pager a { display: grid; gap: 2px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-s); color: var(--fg); text-decoration: none; }
+.pager a:hover { border-color: var(--fg-3); }
+.pager small { color: var(--fg-3); font-size: .82rem; }
+.pager .next { text-align: right; grid-column: 2; }
+
+/* página de entrada da documentação */
+.doc-index { display: grid; gap: 34px; margin-top: 8px; }
+.doc-index section h2 { font-size: var(--step-1); margin-bottom: 10px; }
+.doc-index ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.doc-index a { display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); gap: 4px 20px; padding: 12px 0; border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none; }
+.doc-index a:hover b { color: var(--accent-text); }
+.doc-index a span { color: var(--fg-2); }
+@media (max-width: 640px) { .doc-index a { grid-template-columns: minmax(0, 1fr); } }
+
+@media (max-width: 1180px) {
+  .docs { grid-template-columns: 230px minmax(0, 1fr); }
+  .docs-toc { display: none; }
+}
+@media (max-width: 860px) {
+  .docs { grid-template-columns: minmax(0, 1fr); padding-top: 16px; }
+  .docs-side { position: static; max-height: none; overflow: visible; }
+  .docs-side-toggle {
+    display: flex; align-items: center; justify-content: space-between; width: 100%;
+    padding: 11px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-s);
+    background: var(--panel); color: var(--fg); font-weight: 600; cursor: pointer;
+  }
+  .docs-side-toggle .xi { transition: transform .15s; }
+  .docs-side-toggle[aria-expanded="true"] .xi { transform: rotate(180deg); }
+  .docs-side nav { display: none; margin-top: 10px; padding: 14px 6px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--panel); }
+  .docs-side nav.open { display: grid; }
+}

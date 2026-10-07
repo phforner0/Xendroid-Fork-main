@@ -1,0 +1,112 @@
+/* ---------- cabeçalho ---------- */
+.site-header {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 50;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+@supports (backdrop-filter: blur(8px)) {
+  .site-header { background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: saturate(1.2) blur(10px); }
+}
+.site-header .wrap { display: flex; align-items: center; gap: 12px; min-height: 60px; }
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: auto;
+  color: var(--fg);
+  text-decoration: none;
+  font: 700 1.32rem/1 var(--f-display);
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+.brand img { width: 34px; height: 34px; }
+.brand .plus { color: var(--accent); }
+.site-nav { display: flex; align-items: center; gap: 2px; }
+.site-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-s);
+  color: var(--fg-2);
+  font-weight: 600;
+  font-size: .97rem;
+  text-decoration: none;
+}
+.site-nav a:hover { color: var(--fg); background: var(--panel-2); }
+.site-nav a[aria-current="page"] { color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); border-radius: var(--radius-s) var(--radius-s) 0 0; }
+.site-nav .ext .xi { opacity: .6; }
+.header-tools { display: flex; align-items: center; gap: 6px; }
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+.icon-btn:hover { color: var(--fg); background: var(--panel-2); }
+.search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-s);
+  background: var(--panel);
+  color: var(--fg-3);
+  font: 500 .92rem var(--f-body);
+  cursor: pointer;
+}
+.search-btn:hover { color: var(--fg-2); border-color: var(--fg-3); }
+.search-btn kbd { font-size: .74rem; }
+.menu-btn { display: none; }
+@media (max-width: 1040px) { .header-tools .header-dl { display: none; } }
+
+@media (max-width: 880px) {
+  .menu-btn { display: inline-grid; }
+  .site-nav {
+    position: fixed;
+    inset: calc(61px + env(safe-area-inset-top, 0px)) 0 auto 0;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 10px var(--gutter) 18px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line-2);
+    box-shadow: var(--shadow);
+  }
+  .site-nav.open { display: flex; }
+  .site-nav a { padding: 12px; font-size: 1.05rem; }
+  .site-nav a[aria-current="page"] { box-shadow: inset 3px 0 0 var(--accent); border-radius: 0 var(--radius-s) var(--radius-s) 0; }
+  .search-btn .label, .search-btn kbd { display: none; }
+  .search-btn { width: 40px; padding: 0; justify-content: center; }
+}
+
+/* ---------- rodapé ---------- */
+.site-footer { margin-top: clamp(48px, 8vw, 96px); border-top: 1px solid var(--line); background: var(--panel); }
+.site-footer .wrap { padding-block: 40px 28px; display: grid; gap: 28px; }
+.footer-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 24px; }
+.footer-cols h2 { font: 700 .8rem/1 var(--f-body); text-transform: uppercase; letter-spacing: .14em; color: var(--fg-3); margin-bottom: 12px; }
+.footer-cols ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.footer-cols a { color: var(--fg-2); text-decoration: none; }
+.footer-cols a:hover { color: var(--fg); text-decoration: underline; }
+.footer-legal { display: grid; gap: 8px; color: var(--fg-3); font-size: var(--step--1); max-width: 90ch; }
+.footer-meta { font-family: var(--f-mono); font-size: .78rem; color: var(--fg-3); }
+
+/* fileira de pinos do chip: separador discreto */
+.pins {
+  height: 7px;
+  background: var(--line-2);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='7'%3E%3Crect x='0' y='0' width='15' height='7' rx='2.5'/%3E%3C/svg%3E") left center / 26px 7px repeat-x;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='7'%3E%3Crect x='0' y='0' width='15' height='7' rx='2.5'/%3E%3C/svg%3E") left center / 26px 7px repeat-x;
+}
+
+main:focus { outline: none; }

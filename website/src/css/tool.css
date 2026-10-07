@@ -1,0 +1,239 @@
+/* ---------- simulador: a moldura do site em volta do protótipo ----------
+   O CSS do protótipo vem isolado sob .sim (scripts/site/simulator.mjs). Aqui os tokens da
+   moldura (--ch-*) passam a ser os do site, para seguir o tema claro ou escuro; a tela do
+   aparelho continua escura, como o app. */
+.sim {
+  --ch-bg: var(--bg);
+  --ch-panel: var(--panel);
+  --ch-panel2: var(--panel-2);
+  --ch-line: var(--line-2);
+  --ch-fg: var(--fg);
+  --ch-fg2: var(--fg-2);
+  --ch-fg3: var(--fg-3);
+  --ch-acc: var(--accent-text);
+  --ch-on-acc: var(--accent-ink);
+  color-scheme: inherit;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 1rem/1.55 var(--f-body);
+}
+.sim .app { color-scheme: dark; }
+.sim .k-app { --k: #7bd77d; --kt: var(--ok); }
+.sim .k-dif { --k: #e8c55a; --kt: var(--warn); }
+.sim .k-sim { --k: #80b8ff; --kt: var(--info); }
+.sim .nkind { color: var(--kt); }
+
+.sim-intro { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px 40px; align-items: end; padding-block: 34px 20px; }
+.sim-intro h1 { font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem); margin-bottom: 12px; }
+.sim-intro .lead { color: var(--fg-2); font-size: var(--step-1); line-height: 1.5; max-width: 62ch; }
+.sim-note { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-left: 3px solid var(--info); border-radius: 0 var(--radius-s) var(--radius-s) 0; background: var(--panel); color: var(--fg-2); font-size: var(--step--1); }
+.sim-note .xi { flex: none; margin-top: 2px; color: var(--info); }
+.sim-note b { color: var(--fg); }
+@media (max-width: 900px) { .sim-intro { grid-template-columns: minmax(0, 1fr); } }
+
+/* barra do simulador, presa embaixo do cabeçalho do site */
+.sim .ch-bar {
+  top: calc(61px + env(safe-area-inset-top, 0px));
+  z-index: 40;
+  justify-content: center;
+  padding: 10px var(--gutter);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.sim .ch-field { display: inline-flex; align-items: center; gap: 8px; font-size: .82rem; font-weight: 600; color: var(--fg-3); }
+.sim .ch-sel { height: 36px; color: var(--fg); background-color: var(--panel); border-color: var(--line-2); }
+.sim .ch-sel option, .sim .ch-sel optgroup { background: var(--panel); color: var(--fg); }
+.sim .ch-seg { background: var(--panel); border-color: var(--line-2); }
+.sim .ch-seg button { min-height: 32px; color: var(--fg-2); }
+.sim .ch-seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+.sim .ch-tg { min-height: 36px; background: var(--panel); border-color: var(--line-2); color: var(--fg-2); }
+.sim .ch-tg i { background: var(--panel-3); }
+.sim .ch-tg[aria-pressed="true"] i { background: var(--accent); }
+.sim .ch-tag { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-2); font-size: .8rem; color: var(--fg-2); }
+.sim .ch-tag .ic { color: var(--accent-text); }
+.sim .ch-pad { color: var(--fg-3); }
+.sim .ch-pad.on { color: var(--accent-text); }
+.sim .ch-bar :focus-visible, .sim .ch-info :focus-visible, .sim .full-exit :focus-visible { outline: 2.5px solid var(--accent); outline-offset: 2px; }
+
+/* palco: o aparelho escalado, com a tela focável para o teclado */
+.sim .stage { background: radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--fg) 6%, var(--bg)), var(--bg) 70%); padding-block: 22px 14px; }
+.sim .screen:focus { outline: none; }
+.sim .screen:focus-visible { outline: 3px solid var(--accent); outline-offset: 6px; }
+.sim .device { box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 0 0 4px #0c0f0e, var(--shadow); }
+
+/* informações da tela */
+.sim .ch-info { max-width: var(--max); padding-block: 18px 40px; }
+.sim .ch-card { background: var(--panel); border-color: var(--line); color: var(--fg); }
+.sim .ch-card h2 { margin: 0 0 12px; font: 700 .78rem/1.3 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--fg-3); }
+.sim #ch-dir h2 { font: 700 clamp(1.6rem, 1.3rem + 1vw, 2rem)/1.08 var(--f-display); letter-spacing: 0; text-transform: none; color: var(--fg); }
+.sim .ch-eyebrow { color: var(--accent-text); }
+.sim .ch-card p { color: var(--fg-2); }
+.sim .ch-card a { color: var(--accent-text); }
+.sim .ch-dl dt { color: var(--fg-3); }
+.sim .ch-dl dd { color: var(--fg-2); }
+.sim .ch-dl code, .sim .ch-card code { color: var(--fg); font-size: .82rem; }
+.sim .ch-sub { margin: 16px 0 8px !important; font-size: .82rem; font-weight: 600; color: var(--fg-3) !important; }
+.sim .ch-prints > div { display: flex; flex-wrap: wrap; gap: 10px; }
+.sim .ch-prints a { display: block; width: 168px; max-width: calc(50% - 5px); border-radius: 10px; overflow: hidden; border: 1px solid var(--line-2); background: #0f1214; }
+.sim .ch-prints a:hover { border-color: var(--fg-3); }
+.sim .ch-prints img { display: block; width: 100%; height: 96px; object-fit: cover; object-position: top left; }
+.sim .legend { color: var(--fg-3); }
+.sim .notes li { color: var(--fg-2); }
+.sim .empty-notes { color: var(--fg-3); }
+.sim .lotes { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.sim .lote { background: var(--panel-2); border-color: var(--line); }
+.sim .lote h3 { margin: 0 0 6px; font: 700 .95rem/1.3 var(--f-body); color: var(--fg); }
+.sim .lote ul { list-style: none; margin: 0; padding: 0; }
+.sim .lote button { color: var(--fg-2); text-decoration-color: var(--line-2); min-height: 28px; }
+.sim .lote button:hover { color: var(--fg); }
+.sim .lote button[aria-current="true"] { color: var(--accent-text); font-weight: 600; }
+.sim .ch-keys { color: var(--fg-2); }
+.sim .ch-keys kbd { background: var(--panel-2); border-color: var(--line-2); color: var(--fg); }
+.sim .tnotes { margin: 4px 0 0; padding-left: 18px; }
+
+/* tela cheia: o cabeçalho do site sai do caminho */
+html.sim-full { overflow: hidden; }
+html.sim-full .site-header, html.sim-full .site-footer { visibility: hidden; }
+
+/* peças da ficha que o protótipo não tinha (como em GameCards.kt) */
+.sim .app .grid2 > .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sim .app .prow span small { display: block; margin-top: 2px; font-size: 11.5px; color: var(--fg3); }
+.sim .app .pfile { margin: 10px 0 2px; font-size: 12px; font-weight: 600; color: var(--fg2); }
+.sim .app .runpick { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 14px; border-radius: 12px; background: var(--s1); color: var(--fg); text-align: left; }
+.sim .app .runpick > span { flex: 1; min-width: 0; }
+.sim .app .runpick b { display: block; font-size: 13.5px; font-weight: 650; }
+.sim .app .runpick small { display: block; font-size: 11.5px; color: var(--fg3); }
+.sim .app .runpick .ic { color: var(--acc); flex: none; }
+.sim .app .mlines { display: flex; flex-direction: column; gap: 4px; font: 500 11.5px/1.45 var(--f-mono); color: var(--fg2); overflow-wrap: anywhere; }
+.sim .app .radios { display: flex; flex-direction: column; gap: 2px; }
+.sim .app .radio { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 6px 10px; border-radius: 10px; font-weight: 600; color: var(--fg); text-align: left; }
+.sim .app .radio:hover { background: var(--s2); }
+.sim .app .radio i { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 2px solid var(--fg3); }
+.sim .app .radio[aria-checked="true"] i { border-color: var(--acc); box-shadow: inset 0 0 0 3px var(--s1), inset 0 0 0 9px var(--acc); }
+.sim .app textarea.txt { height: auto; min-height: 56px; padding: 8px 11px; resize: vertical; line-height: 1.4; }
+
+/* menu em jogo como o do app (InGameMenu.kt): painel à esquerda deitado, folha embaixo em pé */
+.sim .app .igx { position: absolute; z-index: 20; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; background: var(--sheet); box-shadow: 0 0 60px rgba(0, 0, 0, .55); color: var(--fg); }
+.sim .app .igx.land { left: 0; top: 0; bottom: 0; width: min(74%, 620px); border-radius: 0 22px 22px 0; animation: igx-in .18s ease-out; }
+.sim .app.mode-c .igx.land { width: min(74%, 660px); }
+.sim .app .igx.port { left: 0; right: 0; bottom: 0; height: 86%; border-radius: 22px 22px 0 0; animation: up .2s ease-out; }
+@keyframes igx-in { from { translate: -24px 0; opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { .sim .app .igx { animation: none; } }
+.sim .app .igx-head { display: flex; align-items: center; gap: 10px; }
+.sim .app .igx-head .cover { width: 36px; flex: none; border-radius: 7px; }
+.sim .app .igx-head .tt { flex: 1; min-width: 0; }
+.sim .app .igx-head h2 { margin: 0; font: 700 19px/1.1 var(--f-disp); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sim .app .igx-head small { display: block; margin-top: 2px; font-size: 11.5px; color: var(--fg3); }
+.sim .app .igx-kept, .sim .app .igx-saved { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 999px; background: color-mix(in srgb, var(--acc) 12%, transparent); color: var(--fg2); font: 600 12px/1 var(--f-body); white-space: nowrap; }
+.sim .app .igx-kept .ic, .sim .app .igx-saved .ic { color: var(--acc); }
+.sim .app .igx-saved { align-self: flex-start; border-radius: 10px; }
+.sim .app .igx-status { display: flex; gap: 16px; overflow-x: auto; scrollbar-width: none; padding: 7px 12px; border-radius: 12px; background: rgba(255, 255, 255, .05); font-size: 12px; color: var(--fg2); white-space: nowrap; }
+.sim .app .igx-status b { color: var(--fg); }
+.sim .app .igx-body { flex: 1; min-height: 0; display: flex; gap: 12px; }
+.sim .app .igx.port .igx-body { flex-direction: column; gap: 8px; }
+.sim .app .igx-pages { display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 84px; flex: none; overflow-y: auto; scrollbar-width: none; }
+.sim .app .igx-pages button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; border-radius: 12px; color: var(--fg2); font: 600 11.5px/1.1 var(--f-body); }
+.sim .app .igx-pages button .ic { color: var(--fg3); }
+.sim .app .igx-pages button[aria-selected="true"] { background: color-mix(in srgb, var(--acc) 16%, transparent); color: var(--acc); }
+.sim .app .igx-pages button[aria-selected="true"] .ic { color: var(--acc); }
+.sim .app .igx-pages .gb { align-self: center; }
+.sim .app .igx.port .igx-pages { flex-direction: row; width: auto; overflow-x: auto; }
+.sim .app .igx.port .igx-pages button { flex-direction: row; gap: 6px; height: 36px; padding: 0 12px; border-radius: 999px; flex: none; font-size: 12.5px; }
+.sim .app .igx-rows { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px; scrollbar-width: thin; }
+.sim .app .igx-g { margin: 8px 0 0; font: 700 10.5px/1.2 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--fg3); }
+.sim .app .igx-g:first-child { margin-top: 0; }
+.sim .app .igx-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; padding: 9px 12px; border-radius: 12px; background: var(--s1); color: var(--fg); text-align: left; width: 100%; }
+.sim .app .igx-row.stack { grid-template-columns: minmax(0, 1fr); }
+.sim .app .igx-row.dis > .igx-t { opacity: .55; }
+.sim .app .igx-row.info { background: transparent; padding: 4px 12px; }
+.sim .app .igx-row.btnrow .ic { color: var(--fg3); }
+.sim .app .igx-row.btnrow:hover { background: var(--s2); }
+.sim .app .igx-row.danger b { color: #ff8b84; }
+.sim .app .igx-t { min-width: 0; }
+.sim .app .igx-t b { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 650; }
+.sim .app .igx-t small, .sim .app .igx-n { display: block; margin-top: 2px; font-size: 11.5px; color: var(--fg3); }
+.sim .app .igx-n { grid-column: 1 / -1; margin-top: 0; }
+.sim .app .igx-t .tag { margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--acc) 14%, transparent); color: var(--acc); font-size: 10.5px; font-weight: 700; vertical-align: 1px; }
+.sim .app .igx-row .seg { flex-wrap: wrap; }
+.sim .app .igx-row .seg button { height: 30px; padding: 0 10px; font-size: 12.5px; }
+.sim .app .igx-cyc b { min-width: 112px; text-align: center; font-size: 12.5px; }
+.sim .app .igx-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sim .app .igx-chips .chip { height: 30px; font-size: 12px; }
+.sim .app .igx-more { display: flex; align-items: center; gap: 6px; padding: 9px 12px; margin-top: 4px; border-radius: 12px; color: var(--acc); font: 650 13px/1.2 var(--f-body); }
+.sim .app .igx-more:hover { background: var(--s1); }
+.sim .app .igx-note { margin: 4px 2px 0; font-size: 11.5px; color: var(--fg3); }
+.sim .app .igx-foot { display: flex; gap: 8px; }
+.sim .app .igx-foot .btn.primary { flex: 1; }
+.sim .app .igx .c-hints { position: static; border-radius: 12px; }
+.sim .app .igx-hudprev { position: relative; min-height: 76px; padding: 6px; border-radius: 12px; background: linear-gradient(120deg, #1c2a33, #3b3022); overflow: hidden; }
+.sim .app .igx-hudprev .hud2 { position: static; }
+/* a borda que abre o menu (no app, invisível) */
+.sim .app .ig-edge { position: absolute; left: 0; top: 0; bottom: 0; width: 22px; z-index: 6; background: linear-gradient(90deg, rgba(255, 255, 255, .14), transparent); border-right: 1px dashed rgba(255, 255, 255, .22); }
+.sim .app .ig-edge:hover, .sim .app .ig-edge:focus-visible { background: linear-gradient(90deg, rgba(255, 255, 255, .28), transparent); }
+.sim .app .ig-edge-tip { position: absolute; left: 30px; top: 10px; z-index: 6; padding: 4px 9px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: rgba(255, 255, 255, .8); font: 600 11px/1.3 var(--f-body); pointer-events: none; }
+/* HUD (FpsOverlay.kt): vertical (caixa) ou horizontal (barra), estilo caixa, contorno ou texto */
+.sim .app .hud2 { position: absolute; left: 30px; top: 40px; z-index: 5; font: 600 calc(12px * var(--hs, 1))/1.45 var(--f-mono); color: #fff; font-variant-numeric: tabular-nums; --hcol: color-mix(in srgb, #9be37f calc(var(--hc, 1) * 100%), #fff); }
+.sim .app .hud2 .hud2-l { display: flex; justify-content: space-between; gap: 14px; white-space: nowrap; }
+.sim .app .hud2 b { color: var(--hcol); }
+.sim .app .hud2 .k { color: rgba(255, 255, 255, .62); }
+.sim .app .hud2 .w { color: color-mix(in srgb, #f3cf55 calc(var(--hc, 1) * 100%), #fff); }
+.sim .app .hud2.box { background: rgba(0, 0, 0, var(--hbg, .58)); padding: 6px 9px; border-radius: 9px; }
+.sim .app .hud2.outline { text-shadow: 0 0 2px #000, 0 0 2px #000, 0 0 3px #000, 0 0 3px #000; }
+.sim .app .hud2.horizontal { left: 0; right: 0; top: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 16px; padding: 4px 12px; border-radius: 0; }
+.sim .app .hud2.horizontal.bottom { top: auto; bottom: 0; }
+.sim .app .hud2.horizontal .hud2-l { gap: 6px; }
+.sim .app .hud2.horizontal .hud2-graph { width: 80px; }
+.sim .app .hud2-graph { display: block; width: 100%; height: 20px; color: var(--hcol); margin-top: 3px; }
+.sim .app .hud2.panel { width: 290px; padding: 10px 12px; font-size: calc(11.5px * var(--hs, 1)); }
+.sim .app .hud2.panel h6 { margin: 0 0 4px; font: 700 10px/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: rgba(255, 255, 255, .6); }
+.sim .app .hud2.panel section { padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, .12); }
+.sim .app .hud2.panel section:first-child { border-top: 0; padding-top: 0; }
+/* visual Clássico dos controles de toque: botões coloridos */
+.sim .app .tcl.classic .tc-abxy .tc-btn { color: #fff; box-shadow: none; }
+.sim .app .tcl.classic .tc-abxy .a { background: #3f9a3a; } .sim .app .tcl.classic .tc-abxy .b { background: #c23b33; }
+.sim .app .tcl.classic .tc-abxy .x { background: #2f6fd1; } .sim .app .tcl.classic .tc-abxy .y { background: #d0a417; }
+.sim .app .hud2 .hud2-l.f { justify-content: flex-start; gap: 6px; }
+
+/* telas de sistema (sistema.js) */
+.sim .app .xlogo { display: inline-block; flex: none; background: url(../brand/mark-128.webp) center / contain no-repeat; }
+.sim .app .b-rail .logo { background: url(../brand/mark-64.webp) center / contain no-repeat; box-shadow: none; border-radius: 0; }
+.sim .app .shell.norail { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.sim .app .lead2 { margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--fg2); max-width: 62ch; }
+.sim .app .card .chk-l li { background: none; padding: 6px 2px; }
+.sim .app .fr-side .xlogo { margin-bottom: -4px; }
+.sim .app .fr-name { font: 700 20px/1 var(--f-disp); }
+.sim .app .fr-fold { gap: 10px; flex-wrap: nowrap; }
+.sim .app .fr-fold .ic { color: var(--fg3); flex: none; }
+.sim .app .fr-fold b { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.sim .app .strip .cover .nm, .sim .app .ms-cover .cover .nm { display: none; }
+.sim .app .fd b { display: block; font: 600 14px/1.3 var(--f-body); }
+.sim .app .fd-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.sim .app .fd.away > .ic { color: var(--st-ingame); }
+.sim .app .ms-cover { display: block; width: 44px; flex: none; }
+.sim .app .drow .path { font: 500 11.5px/1.4 var(--f-mono); color: var(--fg3); overflow-wrap: anywhere; }
+.sim .app .up-rel { gap: 8px; align-items: center; }
+.sim .app .up-rel b { font: 700 18px/1.15 var(--f-disp); }
+.sim .app .card .up-hero b { font-size: 22px; }
+.sim .app .ab-l { margin: 3px 0 0; font-size: 13.5px; color: var(--fg2); }
+.sim .app .ab-h { margin: 12px 0 6px; font-size: 13.5px; }
+.sim .app .ab-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sim .app .ab-chips code { font: 500 11px/1.4 var(--f-mono); padding: 3px 7px; border-radius: 6px; background: var(--s1); color: var(--fg2); }
+.sim .app .card ul.menu { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.sim .app .card ul.menu button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 10px; border-radius: 12px; font-weight: 600; text-align: left; }
+.sim .app .card ul.menu button span { flex: 1; }
+.sim .app .card ul.menu button > .ic:last-child { color: var(--fg3); }
+.sim .app .card ul.menu button:hover { background: var(--s2); }
+.sim .app .lic { max-height: 46vh; overflow-y: auto; font-size: 13px; line-height: 1.45; color: var(--fg2); }
+.sim .app .lic p { margin: 0 0 8px; }
+.sim .app .lic ul { margin: 4px 0 12px; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; }
+.sim .app .lic h3 { margin: 4px 0; font-size: 14px; color: var(--fg); }
+.sim .app .lic a { color: var(--acc); }
+.sim .app .card .up-hero small { font: 500 12.5px/1.45 var(--f-body); }
+.sim .app .warn-t { color: var(--st-ingame); }
+.sim .app .strip .cover > span, .sim .app .ms-cover .cover > span { display: none; }
+@container screen (orientation: portrait) { .sim .app .fr-steps button[aria-current="step"] span.t { display: inline; } }
+/* a barra de dicas não rola (uma rolagem sem barra não se acha); no menu em jogo, estreito, a
+   legenda do teclado fica só no cartão de ajuda da página */
+.sim .app .c-hints { overflow-x: hidden; }
+.sim .app .igx .c-hints .hint.kb { display: none; }

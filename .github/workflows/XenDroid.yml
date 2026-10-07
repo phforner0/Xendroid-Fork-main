@@ -27,6 +27,8 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/workflows/cache-cleanup.yml'
       - '.github/workflows/checks.yml'
+      - '.github/workflows/pages.yml'
+      - 'website/**'
   pull_request:
     branches: [main]
     paths-ignore:
@@ -37,6 +39,8 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/workflows/cache-cleanup.yml'
       - '.github/workflows/checks.yml'
+      - '.github/workflows/pages.yml'
+      - 'website/**'
   workflow_dispatch:
     inputs:
       package:
