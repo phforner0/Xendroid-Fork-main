@@ -22,14 +22,24 @@ test('em outro subdiretório, cada página carrega sem recurso quebrado', async 
   }
 });
 
-test('recarregar uma página da documentação com âncora volta à seção', async () => {
-  const page = await moved.open('docs/instalacao/');
+test('um link direto para uma seção da documentação abre nela, e recarregar mantém a seção', async () => {
+  const probe = await moved.open('docs/instalacao/');
+  let id;
   try {
-    const id = await page.locator('main h2[id]').nth(1).getAttribute('id');
-    await page.goto(moved.url(`docs/instalacao/#${id}`), { waitUntil: 'networkidle' });
-    await page.reload({ waitUntil: 'networkidle' });
+    id = await probe.locator('main h2[id]').nth(1).getAttribute('id');
+  } finally {
+    await probe.done();
+  }
+  // numa aba nova, como quem recebe o link
+  const page = await moved.open(`docs/instalacao/#${id}`);
+  try {
+    await page.evaluate(() => document.fonts.ready);
     const top = await page.locator(`[id="${id}"]`).evaluate(el => el.getBoundingClientRect().top);
-    assert.ok(top >= 0 && top < 200, `a seção #${id} fica no topo (top ${top})`);
+    assert.ok(top >= 0 && top < 200, `a seção #${id} abre no topo (top ${top})`);
+    // ao recarregar, a rolagem é do navegador (ele pode restaurar a anterior); o alvo do endereço continua o mesmo
+    await page.reload({ waitUntil: 'networkidle' });
+    assert.equal(await page.evaluate(() => (document.querySelector(':target') || {}).id), id);
+    assert.deepEqual(page.problems, []);
   } finally {
     await page.done();
   }
