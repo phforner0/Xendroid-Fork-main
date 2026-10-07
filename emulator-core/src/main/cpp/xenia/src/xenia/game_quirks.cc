@@ -236,6 +236,23 @@ static const Quirk kQuirks[] = {
      "4x depth-only draws into the 1x surface of their samples"},
     {0x4541098E, "vulkan_samples_as_pixels_simple_ps", true,
      "4x draws with simple pixel shaders into the 1x surface"},
+    // Its lighting and HDR copies go through integers: the light buffers (7e3
+    // in the EDRAM) are resolved as k_2_10_10_10 with exponent bias +10, the
+    // scene and the bloom 7e3 to k_10_11_11 (+6) and k_16_16_16_16 (+11), all
+    // to unsigned integer destinations, and sampled with the integer
+    // num_format and the opposite exponent adjustment (-7, -6, -11) - a
+    // lossless HDR round trip. Packed as unsigned fractions, the copies
+    // saturated (the light buffers 100% white, the scene ~98%, the exposure
+    // chain 0) and the lit surfaces went black; with only the fetch side
+    // honoured, the screen went white. Both sides: the lighting of the
+    // original, with the direct resolves and the resolves into textures still
+    // used for them (frame dump and runtime A/B, 2026-10-06).
+    {0x4541098E, "accurate_resolve_number_formats", true,
+     "resolve shaders that pack integer destinations"},
+    {0x4541098E, "resolve_copy_dest_number_packing", true,
+     "resolves honour their integer destinations"},
+    {0x4541098E, "texture_integer_num_format", true,
+     "integer texture fetches return integers"},
     // Its worker threads spin on NtYieldExecution whenever they have no job:
     // the 6 guest CPU threads took 460-490% of a core standing still at the
     // 30 fps cap, the phone ~10.7 W, and the SoC throttles within minutes (big
