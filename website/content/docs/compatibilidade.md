@@ -3,7 +3,7 @@ title: Compatibilidade e limitações
 description: As correções que o núcleo aplica sozinho por jogo, as notas de compatibilidade do projeto, como avaliar um jogo no seu aparelho e o que ainda limita o Xendroid+.
 section: referencia
 order: 2
-conferido: e179885e7
+conferido: bd1d2a8d8
 fontes: [emulator-core/src/main/cpp/xenia/src/xenia/game_quirks.cc, GAME_COMPAT.md, app/src/main/java/xendroid/compose/compatibility/CompatibilityStore.kt, app/build.gradle, docs/ui-redesign/app.md]
 ---
 
@@ -15,7 +15,7 @@ O núcleo traz **{{contagens.correcoes}} ajustes para {{contagens.jogosCorrecoes
 
 {{> correcoes}}
 
-A maioria corrige travamentos e falhas de desenho no driver Turnip ou ganha tempo de GPU medido num POCO F7; os comentários de cada entrada, em [game_quirks.cc](repo:emulator-core/src/main/cpp/xenia/src/xenia/game_quirks.cc), trazem a medida. Os nomes dos jogos vêm dos arquivos de patch do repositório ou, quando não há patch, da base de títulos do Xenia que acompanha o núcleo, usada aqui só para o nome.
+A maioria corrige travamentos e falhas de desenho no driver Turnip ou economiza tempo de GPU ou de CPU; os comentários de cada entrada, em [game_quirks.cc](repo:emulator-core/src/main/cpp/xenia/src/xenia/game_quirks.cc), trazem o motivo e a medida feita pelo autor. Os nomes dos jogos vêm dos arquivos de patch do repositório ou, quando não há patch, da base de títulos do Xenia que acompanha o núcleo, usada aqui só para o nome.
 
 ## Notas do projeto por jogo
 

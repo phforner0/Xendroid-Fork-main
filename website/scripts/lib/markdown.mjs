@@ -157,7 +157,8 @@ export function createMarkdown(ctx) {
     const t = tokens[idx];
     const lang = (t.info || '').trim().split(/\s+/)[0];
     const code = highlight(t.content, lang);
-    return `<div class="code"${lang ? ` data-lang="${esc(lang)}"` : ''}><pre><code${lang ? ` class="language-${esc(lang)}"` : ''}>${code}</code></pre></div>\n`;
+    // tabindex: um bloco largo rola na horizontal, e quem usa teclado também precisa rolar
+    return `<div class="code"${lang ? ` data-lang="${esc(lang)}"` : ''}><pre tabindex="0"><code${lang ? ` class="language-${esc(lang)}"` : ''}>${code}</code></pre></div>\n`;
   };
 
   return {

@@ -233,3 +233,7 @@ html.sim-full .site-header, html.sim-full .site-footer { visibility: hidden; }
 .sim .app .warn-t { color: var(--st-ingame); }
 .sim .app .strip .cover > span, .sim .app .ms-cover .cover > span { display: none; }
 @container screen (orientation: portrait) { .sim .app .fr-steps button[aria-current="step"] span.t { display: inline; } }
+/* a barra de dicas não rola (uma rolagem sem barra não se acha); no menu em jogo, estreito, a
+   legenda do teclado fica só no cartão de ajuda da página */
+.sim .app .c-hints { overflow-x: hidden; }
+.sim .app .igx .c-hints .hint.kb { display: none; }

@@ -101,7 +101,7 @@ function sheetHead(t, sub) { return `<header><h2>${t}</h2><button class="ibtn" d
 function render() {
   if (!ready) { app.className = 'app mode-' + S.mode; app.innerHTML = '<div class="empty" style="padding-top:38%">Gerando a arte de exemplo…</div>'; return; }
   if (!SCREENS[S.route.name]) S.route = { name: 'library', p: {} };
-  const ae = document.activeElement, fk = ae && app.contains(ae) && ae.dataset ? ae.dataset.k : null;
+  const ae = document.activeElement, wasIn = !!(ae && app.contains(ae)), fk = wasIn && ae.dataset ? ae.dataset.k : null;
   const caret = ae && fk && 'selectionStart' in ae && ae.type !== 'range' ? [ae.selectionStart, ae.selectionEnd] : null;
   const scrolls = {}; app.querySelectorAll('[data-sk]').forEach(el => { scrolls[el.dataset.sk] = [el.scrollLeft, el.scrollTop]; });
   app.className = `app mode-${S.mode}${S.nav ? ' nav' : ''}`;
@@ -112,6 +112,8 @@ function render() {
   let target = fk ? app.querySelector(`[data-k="${CSS.escape(fk)}"]`) : null;
   const layer = app.querySelector('.sheet') || app.querySelector('.guide');
   if (layer && (!target || !layer.contains(target))) target = layer.querySelector('[data-autofocus]') || layer.querySelector('button, input');
+  // o elemento com foco sumiu (um menu fechou, a tela mudou): o teclado continua no aparelho
+  if (!target && wasIn) target = (S.nav && app.querySelector('[data-autofocus]')) || document.getElementById('screen');
   if (target) { try { target.focus({ preventScroll: true }); if (caret && target.setSelectionRange) target.setSelectionRange(caret[0], caret[1]); } catch (e) { /* sem foco */ } }
   updateChrome(); schedulePins();
 }
@@ -349,6 +351,15 @@ function fire(k) {
 document.addEventListener('keydown', e => {
   const t = e.target;
   if (!t.closest || !t.closest('#screen')) return; // fora do aparelho, o teclado é da página
+  if (e.key === 'Tab' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    // o aparelho é uma parada só do Tab: dentro dele, as setas andam; Tab leva para fora
+    const scr = document.getElementById('screen');
+    const outside = Array.from(document.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea, [tabindex]:not([tabindex="-1"])'))
+      .filter(el => !scr.contains(el) && el.getClientRects().length && !el.closest('[hidden], dialog:not([open])'));
+    const next = e.shiftKey ? outside.filter(el => scr.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING).pop() : outside.find(el => scr.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    if (next) { e.preventDefault(); next.focus(); }
+    return;
+  }
   if (e.altKey || e.ctrlKey || e.metaKey) return;
   const scr = SCREENS[S.route.name]; if (scr && scr.onRawKey && scr.onRawKey(e)) return;
   const k = e.key, inText = (t.tagName === 'INPUT' && /^(text|search|number)$/.test(t.type)) || t.tagName === 'TEXTAREA';
@@ -472,6 +483,14 @@ document.getElementById('ch-screen').addEventListener('change', e => goTop(e.tar
 document.getElementById('ch-vars').addEventListener('change', e => { const sel = e.target.closest('select[data-var]'); const scr = SCREENS[S.route.name]; const v = sel && scr.variants && scr.variants[Number(sel.dataset.var)]; if (v) { v.set(sel.value); render(); } });
 /* um toque ou clique no aparelho passa o teclado para ele */
 document.getElementById('screen').addEventListener('pointerdown', e => { if (!e.target.closest(FOC)) document.getElementById('screen').focus({ preventScroll: true }); });
+/* Shift+Tab vindo de fora também para no aparelho, e não no último botão dele */
+let tabbing = false;
+addEventListener('keydown', e => { tabbing = e.key === 'Tab'; }, true);
+addEventListener('pointerdown', () => { tabbing = false; }, true);
+document.getElementById('screen').addEventListener('focusin', e => {
+  const scr = e.currentTarget;
+  if (tabbing && e.target !== scr && !(e.relatedTarget && scr.contains(e.relatedTarget))) scr.focus({ preventScroll: true });
+});
 addEventListener('hashchange', () => { const before = S.route.name; readHash(); if (S.route.name !== before) { render(); fit(); } });
 addEventListener('keydown', e => { if (e.key === 'Escape' && S.full && !(e.target.closest && e.target.closest('#screen'))) { S.full = false; fit(); render(); } });
 

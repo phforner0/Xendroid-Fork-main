@@ -48,7 +48,7 @@
 .setting { padding: 16px 0; border-bottom: 1px solid var(--line); }
 .setting:first-of-type { border-top: 1px solid var(--line); }
 .setting h4 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin: 0 0 4px; font-family: var(--f-body); font-size: 1.05rem; }
-.setting .key { font: 500 .82rem/1.4 var(--f-mono); color: var(--fg-3); }
+.setting .key { font: 500 .82rem/1.4 var(--f-mono); color: var(--fg-3); min-width: 0; overflow-wrap: anywhere; }
 .setting p { color: var(--fg-2); }
 .setting .facts-line { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: .88rem; color: var(--fg-3); }
 .setting .facts-line b { color: var(--fg-2); font-weight: 600; }

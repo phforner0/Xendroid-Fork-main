@@ -230,7 +230,8 @@ for (const b of $$('[data-open-search]')) b.addEventListener('click', openSearch
 document.addEventListener('keydown', e => {
   const t = e.target;
   const typing = t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
-  if (t.closest && t.closest('.sim')) return; // o simulador tem o próprio teclado
+  // o simulador tem o próprio teclado; o caminho do evento vale mesmo se ele redesenhou a tela
+  if (e.defaultPrevented || e.composedPath().some(n => n.classList && n.classList.contains('sim'))) return;
   if ((e.key === '/' && !typing) || (e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey))) {
     e.preventDefault();
     openSearch();

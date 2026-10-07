@@ -11,8 +11,8 @@
     "build": "node scripts/build.mjs",
     "check": "node scripts/check-site.mjs",
     "serve": "node scripts/serve.mjs",
-    "test": "node --test tests/",
-    "ci": "node scripts/build.mjs --strict && node scripts/check-site.mjs && node --test tests/"
+    "test": "node --test --test-concurrency=1 \"tests/*.test.mjs\"",
+    "ci": "node scripts/build.mjs --strict && node scripts/check-site.mjs && npm test"
   },
   "dependencies": {
     "markdown-it": "15.0.2",

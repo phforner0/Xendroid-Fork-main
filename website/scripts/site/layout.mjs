@@ -70,7 +70,7 @@ ${page.head || ''}
       <a class="ext" href="${site.config.repoUrl}" rel="noopener">${icon('code', 18)}Código-fonte</a>
     </nav>
     <div class="header-tools">
-      <button class="search-btn" type="button" data-open-search aria-haspopup="dialog" aria-controls="busca">${icon('search', 18)}<span class="label">Buscar</span><kbd>/</kbd></button>
+      <button class="search-btn" type="button" data-open-search aria-haspopup="dialog" aria-controls="busca" aria-label="Buscar">${icon('search', 18)}<span class="label">Buscar</span><kbd>/</kbd></button>
       <button class="icon-btn" type="button" id="theme-btn" aria-label="Tema: automático" title="Tema: automático">${icon('monitor', 20)}</button>
       ${stable && stable.apk ? html`<a class="button primary small header-dl" href="${stable.apk.url}">${icon('download', 18)}Baixar</a>` : ''}
       <button class="icon-btn menu-btn" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Menu">${icon('menu', 22)}</button>

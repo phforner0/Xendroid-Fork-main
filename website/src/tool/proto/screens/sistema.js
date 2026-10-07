@@ -316,7 +316,7 @@ screen('firstrun', {
     const last = FR.step === FR_STEPS.length - 1;
     return `<div class="fr"><aside class="fr-side" data-note="frsteps">${xlogo(40)}<h1>Xendroid+</h1><p class="note">Emulação de Xbox 360 no Android.</p>
       <ol class="fr-steps">${FR_STEPS.map(([id, t], i) => `<li><button class="${i < FR.step ? 'done' : ''}" data-act="fr-step" data-v="${i}" data-k="frs-${id}"${i === FR.step ? ' aria-current="step"' : ''}><span class="d">${i < FR.step ? ic('check', 13) : i + 1}</span><span class="t">${t}</span></button></li>`).join('')}</ol></aside>
-      <div class="fr-main"><div class="fr-body" data-sk="fr-${FR.step}">${frBody(isC() ? 'c' : 'b')}</div>
+      <div class="fr-main"><div class="fr-body" data-sk="fr-${FR.step}" tabindex="0" role="region" aria-label="${FR_STEPS[FR.step][1]}">${frBody(isC() ? 'c' : 'b')}</div>
       <div class="fr-foot"><button class="btn ghost" data-act="fr-done" data-k="fr-skip">Pular</button><span class="sp"></span>${FR.step ? `<button class="btn" data-act="fr-prev" data-k="fr-prev">Voltar</button>` : ''}<button class="btn primary" data-act="fr-next" data-k="fr-next" data-autofocus>${last ? 'Começar' : 'Continuar'}</button></div></div></div>`;
   },
   onBack() { if (FR.step) { FR.step--; render(); return true; } return true; },
