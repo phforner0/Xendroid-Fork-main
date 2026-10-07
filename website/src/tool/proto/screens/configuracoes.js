@@ -77,14 +77,7 @@ modal('bundle-import', () => ({ html: sheetHead('Importar estes ajustes?', 'xend
 action('ovopen-g', el => { S.gameId = el.dataset.gid; S.sec.game = isC() ? 'set' : 'set:' + DEF[Object.keys(OV[el.dataset.gid])[0]].g; go('game'); });
 
 screen('settings', {
-  title: 'Configurações', lote: 'Lote 1 · Configurações e drivers', secKey: 'settings', globalScope: true,
-  info: {
-    what: 'Uma tela só para tudo que vale em todos os jogos: um resumo do que está fora do padrão, os mesmos grupos de ajustes da ficha (agora no escopo global) e as opções do próprio app.',
-    replaces: 'SettingsScreen.kt: lista de categorias com contagem, botão Jogador/Desenvolvedor no topo e, no rodapé, botões dos menus, tamanho, idioma, pacote de dados e canal de atualização.',
-    changes: ['Resumo com o que mudou e os jogos com ajustes próprios', 'Cada ajuste global diz quantos jogos usam outro valor', 'Modo controle automático e níveis Essencial/Avançado/Tudo', 'Busca por nome, descrição ou chave do TOML em todos os grupos'],
-    c: 'Menu vertical com os mesmos grupos; ajustes em linhas ◀ ▶, LB/RB troca de grupo.',
-    code: 'ui/settings/SettingsScreen.kt, SettingRows.kt, AppearanceRows.kt, DataBundleSection.kt, UpdateChannelSection.kt, CommunityConfigsSection.kt',
-  },
+  title: 'Configurações', secKey: 'settings', globalScope: true,
   render() {
     const secs = [
       { group: 'Geral', id: 'resumo', t: 'Resumo', icon: 'home', title: 'Resumo', body: resumoHTML },
@@ -184,14 +177,7 @@ action('src-def', () => { DRIVERS.sources = ['K11MCH1/AdrenoToolsDrivers']; toas
 action('tu', el => { let on = tuFlags(); const f = el.dataset.v; if (on.includes(f)) on = on.filter(x => x !== f); else { on.push(f); if (f === 'sysmem') on = on.filter(x => x !== 'gmem'); if (f === 'gmem') on = on.filter(x => x !== 'sysmem'); } const v = TU_FLAGS.map(x => x[0]).filter(x => on.includes(x)).join(','); if (v === DEF['Vulkan.turnip_debug'].def) delete GLOBAL['Vulkan.turnip_debug']; else GLOBAL['Vulkan.turnip_debug'] = v; render(); });
 
 screen('drivers', {
-  title: 'Drivers', lote: 'Lote 1 · Configurações e drivers', secKey: 'drivers',
-  info: {
-    what: 'O gerenciador de drivers vira uma área própria: o que está escolhido e o que a última sessão realmente carregou, a sugestão para a GPU, os instalados, os disponíveis nas fontes, as fontes e as flags do Turnip.',
-    replaces: 'O diálogo “Gerenciar drivers” aberto pela linha Driver Vulkan personalizado (SettingRows.kt), com o diálogo de fontes; as flags do TU_DEBUG ficam em outra linha das Configurações.',
-    changes: ['Escolhido e carregado lado a lado, com aviso quando diferem', 'Jogos com driver próprio listados, com atalho', 'Instalar mostra progresso e o resultado da conferência do SHA-256', 'Flags do Turnip na mesma área do driver'],
-    c: 'Mesmas seções no menu vertical; A usa ou baixa o driver em foco.',
-    code: 'ui/settings/SettingRows.kt (DriverActionRow, DriverSourcesDialog), driver/DriverRepository.kt, DriverSources.kt, DriverSuggestion.kt, settings/TurnipFlags.kt',
-  },
+  title: 'Drivers', secKey: 'drivers',
   render() {
     const secs = [
       { group: 'Driver', id: 'drv:now', t: 'Em uso', icon: 'chip', body: drvNowHTML },

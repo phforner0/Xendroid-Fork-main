@@ -59,14 +59,7 @@ action('fr-locale', () => { FR.locale = true; GLOBAL['Console.user_language'] = 
 action('fr-profile', () => { const v = ((document.getElementById('fr-tag') || {}).value || '').trim(); if (!/^[A-Za-z][A-Za-z0-9 ]{0,14}$/.test(v)) { const e = document.getElementById('fr-err'); if (e) e.hidden = false; return; } FR.tag = v; FR.made = true; const p = { xuid: newXuid(), tag: v, c: ['#2f8f4e', '#0f3d22'], lang: 'Português', region: 'Brasil', active: false, slot: null, games: 0, files: 0, mb: 0 }; p.avatar = drawAvatar(p).toDataURL('image/png'); PROFILES.push(p); ACT['pf-active']({ dataset: { v: p.xuid } }); });
 action('input:fr-tag', el => { FR.tag = el.value; });
 screen('firstrun', {
-  title: 'Primeira abertura', lote: 'Lote 6 · Primeira abertura e app',
-  info: {
-    what: 'O assistente de primeira abertura em cinco passos: o telefone, a pasta de jogos (com a busca acontecendo ali), idioma e região dos jogos, o perfil e como usar o app. Pular e Voltar ficam sempre à mão.',
-    replaces: 'FirstRunAssistant.kt (L01): uma página com verificações, pasta de jogos, idioma e região, perfil, driver e Jogador/Desenvolvedor, mostrada uma vez e reaberta pelo menu.',
-    changes: ['Passos com progresso em vez de uma página longa', 'Criar o perfil ali mesmo', 'Quantos jogos a pasta tem, com as capas, antes de seguir', 'Modo controle e nível de ajustes escolhidos já aqui'],
-    c: 'Igual, com o direcional; A continua, B volta um passo.',
-    code: 'ui/library/FirstRunAssistant.kt, FirstRun.kt, FolderBrowserScreen.kt',
-  },
+  title: 'Primeira abertura',
   variants: [{ label: 'Aparelho', list: [['ok', 'Android 15'], ['old', 'Android 10 (sem pasta)']], get: () => FR.old ? 'old' : 'ok', set: v => { FR.old = v === 'old'; } }],
   render() {
     const last = FR.step === FR_STEPS.length - 1;
@@ -96,14 +89,7 @@ action('fd-inst', el => { FOLDERS.forEach((f, i) => { f.install = i === Number(e
 const undoFolders = ACT.undo;
 action('undo', el => { if (UNDO && UNDO.folder) { FOLDERS.splice(UNDO.i, 0, UNDO.folder); UNDO = null; S.toast = null; render(); return; } undoFolders(el); });
 screen('folders', {
-  title: 'Pastas de jogos', lote: 'Lote 6 · Primeira abertura e app',
-  info: {
-    what: 'As pastas onde a biblioteca procura jogos, com quantos jogos cada uma tem, qual recebe as instalações e quais estão indisponíveis agora; adicionar pelo navegador de pastas e procurar de novo.',
-    replaces: 'GameFoldersDialog.kt: lista de pastas com “instalações vão para cá”, “indisponível agora”, remover e adicionar.',
-    changes: ['Tela própria em vez de diálogo', 'Quantos jogos cada pasta tem e a última busca', 'Proposta: escolher a pasta que recebe as instalações'],
-    c: 'Igual, com foco nas linhas.',
-    code: 'ui/library/GameFoldersDialog.kt, FolderBrowserScreen.kt, library/GameFolders.kt',
-  },
+  title: 'Pastas de jogos',
   render() { return single({ key: 'folders', title: 'Pastas de jogos', sub: `${FOLDERS.length} pastas`, icon: 'folder', body: fdBody }); },
 });
 
@@ -133,14 +119,7 @@ action('br-pick', el => { BR.pick = Number(el.dataset.v); render(); });
 action('br-use', () => { const p = BR.path.join(' › '); if (!FOLDERS.some(f => f.path === p)) FOLDERS.push({ path: p, games: brCount(brNode(BR.path)), ok: true }); toast(`Pasta adicionada: ${p}`); back(); });
 action('br-install', () => { toast('Instalando… (veja Conteúdo → Instalar)'); back(); });
 screen('browse', {
-  title: 'Navegador de pastas', lote: 'Lote 6 · Primeira abertura e app',
-  info: {
-    what: 'O navegador de pastas do app, para escolher a pasta de jogos ou o arquivo de um pacote: armazenamento interno e cartão SD, o caminho clicável, quantos jogos há em cada pasta e Usar esta pasta.',
-    replaces: 'FolderBrowserScreen.kt: Armazenamento, Subir, lista de subpastas, Abrir e Usar esta pasta.',
-    changes: ['Quantos jogos cada pasta tem, antes de escolher', 'Caminho clicável para voltar vários níveis'],
-    c: 'O direcional percorre as pastas; A abre; B sobe.',
-    code: 'ui/library/FolderBrowserScreen.kt',
-  },
+  title: 'Navegador de pastas',
   variants: [{ label: 'Para', list: [['folder', 'Escolher pasta de jogos'], ['file', 'Escolher arquivo de pacote']], get: () => BR.mode, set: v => { BR.mode = v; BR.pick = null; BR.path = v === 'file' ? ['Armazenamento interno', 'Download'] : ['Armazenamento interno', 'Games']; } }],
   render() { return single({ key: 'browse', title: BR.mode === 'file' ? 'Escolher o arquivo do pacote' : 'Escolher pasta de jogos', sub: BR.path.join(' › '), icon: 'folder', body: brBody }); },
   onBack() { if (BR.path.length > 1) { BR.path.pop(); BR.pick = null; render(); return true; } return false; },
@@ -163,27 +142,13 @@ action('miss-rm', el => { const m = MISSING.splice(Number(el.dataset.v), 1)[0]; 
 action('miss-find', () => { BR.mode = 'file'; go('browse'); });
 action('miss-add', el => { const m = MISSING.splice(Number(el.dataset.v), 1)[0]; FOLDERS.push({ path: '/storage/emulated/0/Download', games: 1, ok: true }); toast(`${m.name} voltou à biblioteca`); });
 screen('missing', {
-  title: 'Jogos que saíram', lote: 'Lote 6 · Primeira abertura e app',
-  info: {
-    what: 'Os jogos que você jogou e cujo arquivo a biblioteca não acha mais, com o motivo, quanto você jogou e o caminho de antes; remover só da lista, ou apontar onde o arquivo está agora.',
-    replaces: 'MissingGamesDialog.kt: lista com o motivo, “Jogado … em N sessões · Title ID” e remover.',
-    changes: ['Capa guardada e o caminho de antes', 'Proposta: procurar o arquivo de novo ou adicionar a pasta onde ele está'],
-    c: 'Igual, com foco nas linhas.',
-    code: 'ui/library/MissingGamesDialog.kt, library/MissingTitles.kt',
-  },
+  title: 'Jogos que saíram',
   render() { return single({ key: 'missing', title: 'Jogos que saíram da biblioteca', sub: `${MISSING.length} jogos`, icon: 'inbox', body: missBody }); },
 });
 
 /* ---------- sem Vulkan ---------- */
 screen('novulkan', {
-  title: 'Sem Vulkan', lote: 'Lote 6 · Primeira abertura e app',
-  info: {
-    what: 'Quando o aparelho não tem GPU Vulkan, uma tela clara do porquê, o que foi verificado e os dados do aparelho para pedir ajuda.',
-    replaces: 'NoVulkanDialog em GameLibraryScreen.kt: “Este aparelho não tem GPU Vulkan; o emulador não pode rodar.” com Sair.',
-    changes: ['As verificações do aparelho à vista', 'Copiar os dados do aparelho'],
-    c: 'Igual; A sai.',
-    code: 'ui/library/GameLibraryScreen.kt (NoVulkanDialog), FirstRun.kt',
-  },
+  title: 'Sem Vulkan',
   render() {
     return `<div class="nv"><section class="card"><h1>${ic('chip', 30)} Este aparelho não tem GPU Vulkan</h1><p style="margin:0;font-size:14px;color:var(--fg2)">O emulador não pode rodar: nenhum dispositivo Vulkan foi encontrado, então os jogos não rodam neste telefone.</p>
       <div data-note="nvcheck">${chkList([['bad', 'GPU Vulkan', 'Nenhum dispositivo Vulkan encontrado: os jogos não rodam neste telefone.'], ['ok', 'ARM de 64 bits', 'arm64-v8a'], ['ok', 'API 30', 'Android 11']])}</div>
@@ -225,14 +190,7 @@ action('up-dl', () => {
   }, 150);
 });
 screen('update', {
-  title: 'Atualizador', lote: 'Lote 6 · Primeira abertura e app', globalScope: true,
-  info: {
-    what: 'O canal de atualização, a versão instalada e o estado da procura: atualização disponível com a lista de mudanças, as etapas de baixar, conferir o SHA-256 e instalar, e os erros numa frase.',
-    replaces: 'O diálogo de atualização (upd_*): disponível, prévia, sem SHA-256, baixar e instalar, página da versão, pular, depois, erros e o atualizador em pausa.',
-    changes: ['Etapas visíveis: baixar, conferir, instalar', 'Canal e versão instalada na mesma tela'],
-    c: 'Igual; A baixa e instala.',
-    code: 'update/* (UpdateChecker, ApkVerifier), ui/settings/UpdateChannelSection.kt',
-  },
+  title: 'Atualizador', globalScope: true,
   variants: [{ label: 'Estado', list: [['available', 'Disponível'], ['preview', 'Prévia sem SHA-256'], ['dl', 'Baixando'], ['install', 'Pronta para instalar'], ['perm', 'Falta permissão'], ['mismatch', 'SHA-256 não confere'], ['latest', 'Mais recente'], ['cooldown', 'Em pausa']], get: () => UP.st === 'verify' ? 'dl' : UP.st, set: v => { clearInterval(UP.timer); UP.st = v; UP.p = v === 'dl' ? 42 : 0; } }],
   render() { return single({ key: 'update', title: 'Atualizações do app', sub: 'v412 · 7bb3409', icon: 'download', body: upBody }); },
 });
@@ -241,14 +199,7 @@ screen('update', {
 const DEVICE = [['Aparelho', 'POCO F7 (Xiaomi)'], ['SoC', 'Snapdragon 8s Gen 4'], ['GPU', 'Adreno 825'], ['Driver do sistema', 'Qualcomm 819.0'], ['Vulkan', '1.3.284'], ['Android', '15 (API 35)'], ['Memória', '12 GB'], ['ABI', 'arm64-v8a']];
 const LICENSES = [['Xenia', 'BSD-3-Clause'], ['Turnip (Mesa)', 'MIT'], ['Kotlin e Jetpack Compose', 'Apache-2.0'], ['libadrenotools', 'BSD-2-Clause'], ['FFmpeg', 'LGPL-2.1'], ['xxHash', 'BSD-2-Clause'], ['Barlow (fonte)', 'OFL-1.1']];
 screen('about', {
-  title: 'Sobre', lote: 'Lote 6 · Primeira abertura e app',
-  info: {
-    what: 'Versão, canal e build; os dados do aparelho para um relato de problema, com copiar tudo; créditos e licenças; atalhos para atualizações, diagnóstico e o assistente de configuração.',
-    replaces: 'AboutScreen.kt: nome, versão, créditos, aparelho em texto selecionável e o botão de licenças.',
-    changes: ['Aparelho em tabela, com copiar tudo', 'Atalhos para atualizações, diagnóstico e o assistente'],
-    c: 'Igual, com foco nos botões.',
-    code: 'ui/about/AboutScreen.kt',
-  },
+  title: 'Sobre',
   render() {
     return single({ key: 'about', title: 'Sobre', sub: 'XenDroid v412', icon: 'info', body: () => `<div class="grid2">
       <section class="card span2"><div class="up-hero"><span class="app-logo">X</span><div><b>XenDroid</b><small>Versão v412 · 7bb3409 · ${esc(label(DEF['@app.updates'], globalOf('@app.updates')))}</small><p class="note" style="margin-top:6px">Xendroid — emulação de Xbox 360 no Android.</p></div></div></section>

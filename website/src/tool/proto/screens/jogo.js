@@ -166,14 +166,7 @@ let hudTimer = 0;
 function hudTick() { clearInterval(hudTimer); hudTimer = setInterval(() => { if (!['ingame', 'hud'].includes(S.route.name)) { clearInterval(hudTimer); return; } const h = app.querySelector('.hud'); if (h && S.route.name === 'ingame') { const kind = IG.hud; const tmp = document.createElement('div'); tmp.innerHTML = hudHTML(kind, IG.hudLook); if (tmp.firstElementChild) h.innerHTML = tmp.firstElementChild.innerHTML; } }, 1000); }
 
 screen('ingame', {
-  title: 'Menu em jogo', lote: 'Lote 2 · Jogo aberto',
-  info: {
-    what: 'O jogo continua visível atrás de um painel lateral (embaixo no retrato) com uma linha de estado, as quatro abas e Continuar sempre à mão. No modo controle o mesmo painel fica maior, com LB/RB para as abas.',
-    replaces: 'InGameMenu.kt e InGameMenuState.kt: abas Gráficos, Sistema, Controles e Sessão em lista, com “Mais opções” e a confirmação de saída.',
-    changes: ['Linha de estado com FPS, p99, temperatura, bateria e driver', '“Sistema” vira “Desempenho”; o limite de FPS ganha os três escopos numa linha', 'Todos os ajustes do jogo acessíveis de dentro do jogo (próxima abertura)', 'Código e endereço dos telefones como controle na própria linha'],
-    c: 'Painel maior, foco por linhas, LB/RB troca de aba, B fecha; dicas de botão no rodapé.',
-    code: 'ui/ingame/InGameMenu.kt, InGameMenuState.kt, EmulatorHostActivity.kt',
-  },
+  title: 'Menu em jogo',
   render() {
     const g = curGame();
     return `<div class="ig ${IG.menu ? 'dim' : ''}" style="${dynVars(g)}"><img class="ig-scene" src="${g.scene || ''}" alt="">
@@ -221,14 +214,7 @@ function ldLive() {
   q('ld-eb').textContent = `Abrindo · ${Math.floor(el / 1000)} s`; q('ld-steps').innerHTML = ldStepsHTML(el); q('ld-note').hidden = !(LD.kind === 'first' && el > 4000);
 }
 screen('loading', {
-  title: 'Carregamento', lote: 'Lote 2 · Jogo aberto',
-  info: {
-    what: 'A capa e o nome do jogo, as etapas reais do boot com o tempo de cada uma, a contagem de pipelines e, embaixo, com que ajustes o jogo está abrindo. Ao terminar, abre o jogo.',
-    replaces: 'GameLoadingScreen.kt e BootStatusLabel.kt (lote 15e): capa, nome, uma etapa por vez com barra e o aviso de primeira vez lenta.',
-    changes: ['As quatro etapas visíveis de uma vez, com o tempo de cada uma', 'Driver, limite, escala, patches e ajustes do jogo em selos'],
-    c: 'Igual; B volta para a biblioteca.',
-    code: 'ui/ingame/GameLoadingScreen.kt, BootStatusLabel.kt',
-  },
+  title: 'Carregamento',
   variants: [
     { label: 'Abertura', list: [['first', 'Primeira vez (monta shaders)'], ['cached', 'Com cache']], get: () => LD.kind, set: v => { LD.kind = v; LD.t0 = Date.now(); } },
     { label: 'Ao terminar', list: [['go', 'Abre o jogo'], ['hold', 'Para no meio']], get: () => LD.demo, set: v => { LD.demo = v; LD.t0 = Date.now(); } },
@@ -260,14 +246,7 @@ const LF = [
   { id: 'running', n: 'Outro jogo rodando', t: 'Um jogo já está rodando', why: 'Saia dele (Voltar → Sair do jogo) antes de abrir outro.', log: 'I host: processo :emu ocupado por 4D5309C9' },
 ];
 screen('launchfail', {
-  title: 'Falha ao abrir', lote: 'Lote 2 · Jogo aberto',
-  info: {
-    what: 'Quando o jogo não abre, a tela diz o motivo em uma frase, mostra as últimas linhas do log e oferece o próximo passo certo para aquele motivo. O seletor “Motivo” na barra troca o exemplo.',
-    replaces: 'O fim de sessão do lote 15e (Voltar, Tentar de novo num processo :emu novo, Compartilhar logs) e as mensagens host_* do EmulatorHostActivity.',
-    changes: ['Últimas linhas do log ali mesmo', 'Quando a falha aponta para o driver: tentar uma vez com o driver do sistema', 'Restauração interrompida leva direto aos saves do jogo'],
-    c: 'Igual, com A no botão principal e B para voltar.',
-    code: 'EmulatorHostActivity.kt, ui/ingame/GameLoadingScreen.kt',
-  },
+  title: 'Falha ao abrir',
   variants: [{ label: 'Motivo', list: LF.map(x => [x.id, x.n]), get: () => S.route.p.lf || 'core', set: v => { S.route.p.lf = v; } }],
   render() {
     const g = curGame(), f = LF.find(x => x.id === (S.route.p.lf || 'core')) || LF[0];
@@ -295,14 +274,7 @@ const THERMAL = {
   throttling: 'O telefone chegou ao limite de calor e está reduzindo o desempenho. Resolução ou limite de FPS menores, ou desligar o clock máximo forçado da GPU ou a geração de quadros, o mantêm mais frio.',
 };
 screen('hud', {
-  title: 'HUD de desempenho', lote: 'Lote 2 · Jogo aberto',
-  info: {
-    what: 'Os três níveis do HUD sobre o jogo: compacto (FPS e tempo de quadro), completo (CPU, GPU, RAM, temperaturas, potência) e o painel com ritmo, trabalho, calor e os ajustes em vigor. Nível, aparência e aviso térmico mudam pelos seletores da barra; no app, pelo menu em jogo → Desempenho.',
-    replaces: 'O HUD do EmulatorHostActivity e PerformancePanelText.kt (lotes 15g e 15n).',
-    changes: ['Sem mudança de conteúdo; o painel ganha títulos de seção e cores de alerta', 'O aviso térmico vira uma faixa discreta embaixo, que dá para fechar'],
-    c: 'Igual (o HUD não muda com o modo); sem os controles de toque.',
-    code: 'ui/ingame/PerformancePanelText.kt, EmulatorHostActivity.kt',
-  },
+  title: 'HUD de desempenho',
   variants: [
     { label: 'Nível', list: [['compact', 'Compacto'], ['full', 'Completo'], ['panel', 'Painel']], get: () => IG.hud === 'off' ? 'compact' : IG.hud, set: v => { IG.hud = v; } },
     { label: 'Aparência', list: [['box', 'Caixa'], ['outline', 'Texto com contorno'], ['plain', 'Texto simples']], get: () => IG.hudLook, set: v => { IG.hudLook = v; } },

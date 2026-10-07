@@ -13,38 +13,43 @@ const COLS = ['Corrida', 'Campanha', 'Zerar em 2026'];
 const FMT = { ISO: 'ISO', ZAR: 'ZAR', GOD: 'GOD', XEX: 'Pasta XEX', STFS: 'XBLA' };
 const FICTIONAL = 'FFFF0001';
 const BASE_PATH = '/storage/emulated/0/XenDroid/Jogos/';
-/* aparência das capas geradas e o estado de exemplo de cada jogo */
+/* estado de exemplo de cada jogo; pal é só a cor do marcador de capa (o simulador não tem as
+   capas nem os ícones reais dos jogos) */
 const DEMO = [
-  { id: '4D5309C9', fmt: 'ISO', size: '7,8 GB', pal: ['#260d06', '#c4501c', '#ffd27a'], motif: 'sun', last: 1, ago: 'há 2 h', playMin: 395, runs: 31, fav: 1, cols: ['Corrida'], tu: 'TU4', dlc: [], saves: 2, backup: 'há 1 semana', cache: [5, 112] },
-  { id: '4D530AA4', fmt: 'ISO', size: '7,1 GB', pal: ['#06202a', '#1c7d8c', '#ffe08a'], motif: 'bands', last: 3, ago: 'ontem', playMin: 182, runs: 12, fav: 1, cols: ['Corrida'], tu: 'TU2', dlc: [], saves: 1, backup: 'nunca', cache: [4, 96] },
-  { id: '4D5308AB', fmt: 'ISO', size: '7,9 GB', pal: ['#191312', '#5b1a17', '#d8d1c4'], motif: 'shards', last: 2, ago: 'há 5 h', playMin: 254, runs: 9, fav: 0, cols: ['Campanha'], tu: 'TU6', dlc: [], saves: 3, backup: 'há 3 dias', cache: [6, 133] },
-  { id: '4D530919', fmt: 'ISO', size: '7,6 GB', pal: ['#081f2b', '#1d6f86', '#f0c96a'], motif: 'rings', last: 4, ago: 'há 2 dias', playMin: 141, runs: 6, fav: 1, cols: ['Campanha'], tu: 'TU10', dlc: [], saves: 1, backup: 'nunca', cache: [3, 74] },
-  { id: '45410961', fmt: 'GOD', size: '6,2 GB', pal: ['#0c1418', '#3a5260', '#e9e2cf'], motif: 'grid', last: 6, ago: 'há 1 semana', playMin: 63, runs: 4, fav: 0, cols: ['Corrida'], tu: null, dlc: [], saves: 1, backup: 'nunca', cache: [2, 41] },
-  { id: '53450812', fmt: 'ISO', size: '6,8 GB', pal: ['#061a2d', '#1a5a9a', '#9fe3ff'], motif: 'bokeh', last: 5, ago: 'há 4 dias', playMin: 88, runs: 5, fav: 0, cols: [], tu: null, dlc: [], saves: 1, backup: 'nunca', cache: [3, 58] },
-  { id: '4D53085B', fmt: 'ISO', size: '7,2 GB', pal: ['#14070a', '#7d1020', '#f4e2c0'], motif: 'slash', last: 7, ago: 'há 2 semanas', playMin: 34, runs: 3, fav: 0, cols: ['Campanha'], tu: null, dlc: [], saves: 0, backup: 'nunca', cache: [1, 22] },
-  { id: '4541098E', fmt: 'ISO', size: '7,4 GB', pal: ['#0d1a0f', '#2f6b3a', '#e8d58a'], motif: 'mountains', last: 8, ago: 'há 3 semanas', playMin: 21, runs: 2, fav: 0, cols: [], tu: null, dlc: [], saves: 0, backup: 'nunca', cache: [1, 17] },
-  { id: '545407F2', fmt: 'ZAR', size: '5,4 GB', pal: ['#05080e', '#1b2c4a', '#cfe1ff'], motif: 'grid', last: 9, ago: 'há 1 mês', playMin: 47, runs: 3, fav: 0, cols: ['Zerar em 2026'], tu: 'TU8', dlc: [], saves: 1, backup: 'nunca', cache: [2, 38] },
-  { id: '5454082B', fmt: 'ISO', size: '7,1 GB', pal: ['#2a1005', '#8e3a14', '#f2b35a'], motif: 'mountains', discs: 2, sub: 'GOTY', last: 10, ago: 'há 1 mês', playMin: 120, runs: 5, fav: 1, cols: ['Zerar em 2026'], tu: null, dlc: ['Undead Nightmare'], saves: 2, backup: 'ontem', cache: [3, 64] },
-  { id: FICTIONAL, name: 'Jogo de exemplo', fictional: true, fmt: 'XEX', size: '2,1 GB', pal: ['#04050a', '#1c0f3a', '#3ef0ff'], iconStyle: 'neon', last: 11, ago: 'há 2 meses', playMin: 9, runs: 3, fav: 0, cols: [], tu: null, dlc: [], saves: 0, backup: 'nunca', cache: [1, 9], noFrames: 'A última execução fechou por uma falha nativa antes do primeiro quadro (exemplo fictício).' },
+  { id: '4D5309C9', fmt: 'ISO', size: '7,8 GB', pal: ['#260d06', '#c4501c', '#ffd27a'], last: 1, ago: 'há 2 h', playMin: 395, runs: 31, fav: 1, cols: ['Corrida'], tu: 4, dlc: [], saves: 2, cache: [5, 112] },
+  { id: '4D530AA4', fmt: 'ISO', size: '7,1 GB', pal: ['#06202a', '#1c7d8c', '#ffe08a'], last: 3, ago: 'ontem', playMin: 182, runs: 12, fav: 1, cols: ['Corrida'], tu: 2, dlc: [], saves: 1, cache: [4, 96] },
+  { id: '4D5308AB', fmt: 'ISO', size: '7,9 GB', pal: ['#191312', '#5b1a17', '#d8d1c4'], last: 2, ago: 'há 5 h', playMin: 254, runs: 9, fav: 0, cols: ['Campanha'], tu: 6, dlc: [], saves: 3, cache: [6, 133] },
+  { id: '4D530919', fmt: 'ISO', size: '7,6 GB', pal: ['#081f2b', '#1d6f86', '#f0c96a'], last: 4, ago: 'há 2 dias', playMin: 141, runs: 6, fav: 1, cols: ['Campanha'], tu: 10, dlc: [], saves: 1, cache: [3, 74] },
+  { id: '45410961', fmt: 'GOD', size: '6,2 GB', pal: ['#0c1418', '#3a5260', '#e9e2cf'], last: 6, ago: 'há 1 semana', playMin: 63, runs: 4, fav: 0, cols: ['Corrida'], tu: null, dlc: [], saves: 1, cache: [2, 41] },
+  { id: '53450812', fmt: 'ISO', size: '6,8 GB', pal: ['#061a2d', '#1a5a9a', '#9fe3ff'], last: 5, ago: 'há 4 dias', playMin: 88, runs: 5, fav: 0, cols: [], tu: null, dlc: [], saves: 1, cache: [3, 58] },
+  { id: '4D53085B', fmt: 'ISO', size: '7,2 GB', pal: ['#14070a', '#7d1020', '#f4e2c0'], last: 7, ago: 'há 2 semanas', playMin: 34, runs: 3, fav: 0, cols: ['Campanha'], tu: null, dlc: [], saves: 0, cache: [1, 22] },
+  { id: '4541098E', fmt: 'ISO', size: '7,4 GB', pal: ['#0d1a0f', '#2f6b3a', '#e8d58a'], last: 8, ago: 'há 3 semanas', playMin: 21, runs: 2, fav: 0, cols: [], tu: null, dlc: [], saves: 0, cache: [1, 17] },
+  { id: '545407F2', fmt: 'ZAR', size: '5,4 GB', pal: ['#05080e', '#1b2c4a', '#cfe1ff'], last: 9, ago: 'há 1 mês', playMin: 47, runs: 3, fav: 0, cols: ['Zerar em 2026'], tu: 8, dlc: [], saves: 1, cache: [2, 38] },
+  { id: '5454082B', fmt: 'ISO', size: '7,1 GB', pal: ['#2a1005', '#8e3a14', '#f2b35a'], discs: 2, last: 10, ago: 'há 1 mês', playMin: 120, runs: 5, fav: 1, cols: ['Zerar em 2026'], tu: null, dlc: ['Undead Nightmare'], saves: 2, cache: [3, 64] },
+  { id: FICTIONAL, name: 'Jogo de exemplo', fictional: true, fmt: 'XEX', size: '2,1 GB', pal: ['#04050a', '#1c0f3a', '#3ef0ff'], last: 11, ago: 'há 2 meses', playMin: 9, runs: 3, fav: 0, cols: [], tu: null, dlc: [], saves: 0, cache: [1, 9], noFrames: true, crash: 'SIGSEGV em libvulkan_turnip.so (exemplo fictício)' },
 ];
 /* sessão de exemplo: o FPS mediano e o mais baixo seguem a medição do README; o resto é ilustrativo */
 function demoPerf(d) {
-  if (d.fictional) return { t: 24, sd: 4.2, low: 9, lowP: .22, sec: 420, cap: 30, first: 74, pipes: [2410, 11.2], audio: ['AAudio', 25200, 180], bat: [33, 43, 43], hz: 120, lim: 30, drv: 'Turnip (exemplo)', example: true };
+  if (d.fictional) return null;
   const m = XDR.medidas[d.id];
   if (!m) return null;
   const cap = m.t <= 31 ? 30 : 60;
-  return { t: m.t, sd: m.range ? Math.max(.6, (m.range[1] - m.range[0]) / 3) : .8, low: m.low, lowP: m.lowShare, sec: 1200 + d.playMin * 2, cap, first: 40 + (d.cache[1] % 30), pipes: [1200 + d.cache[1] * 9, +(3 + d.cache[1] / 25).toFixed(1)], audio: ['AAudio', 72000, 30], bat: [31, 40, 39], hz: 120, lim: cap, drv: 'Turnip (exemplo)', example: true, readme: m };
+  return { t: m.t, sd: m.range ? Math.max(.6, (m.range[1] - m.range[0]) / 3) : .8, low: m.low != null ? m.low : m.t - 2, lowP: m.low != null ? m.lowShare : .03, sec: 1200 + d.playMin * 2, cap, first: 40 + (d.cache[1] % 30), pipes: [1200 + d.cache[1] * 9, +(3 + d.cache[1] / 25).toFixed(1)], audio: ['AAudio', 72000, 30], bat: [31, 40, 39], hz: 120, lim: cap, drv: 'Turnip A (exemplo)', example: true, readme: m };
 }
 const GAMES = DEMO.map(d => {
   const real = XDR.jogos[d.id] || {};
   const name = d.name || (XDR.medidas[d.id] && XDR.medidas[d.id].jogo) || real.nome || d.id;
-  return Object.assign({ discs: 1, media: null, compat: null }, d, {
+  // patches reais do catálogo, um grupo por arquivo; cada entrada tem um id próprio para o interruptor
+  const pfiles = (real.arquivos || []).map((f, i) => ({ label: f.rotulo, entries: f.entradas.map((e, j) => ({ id: i + ':' + j, n: e.n, d: e.d, on: !!e.on })) }));
+  const patches = pfiles.flatMap(f => f.entries);
+  return Object.assign({ discs: 1, compat: null }, d, {
     name,
-    patches: real.patches || [],
-    pOn: [],
+    pfiles,
+    patches,
+    pOn: patches.filter(e => e.on).map(e => e.id),
     quirks: real.correcoes || 0,
     perf: demoPerf(d),
-    path: d.fmt === 'XEX' ? BASE_PATH + name : d.fmt === 'GOD' || d.fmt === 'STFS' ? BASE_PATH + d.id : BASE_PATH + name + (d.fmt === 'ZAR' ? '.zar' : '.iso'),
+    path: d.fmt === 'XEX' ? BASE_PATH + name + '/default.xex' : d.fmt === 'GOD' || d.fmt === 'STFS' ? BASE_PATH + d.id : BASE_PATH + name + (d.fmt === 'ZAR' ? '.zar' : '.iso'),
   });
 });
 const GBY = Object.fromEntries(GAMES.map(g => [g.id, g]));

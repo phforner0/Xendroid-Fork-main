@@ -10,28 +10,28 @@ const isFav = g => FAVS.has(g.id);
 /* ---------- capas, selos ---------- */
 function coverHTML(g, cls = '', named = false) {
   const vt = named ? ' style="view-transition-name:hero-cover"' : '';
-  const badges = (isFav(g) ? `<span class="cv-fav">${ic('starF', 14)}</span>` : '') + (g.discs > 1 ? `<span class="cv-disc">${g.discs} discos</span>` : '');
+  const badges = (isFav(g) ? `<span class="cv-fav">${ic('starF', 14)}</span>` : '') + (g.discs > 1 ? `<span class="cv-disc">Disco 1/${g.discs}</span>` : '');
   if (g.cover) return `<span class="cover ${cls}" data-gid="${g.id}"${vt}><img class="art" src="${g.cover}" alt="" draggable="false">${badges}</span>`;
   return `<span class="cover smart ${cls}" data-gid="${g.id}"${vt}><img class="bg" src="${g.icon || ''}" alt="" draggable="false"><img class="ico" src="${g.icon || ''}" alt="" draggable="false"><span class="nm">${esc(g.name)}</span>${badges}</span>`;
 }
 const pill = (g, short) => `<span class="pill st-${stOf(g)}">${CS[stOf(g)][short ? 1 : 0]}</span>`;
 const dot = g => `<i class="dot st-${stOf(g)}"></i>`;
 const recents = () => GAMES.filter(g => g.runs).sort((a, b) => a.last - b.last);
-function sortList(l, s) { const by = (a, b) => a.name.localeCompare(b.name, 'pt-BR'); if (s === 'az') return l.sort(by); if (s === 'za') return l.sort((a, b) => by(b, a)); if (s === 'fmt') return l.sort((a, b) => a.fmt.localeCompare(b.fmt) || by(a, b)); return l.sort((a, b) => (a.last || 99) - (b.last || 99) || by(a, b)); }
+function sortList(l, s) { const by = (a, b) => a.name.localeCompare(b.name, 'pt-BR'); if (s === 'az') return l.sort(by); if (s === 'za') return l.sort((a, b) => by(b, a)); if (s === 'fmt') return l.sort((a, b) => FMT_ORDER.indexOf(a.fmt) - FMT_ORDER.indexOf(b.fmt) || by(a, b)); return l.sort((a, b) => (a.last || 99) - (b.last || 99) || by(a, b)); }
 function libList() {
   let l = GAMES.slice(); const f = S.lf;
   if (f === 'fav') l = l.filter(isFav); else if (f.startsWith('col:')) l = l.filter(g => g.cols.includes(f.slice(4))); else if (f.startsWith('fmt:')) l = l.filter(g => g.fmt === f.slice(4));
   if (S.q.trim()) { const q = norm(S.q.trim()); l = l.filter(g => norm(g.name).includes(q) || g.id.toLowerCase().includes(q)); }
   return sortList(l, S.sort);
 }
-const SORTS = [['recent', 'Jogados recentemente'], ['az', 'Nome A–Z'], ['za', 'Nome Z–A'], ['fmt', 'Formato']];
+const SORTS = [['az', 'Nome A–Z'], ['za', 'Nome Z–A'], ['fmt', 'Formato'], ['recent', 'Jogados recentemente']];
+const FMT_ORDER = ['ISO', 'ZAR', 'GOD', 'XEX', 'STFS'];
 function filterChips(pfx) {
   const n = f => f === 'all' ? GAMES.length : f === 'fav' ? GAMES.filter(isFav).length : f.startsWith('col:') ? GAMES.filter(g => g.cols.includes(f.slice(4))).length : GAMES.filter(g => g.fmt === f.slice(4)).length;
   const chip = (f, t) => `<button class="chip" data-act="lf" data-v="${esc(f)}" aria-pressed="${S.lf === f}" data-k="${pfx}-${esc(f)}">${t}<span class="n">${n(f)}</span></button>`;
-  const fmts = [...new Set(GAMES.map(g => g.fmt))];
-  return chip('all', 'Todos') + chip('fav', 'Favoritos') + COLS.map(c => chip('col:' + c, esc(c))).join('') + '<span class="sepr" aria-hidden="true"></span>' + fmts.map(f => chip('fmt:' + f, FMT[f])).join('');
+  const fmts = FMT_ORDER.filter(f => GAMES.some(g => g.fmt === f));
+  return chip('all', 'Todos') + chip('fav', `${ic('star', 14)} Favoritos`) + COLS.map(c => chip('col:' + c, esc(c))).join('') + (fmts.length > 1 ? '<span class="sepr" aria-hidden="true"></span>' + fmts.map(f => chip('fmt:' + f, FMT[f])).join('') : '');
 }
-const perfLine = g => { const st = perfOf(g); return st ? `<span>Última sessão: <b>${st.p50} FPS</b> na mediana</span>` : ''; };
 const profileOf = xuid => PROFILES.find(p => p.xuid === xuid) || PROFILE_TRASH.find(p => p.xuid === xuid);
 const activeProfile = () => PROFILES.find(p => p.active) || PROFILES[0];
 const avatarImg = (p, cls = 'avatar-s') => `<img class="${cls}" src="${p.avatar || ''}" alt="" draggable="false">`;
@@ -82,7 +82,7 @@ const globalGroupChanged = gid => Object.keys(GLOBAL).filter(k => DEF[k] && DEF[
 /* ---------- controles ---------- */
 function control(d, g, v, dis) {
   const val = shown(g, d.k), k = d.k, D = dis ? ' disabled' : '';
-  if (d.ty === 'action') return `<button class="btn sm" data-act="toast" data-msg="Logs da sessão exportados para Downloads (protótipo)." data-k="ctl-${k}">${ic('download', 16)} Exportar</button>`;
+  if (d.ty === 'action') return `<button class="btn sm" data-act="toast" data-msg="No app, grava as sessões guardadas e a atual num ZIP em Downloads, sem ocultar dados." data-k="ctl-${k}">${ic('download', 16)} Exportar</button>`;
   if (d.ty === 'bool') return `<button class="tg" role="switch" aria-checked="${!!val}" aria-label="${esc(d.t)}" data-act="set" data-key="${k}" data-v="${!val}" data-k="ctl-${k}"${D}></button>`;
   if (d.ty === 'text') return `<input class="txt" type="text" value="${esc(val)}" placeholder="${esc(d.ph || '')}" aria-label="${esc(d.t)}" data-act-change="set" data-key="${k}" data-k="ctl-${k}" autocomplete="off" spellcheck="false"${D}>`;
   if (d.ty === 'list') {
@@ -170,12 +170,12 @@ function settingsPanel(g, v, group) {
         <button class="btn sm ghost" data-act="desc" data-k="b-desc" aria-pressed="${S.showDesc}">${ic('info', 16)} ${S.showDesc ? 'Menos texto' : 'Mais texto'}</button>
       </span>
     </div>
-    <p class="setp-note">${ic('info', 15)}<span>${!g ? `Valem para todos os jogos que não mudam o mesmo ajuste. ${Object.keys(GLOBAL).filter(k => DEF[k] && !appOnly(k)).length} ajustes fora do padrão.` : S.editScope === 'game' ? `Valem só para <b>${esc(g.name)}</b>, em todos os discos e cópias; o resto segue o global.${ovn ? ' <button class="link" data-act="reset-all" data-k="b-resetall">Voltar tudo ao global</button>' : ''}` : 'Valem para todos os jogos que não mudam o mesmo ajuste.'}</span></p>
+    <p class="setp-note">${ic('info', 15)}<span>${!g ? `Valem para todos os jogos que não mudam o mesmo ajuste. ${Object.keys(GLOBAL).filter(k => DEF[k] && !appOnly(k)).length} fora do padrão.` : S.editScope === 'game' ? `Valem só para <b>${esc(g.name)}</b>, em todos os discos e cópias; o resto segue o global.${ovn ? ' <button class="link" data-act="reset-all" data-k="b-resetall">Voltar tudo ao global</button>' : ''}` : 'Valem para todos os jogos que não mudam o mesmo ajuste.'}</span></p>
     <div id="setp-list" data-v="${v}" data-group="${group || ''}" data-global="${g ? '' : '1'}">${setListHTML(g, v, group)}</div>
   </div>`;
 }
-function quickPanel(g, v) {
-  const rows = PINNED.map(k => DEF[k]).filter(Boolean);
+function quickPanel(g, v, noDriver) {
+  const rows = PINNED.filter(k => !(noDriver && k === 'Vulkan.vulkan_lib_path')).map(k => DEF[k]).filter(Boolean);
   if (v === 'c') return `<div class="c-rows">${rows.map(d => cRow(d, g)).join('')}</div>`;
   return `<div class="quick" data-note="quick">${rows.map(d => settingRow(d, g, 'q')).join('')}</div>`;
 }
@@ -187,81 +187,146 @@ function drow(o) {
   return `<div class="drow"${o.note ? ` data-note="${o.note}"` : ''}>${lead}<div><b>${o.t}</b>${o.s ? `<small>${o.s}</small>` : ''}</div><div class="row">${o.acts || ''}</div></div>`;
 }
 
-/* ---------- abas da ficha ---------- */
-function perfHTML(g, compact) {
-  const st = perfOf(g), p = g.perf;
-  if (!g.runs) return `<div class="empty">Nenhuma sessão ainda. Depois da primeira aparecem aqui FPS por segundo, tempo de quadro, pipelines, áudio e temperatura.</div>`;
-  if (!st) return `<p class="note">${esc(g.noFrames || 'Sem números de desempenho nesta sessão.')}</p>`;
+/* ---------- abas da ficha (os cartões de GameCards.kt) ---------- */
+const lastSessionText = g => { const st = perfOf(g); return st ? `${st.p50} FPS mediana · ${st.p5} nos piores 5%` : g.runs ? 'sem quadros' : null; };
+const fmtMs = ms => { const m = Math.round(ms / 60000); return m >= 60 ? fmtMin(m) : m ? `${m} min` : `${Math.round(ms / 1000)} s`; };
+/* as sessões de exemplo de um jogo, da mais nova para a mais velha (a primeira é a última sessão) */
+function runsOf(g) {
+  if (!g.runs) return [];
+  const st = perfOf(g), r = rng(hash(g.id + ':runs')), list = [];
+  const whens = [g.ago, 'há 3 dias', 'há 6 dias', 'há 9 dias', 'há 2 semanas'];
+  for (let i = 0; i < Math.min(g.runs, 5); i++) {
+    if (g.fictional) { list.push(i === 0 ? { when: g.ago, ms: 9000, state: 'failed', why: 'falha nativa (sinal 11)', drv: 'Turnip B (exemplo)' } : { when: whens[i], ms: (5 + i) * 60000, state: i === 1 ? 'interrupted' : 'ended', why: 'encerrada pelo Android (pouca memória)', drv: 'Turnip A (exemplo)' }); continue; }
+    const d = i === 0 ? 0 : Math.round((r() - .5) * 3);
+    list.push({ when: whens[i], ms: (i === 0 ? 48 : 12 + Math.round(r() * 40)) * 60000, state: 'ended', p50: st ? st.p50 + d : null, p5: st ? st.p5 + d : null, ft99: st ? st.ft99 + Math.round(r() * 6) : null, drv: i === 3 ? 'Driver do sistema' : g.perf ? g.perf.drv : 'Driver do sistema' });
+  }
+  return list;
+}
+const runEnding = x => x.state === 'failed' ? `Falhou depois de ${fmtMs(x.ms)}: ${x.why}` : x.state === 'interrupted' ? `Interrompida depois de ${fmtMs(x.ms)}: ${x.why}` : `Terminou normalmente depois de ${fmtMs(x.ms)}`;
+function perfHTML(g, full) {
+  const st = perfOf(g), p = g.perf, last = runsOf(g)[0];
+  if (!g.runs) return `<p class="note" style="font-size:13px">Nenhuma sessão ainda. Depois da primeira aparecem aqui FPS por segundo, tempo de quadro, pipelines, áudio e temperatura.</p>`;
+  const crash = full && g.crash ? `<p class="warnline" role="note">${ic('warn', 15)} Falha nativa: ${esc(g.crash)}</p>` : '';
+  if (!st) return `<p style="font-size:13px;color:var(--fg2)">${esc(runEnding(last))}</p><p class="note">Sem números de desempenho nesta sessão.</p>${crash}`;
   const k = `<div class="kpis">
       <div class="kpi"><b>${st.p50}<small>FPS</small></b><span>mediana dos segundos</span></div>
       <div class="kpi"><b>${st.p5}<small>FPS</small></b><span>ou menos em 5% dos segundos</span></div>
       <div class="kpi"><b>${st.ft99}<small>ms</small></b><span>99% dos quadros abaixo disso</span></div>
-      ${compact ? '' : `<div class="kpi"><b>${p.first}<small>s</small></b><span>até o primeiro quadro</span></div>`}
+      <div class="kpi"><b>${p.first}<small>s</small></b><span>até o primeiro quadro</span></div>
     </div>`;
   const chart = `<figure class="chart">${fpsSVG(st)}<figcaption>Segundos em cada FPS (média de cada segundo; ${nf(st.sec)} s medidos, pausas fora)</figcaption></figure>`;
-  if (compact) return k + chart;
+  const example = p.readme ? `<p class="note" data-note="perfex">Números de exemplo: ${p.readme.low != null ? 'a mediana e a queda seguem' : 'a mediana segue'} a medição publicada no README (${esc(p.readme.fps)}${p.readme.obs ? '; ' + esc(p.readme.obs) : ''}); o resto é ilustrativo.</p>` : '';
+  if (!full) return k + chart + example;
   return k + chart + `<figure class="chart">${ftSVG(st)}<figcaption>Quadros por tempo de quadro; metade abaixo de ${st.ft50} ms</figcaption></figure>
     <dl class="kv">
       <dt>Pipelines criados</dt><dd>${nf(p.pipes[0])} (${String(p.pipes[1]).replace('.', ',')} s)</dd>
       <dt>Áudio (${p.audio[0]})</dt><dd>${nf(p.audio[2])} de ${nf(p.audio[1])} blocos com falha</dd>
       <dt>Bateria</dt><dd>${p.bat[0]} → ${p.bat[1]} °C (fim ${p.bat[2]} °C)</dd>
-      <dt>Limite e tela</dt><dd>${p.lim} FPS · ${p.hz} Hz</dd>
+      <dt>Limite e tela</dt><dd>${p.lim ? p.lim + ' FPS' : 'sem limite'} · ${p.hz} Hz</dd>
       <dt>Driver usado</dt><dd>${esc(p.drv)}</dd>
-    </dl>`;
+      <dt>Jogou como</dt><dd>${esc(activeProfile().tag)}</dd>
+    </dl><p class="note">${esc(runEnding(last))}</p>${example}${crash}`;
+}
+/* linha do tempo como o app grava (RunEvents.kt): "m:ss tipo · detalhe", em inglês */
+function runEvents(g) {
+  const p = g.perf;
+  if (g.fictional) return [['0:00', 'boot · run started'], ['0:00', 'driver · Turnip B (exemplo)'], ['0:01', 'surface · created, booting the core'], ['0:03', `title · ${g.id} running`], ['0:09', 'error · native crash (signal 11)']];
+  if (!p) return [];
+  const end = Math.round(p.sec / 60), at = (m, s) => `${m}:${String(s).padStart(2, '0')}`;
+  return [['0:00', 'boot · run started'], ['0:00', `driver · ${p.drv}`], ['0:01', 'surface · created, booting the core'], ['0:02', `title · ${g.id} running`],
+    [at(0, p.first), `boot · first guest frames after ${p.first} s`], ['3:12', 'controller · connected (vendor 0x054C product 0x0CE6) as P1'], ['3:12', 'touch controls · hidden: a controller is playing P1'],
+    ['12:05', 'compile · pipeline creation burst started'], ['12:07', `compile · ${Math.round(p.pipes[0] / 9)} pipelines, 1840 ms over 2 s`],
+    [at(Math.round(end * .55), 40), 'thermal · moderate'], [at(Math.round(end * .7), 2), 'menu · opened, guest paused'], [at(Math.round(end * .7), 31), 'menu · closed'],
+    [at(end, 19), 'exit · user exit']];
 }
 function timelineHTML(g) {
-  if (!g.runs || !g.perf) return '';
-  const p = g.perf, end = Math.round(p.sec / 60);
-  const ev = [['00:00', 'g', `Início · ${p.drv}`], [`00:${String(p.first).padStart(2, '0')}`, '', 'Primeiro quadro'], ['03:12', '', 'Controle conectado: P1'], ['12:05', 'w', `Engasgo: ${Math.round(p.pipes[0] / 400)} pipelines em 1,8 s`], [`${Math.round(end * .55)}:40`, 'w', `Aviso térmico: bateria ${p.bat[1]} °C`], [`${Math.round(end * .7)}:02`, '', 'Pausa (menu do jogo)'], [`${end}:19`, 'g', `Fim · ${end} min`]];
-  return `<ol class="tl">${ev.map(e => `<li><time>${e[0]}</time><i class="${e[1]}"></i><span>${esc(e[2])}</span></li>`).join('')}</ol>`;
+  const ev = runEvents(g); if (!ev.length) return '';
+  const shown = ev.slice(0, 14);
+  return `<section class="card span2" data-note="timeline"><h3>${ic('timeline', 15)} Linha do tempo da última execução<span class="r">${ev.length} eventos: ciclo de vida, pausas, travadas, calor, controles, erros</span></h3>
+    <ol class="tl">${shown.map(e => `<li><time>${e[0]}</time><i class="${/^(error|exit · user)/.test(e[1]) ? (e[1].startsWith('error') ? 'e' : 'g') : /^(thermal|compile · pipeline)/.test(e[1]) ? 'w' : ''}"></i><span lang="en">${esc(e[1])}</span></li>`).join('')}</ol></section>`;
+}
+/* "Ajustes em vigor": o que a sessão usou fora dos padrões do núcleo, como o núcleo escreve */
+function inEffectLines(g) {
+  const lines = [];
+  const add = (k, v, own) => {
+    const d = DEF[k]; if (!d || k.startsWith('@') || k === 'Vulkan.vulkan_lib_path') return;
+    const [sec, name] = k.split('.'); const cv = CVARS[name]; if (!cv) return;
+    const raw = rawOf(d, v), def = k in VERSION.padraoNucleo ? VERSION.padraoNucleo[k] : rawOf(d, d.def);
+    if (raw === def) return;
+    const q = x => (cv[1] === 'string' ? `"${x}"` : x);
+    lines.push(`${cv[0]}|${name} = ${q(raw)} (default ${q(def)})${own ? ' · this game' : ''}`);
+  };
+  for (const [k, v] of Object.entries(GLOBAL)) if (!(OV[g.id] && k in OV[g.id])) add(k, v, false);
+  for (const [k, v] of Object.entries(OV[g.id] || {})) {
+    if (k === '@res') { add('GPU.draw_resolution_scale_x', v, true); add('GPU.draw_resolution_scale_y', v, true); } else add(k, v, true);
+  }
+  return lines.sort();
 }
 function compatHTML(g) {
   const c = g.compat;
-  return `<div class="row">${pill(g)}${c ? `<span class="muted" style="font-size:12px">${c.date}</span>` : ''}</div>
-    ${c ? `<p style="font-size:13px">${esc(c.note)}</p><p class="note">Build ${esc(c.build)} · ${esc(c.gpu)} · ${esc(c.drv)}</p>` : '<p class="note">Você ainda não avaliou este jogo.</p>'}
+  return `<div class="row">${pill(g, true)}${c ? `<span class="muted" style="font-size:12px">${c.date}</span>` : ''}</div>
+    ${c ? `${c.note ? `<p style="font-size:13px">${esc(c.note)}</p>` : ''}<p class="note">Build ${esc(c.build)} · ${esc(c.gpu)} · ${esc(c.drv)}</p>` : '<p class="note">Você ainda não avaliou este jogo.</p>'}
     <div class="row"><button class="btn sm" data-act="modal" data-v="rate" data-k="rate-${g.id}">${c ? 'Avaliar de novo' : 'Avaliar'}</button></div>
     <p class="note">Avalie você mesmo: os resultados ficam por build e driver, nunca são adivinhados.</p>`;
 }
 function patchesHTML(g, limit) {
   if (!g.patches.length) return '<p class="note">Nenhum patch para este jogo na pasta de patches.</p>';
-  const list = limit ? g.patches.slice(0, limit) : g.patches;
-  return `<div class="plist">${list.map(p => `<div class="prow"><span>${esc(p)}</span><button class="tg" role="switch" aria-checked="${PON[g.id].has(p)}" aria-label="${esc(p)}" data-act="patch" data-v="${esc(p)}" data-k="pt-${esc(p)}"></button></div>`).join('')}</div>${limit && g.patches.length > limit ? `<button class="link" data-act="gsec" data-v="cont" data-k="more-patches">Ver os ${g.patches.length} patches</button>` : ''}`;
+  const many = g.pfiles.length > 1, fileOf = e => g.pfiles[Number(e.id.split(':')[0])];
+  const row = (e, sub) => `<div class="prow"><span>${esc(e.n)}${sub ? `<small>${esc(sub)}</small>` : ''}</span><button class="tg" role="switch" aria-checked="${PON[g.id].has(e.id)}" aria-label="${esc(e.n)}" data-act="patch" data-v="${esc(e.id)}" data-k="pt-${esc(e.id)}"></button></div>`;
+  const body = limit
+    ? g.patches.slice(0, limit).map(e => row(e, many ? fileOf(e).label : '')).join('')
+    : g.pfiles.map(f => (many ? `<p class="pfile">${esc(f.label)}</p>` : '') + f.entries.map(e => row(e, e.d)).join('')).join('');
+  return `<div class="plist">${body}</div>${limit && g.patches.length > limit ? `<button class="link" data-act="gsec" data-v="cont" data-k="more-patches">Ver os ${g.patches.length} patches</button>` : ''}`;
+}
+const patchTrail = g => g.patches.length ? `${PON[g.id].size} de ${g.patches.length} ativados` : '';
+function contentFacts(g, withCache) {
+  return `<dl class="kv"><dt>Title update</dt><dd>${g.tu ? `Title Update ${g.tu}` : 'nenhum'}</dd><dt>DLC</dt><dd>${g.dlc.length || 'nenhum'}</dd>${withCache ? `<dt>Cache de shaders</dt><dd>${g.cache[0] ? `${g.cache[1]} MB` : 'nenhum'}</dd>` : ''}</dl>`;
 }
 function contentHTML(g) {
   return `<div class="grid2">
-    <section class="card span2" data-note="patches"><h3>${ic('patch', 15)} Patches do jogo<span class="r">${PON[g.id].size} de ${g.patches.length} ativados</span></h3>
-      <p class="note">Conferidos contra a versão do jogo que você joga. Só valem com “Aplicar patches” ligado.</p>${patchesHTML(g)}</section>
-    <section class="card"><h3>${ic('box', 15)} Title update e DLC</h3>
-      <dl class="kv"><dt>Title update</dt><dd>${g.tu ? esc(g.tu) + ' instalado' : 'Sem title update'}</dd><dt>DLC</dt><dd>${g.dlc.length ? g.dlc.map(esc).join(', ') : 'sem DLC'}</dd></dl>
+    <section class="card span2" data-note="patches"><h3>${ic('patch', 15)} Patches do jogo<span class="r">${patchTrail(g)}</span></h3>
+      ${g.patches.length ? '<p class="note">Conferidos contra a versão do jogo que você joga. Só valem com “Aplicar patches” ligado.</p>' : ''}${patchesHTML(g)}
+      ${g.patches.length ? `<div class="row"><button class="btn sm ghost" data-act="toast" data-msg="No app, abre os arquivos de patch deste jogo: importar, atualizar e ver as versões. Essa tela não está no simulador." data-k="pt-manage">${ic('patch', 15)} Importar, atualizações e versões</button></div>` : ''}</section>
+    <section class="card"><h3>${ic('box', 15)} Title update e DLC</h3>${contentFacts(g, false)}
       <div class="row"><button class="btn sm" data-act="go" data-v="content" data-p="${g.id}" data-k="cont-manage">Gerenciar conteúdo</button></div></section>
-    <section class="card"><h3>${ic('disc', 15)} Arquivo</h3><p class="path">${esc(g.path)}</p><dl class="kv"><dt>Formato</dt><dd>${fmtLabel(g)} · ${g.size}</dd>${g.discs > 1 ? `<dt>Discos</dt><dd>Disco 1 de ${g.discs}</dd>` : ''}</dl></section>
+    <section class="card"><h3>${ic('disc', 15)} Arquivo</h3><p class="path">${esc(g.path)}</p><dl class="kv"><dt>Formato</dt><dd>${fmtLabel(g)}</dd>${g.discs > 1 ? `<dt>Discos</dt><dd>Disco 1 de ${g.discs}</dd>` : ''}</dl></section>
   </div>`;
 }
 function dataHTML(g) {
-  const cache = g.cache[0] ? `${g.cache[0]} arquivos · ${g.cache[1]} MB` : 'Nada em cache para este jogo ainda';
+  const cache = g.cache[0] ? `${g.cache[0]} ${g.cache[0] === 1 ? 'arquivo' : 'arquivos'} · ${g.cache[1]} MB` : 'Nada em cache para este jogo ainda';
   return `<div class="card">
-    ${drow({ icon: 'save', t: 'Saves · backup e restauração', s: g.saves ? `${g.saves} saves · último backup ${g.backup}` : 'Nenhum save ainda', note: 'saves', acts: `<button class="btn sm" data-act="go" data-v="saves" data-p="${g.id}" data-k="d-saves">Abrir saves</button>` })}
+    ${drow({ icon: 'save', t: 'Saves · backup e restauração', s: 'Backup, restauração e sincronização dos saves deste jogo', note: 'saves', acts: `<button class="btn sm" data-act="go" data-v="saves" data-p="${g.id}" data-k="d-saves">Abrir saves</button>` })}
     ${drow({ icon: 'layers', t: 'Cache de shaders', s: cache, acts: `<button class="btn sm ghost" data-act="modal" data-v="cache" data-k="d-cache"${g.cache[0] ? '' : ' disabled'}>${ic('trash', 15)} Limpar…</button>` })}
-    ${drow({ icon: 'image', t: 'Capa', s: g.cover ? 'Capa escolhida por você' : 'Ícone do próprio jogo (64×64)', acts: `<button class="btn sm ghost" data-act="toast" data-msg="Escolha uma imagem (seletor do Android)." data-k="d-cover">Trocar capa</button>` })}
+    ${drow({ icon: 'image', t: 'Capa', s: 'Ícone do próprio jogo (64×64)', note: 'cover', acts: `<button class="btn sm ghost" data-act="toast" data-msg="No app, abre o seletor de imagens do Android." data-k="d-cover">Trocar capa</button>` })}
+    ${drow({ icon: 'layers', t: 'Coleções', s: g.cols.length ? g.cols.map(esc).join(', ') : 'Fora de coleções', acts: `<button class="btn sm ghost" data-act="modal" data-v="cols" data-k="d-cols">Editar</button>` })}
     ${g.fmt === 'ISO' ? drow({ icon: 'zip', t: 'Comprimir para .zar', s: 'O .iso fica intacto até o .zar ser criado e verificado', acts: `<button class="btn sm ghost" data-act="modal" data-v="compress" data-k="d-zar">Comprimir…</button>` }) : ''}
-    ${drow({ icon: 'link', t: 'Criar atalho', s: 'Atalho na tela inicial do Android', acts: `<button class="btn sm ghost" data-act="toast" data-msg="Atalho criado (protótipo)." data-k="d-short">Criar</button>` })}
-    ${drow({ icon: 'timeline', t: 'Últimas sessões · diagnóstico', s: g.runs ? `${g.runs} sessões registradas` : 'Nenhuma sessão', acts: `<button class="btn sm ghost" data-act="go" data-v="diagnostics" data-p="${g.id}" data-k="d-diag">Abrir</button>` })}
+    ${drow({ icon: 'link', t: 'Criar atalho', s: 'Atalho na tela inicial do Android', acts: `<button class="btn sm ghost" data-act="toast" data-msg="No app, o Android pede para pôr o atalho na tela inicial (se o launcher aceitar)." data-k="d-short">Criar</button>` })}
+    ${drow({ icon: 'timeline', t: 'Últimas sessões · diagnóstico', s: g.runs ? `${g.runs} ${g.runs === 1 ? 'sessão registrada' : 'sessões registradas'}` : 'Nenhuma sessão ainda', acts: `<button class="btn sm ghost" data-act="go" data-v="diagnostics" data-p="${g.id}" data-k="d-diag">Abrir</button>` })}
   </div>`;
 }
+function lastSessionCard(g, full) {
+  return `<section class="card span2" data-note="perfcard"><h3>${ic('chart', 15)} Última sessão<span class="r">${g.runs ? `${esc(g.ago)} · ${fmtMin(g.playMin)} no total` : 'Nunca jogado'}</span></h3>${perfHTML(g, full)}${!full && perfOf(g) ? `<button class="link" data-act="gsec" data-v="perf" data-k="ov-perf">Ver detalhes e linha do tempo</button>` : ''}</section>`;
+}
 function overviewHTML(g, v) {
-  const st = perfOf(g);
+  const n = ovCount(g);
   return `<div class="grid2">
-    <section class="card span2" data-note="perfcard"><h3>${ic('chart', 15)} Última sessão<span class="r">${g.runs ? `${g.ago} · ${fmtMin(g.playMin)} no total` : 'nunca jogado'}</span></h3>${perfHTML(g, true)}${st ? `<button class="link" data-act="gsec" data-v="perf" data-k="ov-perf">Ver detalhes e linha do tempo</button>` : ''}</section>
-    <section class="card"><h3>${ic('sliders', 15)} Ajustes rápidos<span class="r">${ovCount(g)} mudados neste jogo</span></h3>${quickPanel(g, v)}<button class="link" data-act="gsec" data-v="set:img" data-k="ov-set">Todos os ajustes</button></section>
-    <section class="card" data-note="compat"><h3>${ic('shield', 15)} Compatibilidade</h3>${compatHTML(g)}</section>
-    <section class="card"><h3>${ic('patch', 15)} Patches<span class="r">${PON[g.id].size} de ${g.patches.length}</span></h3>${patchesHTML(g, 3)}</section>
-    <section class="card"><h3>${ic('box', 15)} Conteúdo</h3><dl class="kv"><dt>Title update</dt><dd>${g.tu || 'nenhum'}</dd><dt>DLC</dt><dd>${g.dlc.length || 'nenhum'}</dd><dt>Saves</dt><dd>${g.saves}</dd><dt>Cache de shaders</dt><dd>${g.cache[1]} MB</dd></dl></section>
+    ${lastSessionCard(g, false)}
+    <div class="col">
+      <section class="card"><h3>${ic('sliders', 15)} Ajustes rápidos<span class="r">${n} ${n === 1 ? 'mudado' : 'mudados'} neste jogo</span></h3>${quickPanel(g, v)}<button class="link" data-act="gsec" data-v="set" data-k="ov-set">Todos os ajustes</button></section>
+      <section class="card" data-note="patches"><h3>${ic('patch', 15)} Patches<span class="r">${patchTrail(g)}</span></h3>${patchesHTML(g, 3)}</section>
+    </div>
+    <div class="col">
+      <section class="card" data-note="compat"><h3>${ic('shield', 15)} Compatibilidade</h3>${compatHTML(g)}</section>
+      <section class="card"><h3>${ic('box', 15)} Conteúdo</h3>${contentFacts(g, true)}</section>
+    </div>
   </div>`;
 }
 function perfTabHTML(g) {
-  return `<div class="grid2"><section class="card span2" data-note="perfcard"><h3>${ic('chart', 15)} Última sessão<span class="r">${g.runs ? esc(g.ago) : ''}</span></h3>${perfHTML(g, false)}</section>
-    ${g.perf ? `<section class="card span2" data-note="timeline"><h3>${ic('timeline', 15)} Linha do tempo da última execução</h3>${timelineHTML(g)}</section>` : ''}
-    <section class="card span2"><div class="row"><button class="btn sm" data-act="toast" data-msg="Relatório pronto para revisar (protótipo)." data-k="p-report" data-note="report">${ic('share', 15)} Compartilhar relatório…</button><button class="btn sm ghost" data-act="go" data-v="compare" data-k="p-compare">Comparar execuções</button><button class="btn sm ghost" data-act="go" data-v="diagnostics" data-p="${g.id}" data-k="p-logs">Sessões e logs</button></div></section></div>`;
+  const runs = runsOf(g), lines = inEffectLines(g);
+  const picker = runs.length > 1 ? `<button class="runpick span2" data-act="modal" data-v="runs" data-k="p-runs">${ic('timeline', 18)}<span><b>${esc(runs[0].when)} · ${fmtMs(runs[0].ms)}${runs[0].p50 ? ` · ${runs[0].p50} FPS` : ''}</b><small>${g.runs} sessões · toque para ver outra</small></span>${ic('chevD', 16)}</button>` : '';
+  return `<div class="grid2">${picker}${lastSessionCard(g, true)}${timelineHTML(g)}
+    ${g.runs ? `<section class="card span2" data-note="ineffect"><h3>${ic('sliders', 15)} Ajustes em vigor${lines.length ? `<span class="r">${lines.length}</span>` : ''}</h3>${lines.length ? `<div class="mlines" lang="en">${lines.map(l => `<div>${esc(l)}</div>`).join('')}</div>` : '<p class="note">Tudo no padrão.</p>'}</section>` : ''}
+    <section class="card span2"><div class="row"><button class="btn sm" data-act="modal" data-v="report" data-k="p-report" data-note="report"${g.runs ? '' : ' disabled'}>${ic('share', 15)} Compartilhar relatório…</button><button class="btn sm ghost" data-act="go" data-v="compare" data-k="p-compare">Comparar execuções</button><button class="btn sm ghost" data-act="go" data-v="diagnostics" data-p="${g.id}" data-k="p-logs">Sessões e logs</button></div></section></div>`;
 }
 
 /* ---------- moldura B: trilho e telas com seções ---------- */

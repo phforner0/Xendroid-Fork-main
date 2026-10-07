@@ -28,14 +28,7 @@ const MB_EX = {
   long: { gid: '5454082B', title: 'Contrato de licença', text: 'Ao jogar você concorda com os termos de uso do jogo. '.repeat(14).trim() + ' Os dados de progresso ficam no perfil ativo.', btn: ['Aceitar', 'Recusar'] },
 };
 screen('msgbox', {
-  title: 'Mensagem do jogo', lote: 'Lote 7 · Painéis do jogo',
-  info: {
-    what: 'Quando o jogo mostra uma mensagem com botões, o painel aparece sobre a cena parada: qual jogo pergunta, o título, o texto (que rola se for longo) e as opções em linhas inteiras. No controle, o direcional escolhe e A confirma.',
-    replaces: 'GuestMessageBoxPanel.kt (XamShowMessageBoxUI): painel no topo com título, texto e opções em largura total, sem cancelar.',
-    changes: ['Mostra qual jogo está perguntando e que ele espera a resposta', 'A opção em foco destacada com o botão A no modo controle'],
-    c: 'O direcional escolhe e A confirma; B não fecha, porque o jogo espera uma resposta.',
-    code: 'ui/messagebox/GuestMessageBoxPanel.kt, ui/panel/GuestPanelOption.kt, EmulatorHostActivity.kt',
-  },
+  title: 'Mensagem do jogo',
   variants: [{ label: 'Exemplo', list: [['save', 'Salvar sem dispositivo'], ['live', 'Só OK'], ['long', 'Texto longo']], get: () => MB.v, set: v => { MB.v = v; } }],
   render() {
     const m = MB_EX[MB.v], g = GBY[m.gid], btn = m.btn.length ? m.btn : ['OK'];
@@ -75,14 +68,7 @@ function kbRefresh(keepFocus) {
   const inp = document.getElementById('kb-in'); if (inp && !k) { try { inp.setSelectionRange(KB.caret, KB.caret); } catch (e) { /* sem seleção */ } }
 }
 screen('keyboard', {
-  title: 'Teclado do jogo', lote: 'Lote 7 · Painéis do jogo',
-  info: {
-    what: 'Quando o jogo pede um texto, o painel mostra o pedido do jogo, o campo com o limite de caracteres e um teclado em grade que funciona com o controle e com toques; no toque, o teclado do telefone também digita.',
-    replaces: 'GuestKeyboardPanel.kt e KeyboardGrid.kt (XamShowKeyboardUI, U10): campo, grade de letras e símbolos, comandos e os atalhos do Xbox 360.',
-    changes: ['Teclas de comando em português', 'Contador do limite do jogo junto do campo', 'Atalhos do controle sempre à vista no modo controle'],
-    c: 'O direcional percorre a grade e A digita; X apaga, Y espaço, LB/RB movem o cursor, L3 Shift, R3 símbolos, Start conclui.',
-    code: 'ui/keyboard/GuestKeyboardPanel.kt, KeyboardGrid.kt, EmulatorHostActivity.kt',
-  },
+  title: 'Teclado do jogo',
   variants: [{ label: 'Exemplo', list: [['name', 'Nome (até 15)'], ['msg', 'Mensagem (até 60)']], get: () => KB.v, set: v => { KB.v = v; KB.text = KB_EX[v].init; KB.caret = KB.text.length; KB.shift = 'off'; KB.sym = false; } }],
   render() {
     const ex = KB_EX[KB.v], g = GBY[ex.gid], rows = KB.sym ? KB_SYM : KB_LET;
@@ -112,14 +98,7 @@ action('input:kb-in', el => { KB.text = el.value.slice(0, kbMax()); KB.caret = e
 /* ---------- troca de disco ---------- */
 const DS = { v: 'found' };
 screen('discswap', {
-  title: 'Troca de disco', lote: 'Lote 7 · Painéis do jogo',
-  info: {
-    what: 'Quando o jogo pede outro disco, o painel diz qual disco inserir e lista os discos do título encontrados na pasta de jogos, com o atual marcado; cancelar fica por último, com o aviso de que o jogo fica sem disco.',
-    replaces: 'DiscSwapPanel.kt (XamSwapDisc): “Insira o disco N”, os discos achados e Cancelar por último; sem disco achado, a mensagem e Cancelar.',
-    changes: ['O disco pedido em destaque e o atual marcado', 'Aviso de que cancelar deixa o jogo sem disco', 'Proposta: sem disco achado, procurar o arquivo'],
-    c: 'O direcional escolhe e A insere; B equivale a Cancelar.',
-    code: 'ui/disc/DiscSwapPanel.kt, EmulatorHostActivity.kt',
-  },
+  title: 'Troca de disco',
   variants: [{ label: 'Exemplo', list: [['found', 'Discos achados'], ['none', 'Nenhum disco achado']], get: () => DS.v, set: v => { DS.v = v; } }],
   render() {
     const g = GBY['4D5307DF'] || curGame(), n = g.discs || 3, want = 2;

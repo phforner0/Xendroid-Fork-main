@@ -107,14 +107,7 @@ modal('playas', mp => { const g = GBY[mp.gid] || curGame(); return { html: sheet
   <div class="row"><button class="tg" role="switch" aria-checked="false" id="pa-dont" data-act="tg-local" data-k="pa-dont" aria-label="Não perguntar de novo"></button><span style="font-size:13.5px">Não perguntar de novo</span></div><p class="note">Cada perfil mantém os próprios saves.</p>` }; });
 
 screen('profiles', {
-  title: 'Perfis', lote: 'Lote 4 · Perfis e saves', secKey: 'profiles', globalScope: true,
-  info: {
-    what: 'Os perfis como cartões com avatar, gamertag, idioma, região e o tamanho dos saves de cada um; quem entra como P1–P4 numa tela própria; a lixeira com restaurar e remover de vez. No modo controle, os perfis viram avatares grandes lado a lado.',
-    replaces: 'ProfilesScreen.kt: lista com menu ⋮ (Editar, Excluir), seção “Outros jogadores”, “Perguntar quem joga antes de cada jogo”, lixeira e o diálogo de criar/editar.',
-    changes: ['Quanto cada perfil guarda e em quais jogos, com atalho para os saves', 'P1–P4 lado a lado, com trocar e “Ninguém” num toque', 'Avatar grande no modo controle'],
-    c: 'Avatares em linha; A abre as opções do perfil; LB/RB troca entre Perfis, Quem joga e Lixeira.',
-    code: 'ui/profile/ProfilesScreen.kt, ProfileManagerViewModel.kt, AvatarPolicy.kt, data/ProfileSlots.kt',
-  },
+  title: 'Perfis', secKey: 'profiles', globalScope: true,
   render() {
     const secs = [
       { id: 'list', t: 'Perfis', icon: 'user', n: PROFILES.length, title: 'Perfis', body: pfListHTML },
@@ -171,14 +164,7 @@ modal('sv-review', mp => {
 modal('sv-done', () => ({ html: sheetHead('Pronto') + `<p class="okline" style="font-size:13.5px">${ic('checkC', 16)} Saves restaurados. As pastas originais ficaram em content/.save-transactions/2026-10-04T15-21 para recuperação.</p><div class="acts"><button class="btn primary" data-act="close" data-k="sd-ok" data-autofocus>OK</button></div>` }));
 
 screen('saves', {
-  title: 'Saves do jogo', lote: 'Lote 4 · Perfis e saves', secKey: 'saves', globalScope: true,
-  info: {
-    what: 'Os saves de um jogo por perfil, com gamertag e avatar, o tamanho e a data do último save e, abrindo, os saves pelos nomes que o jogo deu; exportar os escolhidos, importar um backup e a pasta de sincronização opcional, com a revisão antes de restaurar.',
-    replaces: 'SaveManagerScreen.kt: lista por XUID com caixas de seleção, exportar, importar, sincronização com pasta, restaurar da pasta e os diálogos de revisão, progresso e resultado.',
-    changes: ['Gamertag e avatar no lugar do XUID (o XUID fica como detalhe)', 'Os saves de cada perfil pelos nomes dos cabeçalhos', 'Sincronização numa seção própria, com os backups da pasta listados'],
-    c: 'Mesmas seções no menu vertical; A marca o perfil, X abre os saves dele.',
-    code: 'ui/saves/SaveManagerScreen.kt, SaveManagerViewModel.kt, saves/BackupSync.kt, saves/SaveBackupStore.kt',
-  },
+  title: 'Saves do jogo', secKey: 'saves', globalScope: true,
   render() {
     const g = GBY[S.route.p.gid] || curGame(), n = (SAVES[g.id] || []).length;
     const secs = [

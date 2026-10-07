@@ -65,6 +65,8 @@ function channelData(ch, label) {
     fixados: st.pinnedDefault.map(k => (k === st.resolutionKey ? '@res' : dotKey(k))),
     turnip: st.turnipFlags.map(f => ({ f: f.name, h: textOf(f.help), x: f.exclusive ? 1 : 0 })),
     cvars: ch.cvars,
+    // padrões do núcleo que diferem dos do app ("Ajustes em vigor" compara com o núcleo)
+    padraoNucleo: Object.fromEntries(ch.consistency.coreDefaults.map(c => [dotKey(c.key), c.core])),
   };
 }
 
@@ -76,7 +78,8 @@ function readmeNumbers(row) {
   const range = nums.length >= 2 ? [Math.min(nums[0], nums[1]), Math.max(nums[0], nums[1])] : null;
   const t = Math.round(range ? (range[0] + range[1]) / 2 : nums[0]);
   const dip = /cai a (\d+)/i.exec(row['Observações'] || '');
-  return { t, range, low: dip ? Number(dip[1]) : range ? range[0] : Math.round(t * 0.85), lowShare: dip ? 0.08 : 0.05 };
+  // sem queda publicada, low fica nulo: o simulador não inventa uma medição
+  return { t, range, low: dip ? Number(dip[1]) : range ? range[0] : null, lowShare: dip ? 0.08 : 0.05 };
 }
 
 /** Isola o CSS do protótipo sob um seletor: :root, html e body viram o próprio seletor. */
@@ -151,8 +154,12 @@ export function writeSimulator(site, { SITE, ROOT, write, copy, error }) {
     const p = est.games.patches.find(x => x.titleId === id);
     const q = est.games.quirkTitles.find(x => x.titleId === id);
     if (!p && !q) continue;
-    const file = p ? (p.files.find(f => !f.label) || p.files[0]) : null;
-    jogos[id] = { nome: p ? [...p.names].sort((a, b) => a.length - b.length)[0] : q.name, patches: file ? file.patches.map(x => x.name).filter(Boolean) : [], correcoes: q ? q.entries.length : 0 };
+    // como a ficha do app: um grupo por arquivo, com o rótulo do nome do arquivo ("Halo 4 (TU10)")
+    const arquivos = (p ? p.files : []).map(f => ({
+      rotulo: f.file.replace(/^[0-9A-Fa-f]{8} - /, '').replace(/\.patch\.toml$/, ''),
+      entradas: f.patches.filter(x => x.name).map(x => ({ n: x.name, d: x.desc || '', on: x.enabled ? 1 : 0 })),
+    })).filter(f => f.entradas.length);
+    jogos[id] = { nome: p ? [...p.names].sort((a, b) => a.length - b.length)[0] : q.name, arquivos, correcoes: q ? q.entries.length : 0 };
   }
   const medidas = {};
   const perf = dev.games.perf;

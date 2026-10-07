@@ -76,6 +76,7 @@ const ic = (n, s = 20) => `<svg class="ic" width="${s}" height="${s}" viewBox="0
 
 
 Object.assign(P, {
+  xCircle: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
   wifi: '<path d="M3.5 9.5a12.5 12.5 0 0 1 17 0"/><path d="M6.5 12.8a8 8 0 0 1 11 0"/><path d="M9.5 16a3.6 3.6 0 0 1 5 0"/><circle cx="12" cy="19" r="1.1" fill="currentColor" stroke="none"/>',
   phone: '<rect x="7" y="3" width="10" height="18" rx="2.2"/><path d="M11 17.5h2"/>',
   battery: '<rect x="3.5" y="7.5" width="15" height="9" rx="2"/><path d="M21 10.5v3"/><path d="M6.5 10.5v3M9.5 10.5v3M12.5 10.5v3"/>',
@@ -152,55 +153,39 @@ function ftSVG(st) {
   return histChart(st.ft, -1, [{ at: 16.7, text: '60 FPS', ref: 1 }, { at: 33.3, text: '30 FPS', ref: 1 }], [[0, '0'], [10, '10'], [20, '20'], [30, '30'], [40, '40'], [51, '50+ ms']], `Quadros por tempo de quadro: metade abaixo de ${st.ft50} ms, 99% abaixo de ${st.ft99} ms`);
 }
 
-/* ============ capas geradas (só para o protótipo) ============ */
-const MOTIF = {
-  rings(x, W, H, r, [a, b, h]) { const cx = W * .62, cy = H * .33; for (let i = 0; i < 10; i++) { x.beginPath(); x.arc(cx, cy, 20 + i * 21, 0, Math.PI * 2); x.strokeStyle = hexA(h, Math.max(.05, .6 - i * .055)); x.lineWidth = i % 3 ? 1.6 : 5; x.stroke(); } const g = x.createRadialGradient(cx, cy, 0, cx, cy, 90); g.addColorStop(0, hexA(h, .95)); g.addColorStop(1, hexA(h, 0)); x.fillStyle = g; x.fillRect(0, 0, W, H); },
-  sun(x, W, H, r, [a, b, h]) { const cx = W * .5, cy = H * .4, R = 108; const g = x.createLinearGradient(0, cy - R, 0, cy + R); g.addColorStop(0, h); g.addColorStop(1, b); x.fillStyle = g; x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.fill(); x.fillStyle = a; for (let i = 0; i < 7; i++) x.fillRect(cx - R - 2, cy + 10 + i * 13, 2 * R + 4, 2 + i * 1.5); x.fillStyle = a; x.fillRect(0, cy + R * .92, W, H); x.strokeStyle = hexA(h, .55); x.lineWidth = 2; for (let i = -7; i <= 7; i++) { x.beginPath(); x.moveTo(cx, cy + R * .92); x.lineTo(cx + i * 64, H); x.stroke(); } for (let j = 1; j < 9; j++) { const y = cy + R * .92 + (H - cy - R * .92) * (j * j / 64); x.beginPath(); x.moveTo(0, y); x.lineTo(W, y); x.strokeStyle = hexA(h, .25); x.stroke(); } },
-  mountains(x, W, H, r, [a, b, h]) { const g = x.createRadialGradient(W * .3, H * .34, 0, W * .3, H * .34, 100); g.addColorStop(0, hexA(h, 1)); g.addColorStop(.32, hexA(h, .7)); g.addColorStop(1, hexA(h, 0)); x.fillStyle = g; x.fillRect(0, 0, W, H); for (let l = 0; l < 4; l++) { x.beginPath(); const base = H * (.46 + l * .1); x.moveTo(0, H); x.lineTo(0, base); let px = 0; while (px < W) { px += 18 + r() * 42; x.lineTo(px, base - r() * (74 - l * 13)); } x.lineTo(W, H); x.closePath(); x.fillStyle = hexA(mixHex(a, '#000000', .1 * l), .5 + .14 * l); x.fill(); } },
-  shards(x, W, H, r, [a, b, h]) { for (let i = 0; i < 26; i++) { x.beginPath(); const cx = r() * W, cy = r() * H * .8, s = 20 + r() * 95; x.moveTo(cx, cy); x.lineTo(cx + (r() - .5) * s * 2, cy + (r() - .2) * s * 2); x.lineTo(cx + (r() - .5) * s * 2, cy + (r() - .5) * s * 2); x.closePath(); x.fillStyle = hexA(i % 4 ? h : '#ffffff', .04 + r() * .2); x.fill(); } x.save(); x.translate(W * .5, H * .38); x.rotate(-.35); x.fillStyle = hexA(b, .9); x.fillRect(-W, -4, W * 2, 8); x.restore(); },
-  grid(x, W, H, r, [a, b, h]) { const vx = W * .5, vy = H * .4; x.strokeStyle = hexA(h, .32); x.lineWidth = 1.2; for (let i = -10; i <= 10; i++) { x.beginPath(); x.moveTo(vx, vy); x.lineTo(vx + i * 60, H); x.stroke(); } for (let j = 1; j < 14; j++) { const y = vy + (H - vy) * (j * j / 196); x.beginPath(); x.moveTo(0, y); x.lineTo(W, y); x.stroke(); } let px = 0; while (px < W) { const w = 14 + r() * 32, hh = 40 + r() * 140; x.fillStyle = hexA('#000000', .55); x.fillRect(px, vy - hh, w, hh); for (let k = 0; k < 8; k++) { if (r() < .5) { x.fillStyle = hexA(h, .5); x.fillRect(px + 3 + r() * (w - 6), vy - hh + 6 + r() * (hh - 10), 2, 3); } } px += w + 2; } },
-  bokeh(x, W, H, r, [a, b, h]) { for (let i = 0; i < 36; i++) { const cx = r() * W, cy = r() * H * .85, R = 6 + r() * 40; const g = x.createRadialGradient(cx, cy, 0, cx, cy, R); const c = i % 3 ? h : '#ffffff'; g.addColorStop(0, hexA(c, .1 + r() * .32)); g.addColorStop(1, hexA(c, 0)); x.fillStyle = g; x.beginPath(); x.arc(cx, cy, R, 0, 7); x.fill(); } },
-  slash(x, W, H, r, [a, b, h]) { const g = x.createRadialGradient(W * .66, H * .3, 0, W * .66, H * .3, 92); g.addColorStop(0, hexA(b, 1)); g.addColorStop(1, hexA(b, 0)); x.fillStyle = g; x.fillRect(0, 0, W, H); x.save(); x.translate(W / 2, H * .42); x.rotate(-.52); for (let i = 0; i < 5; i++) { x.fillStyle = hexA(i === 2 ? h : '#ffffff', i === 2 ? .9 : .06 + i * .03); x.fillRect(-W, -5 + (i - 2) * 30, W * 2, i === 2 ? 9 : 2.5); } x.restore(); },
-  bands(x, W, H, r, [a, b, h]) { for (let i = 0; i < 13; i++) { x.beginPath(); const y0 = H * .12 + i * 24; x.moveTo(0, y0); for (let px = 0; px <= W; px += 8) x.lineTo(px, y0 + Math.sin(px / 38 + i * .7) * 13); x.strokeStyle = hexA(h, .1 + i * .035); x.lineWidth = 3; x.stroke(); } },
-};
-function grain(x, W, H, r, a) { const img = x.getImageData(0, 0, W, H), d = img.data; for (let i = 0; i < d.length; i += 4) { const n = (r() - .5) * 255 * a; d[i] += n; d[i + 1] += n; d[i + 2] += n; } x.putImageData(img, 0, 0); }
+/* ============ marcadores de capa e da imagem do jogo ============
+   O simulador não tem as capas, os ícones nem imagens dos jogos, e não inventa nenhuma: a capa
+   é um marcador com as iniciais do jogo (no app, sem capa escolhida, aparece o ícone 64×64 do
+   próprio jogo, desfocado ao fundo e nítido na frente, com o nome), e a tela em jogo mostra
+   um quadro neutro no lugar da imagem do jogo. */
 function wrapLines(x, words, maxW) { const lines = []; let cur = ''; for (const w of words) { const t = cur ? cur + ' ' + w : w; if (x.measureText(t).width <= maxW || !cur) cur = t; else { lines.push(cur); cur = w; } } if (cur) lines.push(cur); return lines; }
-function drawCover(g) {
-  const W = 360, H = 480, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); const r = rng(hash(g.id)); const [a, b, h] = g.pal;
-  const bg = x.createLinearGradient(0, 0, W * .35, H); bg.addColorStop(0, b); bg.addColorStop(1, a); x.fillStyle = bg; x.fillRect(0, 0, W, H);
-  MOTIF[g.motif](x, W, H, r, g.pal);
-  const lg = x.createRadialGradient(W * .8, H * .1, 10, W * .8, H * .1, W); lg.addColorStop(0, 'rgba(255,255,255,.14)'); lg.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = lg; x.fillRect(0, 0, W, H);
-  const bf = x.createLinearGradient(0, H * .46, 0, H); bf.addColorStop(0, 'rgba(0,0,0,0)'); bf.addColorStop(1, 'rgba(0,0,0,.78)'); x.fillStyle = bf; x.fillRect(0, 0, W, H);
-  grain(x, W, H, r, .07);
-  const words = g.name.toUpperCase().split(' '); let size = 70, lines;
-  for (; size >= 28; size -= 2) { x.font = `700 ${size}px "Barlow Semi Condensed","Arial Narrow",sans-serif`; lines = wrapLines(x, words, W - 52); if (lines.length <= 3 && lines.every(l => x.measureText(l).width <= W - 52)) break; }
-  const lh = size * .94; let y = H - 40 - (lines.length - 1) * lh - (g.sub ? 18 : 0);
-  x.fillStyle = '#ffffff'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = 16; x.textBaseline = 'alphabetic';
-  for (const l of lines) { x.fillText(l, 26, y); y += lh; }
-  x.shadowBlur = 0;
-  if (g.sub) { x.font = '600 15px "Barlow",sans-serif'; if ('letterSpacing' in x) x.letterSpacing = '4px'; x.fillStyle = h; x.fillText(g.sub.toUpperCase(), 27, H - 34); }
-  x.fillStyle = hexA(h, .95); x.fillRect(26, 26, 34, 4);
-  return c;
+/** "Forza Horizon 2" → "FH2", "Gears of War 3" → "GW3", "Halo: Reach" → "HR". */
+function monogram(name) {
+  const parts = String(name).split(/[\s:–-]+/).filter(Boolean);
+  let m = parts.map(w => (/^\d+$/.test(w) ? w : /^[A-ZÀ-Ý]/.test(w) && !/^[IVX]+$/.test(w) ? w[0] : '')).join('');
+  if (m.length < 2) m = String(name).replace(/[^A-Za-z0-9]/g, '').slice(0, 2);
+  return m.slice(0, 3).toUpperCase();
 }
 function drawIcon(g) {
-  const N = 64, c = document.createElement('canvas'); c.width = N; c.height = N; const x = c.getContext('2d'); const [a, b, h] = g.pal;
+  const N = 128, c = document.createElement('canvas'); c.width = N; c.height = N; const x = c.getContext('2d'); const [a, b, h] = g.pal;
   const gr = x.createLinearGradient(0, 0, N, N); gr.addColorStop(0, b); gr.addColorStop(1, a); x.fillStyle = gr; x.fillRect(0, 0, N, N);
-  if (g.iconStyle === 'neon') { x.shadowColor = h; x.shadowBlur = 7; x.lineWidth = 3; x.strokeStyle = '#ff4fd8'; x.beginPath(); x.arc(32, 32, 22, 0, Math.PI * 2); x.stroke(); x.strokeStyle = h; x.beginPath(); x.moveTo(32, 13); x.lineTo(48, 45); x.lineTo(32, 37); x.lineTo(16, 45); x.closePath(); x.stroke(); }
-  else if (g.iconStyle === 'pinata') { const cs = ['#ff5a8a', '#ffd84a', '#4ad6ff', '#7dff6a', '#ff8a3d']; for (let i = 0; i < 5; i++) { x.fillStyle = cs[i]; x.fillRect(14, 14 + i * 7, 34, 7); } x.fillStyle = cs[1]; x.fillRect(40, 7, 9, 10); x.fillStyle = '#2a0a2d'; x.fillRect(44, 10, 2, 2); x.fillStyle = cs[0]; x.fillRect(16, 49, 5, 8); x.fillRect(40, 49, 5, 8); }
-  else { x.fillStyle = h; x.beginPath(); for (let i = 0; i < 10; i++) { const ang = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? 11 : 25; x.lineTo(32 + Math.cos(ang) * rr, 31 + Math.sin(ang) * rr); } x.closePath(); x.fill(); x.fillStyle = a; x.font = '800 13px "Barlow",sans-serif'; x.textAlign = 'center'; x.fillText('3', 32, 37); }
+  x.strokeStyle = hexA(h, .5); x.lineWidth = 3; x.strokeRect(10, 10, N - 20, N - 20);
+  const m = monogram(g.name); x.fillStyle = '#ffffff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = `700 ${m.length > 2 ? 40 : 50}px "Barlow Semi Condensed","Arial Narrow",sans-serif`; x.fillText(m, N / 2, N / 2 + 2);
   return c;
 }
 const toURL = (c, type, q) => new Promise(res => c.toBlob(b => res(b ? URL.createObjectURL(b) : c.toDataURL()), type, q));
 
-/* Cena 16:9 do jogo (sem título) para as telas em jogo; e avatares de perfil. */
+/* No lugar da imagem do jogo, nas telas em jogo: um quadro neutro que diz o que é. */
 function drawScene(g) {
-  const W = 960, H = 540, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); const r = rng(hash(g.id + ':scene')); const [a, b, h] = g.pal;
-  const bg = x.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, b); bg.addColorStop(1, a); x.fillStyle = bg; x.fillRect(0, 0, W, H);
-  const m = g.motif || 'bokeh';
-  x.save(); x.translate(W * .18, -H * .05); x.scale(1.7, 1.25); MOTIF[m](x, 360, 480, r, g.pal); x.restore();
-  const v = x.createRadialGradient(W / 2, H / 2, H * .2, W / 2, H / 2, W * .7); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.6)'); x.fillStyle = v; x.fillRect(0, 0, W, H);
-  grain(x, W, H, r, .05);
-  x.strokeStyle = 'rgba(255,255,255,.55)'; x.lineWidth = 2; x.beginPath(); x.arc(W / 2, H / 2, 9, 0, 7); x.stroke(); x.beginPath(); x.moveTo(W / 2 - 18, H / 2); x.lineTo(W / 2 - 12, H / 2); x.moveTo(W / 2 + 12, H / 2); x.lineTo(W / 2 + 18, H / 2); x.stroke();
+  const W = 960, H = 540, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+  x.fillStyle = mixHex('#0d1012', g.pal[0], .35); x.fillRect(0, 0, W, H);
+  x.strokeStyle = 'rgba(255,255,255,.045)'; x.lineWidth = 1;
+  for (let i = -H; i < W; i += 28) { x.beginPath(); x.moveTo(i, H); x.lineTo(i + H, 0); x.stroke(); }
+  x.strokeStyle = 'rgba(255,255,255,.18)'; x.setLineDash([10, 8]); x.lineWidth = 2; x.strokeRect(24, 24, W - 48, H - 48); x.setLineDash([]);
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = 'rgba(255,255,255,.62)'; x.font = '600 30px "Barlow","Arial",sans-serif'; x.fillText('Aqui aparece a imagem do jogo', W / 2, H / 2 - 16);
+  x.fillStyle = 'rgba(255,255,255,.4)'; x.font = '400 21px "Barlow","Arial",sans-serif'; x.fillText('O simulador mostra a interface do app; ele não roda jogos.', W / 2, H / 2 + 22);
   return c;
 }
 function drawAvatar(p) {
@@ -213,8 +198,8 @@ function drawAvatar(p) {
 async function makeArt() {
   try { await Promise.race([Promise.all(['700 40px "Barlow Semi Condensed"', '600 15px "Barlow"'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 1800))]); } catch (e) { /* sem fonte: usa a reserva */ }
   await Promise.all(GAMES.map(async g => {
-    if (g.iconStyle) g.icon = await toURL(drawIcon(g), 'image/png'); else g.cover = await toURL(drawCover(g), 'image/jpeg', .88);
-    if (!g.iconStyle) g.scene = await toURL(drawScene(g), 'image/jpeg', .84); else g.scene = await toURL(drawScene(Object.assign({}, g, { motif: 'bokeh' })), 'image/jpeg', .84);
+    g.icon = await toURL(drawIcon(g), 'image/png');
+    g.scene = await toURL(drawScene(g), 'image/jpeg', .84);
   }));
   await Promise.all(PROFILES.concat(PROFILE_TRASH).map(async p => { p.avatar = await toURL(drawAvatar(p), 'image/png'); }));
 }

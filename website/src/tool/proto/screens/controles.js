@@ -143,14 +143,7 @@ function ctlPhonesHTML() {
 action('pad-rumble', el => { const p = PADS.find(x => x.id === el.dataset.p); p.rumble = el.dataset.v || null; toast(`${p.name}: vibração ${p.rumble ? RUMBLE_T[p.rumble].toLowerCase() : 'padrão'}`); });
 
 screen('controls', {
-  title: 'Controles', lote: 'Lote 3 · Controles', secKey: 'controls', globalScope: true,
-  info: {
-    what: 'Uma área para tudo de entrada: quem joga como P1–P4, os ajustes do toque, cada controle físico com a própria vibração, giroscópio e entrada sem buffer, os telefones como controle e atalhos para as quatro ferramentas.',
-    replaces: 'Quatro itens soltos no menu ⋮ da biblioteca (Mapeamento de teclas, Controles de toque, Testar controles, Usar este telefone como controle); os ajustes gerais do toque ficam no painel “Gerais” do editor e o giroscópio só no menu em jogo.',
-    changes: ['Quem joga como P1–P4 visível fora do teste', 'Ajustes gerais do toque e layouts salvos fora do editor', 'Vibração por controle, giroscópio e entrada sem buffer fora do jogo', 'Ajustes do core para controles (zonas mortas, botão Guia) junto dos controles'],
-    c: 'Menu vertical com as mesmas seções e as quatro ferramentas no fim; ajustes em linhas ◀ ▶.',
-    code: 'ui/library/GameLibraryScreen.kt (menu ⋮), gamepad/GamepadEditorScreen.kt (GlobalsEditor), gamepad/RumbleSettings.kt, EmulatorHostActivity.kt (touch_options)',
-  },
+  title: 'Controles', secKey: 'controls', globalScope: true,
   render() {
     const secs = [
       { group: 'Controles', id: 'ov', t: 'Visão geral', icon: 'gamepad', title: 'Controles', body: ctlOverviewHTML },
@@ -231,14 +224,7 @@ action('km-own-rm', () => { delete KM.maps[KM.scope]; toast('Este controle volta
 modal('km-cap', () => { const id = KM.cap, m = kmMap(); return { html: sheetHead(`Aperte uma tecla para ${esc(kmName(id))}`) + `<div class="cap" data-note="kmcap"><span class="pulse">${ic('gamepad', 30)}</span><b>Esperando um botão do controle ou do teclado…</b><small>Agora: ${esc(keyText(m[id]))}</small></div><div class="acts"><button class="btn ghost" data-act="km-assign" data-v="" data-k="kc-none">Deixar sem tecla</button><button class="btn" data-act="close" data-k="kc-x" data-autofocus>Cancelar</button></div>` }; });
 
 screen('keymap', {
-  title: 'Mapeamento de teclas', lote: 'Lote 3 · Controles', globalScope: true,
-  info: {
-    what: 'O controle desenhado com a tecla de cada botão onde ele fica, a lista dos 16 botões ao lado e a captura da tecla num toque. Teclas mudadas, repetidas em dois botões e botões sem tecla têm cores próprias.',
-    replaces: 'KeymapScreen.kt (15o): desenho do controle, lista, trocar A/B e X/Y, aviso de tecla repetida e o diálogo de captura.',
-    changes: ['Desenho e lista lado a lado (um embaixo do outro no retrato)', 'Legenda das cores dos estados', 'Proposta: mapa próprio por controle'],
-    c: 'A escolhe a tecla do botão em foco, Y limpa, X troca A/B e X/Y; a captura aceita qualquer botão do controle.',
-    code: 'ui/keymap/KeymapScreen.kt, ControllerDrawing.kt, KeymapViewModel.kt, data/GameButtons.kt',
-  },
+  title: 'Mapeamento de teclas', globalScope: true,
   render() {
     return single({ key: 'keymap', title: 'Mapeamento de teclas', sub: KM.scope === 'all' ? 'Todos os controles e o teclado' : esc((PADS.find(p => p.id === KM.scope) || {}).name || ''), icon: 'keyboard',
       actions: `<button class="btn sm ghost" data-act="km-reset" data-k="km-reset">${ic('reset', 15)} Restaurar</button>`,
@@ -330,14 +316,7 @@ modal('te-layouts', () => ({ wide: true, html: sheetHead('Layouts', TE.perGame ?
 modal('te-globals', () => ({ wide: true, html: sheetHead('Gerais', 'Valem para o controle inteiro, não só para o botão escolhido.') + touchGlobalsHTML(isC() ? 'c' : 'b') + `<div class="acts"><button class="btn primary" data-act="close" data-k="tg-ok" data-autofocus>Pronto</button></div>` }));
 
 screen('touchedit', {
-  title: 'Editor de toque', lote: 'Lote 3 · Controles', globalScope: true,
-  info: {
-    what: 'O editor ocupa a tela inteira sobre um quadro escuro do jogo, com a grade, o controle escolhido destacado e um painel com o tamanho, a zona morta e mostrar ou esconder. Arraste os controles; a barra embaixo recolhe para liberar a tela.',
-    replaces: 'GamepadEditorScreen.kt: barra flutuante com chips (orientação, alinhar, grupo, só este jogo), Restaurar, Layouts, Esconder/Mostrar, Gerais, Recolher, e os controles deslizantes de tamanho e zona morta.',
-    changes: ['Painel do controle escolhido com tamanho, zona morta e mostrar/esconder', 'Desfazer', 'Controles escondidos continuam visíveis no editor, tracejados', 'Edição com o controle (LB/RB, direcional, A)'],
-    c: 'LB/RB escolhem o controle, o direcional move uma casa da grade, A vai ao painel do controle, X abre Layouts, Y abre Gerais, Start salva e sai, B cancela.',
-    code: 'gamepad/GamepadEditorScreen.kt, GamepadOverlay.kt, ControlGroups.kt, LayoutPresetsDialog.kt, GamepadLayoutSchema.kt',
-  },
+  title: 'Editor de toque', globalScope: true,
   render() {
     teInit();
     const g = curGame(), [gx, gy] = teGrid(), l = teList();
@@ -461,14 +440,7 @@ action('pt-vib', el => {
 });
 
 screen('padtest', {
-  title: 'Testar controles', lote: 'Lote 3 · Controles', globalScope: true,
-  info: {
-    what: 'Cada controle conectado, ao vivo: o controle desenhado acende o que é apertado, a lista marca os botões que já funcionaram, os analógicos mostram a zona morta e o que o jogo recebe, os gatilhos têm barras, e a vibração só toca quando pedida. Origem na barra: exemplo animado, um controle real pela Gamepad API ou nenhum.',
-    replaces: 'ControllerTestScreen.kt (U05): cartão por controle com chips dos botões, círculos dos analógicos, barras dos gatilhos, giroscópio, vibração e a lista de conexões.',
-    changes: ['O controle desenhado acende junto com a lista', 'Zona morta do core ajustável no próprio teste', 'Vibração por controle no mesmo cartão'],
-    c: 'Igual; tudo que o controle aperta fica no teste. Segure B por um segundo para sair.',
-    code: 'ui/controllertest/ControllerTestScreen.kt, gamepad/ControllerTest.kt, RumbleSettings.kt',
-  },
+  title: 'Testar controles', globalScope: true,
   variants: [{ label: 'Origem', list: [['demo', 'Exemplo animado'], ['real', 'Controle real (Gamepad API)'], ['none', 'Nenhum controle']], get: () => PT.src, set: v => { PT.src = v; PT.seen = {}; } }],
   render() {
     const devs = ptDevices();
@@ -529,14 +501,7 @@ action('pc-connect', () => {
 });
 
 screen('phonepad', {
-  title: 'Celular como controle', lote: 'Lote 3 · Controles', globalScope: true,
-  info: {
-    what: 'Este telefone vira um controle de toque para um jogo aberto em outro telefone na mesma rede: endereço, código de 6 dígitos, nome e vibração; conectado, o controle ocupa a tela com o jogador, a latência e Sair. O código de exemplo que conecta é 482913.',
-    replaces: 'PhoneControllerScreen.kt: formulário com endereço, código, nome e vibração, os motivos de recusa e a tela de jogo com P2–P4, latência e Sair.',
-    changes: ['Proposta: achar o jogo na rede local e ler o QR code, sem digitar o endereço', 'Código num campo grande de 6 dígitos'],
-    c: 'Igual; o formulário navega com o direcional.',
-    code: 'ui/companion/PhoneControllerScreen.kt, PhoneControllerViewModel.kt, companion/*',
-  },
+  title: 'Celular como controle', globalScope: true,
   variants: [{ label: 'Estado', list: [['form', 'Formulário'], ['error', 'Código errado'], ['unreachable', 'Jogo fora de alcance'], ['connecting', 'Conectando'], ['playing', 'Conectado']], get: () => PC.state === 'form' && PC.err ? (PC.err === PC_ERR.code ? 'error' : PC.err === PC_ERR.unreachable ? 'unreachable' : 'form') : PC.state, set: v => { clearTimeout(PC.timer); PC.err = v === 'error' ? PC_ERR.code : v === 'unreachable' ? PC_ERR.unreachable : ''; PC.state = v === 'error' || v === 'unreachable' ? 'form' : v; if (v !== 'form') { PC.addr = '192.168.1.20:41234'; PC.code = v === 'error' ? '482931' : '482913'; } } }],
   render() {
     if (PC.state === 'playing') return pcPlayHTML();
