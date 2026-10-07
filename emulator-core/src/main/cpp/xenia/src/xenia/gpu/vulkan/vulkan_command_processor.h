@@ -862,6 +862,18 @@ class VulkanCommandProcessor final : public CommandProcessor {
   uint32_t frame_dump_resolves_ = 0;
   // Shaders whose microcode disassembly is already in the dump directory.
   std::unordered_set<uint64_t> frame_dump_shaders_;
+  // The base levels of the textures drawn with in the dumped frame (guest
+  // address and length), compared between guest memory and the GPU's copy
+  // when the frame ends.
+  struct FrameDumpTexture {
+    uint32_t length;
+    // Fetch constant words 0 and 1 (format, pitch, tiling, endianness) and 2
+    // (size) of the first draw sampling it.
+    uint32_t dword_0, dword_1, dword_2;
+  };
+  std::map<uint32_t, FrameDumpTexture> frame_dump_textures_;
+  // debug.xendroid.gpu_reload, the last value acted upon.
+  std::string gpu_reload_value_;
 
   struct SubmissionWork {
     uint32_t draws = 0;

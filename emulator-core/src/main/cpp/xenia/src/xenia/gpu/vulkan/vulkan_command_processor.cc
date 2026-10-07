@@ -2743,6 +2743,58 @@ void VulkanCommandProcessor::ReassertGpuPowerControlIfDue() {
 void VulkanCommandProcessor::PollFrameDump() {
   // The frame being dumped ends with this swap.
   if (frame_dump_file_) {
+    // Whether the GPU's copy of each texture's base level still matches the
+    // guest memory (a stale copy draws another texture's texels).
+    if (!frame_dump_textures_.empty() && shared_memory_->IsHostMapped() &&
+        AwaitAllQueueOperationsCompletion()) {
+      std::vector<uint8_t> gpu_bytes;
+      uint32_t differing_written = 0;
+      for (const auto& range : frame_dump_textures_) {
+        const uint32_t base = range.first, length = range.second.length;
+        gpu_bytes.resize(length);
+        if (!shared_memory_->ReadHostMapped(base, length, gpu_bytes.data())) {
+          continue;
+        }
+        const uint8_t* guest_bytes = memory_->TranslatePhysical(base);
+        uint32_t differing = 0, first = UINT32_MAX;
+        for (uint32_t i = 0; i < length; ++i) {
+          if (gpu_bytes[i] != guest_bytes[i]) {
+            ++differing;
+            first = std::min(first, i);
+          }
+        }
+        std::string line = fmt::format(
+            "T {:08X} {} valid {} gpu_written {} differing {} fetch "
+            "{:08X}:{:08X}:{:08X}",
+            base, length,
+            uint32_t(shared_memory_->IsRangeValid(base, length)),
+            uint32_t(shared_memory_->IsRangeGpuWritten(base, length)),
+            differing, range.second.dword_0, range.second.dword_1,
+            range.second.dword_2);
+        if (differing) {
+          line += fmt::format(" first +{:X}", first);
+          // Both copies of the first differing ones, to tell which is right.
+          if (differing_written < 48) {
+            ++differing_written;
+            for (int copy = 0; copy < 2; ++copy) {
+              FILE* file = xe::filesystem::OpenFile(
+                  frame_dump_dir_ / fmt::format("t{:08X}_{}.bin", base,
+                                                copy ? "guest" : "gpu"),
+                  "wb");
+              if (file) {
+                std::fwrite(copy ? guest_bytes : gpu_bytes.data(), 1, length,
+                            file);
+                std::fclose(file);
+              }
+            }
+          }
+        }
+        line += '\n';
+        std::fwrite(line.data(), 1, line.size(), frame_dump_file_);
+      }
+      BeginSubmission(true);
+    }
+    frame_dump_textures_.clear();
     std::fclose(frame_dump_file_);
     frame_dump_file_ = nullptr;
     XELOGI("FrameDump: {} draws and {} resolves in {}", frame_dump_draws_,
@@ -2754,6 +2806,24 @@ void VulkanCommandProcessor::PollFrameDump() {
     return;
   }
   frames_since_poll = 0;
+  // debug.xendroid.gpu_reload: a new value of 1 recreates the textures, 2
+  // uploads all guest memory to the GPU again, 3 does both.
+  char reload_value[PROP_VALUE_MAX] = {};
+  __system_property_get("debug.xendroid.gpu_reload", reload_value);
+  if (gpu_reload_value_ != reload_value) {
+    gpu_reload_value_ = reload_value;
+    const int reload = std::atoi(reload_value);
+    if (reload & 2) {
+      InvalidateGpuMemory();
+    }
+    if (reload & 1) {
+      ClearCaches();
+    }
+    if (reload & 3) {
+      XELOGI("debug.xendroid.gpu_reload: {}{}", (reload & 1) ? "textures " : "",
+             (reload & 2) ? "guest memory" : "");
+    }
+  }
   char value[PROP_VALUE_MAX] = {};
   __system_property_get("debug.xendroid.frame_dump", value);
   if (frame_dump_value_ == value) {
@@ -2823,6 +2893,37 @@ void VulkanCommandProcessor::DumpFrameDraw(const VulkanShader& vertex_shader,
           " {}{}:{:08X}:{:08X}:{:08X}:{:08X}:{:08X}:{:08X}", stage,
           binding.fetch_constant, fetch.dword_0, fetch.dword_1, fetch.dword_2,
           fetch.dword_3, fetch.dword_4, fetch.dword_5);
+      // The base level of a 2D texture, its blocks in 32x32 tiles when tiled.
+      const FormatInfo* format_info = FormatInfo::Get(fetch.format);
+      if (fetch.dimension == xenos::DataDimension::k2DOrStacked &&
+          format_info && format_info->bits_per_pixel) {
+        uint32_t width_blocks =
+            xe::align(uint32_t(fetch.size_2d.width) + 1,
+                      format_info->block_width) /
+            format_info->block_width;
+        uint32_t height_blocks =
+            xe::align(uint32_t(fetch.size_2d.height) + 1,
+                      format_info->block_height) /
+            format_info->block_height;
+        if (fetch.tiled) {
+          width_blocks = xe::align(width_blocks, UINT32_C(32));
+          height_blocks = xe::align(height_blocks, UINT32_C(32));
+        } else {
+          width_blocks = xe::align(
+              width_blocks * format_info->bytes_per_block(), UINT32_C(256)) /
+              format_info->bytes_per_block();
+        }
+        const uint32_t base = fetch.base_address << 12;
+        const uint64_t length =
+            uint64_t(width_blocks) * height_blocks *
+            format_info->bytes_per_block();
+        if (base && length && base + length <= (UINT64_C(1) << 29)) {
+          FrameDumpTexture& recorded = frame_dump_textures_.try_emplace(
+              base, FrameDumpTexture{0, fetch.dword_0, fetch.dword_1,
+                                     fetch.dword_2}).first->second;
+          recorded.length = std::max(recorded.length, uint32_t(length));
+        }
+      }
     }
   };
   append_textures("vt", vertex_shader);
