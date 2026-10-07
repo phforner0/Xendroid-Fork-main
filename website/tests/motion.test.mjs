@@ -20,7 +20,7 @@ const MOVING = () => {
   return { moving: out.slice(0, 8), scroll: getComputedStyle(document.documentElement).scrollBehavior };
 };
 
-for (const p of ['', 'docs/interface/', 'simulador/']) {
+for (const p of ['', 'docs/interface/', 'simulator/', 'pt-br/simulador/']) {
   test(`nada se move em ${p || '(inicial)'} com movimento reduzido`, async () => {
     const page = await site.open(p, { reducedMotion: 'reduce' });
     try {

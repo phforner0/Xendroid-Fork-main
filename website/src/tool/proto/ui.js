@@ -17,7 +17,7 @@ function coverHTML(g, cls = '', named = false) {
 const pill = (g, short) => `<span class="pill st-${stOf(g)}">${CS[stOf(g)][short ? 1 : 0]}</span>`;
 const dot = g => `<i class="dot st-${stOf(g)}"></i>`;
 const recents = () => GAMES.filter(g => g.runs).sort((a, b) => a.last - b.last);
-function sortList(l, s) { const by = (a, b) => a.name.localeCompare(b.name, 'pt-BR'); if (s === 'az') return l.sort(by); if (s === 'za') return l.sort((a, b) => by(b, a)); if (s === 'fmt') return l.sort((a, b) => FMT_ORDER.indexOf(a.fmt) - FMT_ORDER.indexOf(b.fmt) || by(a, b)); return l.sort((a, b) => (a.last || 99) - (b.last || 99) || by(a, b)); }
+function sortList(l, s) { const by = (a, b) => a.name.localeCompare(b.name, LANG); if (s === 'az') return l.sort(by); if (s === 'za') return l.sort((a, b) => by(b, a)); if (s === 'fmt') return l.sort((a, b) => FMT_ORDER.indexOf(a.fmt) - FMT_ORDER.indexOf(b.fmt) || by(a, b)); return l.sort((a, b) => (a.last || 99) - (b.last || 99) || by(a, b)); }
 function libList() {
   let l = GAMES.slice(); const f = S.lf;
   if (f === 'fav') l = l.filter(isFav); else if (f.startsWith('col:')) l = l.filter(g => g.cols.includes(f.slice(4))); else if (f.startsWith('fmt:')) l = l.filter(g => g.fmt === f.slice(4));
@@ -69,7 +69,7 @@ function label(d, v) {
   if (d.ty === 'bool') return v ? 'Ligado' : 'Desligado';
   if (d.ty === 'list') { const o = d.o.find(o => String(o[0]) === String(v)); return o ? o[1] : v === '' && d.o.length ? d.o[0][1] : String(v); }
   if (d.ty === 'int') return d.zero != null && Number(v) === 0 ? d.zero : nf(v) + (d.unit || '');
-  if (d.ty === 'num') return Number(v).toFixed(2).replace('.', ',');
+  if (d.ty === 'num') return Number(v).toFixed(2).replace('.', DEC);
   if (d.ty === 'text') return v || (d.ph ? d.ph + ' (padrão)' : '(padrão)');
   return '';
 }
@@ -219,7 +219,7 @@ function perfHTML(g, full) {
   if (!full) return k + chart + example;
   return k + chart + `<figure class="chart">${ftSVG(st)}<figcaption>Quadros por tempo de quadro; metade abaixo de ${st.ft50} ms</figcaption></figure>
     <dl class="kv">
-      <dt>Pipelines criados</dt><dd>${nf(p.pipes[0])} (${String(p.pipes[1]).replace('.', ',')} s)</dd>
+      <dt>Pipelines criados</dt><dd>${nf(p.pipes[0])} (${String(p.pipes[1]).replace('.', DEC)} s)</dd>
       <dt>Áudio (${p.audio[0]})</dt><dd>${nf(p.audio[2])} de ${nf(p.audio[1])} blocos com falha</dd>
       <dt>Bateria</dt><dd>${p.bat[0]} → ${p.bat[1]} °C (fim ${p.bat[2]} °C)</dd>
       <dt>Limite e tela</dt><dd>${p.lim ? p.lim + ' FPS' : 'sem limite'} · ${p.hz} Hz</dd>

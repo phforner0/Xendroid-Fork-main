@@ -123,7 +123,7 @@ screen('profiles', {
 /* ---------- saves de um jogo ---------- */
 const SV = { sel: {}, incl: true, open: {}, folder: 'Google Drive › XenDroid › Backups (exemplo)', auto: true, last: 'hoje, 14:02', replace: false, busy: null, timer: 0 };
 const SAVE_NAMES = {}; /* nomes de save vêm do cabeçalho de cada arquivo; aqui são genéricos */
-const fmtKB = kb => kb >= 1024 ? (kb / 1024).toFixed(1).replace('.', ',') + ' MB' : kb + ' KB';
+const fmtKB = kb => kb >= 1024 ? (kb / 1024).toFixed(1).replace('.', DEC) + ' MB' : kb + ' KB';
 function svNames(gid, x, s) { const n = SAVE_NAMES[gid] && SAVE_NAMES[gid][x]; if (n) return n; return [['Progresso', s.when, Math.round(s.kb * .8)], ['Configurações', s.when, Math.round(s.kb * .2)]]; }
 function svHereHTML(v) {
   const g = GBY[S.route.p.gid] || curGame(), list = SAVES[g.id] || [], nsel = list.filter(s => SV.sel[s.xuid]).length;

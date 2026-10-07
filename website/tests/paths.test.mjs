@@ -1,6 +1,6 @@
 // Caminhos: o site gerado para /Xendroid-Plus/ funciona em outro subdiretório (todos os links
 // são relativos), cada página abre direto pelo endereço e volta igual ao recarregar, e os links
-// diretos para seções e telas do simulador funcionam.
+// diretos para seções e telas do simulador funcionam, nos dois idiomas.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { useSite, pages } from './_site.mjs';
@@ -22,8 +22,8 @@ test('em outro subdiretório, cada página carrega sem recurso quebrado', async 
   }
 });
 
-test('um link direto para uma seção da documentação abre nela, e recarregar mantém a seção', async () => {
-  const probe = await moved.open('docs/instalacao/');
+for (const doc of ['docs/installation/', 'pt-br/docs/instalacao/']) test(`um link direto para uma seção de ${doc} abre nela, e recarregar mantém a seção`, async () => {
+  const probe = await moved.open(doc);
   let id;
   try {
     id = await probe.locator('main h2[id]').nth(1).getAttribute('id');
@@ -31,7 +31,7 @@ test('um link direto para uma seção da documentação abre nela, e recarregar 
     await probe.done();
   }
   // numa aba nova, como quem recebe o link
-  const page = await moved.open(`docs/instalacao/#${id}`);
+  const page = await moved.open(`${doc}#${id}`);
   try {
     await page.evaluate(() => document.fonts.ready);
     const top = await page.locator(`[id="${id}"]`).evaluate(el => el.getBoundingClientRect().top);
@@ -45,8 +45,8 @@ test('um link direto para uma seção da documentação abre nela, e recarregar 
   }
 });
 
-test('o endereço do simulador guarda a tela, e um link direto abre nela', async () => {
-  const page = await moved.open('simulador/#drivers');
+for (const sim of ['simulator/', 'pt-br/simulador/']) test(`o endereço do simulador (${sim}) guarda a tela, e um link direto abre nela`, async () => {
+  const page = await moved.open(`${sim}#drivers`);
   try {
     await page.waitForFunction(() => document.querySelector('#app .topbar h1, #app .c-ghead h1'));
     assert.match(await page.locator('#ch-screen').inputValue(), /drivers/);

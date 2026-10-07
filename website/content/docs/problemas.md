@@ -9,9 +9,9 @@ fontes: [app/src/main/java/xendroid/compose/core/SessionLogs.kt, app/src/main/ja
 
 ## O jogo não abre
 
-Quando a abertura falha, a tela **Falha ao abrir** diz o motivo numa frase, mostra as últimas linhas do log e oferece o próximo passo:
+Quando a abertura falha, a tela de falha (**O jogo não pôde iniciar**, ou outro título quando a sessão está ocupada ou se recuperando) diz o motivo numa frase, mostra as últimas linhas do log e oferece o próximo passo:
 
-{{> print id=falha-ao-abrir legenda="Falha ao abrir: o motivo, as últimas linhas do log e o próximo passo."}}
+{{> print id=falha-ao-abrir legenda="Falha na abertura: o motivo, as últimas linhas do log e o próximo passo."}}
 
 1. **Driver personalizado**: se o jogo não abriu com um driver como o Turnip, **Tentar com o driver do sistema** abre só aquela vez com o driver do Android. Se funcionar, troque o driver do jogo em [Drivers](doc:drivers).
 2. **Ajustes do jogo**: em [Iniciar com…](doc:interface#iniciar-com), **Ignorar os ajustes deste jogo** abre só com os globais. Se abrir, um ajuste próprio do jogo é o problema; **Voltar tudo ao global** na ficha desfaz.

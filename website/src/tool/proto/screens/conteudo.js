@@ -21,7 +21,7 @@ Object.assign(NOTES, {
 });
 
 /* ---------- conteúdo ---------- */
-const mbFmt = mb => mb >= 1024 ? (mb / 1024).toFixed(1).replace('.', ',') + ' GB' : Math.round(mb) + ' MB';
+const mbFmt = mb => mb >= 1024 ? (mb / 1024).toFixed(1).replace('.', DEC) + ' GB' : Math.round(mb) + ' MB';
 const parseMB = s => { const m = /([\d,]+)\s*(MB|GB)/.exec(s || ''); return m ? parseFloat(m[1].replace(',', '.')) * (m[2] === 'GB' ? 1024 : 1) : 0; };
 const CONTENT = [];
 for (const g of GAMES) {
@@ -208,7 +208,7 @@ function bmBody(v) {
         ${r.notes.length ? `<ul class="wl">${r.notes.map(n => `<li>${ic('warn', 14)}<span>${esc(n)}</span></li>`).join('')}</ul>` : ''}
         ${r.A && r.A.length && r.B && r.B.length ? `<div class="bm-bars" data-note="bmchart">${r.L.map(x => `<div class="bb ${x.side}"><b>${x.p50}</b><i style="height:${(x.p50 / maxF * 100).toFixed(0)}%"></i><span>${x.side}${x.id}</span></div>`).join('')}</div>
         <div class="bm-legend"><span><i style="background:#2f6fd1"></i>A</span><span><i style="background:#c4501c"></i>B</span><span>FPS mediano por execução, na ordem em que rodaram</span></div>
-        <div class="bm-sides">${[['A', r.A], ['B', r.B]].map(([s, rs]) => `<div class="bm-side ${s}"><b>${med(rs.map(x => x.p50)).toString().replace('.', ',')} FPS</b><small>${s}: ${rs.length} ${rs.length === 1 ? 'execução' : 'execuções'}, 5º pct ${med(rs.map(x => x.p5)).toString().replace('.', ',')}, 99% &lt; ${Math.round(med(rs.map(x => x.p99)))} ms</small></div>`).join('')}</div>
+        <div class="bm-sides">${[['A', r.A], ['B', r.B]].map(([s, rs]) => `<div class="bm-side ${s}"><b>${med(rs.map(x => x.p50)).toString().replace('.', DEC)} FPS</b><small>${s}: ${rs.length} ${rs.length === 1 ? 'execução' : 'execuções'}, 5º pct ${med(rs.map(x => x.p5)).toString().replace('.', DEC)}, 99% &lt; ${Math.round(med(rs.map(x => x.p99)))} ms</small></div>`).join('')}</div>
         <dl class="kv"><dt>Ordem</dt><dd>${r.order}${r.balanced ? ' (equilibrada)' : ''}</dd>${r.changes.length === 1 ? `<dt>O que mudou</dt><dd>${esc(r.changes[0])}</dd>` : ''}${r.pairs.length ? `<dt>B − A por par</dt><dd>${r.pairs.map(d => (d > 0 ? '+' : '') + d).join(', ')} FPS (mediana)</dd>` : ''}</dl>` : ''}
       </section>
     </div></div>`;

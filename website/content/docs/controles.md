@@ -37,7 +37,7 @@ O **Editor de toque** move e muda o tamanho de cada controle, a zona morta e o q
 
 Cada controle conectado aparece com o próprio ID, se tem giroscópio e a própria intensidade de vibração. O cartão **Ajustes do core para controles** traz as zonas mortas dos analógicos e o botão Guia, para todos os jogos (cada jogo pode mudar na ficha).
 
-- **Mapeamento de teclas**: a tecla de cada um dos 16 botões. Uma tecla já usada troca de lugar com a outra; com controle, A escolhe, Y limpa e X troca A/B e X/Y. **Restaurar padrões** volta ao mapa original. Um mapa vale para todos os controles.
+- **Mapeamento de teclas**: a tecla de cada um dos 16 botões. Uma tecla já usada troca de lugar com a outra; com controle, A escolhe, Y limpa e X troca A/B e X/Y. **Restaurar** volta ao mapa original. Um mapa vale para todos os controles.
 - **Testar controles**: o controle desenhado acende o que é apertado, com os analógicos (e a zona morta do core, ajustável ali), os gatilhos, o giroscópio e a vibração. Nada vai para um jogo; segure B por um segundo para sair.
 
 ## Vibração e movimento

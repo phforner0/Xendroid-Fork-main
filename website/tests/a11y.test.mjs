@@ -29,8 +29,8 @@ test('axe na 404', async () => {
   try { assert.deepEqual(await axe(page), []); } finally { await page.done(); }
 });
 
-test('axe nas telas do simulador, nos modos toque e controle', async () => {
-  const page = await site.open('simulador/', { colorScheme: 'dark' });
+for (const sim of ['simulator/', 'pt-br/simulador/']) test(`axe nas telas do simulador (${sim}), nos modos toque e controle`, async () => {
+  const page = await site.open(sim, { colorScheme: 'dark' });
   try {
     const routes = (await page.locator('#sim').getAttribute('data-routes')).split(/\s+/);
     for (const mode of ['b', 'c']) {

@@ -1,7 +1,9 @@
 // Simulador: cada tela abre nos dois modos e nas duas orientações; o teclado só age dentro do
 // aparelho e Tab sai dele; e o arquivo de configuração de um jogo sai no formato que o núcleo
 // da versão escolhida aceita (cada chave existe, na seção certa e com o tipo certo), com o
-// Title ID conferido, o mesmo texto ao baixar e o arquivo global também válido.
+// Title ID conferido, o mesmo texto ao baixar e o arquivo global também válido. O simulador em
+// inglês é gerado no build a partir do português: nenhuma tela, variante ou janela dele pode
+// sobrar em português, e o arquivo de configuração sai igual nos dois idiomas.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parse } from 'smol-toml';
@@ -11,8 +13,10 @@ const site = useSite();
 // o simulador desenha a arte de exemplo antes da primeira tela (ready, em core.js)
 const ready = page => page.waitForFunction(() => typeof ready !== 'undefined' && ready === true && document.querySelector('#app').children.length > 0);
 
+const SIMS = { en: 'simulator/', pt: 'pt-br/simulador/' };
+
 test('cada tela abre nos modos toque e controle, deitado e em pé', async () => {
-  const page = await site.open('simulador/');
+  const page = await site.open(SIMS.en);
   try {
     await ready(page);
     const routes = (await page.locator('#sim').getAttribute('data-routes')).split(/\s+/);
@@ -48,7 +52,7 @@ test('cada tela abre nos modos toque e controle, deitado e em pé', async () => 
 });
 
 test('o teclado só age dentro do aparelho, e Tab entra e sai dele numa parada só', async () => {
-  const page = await site.open('simulador/#library');
+  const page = await site.open(`${SIMS.en}#library`);
   try {
     await ready(page);
     // fora do aparelho: M e as setas não mexem no simulador, e "/" abre a busca do site
@@ -123,8 +127,8 @@ function checkToml(text, cvars) {
   return keys;
 }
 
-test('o arquivo de um jogo sai no formato que o núcleo aceita', async () => {
-  const page = await site.open('simulador/#game');
+for (const [lang, sim] of Object.entries(SIMS)) test(`o arquivo de um jogo sai no formato que o núcleo aceita (${lang})`, async () => {
+  const page = await site.open(`${sim}#game`);
   try {
     await ready(page);
     const changed = await page.evaluate(CHANGE_ALL);
@@ -144,7 +148,7 @@ test('o arquivo de um jogo sai no formato que o núcleo aceita', async () => {
     // Title ID: inválido avisa; minúsculas valem e viram maiúsculas
     for (const bad of ['XYZ', '00000000', '1234567', 'G2345678']) {
       await page.fill('#toml-id', bad);
-      assert.match(await page.locator('#toml-body [role="alert"]').innerText(), /Title ID inválido/, bad);
+      assert.match(await page.locator('#toml-body [role="alert"]').innerText(), lang === 'en' ? /Invalid Title ID/ : /Title ID inválido/, bad);
       assert.equal(await page.locator('#toml-pre').count(), 0);
     }
     await page.fill('#toml-id', 'abcdef12');
@@ -164,15 +168,15 @@ test('o arquivo de um jogo sai no formato que o núcleo aceita', async () => {
   }
 });
 
-test('um jogo sem ajustes próprios não gera arquivo, e o arquivo global é válido', async () => {
-  const page = await site.open('simulador/#game');
+for (const [lang, sim] of Object.entries(SIMS)) test(`um jogo sem ajustes próprios não gera arquivo, e o arquivo global é válido (${lang})`, async () => {
+  const page = await site.open(`${sim}#game`);
   try {
     await ready(page);
     await page.evaluate(() => { OV[curGame().id] = {}; render(); });
     await page.click('[data-k="bs-set"]');
     await page.click('[data-k="b-toml"]');
     assert.equal(await page.locator('#toml-pre').count(), 0);
-    assert.match(await page.locator('#toml-body').innerText(), /não grava arquivo/);
+    assert.match(await page.locator('#toml-body').innerText(), lang === 'en' ? /writes no file/ : /não grava arquivo/);
     await page.click('[data-k="m-ok"]');
 
     await page.evaluate(h => { location.hash = h; }, 'settings');
@@ -186,8 +190,8 @@ test('um jogo sem ajustes próprios não gera arquivo, e o arquivo global é vá
   }
 });
 
-test('os dados do simulador são os do build: ajustes, jogos do README e a release estável', async () => {
-  const page = await site.open('simulador/');
+for (const [lang, sim] of Object.entries(SIMS)) test(`os dados do simulador são os do build: ajustes, jogos do README e a release estável (${lang})`, async () => {
+  const page = await site.open(sim);
   try {
     await ready(page);
     const est = readJson('dados/estavel.json');
@@ -199,10 +203,16 @@ test('os dados do simulador são os do build: ajustes, jogos do README e a relea
       measured: Object.keys(XDR_SIM.medidas),
       upd: XDR_SIM.atualizacao && XDR_SIM.atualizacao.oferecida,
       intro: document.querySelector('.sim-intro .lead').textContent,
+      idioma: XDR_SIM.idioma,
+      title: XDR_SIM.canais.estavel.ajustes.find(d => d.k === 'GPU.framerate_limit').t,
     }));
+    assert.equal(sim.idioma, lang === 'en' ? 'en' : 'pt-BR');
+    // os textos dos ajustes são os do app no idioma da página
+    const fr = est.ajustes.find(a => a.key === 'GPU|framerate_limit').title;
+    assert.equal(sim.title, lang === 'en' ? fr.en ?? fr.text : fr.text);
     assert.equal(sim.settings, est.ajustes.length);
     assert.deepEqual(sim.keys.slice().sort(), est.ajustes.map(a => a.key.replace('|', '.')).sort());
-    assert.match(sim.intro, new RegExp(`Os ${est.ajustes.length} ajustes`));
+    assert.match(sim.intro, new RegExp(lang === 'en' ? `The ${est.ajustes.length} settings` : `Os ${est.ajustes.length} ajustes`));
     for (const id of sim.measured) assert.ok(sim.games.includes(id), `jogo medido ${id} fora da biblioteca de exemplo`);
     assert.ok(sim.upd, 'o atualizador tem a release estável');
     assert.equal(sim.upd.tag, rel.tag);
@@ -212,5 +222,85 @@ test('os dados do simulador são os do build: ajustes, jogos do README e a relea
     assert.ok(sim.upd.notas.length > 0, 'o resumo da release foi lido');
   } finally {
     await page.done();
+  }
+});
+
+// palavras e sinais do português que não aparecem num texto em inglês
+const PORTUGUESE = /[ãõçÃÕÇ]|\b(não|você|jogo|jogos|ajuste|ajustes|abrir|fechar|voltar|nenhum|nenhuma|também|está|são|sem|com|para|pelo|pela|uma|aqui|agora|ainda|quando|onde|tela|telas|toque|controle|controles|pasta|pastas|arquivo|arquivos|perfil|perfis|sessão|sessões|desligado|ligado|padrão|exemplo|abertura|mudar|usar|escolha|salvar|apagar|limite|nunca|ontem|hoje|dias|horas|minutos)\b/i;
+
+/** Textos visíveis (e os rótulos de acessibilidade) do aparelho e dos painéis do simulador. */
+const VISIBLE_TEXT = () => {
+  const out = [];
+  const take = root => {
+    if (!root) return;
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = w.nextNode())) { const t = n.textContent.trim(); if (t && !n.parentElement.closest('[lang="pt-BR"], script, style')) out.push(t); }
+    for (const el of root.querySelectorAll('[aria-label],[title],[placeholder],[alt]')) for (const a of ['aria-label', 'title', 'placeholder', 'alt']) if (el.getAttribute(a)) out.push(el.getAttribute(a));
+  };
+  for (const id of ['app', 'ch-dir', 'ch-notes', 'ch-vars', 'ch-ver', 'ch-pad', 'ch-lotes', 'ch-screen']) take(document.getElementById(id));
+  return out;
+};
+
+/** Cada tela, em cada modo, orientação e variante da barra: os textos com cara de português. */
+async function portugueseLeft(page) {
+  const found = new Map();
+  const routes = (await page.locator('#sim').getAttribute('data-routes')).split(/\s+/);
+  for (const [mode, orient] of [['b', 'land'], ['c', 'land'], ['b', 'port']]) {
+    await page.click(`[data-cact="mode"][data-v="${mode}"]`);
+    await page.click(`[data-cact="orient"][data-v="${orient}"]`);
+    for (const r of routes) {
+      await page.evaluate(h => { location.hash = h; }, r);
+      await page.waitForTimeout(40);
+      const variants = [null];
+      const n = await page.locator('#ch-vars select').count();
+      for (let i = 0; i < n; i++) for (const v of await page.locator('#ch-vars select').nth(i).locator('option').evaluateAll(o => o.map(x => x.value))) variants.push([i, v]);
+      for (const v of variants) {
+        if (v) { await page.locator('#ch-vars select').nth(v[0]).selectOption(v[1]); await page.waitForTimeout(30); }
+        for (const t of await page.evaluate(VISIBLE_TEXT)) if (PORTUGUESE.test(t) && !found.has(t)) found.set(t, `${r} (${mode}, ${orient}${v ? `, variante ${v[0]}=${v[1]}` : ''})`);
+      }
+    }
+  }
+  // as janelas (folhas, diálogos) abertas sobre cada tela que as aceita
+  const modals = await page.evaluate(src => {
+    const re = new RegExp(src, 'i');
+    const out = {};
+    let shown = 0;
+    for (const k of Object.keys(MODALS)) {
+      for (const r of ['game', 'settings', 'library', 'profiles', 'saves', 'content', 'diagnostics', 'folders', 'browse', 'missing', 'about', 'update', 'drivers', 'controls', 'ingame', 'compare', 'firstrun']) {
+        try {
+          location.hash = r;
+          window.dispatchEvent(new HashChangeEvent('hashchange'));
+          S.modal = k; S.mp = {}; render();
+          shown++;
+          for (const line of document.getElementById('app').innerText.split('\n')) if (re.test(line)) out[line.trim()] = `janela ${k} sobre ${r}`;
+        } catch (e) { /* janela que precisa de outra tela */ }
+        S.modal = null; S.mp = {};
+      }
+    }
+    return { out, shown };
+  }, PORTUGUESE.source);
+  for (const [t, w] of Object.entries(modals.out)) if (!found.has(t)) found.set(t, w);
+  return { found, modalsShown: modals.shown };
+}
+
+test('o simulador em inglês não tem texto em português (e o detector acha o português)', async () => {
+  const en = await site.open(SIMS.en);
+  try {
+    await ready(en);
+    const { found, modalsShown } = await portugueseLeft(en);
+    assert.ok(modalsShown > 100, `janelas mostradas: ${modalsShown}`);
+    assert.deepEqual([...found].map(([t, w]) => `${t.slice(0, 120)} — ${w}`), []);
+    assert.deepEqual(en.problems, []);
+  } finally {
+    await en.done();
+  }
+  // o mesmo percurso no português acha o português: o teste acima não passa por estar vazio
+  const pt = await site.open(SIMS.pt);
+  try {
+    await ready(pt);
+    assert.ok((await portugueseLeft(pt)).found.size > 50);
+  } finally {
+    await pt.done();
   }
 });

@@ -1,11 +1,11 @@
-// Busca da documentação no navegador (MiniSearch). O índice é gerado no build
-// (assets/search.json) com as seções de cada página e cada ajuste do app.
+// Busca da documentação no navegador (MiniSearch). O índice é gerado no build, um por idioma
+// (assets/search-en.json, assets/search-pt.json), com as seções de cada página e cada ajuste do app.
 import MiniSearch from './vendor/minisearch.js';
 
 const fold = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-export async function createSearch(root) {
-  const res = await fetch(`${root}assets/search.json`);
+export async function createSearch(url) {
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`índice da busca: ${res.status}`);
   const { docs } = await res.json();
   const ms = new MiniSearch({

@@ -8,7 +8,6 @@ const url = (process.env.SITE_URL || defaultUrl).replace(/\/?$/, '/');
 
 export default {
   name: 'Xendroid+',
-  lang: 'pt-BR',
   repo,
   repoUrl: `https://github.com/${repo}`,
   /** Endereço público do site, usado só em metadados (canonical, Open Graph, sitemap). */
@@ -18,10 +17,10 @@ export default {
   discord: 'https://discord.gg/AT8Bswv62',
   /** Seções da documentação, na ordem da barra lateral. */
   docSections: [
-    { id: 'comecar', title: 'Começar' },
-    { id: 'usar', title: 'Usar' },
-    { id: 'referencia', title: 'Referência' },
-    { id: 'projeto', title: 'Projeto' },
+    { id: 'comecar', title: { en: 'Get started', pt: 'Começar' } },
+    { id: 'usar', title: { en: 'Use', pt: 'Usar' } },
+    { id: 'referencia', title: { en: 'Reference', pt: 'Referência' } },
+    { id: 'projeto', title: { en: 'Project', pt: 'Projeto' } },
   ],
   /** Caminhos do repositório que alimentam o site (o workflow do Pages observa os mesmos). */
   sparsePaths: [

@@ -25,7 +25,9 @@ import { createBlocks } from './site/blocks.mjs';
 import { simulatorPage, writeSimulator, SIM_SCREENS } from './site/simulator.mjs';
 import { notFound } from './site/notfound.mjs';
 import { PRINTS } from '../content/prints.mjs';
+import { PRINT_ALT_EN } from '../content/prints.en.mjs';
 import { settingAnchor, textOf } from './site/settings-view.mjs';
+import { lang as langOf, LANG_IDS, LANGS } from './site/i18n.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SITE = path.resolve(HERE, '..');
@@ -109,7 +111,6 @@ const devCh = data.channels.desenvolvimento;
 // ---------- números da página inicial (sempre da versão estável) ----------
 const S = est.settings.settings;
 const names = est.games.quirkTitles.map(q => q.name).filter(Boolean);
-const joinPt = l => (l.length > 1 ? `${l.slice(0, -1).join(', ')} e ${l[l.length - 1]}` : l.join(''));
 const logKeep = S.find(s => s.key === 'Logging|log_sessions_keep');
 const stats = {
   settings: S.length,
@@ -118,7 +119,7 @@ const stats = {
   live: S.filter(s => s.live).length,
   quirkTitles: est.games.quirkTitles.length,
   quirkEntries: est.games.quirks.length,
-  quirkExamples: joinPt(['Forza Horizon', 'Gears of War 3', 'Ninja Gaiden II'].filter(n => names.includes(n)).concat(names.filter(n => !['Forza Horizon', 'Gears of War 3', 'Ninja Gaiden II'].includes(n))).slice(0, 3)),
+  quirkExampleNames: ['Forza Horizon', 'Gears of War 3', 'Ninja Gaiden II'].filter(n => names.includes(n)).concat(names.filter(n => !['Forza Horizon', 'Gears of War 3', 'Ninja Gaiden II'].includes(n))).slice(0, 3),
   patchTitles: est.games.patches.length,
   patchFiles: est.games.patchFileCount,
   turnipFlags: est.settings.turnipFlags.length,
@@ -160,29 +161,31 @@ const printOut = {};
   }
 }
 
-/** Figura com um print real: a moldura de aparelho e a legenda. */
-function shot(pagePath, id, { caption = null, eager = false, portrait = false } = {}) {
+/** Figura com um print real: a moldura de aparelho e a legenda (os prints mostram o app em português). */
+function shot(pagePath, id, { caption = null, eager = false, portrait = false, lang = 'pt' } = {}) {
   const p = printOut[id];
   if (!p) { error(`print desconhecido: ${id}`); return ''; }
+  const alt = lang === 'en' ? PRINT_ALT_EN[id] : p.alt;
+  if (!alt) error(`print "${id}" sem texto alternativo em ${lang === 'en' ? 'content/prints.en.mjs' : 'content/prints.mjs'}`);
   const vertical = portrait || p.h > p.w;
   return html`<figure class="shot${vertical ? ' portrait' : ''}">
-  <div class="shot-frame"><img src="${rel(pagePath, p.file)}" width="${p.w}" height="${p.h}" alt="${p.alt}"${eager ? raw(' fetchpriority="high"') : raw(' loading="lazy" decoding="async"')}></div>
-  ${caption ? html`<figcaption>${caption}</figcaption>` : ''}
+  <div class="shot-frame"><img src="${rel(pagePath, p.file)}" width="${p.w}" height="${p.h}" alt="${alt}"${eager ? raw(' fetchpriority="high"') : raw(' loading="lazy" decoding="async"')}></div>
+  ${caption ? html`<figcaption>${caption}${lang === 'en' ? html` <span class="u-muted">The app is shown in Portuguese.</span>` : ''}</figcaption>` : ''}
 </figure>`;
 }
 
 // ---------- fontes de cada dado (página "Dados do site") ----------
-const sourcesTable = [
-  { what: 'Ajustes (nome, grupo, nível, textos, opções)', files: [data.sources.settings.schema, data.sources.settings.catalog, data.sources.settings.texts, data.sources.settings.xd], how: 'lidos do Kotlin, com os textos de values-pt-rBR (inglês quando falta tradução)', channel: 'estável e desenvolvimento' },
-  { what: 'Padrão de cada ajuste', files: [data.sources.settings.template, data.sources.settings.schema], how: 'o valor do modelo default_config.toml; sem ele, o do esquema, como o app faz', channel: 'estável e desenvolvimento' },
-  { what: 'Cvars do núcleo (tipo, seção, padrão)', files: ['emulator-core/src/main/cpp/xenia/src/xenia/'], how: 'DEFINE_* do C++, com o pré-processador do build Android', channel: 'estável e desenvolvimento' },
-  { what: 'Correções automáticas por jogo', files: [data.sources.games.quirks], how: 'tabela do game_quirks.cc', channel: 'estável' },
-  { what: 'Patches de jogos', files: [data.sources.games.patches], how: 'arquivos *.patch.toml copiados para o APK no build', channel: 'estável' },
-  { what: 'Nomes de jogos por Title ID', files: [data.sources.games.patches, data.sources.games.titles], how: 'nome do arquivo de patch; senão a base vendorizada do Xenia (só o nome)', channel: 'estável' },
-  { what: 'Pacote, Android mínimo, ABI e pastas', files: data.sources.app, how: 'padrões no build.gradle, no workflow e no código', channel: 'estável e desenvolvimento' },
-  { what: 'Medições de desempenho', files: [data.sources.games.readmePt], how: 'tabela "## Desempenho" do README', channel: 'desenvolvimento (README atual)' },
-  { what: 'Versões publicadas e APK', files: [], how: 'API de releases do GitHub, no momento do build', channel: 'releases' },
-  { what: 'Prints das telas', files: ['docs/ui-redesign/prints/app/'], how: 'imagens dos testes de tela (Roborazzi), convertidas para WebP', channel: 'as do repositório' },
+const sourcesTable = ({ tx }) => [
+  { what: tx('Settings (name, group, level, texts, options)', 'Ajustes (nome, grupo, nível, textos, opções)'), files: [data.sources.settings.schema, data.sources.settings.catalog, data.sources.settings.texts, data.sources.settings.xd], how: tx('read from the Kotlin code, with the texts of values/ (English) and values-pt-rBR (Portuguese, English where a translation is missing)', 'lidos do Kotlin, com os textos de values-pt-rBR (inglês quando falta tradução) e, nas páginas em inglês, de values/'), channel: tx('stable and development', 'estável e desenvolvimento') },
+  { what: tx('Default of each setting', 'Padrão de cada ajuste'), files: [data.sources.settings.template, data.sources.settings.schema], how: tx('the value in the default_config.toml template; without it, the schema’s, as the app does', 'o valor do modelo default_config.toml; sem ele, o do esquema, como o app faz'), channel: tx('stable and development', 'estável e desenvolvimento') },
+  { what: tx('Core cvars (type, section, default)', 'Cvars do núcleo (tipo, seção, padrão)'), files: ['emulator-core/src/main/cpp/xenia/src/xenia/'], how: tx('DEFINE_* in the C++ code, with the Android build’s preprocessor', 'DEFINE_* do C++, com o pré-processador do build Android'), channel: tx('stable and development', 'estável e desenvolvimento') },
+  { what: tx('Automatic per-game fixes', 'Correções automáticas por jogo'), files: [data.sources.games.quirks], how: tx('the game_quirks.cc table', 'tabela do game_quirks.cc'), channel: tx('stable', 'estável') },
+  { what: tx('Game patches', 'Patches de jogos'), files: [data.sources.games.patches], how: tx('*.patch.toml files copied into the APK by the build', 'arquivos *.patch.toml copiados para o APK no build'), channel: tx('stable', 'estável') },
+  { what: tx('Game names by Title ID', 'Nomes de jogos por Title ID'), files: [data.sources.games.patches, data.sources.games.titles], how: tx('the patch file name; otherwise Xenia’s vendored database (name only)', 'nome do arquivo de patch; senão a base vendorizada do Xenia (só o nome)'), channel: tx('stable', 'estável') },
+  { what: tx('Package, minimum Android, ABI and folders', 'Pacote, Android mínimo, ABI e pastas'), files: data.sources.app, how: tx('defaults in build.gradle, in the workflow and in the code', 'padrões no build.gradle, no workflow e no código'), channel: tx('stable and development', 'estável e desenvolvimento') },
+  { what: tx('Performance measurements', 'Medições de desempenho'), files: [data.sources.games.readmeEn, data.sources.games.readmePt], how: tx('the "## Performance snapshot" table of README.md (English pages) and "## Desempenho" of README.pt-BR.md (Portuguese pages)', 'tabela "## Desempenho" do README.pt-BR.md (páginas em português) e "## Performance snapshot" do README.md (páginas em inglês)'), channel: tx('development (current README)', 'desenvolvimento (README atual)') },
+  { what: tx('Published versions and APK', 'Versões publicadas e APK'), files: [], how: tx('GitHub releases API, when the site is built; English pages show each release’s update-summary:en block, Portuguese pages the update-summary:pt-BR one', 'API de releases do GitHub, no momento do build; as páginas em português mostram o bloco update-summary:pt-BR de cada release, as em inglês o update-summary:en'), channel: 'releases' },
+  { what: tx('Screenshots', 'Prints das telas'), files: ['docs/ui-redesign/prints/app/'], how: tx('images from the screen tests (Roborazzi), converted to WebP', 'imagens dos testes de tela (Roborazzi), convertidas para WebP'), channel: tx('those in the repository', 'as do repositório') },
 ];
 
 const site = {
@@ -195,45 +198,81 @@ const site = {
   assetVersion: '',
   shot,
   sourcesTable,
-  docs: [],
+  rel,
+  docs: { en: [], pt: [] },
+  /** Tabela de medições do README no idioma da página. */
+  perf: id => (id === 'en' ? devCh.games.perfEn : devCh.games.perf),
 };
 
 // ---------- documentação ----------
+// content/docs/*.md em português (o slug é a chave que pareia as páginas) e content/docs/en/*.md
+// em inglês, cada uma com "pt: <slug em português>" no front matter.
 const DOCS_DIR = path.join(SITE, 'content', 'docs');
 const sectionOrder = new Map(config.docSections.map((s, i) => [s.id, i]));
-for (const file of fs.readdirSync(DOCS_DIR).filter(f => f.endsWith('.md')).sort()) {
-  const src = fs.readFileSync(path.join(DOCS_DIR, file), 'utf8');
-  const { data: fm, body } = frontMatter(src, file);
-  for (const k of ['title', 'description', 'section', 'order']) if (fm[k] == null) error(`docs/${file}: falta "${k}" no front matter`);
-  if (fm.section && !sectionOrder.has(fm.section)) error(`docs/${file}: seção desconhecida "${fm.section}"`);
-  const slug = file.replace(/\.md$/, '');
-  site.docs.push({ file, slug, path: `docs/${slug}/`, body, ...fm, fontes: fm.fontes || [], headings: [], ids: new Set() });
+for (const lid of LANG_IDS) {
+  const dir = lid === 'pt' ? DOCS_DIR : path.join(DOCS_DIR, lid);
+  for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort()) {
+    const rel = path.relative(SITE, path.join(dir, file));
+    const src = fs.readFileSync(path.join(dir, file), 'utf8');
+    const { data: fm, body } = frontMatter(src, rel);
+    for (const k of ['title', 'description', 'section', 'order']) if (fm[k] == null) error(`${rel}: falta "${k}" no front matter`);
+    if (lid !== 'pt' && !fm.pt) error(`${rel}: falta "pt" (o slug da página em português) no front matter`);
+    if (fm.section && !sectionOrder.has(fm.section)) error(`${rel}: seção desconhecida "${fm.section}"`);
+    const slug = file.replace(/\.md$/, '');
+    const key = lid === 'pt' ? slug : fm.pt;
+    site.docs[lid].push({ file: rel, lang: lid, slug, key, path: `${LANGS[lid].prefix}docs/${slug}/`, body, ...fm, fontes: fm.fontes || [], headings: [], ids: new Set() });
+  }
+  site.docs[lid].sort((a, b) => (sectionOrder.get(a.section) - sectionOrder.get(b.section)) || (a.order - b.order));
 }
-site.docs.sort((a, b) => (sectionOrder.get(a.section) - sectionOrder.get(b.section)) || (a.order - b.order));
-
-/** Valores para {{caminho}} no Markdown. */
-const fmtSize = n => `${(n / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`;
-const values = {
-  estavel: v.stable ? {
-    build: v.stable.build, nome: v.stable.label.toLowerCase(), tag: v.stable.tag, commit: v.stable.short,
-    data: new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: 'America/Sao_Paulo' }).format(new Date(v.stable.date)),
-    apk: v.stable.apk ? { nome: v.stable.apk.name, tamanho: fmtSize(v.stable.apk.size), sha256: v.stable.apk.sha256 || 'não publicado', url: v.stable.apk.url } : {},
-    url: v.stable.url,
-  } : {},
-  dev: { commit: v.dev.short },
-  app: {
-    pacote: est.app.package, pacoteTeste: est.app.testPackage, abi: est.app.abi,
-    androidMin: est.app.minAndroid, apiMin: est.app.minSdk, androidAlvo: est.app.targetAndroid, apiAlvo: est.app.targetSdk,
-    pastaDados: est.app.dataRoot, configGlobal: est.app.globalConfig, configJogo: est.app.gameConfigPattern, pastaConfigJogos: est.app.gameConfigDir,
-    repoAtualizacoes: est.app.updateRepo,
-  },
-  contagens: { ...stats, essencial: stats.essential, avancado: stats.advanced, ajustes: stats.settings, aoVivo: stats.live, jogosCorrecoes: stats.quirkTitles, correcoes: stats.quirkEntries, jogosPatches: stats.patchTitles, arquivosPatch: stats.patchFiles, flagsTurnip: stats.turnipFlags, sessoesLog: stats.logSessions },
-  repo: config.repoUrl,
-  discord: config.discord,
+const docByKey = Object.fromEntries(LANG_IDS.map(lid => [lid, new Map(site.docs[lid].map(d => [d.key, d]))]));
+for (const d of site.docs.en) if (!docByKey.pt.has(d.key)) error(`${d.file}: "pt: ${d.key}" não corresponde a nenhuma página em content/docs/`);
+for (const d of site.docs.pt) if (!docByKey.en.has(d.key)) error(`${d.file}: a página não tem versão em inglês em content/docs/en/ (com "pt: ${d.key}")`);
+for (const d of site.docs.en) {
+  const p = docByKey.pt.get(d.key);
+  if (p && (p.section !== d.section || p.order !== d.order)) error(`${d.file}: seção ou ordem diferente da página em português (${p.file})`);
+}
+/** Endereço da página de documentação `key` (o slug em português; '' é o índice) no idioma `lid`. */
+site.docPath = (lid, key) => {
+  if (!key) return `${LANGS[lid].prefix}docs/`;
+  const d = docByKey[lid].get(key);
+  if (!d) { error(`página de documentação "${key}" não existe em ${lid}`); return `${LANGS[lid].prefix}docs/`; }
+  return d.path;
 };
+/** Os endereços de uma página nos dois idiomas: 'home', 'sim', '' (índice da documentação) ou a chave de uma página. */
+site.alternatesOf = key => Object.fromEntries(LANG_IDS.map(lid => {
+  const L = langOf(lid);
+  if (key === 'home') return [lid, L.home];
+  if (key === 'sim') return [lid, L.simPath];
+  if (key === '') return [lid, L.docs];
+  return [lid, docByKey[lid].has(key) ? docByKey[lid].get(key).path : null];
+}).filter(([, p]) => p != null));
+
+/** Valores para {{caminho}} no Markdown, formatados no idioma da página. */
+function valuesFor(L) {
+  const size = n => `${(n / 1024 / 1024).toLocaleString(L.locale, { maximumFractionDigits: 1 })} MB`;
+  return {
+    estavel: v.stable ? {
+      build: v.stable.build, nome: v.stable.label.toLowerCase(), tag: v.stable.tag, commit: v.stable.short,
+      data: L.dateLong(v.stable.date),
+      apk: v.stable.apk ? { nome: v.stable.apk.name, tamanho: size(v.stable.apk.size), sha256: v.stable.apk.sha256 || L.tx('not published', 'não publicado'), url: v.stable.apk.url } : {},
+      url: v.stable.url,
+    } : {},
+    dev: { commit: v.dev.short },
+    app: {
+      pacote: est.app.package, pacoteTeste: est.app.testPackage, abi: est.app.abi,
+      androidMin: est.app.minAndroid, apiMin: est.app.minSdk, androidAlvo: est.app.targetAndroid, apiAlvo: est.app.targetSdk,
+      pastaDados: est.app.dataRoot, configGlobal: est.app.globalConfig, configJogo: est.app.gameConfigPattern, pastaConfigJogos: est.app.gameConfigDir,
+      repoAtualizacoes: est.app.updateRepo,
+    },
+    contagens: { ...stats, essencial: stats.essential, avancado: stats.advanced, ajustes: stats.settings, aoVivo: stats.live, jogosCorrecoes: stats.quirkTitles, correcoes: stats.quirkEntries, jogosPatches: stats.patchTitles, arquivosPatch: stats.patchFiles, flagsTurnip: stats.turnipFlags, sessoesLog: stats.logSessions },
+    repo: config.repoUrl,
+    discord: config.discord,
+  };
+}
 
 /** Rótulo de um bloco "::: versao desde=<sha>" pela primeira release que contém o commit. */
-function versionLabel(args, env) {
+function versionLabel(args, env, L) {
+  const { tx } = L;
   const sha = args.desde || args.ate;
   if (!sha) throw new Error(`${env.file}: "::: versao" precisa de desde=<commit> ou ate=<commit>`);
   const full = git(ROOT, ['rev-parse', '--verify', '--quiet', `${sha}^{commit}`], { allowFail: true });
@@ -241,12 +280,15 @@ function versionLabel(args, env) {
   const rels = data.releases.releases.filter(r => r.commit && r.build != null).slice().reverse();
   const first = rels.find(r => isAncestor(ROOT, full, r.commit) === true);
   if (args.desde) {
-    if (first) return { label: `Desde a build ${first.build}${v.stable && first.build === v.stable.build ? ' (a estável atual)' : ''}`, kind: 'stable' };
-    if (isAncestor(ROOT, full, v.dev.commit)) return { label: 'Só no desenvolvimento (main), ainda sem release', kind: 'dev' };
+    if (first) return { label: tx(`Since build ${first.build}${v.stable && first.build === v.stable.build ? ' (the current stable)' : ''}`, `Desde a build ${first.build}${v.stable && first.build === v.stable.build ? ' (a estável atual)' : ''}`), kind: 'stable' };
+    if (isAncestor(ROOT, full, v.dev.commit)) return { label: tx('Only in development (main), no release yet', 'Só no desenvolvimento (main), ainda sem release'), kind: 'dev' };
     throw new Error(`${env.file}: o commit ${sha} não está no main`);
   }
-  if (first) return { label: `Até a build ${rels[rels.indexOf(first) - 1] ? rels[rels.indexOf(first) - 1].build : '—'}; mudou na build ${first.build}`, kind: 'stable' };
-  return { label: 'Vale até a próxima release (o main já mudou)', kind: 'dev' };
+  if (first) {
+    const before = rels[rels.indexOf(first) - 1] ? rels[rels.indexOf(first) - 1].build : '—';
+    return { label: tx(`Up to build ${before}; changed in build ${first.build}`, `Até a build ${before}; mudou na build ${first.build}`), kind: 'stable' };
+  }
+  return { label: tx('Applies until the next release (main has already changed)', 'Vale até a próxima release (o main já mudou)'), kind: 'dev' };
 }
 
 function repoLink(p) {
@@ -262,57 +304,66 @@ function repoLink(p) {
 }
 
 const docLinks = [];
-const md = createMarkdown({
-  data: values,
-  resolveDoc(slug, anchor, env) {
-    const target = slug === '' ? 'docs/' : `docs/${slug}/`;
-    if (slug !== '' && !site.docs.some(d => d.slug === slug)) throw new Error(`${env.file}: link para doc:${slug}, que não existe`);
-    if (anchor) docLinks.push({ from: env.file, slug, anchor });
-    return rel(env.pagePath, target) + (anchor ? `#${anchor}` : '');
-  },
-  repoUrl: p => repoLink(p),
-  toolUrl(screen, env) {
-    if (screen && !SIM_SCREENS.includes(screen)) throw new Error(`${env.file}: tela "${screen}" não existe no simulador`);
-    return rel(env.pagePath, 'simulador/') + (screen ? `#${screen}` : '');
-  },
-  version: (args, env) => versionLabel(args, env || {}),
-  icon: (n, s) => String(icon(n, s)),
-  blocks: createBlocks(site),
-});
+for (const lid of LANG_IDS) {
+  const L = langOf(lid);
+  const md = createMarkdown({
+    lang: lid,
+    data: valuesFor(L),
+    resolveDoc(slug, anchor, env) {
+      const d = site.docs[lid].find(x => x.slug === slug);
+      if (slug !== '' && !d) throw new Error(`${env.file}: link para doc:${slug}, que não existe em ${lid === 'pt' ? 'content/docs/' : `content/docs/${lid}/`}`);
+      if (anchor) docLinks.push({ from: env.file, lid, slug, anchor });
+      return rel(env.pagePath, slug === '' ? L.docs : d.path) + (anchor ? `#${anchor}` : '');
+    },
+    repoUrl: p => repoLink(p),
+    toolUrl(screen, env) {
+      if (screen && !SIM_SCREENS.includes(screen)) throw new Error(`${env.file}: tela "${screen}" não existe no simulador`);
+      return rel(env.pagePath, L.simPath) + (screen ? `#${screen}` : '');
+    },
+    version: (args, env) => versionLabel(args, env || {}, L),
+    icon: (n, s) => String(icon(n, s)),
+    blocks: createBlocks(site, L),
+  });
 
-for (const doc of site.docs) {
-  const env = { file: `content/docs/${doc.file}`, pagePath: doc.path, title: doc.title };
-  try {
-    const r = md.render(doc.body, env);
-    doc.html = r.html;
-    doc.headings = r.headings;
-    doc.sections = r.sections;
-    for (const m of r.html.matchAll(/\sid="([^"]+)"/g)) doc.ids.add(m[1]);
-    for (const a of env.anchorsUsed || []) if (!doc.ids.has(a)) error(`${env.file}: âncora #${a} não existe na página`);
-  } catch (e) {
-    error(e.message);
-    doc.html = `<p>Erro ao gerar esta página: ${esc(e.message)}</p>`;
-    doc.sections = [];
-  }
-  // revisão: o commit com que a página foi conferida e o que mudou depois dele
-  if (doc.conferido) {
-    const full = git(ROOT, ['rev-parse', '--verify', '--quiet', `${doc.conferido}^{commit}`], { allowFail: true });
-    if (!full) {
-      warn(`${env.file}: commit de revisão ${doc.conferido} não está no clone`);
-      doc.review = { short: String(doc.conferido).slice(0, 8), date: null, changed: null };
-    } else {
-      const date = git(ROOT, ['log', '-1', '--format=%cI', full]);
-      const target = v.stable && v.stable.commit && hasCommit(ROOT, v.stable.commit) ? v.stable.commit : v.dev.commit;
-      const changed = doc.fontes.length ? (git(ROOT, ['diff', '--name-only', full, target, '--', ...doc.fontes], { allowFail: true }) || '').split('\n').filter(Boolean) : [];
-      for (const f of doc.fontes) if (!fs.existsSync(path.join(ROOT, f))) error(`${env.file}: fonte ${f} não existe`);
-      doc.review = { short: full.slice(0, 8), date, changed };
-      if (changed.length) warn(`${env.file}: ${changed.length} fonte(s) mudaram depois da revisão ${full.slice(0, 8)}`);
+  for (const doc of site.docs[lid]) {
+    const env = { file: doc.file, pagePath: doc.path, title: doc.title };
+    try {
+      const r = md.render(doc.body, env);
+      doc.html = r.html;
+      doc.headings = r.headings;
+      doc.sections = r.sections;
+      for (const m of r.html.matchAll(/\sid="([^"]+)"/g)) doc.ids.add(m[1]);
+      for (const a of env.anchorsUsed || []) if (!doc.ids.has(a)) error(`${env.file}: âncora #${a} não existe na página`);
+    } catch (e) {
+      error(e.message);
+      doc.html = `<p>${esc(L.tx('Error generating this page', 'Erro ao gerar esta página'))}: ${esc(e.message)}</p>`;
+      doc.sections = [];
+    }
+    // revisão: o commit com que a página foi conferida e o que mudou depois dele
+    if (doc.conferido) {
+      const full = git(ROOT, ['rev-parse', '--verify', '--quiet', `${doc.conferido}^{commit}`], { allowFail: true });
+      if (!full) {
+        warn(`${env.file}: commit de revisão ${doc.conferido} não está no clone`);
+        doc.review = { short: String(doc.conferido).slice(0, 8), date: null, changed: null };
+      } else {
+        const date = git(ROOT, ['log', '-1', '--format=%cI', full]);
+        const target = v.stable && v.stable.commit && hasCommit(ROOT, v.stable.commit) ? v.stable.commit : v.dev.commit;
+        const changed = doc.fontes.length ? (git(ROOT, ['diff', '--name-only', full, target, '--', ...doc.fontes], { allowFail: true }) || '').split('\n').filter(Boolean) : [];
+        for (const f of doc.fontes) if (!fs.existsSync(path.join(ROOT, f))) error(`${env.file}: fonte ${f} não existe`);
+        doc.review = { short: full.slice(0, 8), date, changed };
+        if (changed.length) warn(`${env.file}: ${changed.length} fonte(s) mudaram depois da revisão ${full.slice(0, 8)}`);
+      }
     }
   }
 }
 for (const l of docLinks) {
-  const d = site.docs.find(x => x.slug === l.slug);
+  const d = site.docs[l.lid].find(x => x.slug === l.slug);
   if (d && !d.ids.has(l.anchor)) error(`${l.from}: link doc:${l.slug}#${l.anchor}, mas a âncora não existe`);
+}
+// as duas versões de uma página têm as mesmas seções com âncora explícita nos links entre páginas
+for (const d of site.docs.en) {
+  const p = docByKey.pt.get(d.key);
+  if (p && p.headings.length !== d.headings.length) warn(`${d.file}: ${d.headings.length} títulos, e a página em português (${p.file}) tem ${p.headings.length}`);
 }
 
 // ---------- CSS e JS ----------
@@ -321,8 +372,8 @@ write('assets/css/site.css', css);
 for (const f of fs.readdirSync(path.join(SITE, 'src/js'))) copy(path.join(SITE, 'src/js', f), `assets/js/${f}`);
 copy(path.join(SITE, 'node_modules/minisearch/dist/es/index.js'), 'assets/js/vendor/minisearch.js');
 site.printFiles = Object.fromEntries(Object.entries(printOut).map(([id, p]) => [id, { file: p.file, w: p.w, h: p.h }]));
-const simAssets = writeSimulator(site, { SITE, ROOT, OUT, write, copy, error, warn });
-site.assetVersion = sha1(css + fs.readFileSync(path.join(SITE, 'src/js/site.js'), 'utf8') + simAssets.hash).slice(0, 10);
+const simAssets = Object.fromEntries(LANG_IDS.map(lid => [lid, writeSimulator(site, langOf(lid), { SITE, ROOT, OUT, write, copy, error, warn })]));
+site.assetVersion = sha1(css + fs.readFileSync(path.join(SITE, 'src/js/site.js'), 'utf8') + fs.readFileSync(path.join(SITE, 'src/js/search.js'), 'utf8') + LANG_IDS.map(lid => simAssets[lid].hash).join('')).slice(0, 10);
 
 // ---------- fontes tipográficas do app, recortadas ----------
 const FONTS = {
@@ -355,7 +406,7 @@ for (const lic of ['Barlow-OFL.txt', 'JetBrainsMono-OFL.txt']) {
 for (const f of fs.readdirSync(path.join(SITE, 'src/assets/brand'))) copy(path.join(SITE, 'src/assets/brand', f), `assets/brand/${f}`);
 copy(path.join(SITE, 'src/assets/brand/favicon.ico'), 'favicon.ico');
 write('site.webmanifest', JSON.stringify({
-  name: 'Xendroid+', short_name: 'Xendroid+', lang: 'pt-BR', start_url: './', scope: './', display: 'browser',
+  name: 'Xendroid+', short_name: 'Xendroid+', lang: 'en', start_url: './', scope: './', display: 'browser',
   background_color: '#0f1214', theme_color: '#0f1214',
   icons: [{ src: 'assets/brand/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: 'assets/brand/icon-512.png', sizes: '512x512', type: 'image/png' }],
 }, null, 2));
@@ -364,27 +415,58 @@ write('site.webmanifest', JSON.stringify({
 const pages = [];
 function emit({ page, content }) {
   write(outFile(page.path), String(shell(site, page, content)));
-  if (!page.noindex) pages.push(page.path);
+  if (!page.noindex) pages.push(page);
 }
-emit(landing(site));
-emit(docsIndex(site));
-for (const doc of site.docs) emit(docPage(site, doc));
-emit(simulatorPage(site, simAssets));
+for (const lid of LANG_IDS) {
+  const L = langOf(lid);
+  emit(landing(site, L));
+  emit(docsIndex(site, L));
+  for (const doc of site.docs[lid]) emit(docPage(site, doc, L));
+  emit(simulatorPage(site, simAssets[lid], L));
+}
 const nf = notFound(site);
 write('404.html', String(shell(site, nf.page, nf.content)));
 
-// ---------- busca ----------
-const searchDocs = [];
-for (const doc of site.docs) {
-  for (const s of doc.sections || []) {
-    if (!s.text && !s.title) continue;
-    searchDocs.push({ id: `${doc.slug}#${s.id}`, t: s.title || doc.title, p: doc.title, u: `${doc.path}${s.id ? `#${s.id}` : ''}`, x: s.text.slice(0, 420) });
+// endereços antigos: até a versão bilíngue, o português ficava na raiz (docs/<slug>/ e simulador/);
+// quem tem um desses links cai na mesma página em pt-br/, com a âncora (#…) preservada
+{
+  const taken = new Set(pages.map(p => p.path));
+  const moved = [['simulador/', langOf('pt').simPath], ...site.docs.pt.map(d => [`docs/${d.key}/`, d.path])].filter(([from]) => !taken.has(from));
+  for (const [from, to] of moved) {
+    const target = rel(from, to);
+    write(outFile(from), `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<title>Xendroid+</title>
+<link rel="canonical" href="${esc(config.url + to)}">
+<meta http-equiv="refresh" content="0; url=${esc(target)}">
+<script>location.replace(${JSON.stringify(target)} + location.hash)</script>
+</head>
+<body><p>Esta página mudou para <a href="${esc(target)}">${esc(config.url + to)}</a>.</p></body>
+</html>
+`);
   }
 }
-for (const s of S) {
-  searchDocs.push({ id: `ajuste:${s.key}`, t: textOf(s.title), p: 'Referência de ajustes', u: `docs/referencia-de-ajustes/#${settingAnchor(s)}`, x: textOf(s.desc).slice(0, 300), k: `${s.section || ''} ${s.name || ''} ${s.key} ${s.englishTitle || ''}` });
+
+// ---------- busca (um índice por idioma) ----------
+for (const lid of LANG_IDS) {
+  const L = langOf(lid);
+  const searchDocs = [];
+  for (const doc of site.docs[lid]) {
+    for (const s of doc.sections || []) {
+      if (!s.text && !s.title) continue;
+      searchDocs.push({ id: `${doc.slug}#${s.id}`, t: s.title || doc.title, p: doc.title, u: `${doc.path}${s.id ? `#${s.id}` : ''}`, x: s.text.slice(0, 420) });
+    }
+  }
+  const ref = site.docPath(lid, 'referencia-de-ajustes');
+  const refTitle = docByKey[lid].get('referencia-de-ajustes').title;
+  for (const s of S) {
+    searchDocs.push({ id: `ajuste:${s.key}`, t: textOf(s.title, lid), p: refTitle, u: `${ref}#${settingAnchor(s, lid)}`, x: textOf(s.desc, lid).slice(0, 300), k: `${s.section || ''} ${s.name || ''} ${s.key} ${s.englishTitle || ''} ${lid === 'en' ? textOf(s.title, 'pt') : ''}` });
+  }
+  write(`assets/search-${lid}.json`, JSON.stringify({ v: site.assetVersion, lang: L.html, docs: searchDocs }));
 }
-write('assets/search.json', JSON.stringify({ v: site.assetVersion, docs: searchDocs }));
 
 // ---------- dados publicados ----------
 function channelJson(ch, id) {
@@ -407,7 +489,10 @@ write('dados/relatorio.json', JSON.stringify({ geradoEm: site.builtAt, commit: v
 // ---------- arquivos do GitHub Pages ----------
 write('.nojekyll', '');
 write('robots.txt', `User-agent: *\nAllow: /\nSitemap: ${config.url}sitemap.xml\n`);
-write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${pages.map(p => `  <url><loc>${esc(config.url + p)}</loc><lastmod>${site.builtAt.slice(0, 10)}</lastmod></url>`).join('\n')}\n</urlset>\n`);
+// cada endereço com as versões nos dois idiomas (hreflang), como no <head> das páginas
+const alternates = p => Object.entries(p.alternates || {}).map(([lid, to]) => `<xhtml:link rel="alternate" hreflang="${LANGS[lid].html}" href="${esc(config.url + to)}"/>`).join('')
+  + (p.alternates && p.alternates.en != null ? `<xhtml:link rel="alternate" hreflang="x-default" href="${esc(config.url + p.alternates.en)}"/>` : '');
+write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${pages.map(p => `  <url><loc>${esc(config.url + p.path)}</loc><lastmod>${site.builtAt.slice(0, 10)}</lastmod>${alternates(p)}</url>`).join('\n')}\n</urlset>\n`);
 
 // ---------- relatório ----------
 const errors = problems.filter(p => p.level === 'error');

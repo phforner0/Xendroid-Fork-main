@@ -1,9 +1,27 @@
 // Comportamentos comuns do site: menu no celular, tema, copiar, abas, índice da página e busca.
 // Tudo funciona sem este script; ele só acrescenta conforto.
 
-const root = document.documentElement.dataset.root || './';
+const html = document.documentElement;
+const root = html.dataset.root || './';
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
+
+/* ---------- 404: um endereço de pt-br/ mostra o português primeiro ---------- */
+if (html.dataset.page === '404.html' && location.pathname.startsWith(`${root}pt-br/`)) {
+  const pt = $('[data-nf="pt"]'), en = $('[data-nf="en"]');
+  if (pt && en) {
+    // o h1 vai junto com o idioma que fica em primeiro
+    const retag = (el, tag) => { const n = document.createElement(tag); n.innerHTML = el.innerHTML; n.style.cssText = el.style.cssText; el.replaceWith(n); };
+    retag(en.querySelector('h1'), 'h2');
+    retag(pt.querySelector('h2'), 'h1');
+    pt.parentElement.prepend(pt);
+  }
+  html.lang = 'pt-BR';
+  html.dataset.search = `${root}assets/search-pt.json`;
+}
+const PT = html.lang === 'pt-BR';
+/** Texto no idioma da página: tx('inglês', 'português'). */
+const tx = (en, pt) => (PT ? pt : en);
 
 /* ---------- aviso curto ---------- */
 let toastTimer = 0;
@@ -41,14 +59,14 @@ const ICON = {
   light: '<circle cx="12" cy="12" r="4"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/>',
   dark: '<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/>',
 };
-const THEME_NAME = { auto: 'automático (segue o aparelho)', light: 'claro', dark: 'escuro' };
+const THEME_NAME = PT ? { auto: 'automático (segue o aparelho)', light: 'claro', dark: 'escuro' } : { auto: 'automatic (follows the device)', light: 'light', dark: 'dark' };
 const themeBtn = $('#theme-btn');
 function readTheme() { try { const t = localStorage.getItem('xdr-theme'); return t === 'light' || t === 'dark' ? t : 'auto'; } catch (e) { return 'auto'; } }
 function applyTheme(t) {
   if (t === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = t;
   if (themeBtn) {
-    const label = `Tema: ${THEME_NAME[t]}. Trocar o tema`;
+    const label = tx(`Theme: ${THEME_NAME[t]}. Change the theme`, `Tema: ${THEME_NAME[t]}. Trocar o tema`);
     themeBtn.setAttribute('aria-label', label);
     themeBtn.title = label;
     const svg = themeBtn.querySelector('svg');
@@ -61,7 +79,7 @@ if (themeBtn) {
     const next = { auto: 'light', light: 'dark', dark: 'auto' }[readTheme()];
     try { if (next === 'auto') localStorage.removeItem('xdr-theme'); else localStorage.setItem('xdr-theme', next); } catch (e) { /* sem armazenamento: vale só nesta página */ }
     applyTheme(next);
-    toast(`Tema ${THEME_NAME[next]}`);
+    toast(tx(`Theme: ${THEME_NAME[next]}`, `Tema ${THEME_NAME[next]}`));
   });
 }
 
@@ -88,8 +106,8 @@ for (const block of $$('.code')) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'copy-btn';
-  btn.innerHTML = '<svg class="xi" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>Copiar';
-  btn.setAttribute('aria-label', 'Copiar o código');
+  btn.innerHTML = `<svg class="xi" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>${tx('Copy', 'Copiar')}`;
+  btn.setAttribute('aria-label', tx('Copy the code', 'Copiar o código'));
   block.append(btn);
 }
 document.addEventListener('click', async e => {
@@ -97,10 +115,10 @@ document.addEventListener('click', async e => {
   const attr = e.target.closest('[data-copy]');
   if (code) {
     const ok = await copyText(code.parentElement.querySelector('pre').innerText.replace(/\n$/, ''));
-    toast(ok ? 'Código copiado' : 'Não deu para copiar; selecione o texto');
+    toast(ok ? tx('Code copied', 'Código copiado') : tx('Could not copy; select the text', 'Não deu para copiar; selecione o texto'));
   } else if (attr) {
     const ok = await copyText(attr.dataset.copy);
-    toast(ok ? (attr.dataset.copied || 'Copiado') : 'Não deu para copiar; selecione o texto');
+    toast(ok ? (attr.dataset.copied || tx('Copied', 'Copiado')) : tx('Could not copy; select the text', 'Não deu para copiar; selecione o texto'));
   }
 });
 
@@ -169,10 +187,11 @@ let active = -1;
 async function ensureSearch() {
   if (searcher) return searcher;
   const mod = await import(new URL('./search.js', import.meta.url));
-  searcher = await mod.createSearch(root);
+  searcher = await mod.createSearch(html.dataset.search || `${root}assets/search-en.json`);
   return searcher;
 }
 function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+const HINT = tx('Type to search every documentation page, the app settings and the TOML keys.', 'Digite para buscar em todas as páginas da documentação, nos ajustes do app e nas chaves do TOML.');
 const ACC = { a: 'aáàâãä', e: 'eéèêë', i: 'iíìîï', o: 'oóòôõö', u: 'uúùûü', c: 'cç', n: 'nñ' };
 /** Expressão que acha os termos da busca no texto, com ou sem acento. */
 function termRegex(q) {
@@ -187,13 +206,13 @@ function mark(text, re) {
 async function runSearch() {
   const q = input.value.trim();
   active = -1;
-  if (!q) { results.innerHTML = '<p class="search-hint">Digite para buscar em todas as páginas da documentação, nos ajustes do app e nas chaves do TOML.</p>'; return; }
+  if (!q) { results.innerHTML = `<p class="search-hint">${HINT}</p>`; return; }
   let s;
-  try { s = await ensureSearch(); } catch (e) { results.innerHTML = '<p class="search-empty">Não deu para carregar a busca. Tente de novo ou use o índice da documentação.</p>'; return; }
+  try { s = await ensureSearch(); } catch (e) { results.innerHTML = `<p class="search-empty">${tx('Search could not be loaded. Try again or use the documentation index.', 'Não deu para carregar a busca. Tente de novo ou use o índice da documentação.')}</p>`; return; }
   const hits = s.search(q).slice(0, 12);
-  if (!hits.length) { results.innerHTML = `<p class="search-empty">Nada encontrado para “${escapeHtml(q)}”.</p>`; return; }
+  if (!hits.length) { results.innerHTML = `<p class="search-empty">${tx('Nothing found for', 'Nada encontrado para')} “${escapeHtml(q)}”.</p>`; return; }
   const re = termRegex(q);
-  results.innerHTML = `<ol role="listbox" aria-label="Resultados">${hits.map((h, i) => `<li role="none"><a role="option" id="r-${i}" aria-selected="false" href="${root}${h.u}"><span class="r-page">${escapeHtml(h.p)}</span><span class="r-title">${mark(h.t, re)}</span>${h.x ? `<span class="r-text">${mark(h.x.slice(0, 200), re)}</span>` : ''}</a></li>`).join('')}</ol>`;
+  results.innerHTML = `<ol role="listbox" aria-label="${tx('Results', 'Resultados')}">${hits.map((h, i) => `<li role="none"><a role="option" id="r-${i}" aria-selected="false" href="${root}${h.u}"><span class="r-page">${escapeHtml(h.p)}</span><span class="r-title">${mark(h.t, re)}</span>${h.x ? `<span class="r-text">${mark(h.x.slice(0, 200), re)}</span>` : ''}</a></li>`).join('')}</ol>`;
 }
 function moveActive(d) {
   const opts = $$('[role="option"]', results);
@@ -237,3 +256,20 @@ document.addEventListener('keydown', e => {
     openSearch();
   }
 });
+
+/* ---------- idioma ---------- */
+// a escolha feita no seletor fica lembrada; quem chega na versão em inglês com o navegador em
+// português vê, uma vez, um aviso com o link para a mesma página em português
+const LANG_KEY = 'xdr-lang';
+const store = { get() { try { return localStorage.getItem(LANG_KEY); } catch (e) { return null; } }, set(v) { try { localStorage.setItem(LANG_KEY, v); } catch (e) { /* sem armazenamento */ } } };
+for (const a of $$('[data-lang-switch], .footer-lang a[hreflang]')) a.addEventListener('click', () => store.set(a.getAttribute('hreflang') === 'pt-BR' ? 'pt' : 'en'));
+const prefersPt = (navigator.languages || [navigator.language || '']).some(l => /^pt\b/i.test(l));
+if (!PT && html.dataset.alt && prefersPt && !store.get()) {
+  const bar = document.createElement('div');
+  bar.className = 'lang-hint';
+  bar.setAttribute('lang', 'pt-BR');
+  bar.innerHTML = `<div class="wrap"><p>Este site também está em português.</p><a href="${html.dataset.alt}" hreflang="pt-BR">Ver esta página em português</a><button class="icon-btn" type="button" aria-label="Fechar o aviso"><svg class="xi" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>`;
+  $('.site-header').after(bar);
+  bar.querySelector('a').addEventListener('click', () => store.set('pt'));
+  bar.querySelector('button').addEventListener('click', () => { store.set('en'); bar.remove(); });
+}

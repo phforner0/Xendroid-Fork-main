@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Confere o site gerado em dist: cada link interno, recurso (src, href, srcset, url() no CSS)
 // e âncora tem que existir; nenhum caminho absoluto a partir da raiz do domínio (o site roda
-// num subdiretório), exceto na 404, que usa a base configurada.
+// num subdiretório), exceto na 404, que usa a base configurada. Cada página declara o idioma do
+// lugar onde está (pt-br/ em português, o resto em inglês) e aponta para a versão no outro idioma,
+// que aponta de volta (hreflang).
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,15 +54,42 @@ function check(from, raw, kind) {
   }
 }
 
+/** Página de dist a partir de um endereço público do site (config.url + caminho). */
+const pageOf = url => {
+  if (!url.startsWith(config.url)) return null;
+  const p = path.join(DIST, url.slice(config.url.length));
+  return url.endsWith('/') ? path.join(p, 'index.html') : p;
+};
+const alternatesOf = src => Object.fromEntries([...src.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)">/g)].map(m => [m[1], m[2]]));
+
 let links = 0;
 for (const file of files) {
   if (file.endsWith('.html')) {
     const src = fs.readFileSync(file, 'utf8');
+    const rel = path.relative(DIST, file);
     for (const m of src.matchAll(/\s(href|src)="([^"]*)"/g)) { links++; check(file, m[2], m[1]); }
     for (const m of src.matchAll(/\ssrcset="([^"]*)"/g)) for (const part of m[1].split(',')) { links++; check(file, part.trim().split(/\s+/)[0], 'srcset'); }
-    if (!/<html lang="pt-BR"/.test(src)) errors.push(`${path.relative(DIST, file)}: sem lang="pt-BR"`);
-    if (!/<title>[^<]+<\/title>/.test(src)) errors.push(`${path.relative(DIST, file)}: sem <title>`);
-    if (!/<meta name="description" content="[^"]+"/.test(src)) errors.push(`${path.relative(DIST, file)}: sem descrição`);
+    // endereços antigos (antes da versão bilíngue) só redirecionam para a página em pt-br/
+    if (/<meta http-equiv="refresh"/.test(src)) {
+      if (!/<html lang="pt-BR"/.test(src)) errors.push(`${rel}: redirecionamento sem lang="pt-BR"`);
+      continue;
+    }
+    const lang = (/<html lang="([^"]+)"/.exec(src) || [])[1];
+    const want = rel.startsWith('pt-br/') ? 'pt-BR' : 'en';
+    if (lang !== want) errors.push(`${rel}: lang="${lang}", mas a página está em ${want === 'en' ? 'inglês (raiz)' : 'português (pt-br/)'}`);
+    if (!/<title>[^<]+<\/title>/.test(src)) errors.push(`${rel}: sem <title>`);
+    if (!/<meta name="description" content="[^"]+"/.test(src)) errors.push(`${rel}: sem descrição`);
+    if (rel !== '404.html') {
+      const alt = alternatesOf(src);
+      const self = (/<link rel="canonical" href="([^"]+)">/.exec(src) || [])[1];
+      if (!alt.en || !alt['pt-BR'] || !alt['x-default']) errors.push(`${rel}: falta hreflang en, pt-BR ou x-default`);
+      else {
+        if (alt[want] !== self) errors.push(`${rel}: o hreflang ${want} (${alt[want]}) não é o próprio endereço (${self})`);
+        const other = pageOf(alt[want === 'en' ? 'pt-BR' : 'en']);
+        if (!other || !fs.existsSync(other)) errors.push(`${rel}: a versão no outro idioma (${alt[want === 'en' ? 'pt-BR' : 'en']}) não existe`);
+        else if (alternatesOf(fs.readFileSync(other, 'utf8'))[want] !== self) errors.push(`${rel}: ${path.relative(DIST, other)} não aponta de volta (hreflang ${want})`);
+      }
+    }
     const ids = [...src.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]);
     const dup = ids.filter((id, i) => ids.indexOf(id) !== i);
     if (dup.length) errors.push(`${path.relative(DIST, file)}: ids repetidos: ${[...new Set(dup)].join(', ')}`);

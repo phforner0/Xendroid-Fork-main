@@ -1,6 +1,7 @@
 // Resumo de uma release a partir das notas publicadas no GitHub. As notas novas trazem blocos
-// ocultos <!-- update-summary:pt-BR … --> (tools/release_notes.py), os mesmos que o cartão de
-// atualização do app mostra; nas antigas, usa os destaques em inglês antes de "Full Changelog".
+// ocultos <!-- update-summary:pt-BR … --> e <!-- update-summary:en … --> (tools/release_notes.py),
+// os mesmos que o cartão de atualização do app mostra; nas antigas, usa os destaques em inglês
+// antes de "Full Changelog". As páginas em inglês usam o bloco en; as em português, o pt-BR.
 import { esc, raw } from '../lib/html.mjs';
 
 function bullets(text) {
@@ -16,14 +17,20 @@ export function inlineMd(s) {
   return raw(out);
 }
 
-export function releaseSummary(body) {
+export function releaseSummary(body, lang = 'pt') {
   const b = body || '';
-  const pt = /<!--\s*update-summary:pt-BR\s*([\s\S]*?)-->/.exec(b);
-  if (pt && bullets(pt[1]).length) return { lang: 'pt-BR', items: bullets(pt[1]).map(inlineMd) };
-  const details = /<summary>[^<]*(?:Em português|Português)[^<]*<\/summary>([\s\S]*?)<\/details>/i.exec(b);
-  if (details && bullets(details[1]).length) return { lang: 'pt-BR', items: bullets(details[1]).slice(0, 12).map(inlineMd) };
-  const en = /<!--\s*update-summary:en\s*([\s\S]*?)-->/.exec(b);
-  if (en && bullets(en[1]).length) return { lang: 'en', items: bullets(en[1]).map(inlineMd) };
-  const head = b.split(/\*\*Full Changelog\*\*/)[0].replace(/<!--[\s\S]*?-->/g, '');
+  const block = code => {
+    const m = new RegExp(`<!--\\s*update-summary:${code}\\s*([\\s\\S]*?)-->`).exec(b);
+    return m && bullets(m[1]).length ? bullets(m[1]).map(inlineMd) : null;
+  };
+  if (lang === 'pt') {
+    const pt = block('pt-BR');
+    if (pt) return { lang: 'pt-BR', items: pt };
+    const details = /<summary>[^<]*(?:Em português|Português)[^<]*<\/summary>([\s\S]*?)<\/details>/i.exec(b);
+    if (details && bullets(details[1]).length) return { lang: 'pt-BR', items: bullets(details[1]).slice(0, 12).map(inlineMd) };
+  }
+  const en = block('en');
+  if (en) return { lang: 'en', items: en };
+  const head = b.split(/\*\*Full Changelog\*\*/)[0].replace(/<!--[\s\S]*?-->/g, '').replace(/<details>[\s\S]*?<\/details>/g, '');
   return { lang: 'en', items: bullets(head).slice(0, 8).map(inlineMd) };
 }

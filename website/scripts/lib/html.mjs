@@ -22,11 +22,16 @@ export function html(strings, ...values) {
   return new Raw(out);
 }
 
-/** Texto com o idioma marcado quando difere do da página (textos do core em inglês). */
-export function langText(t, pageLang = 'pt-BR') {
+/**
+ * Texto de um dado do app na página de idioma `lang` ('en' ou 'pt'): no inglês, o texto em
+ * inglês; no português, o texto do aparelho em pt-BR, marcado com lang="en" quando o app
+ * ainda não tem a tradução.
+ */
+export function langText(t, lang = 'pt') {
   if (!t) return '';
   if (typeof t === 'string') return esc(t);
-  if (!t.lang || t.lang === pageLang) return esc(t.text);
+  if (lang === 'en') return esc(t.en ?? t.text);
+  if (!t.lang || t.lang === 'pt-BR') return esc(t.text);
   return `<span lang="${esc(t.lang)}">${esc(t.text)}</span>`;
 }
 
@@ -63,6 +68,7 @@ export const ICONS = {
   bug: '<rect x="7" y="7.5" width="10" height="12" rx="5"/><path d="M12 7.5V19.5M3.5 13H7M17 13h3.5M5 8.5l2.5 1.5M19 8.5l-2.5 1.5M5 18l2.5-1.5M19 18l-2.5-1.5M9.5 7.5l-1-3M14.5 7.5l1-3"/>',
   wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.4 2.4-2.6-.4-.4-2.6z"/>',
   play: '<path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none"/>',
+  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.3 2.5 3.5 5.3 3.5 8.5s-1.2 6-3.5 8.5c-2.3-2.5-3.5-5.3-3.5-8.5s1.2-6 3.5-8.5z"/>',
   history: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v4h4"/><path d="M12 8v4l2.5 2"/>',
 };
 

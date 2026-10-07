@@ -10,8 +10,8 @@ const active = page => page.evaluate(() => {
   return { tag: el.tagName.toLowerCase(), id: el.id, cls: el.className && typeof el.className === 'string' ? el.className : '', text: (el.textContent || '').trim().slice(0, 40) };
 });
 
-test('o primeiro Tab mostra "Pular para o conteúdo", que leva ao conteúdo', async () => {
-  const page = await site.open('docs/instalacao/');
+test('o primeiro Tab mostra "Pular para o conteúdo" (Skip to content), que leva ao conteúdo', async () => {
+  const page = await site.open('docs/installation/');
   try {
     await page.keyboard.press('Tab');
     const a = await active(page);
@@ -68,7 +68,7 @@ test('a lista de páginas da documentação abre no celular', async () => {
     assert.equal(await btn.getAttribute('aria-expanded'), 'true');
     const current = page.locator('#docs-nav [aria-current="page"]');
     assert.ok(await current.isVisible());
-    assert.match(await current.innerText(), /Drivers/);
+    assert.match(await current.innerText(), /drivers/i);
   } finally {
     await page.done();
   }
@@ -122,8 +122,8 @@ test('busca: "/" abre, as setas escolhem, Enter abre e Esc fecha devolvendo o fo
     await page.keyboard.press('ArrowDown');
     assert.equal(await page.locator('#busca-q').getAttribute('aria-activedescendant'), 'r-0');
     const href = await page.locator('#r-0').getAttribute('href');
-    assert.match(href, /docs\/referencia-de-ajustes\//);
-    await Promise.all([page.waitForURL(/referencia-de-ajustes/), page.keyboard.press('Enter')]);
+    assert.match(href, /docs\/settings-reference\//);
+    await Promise.all([page.waitForURL(/settings-reference/), page.keyboard.press('Enter')]);
     const hash = new URL(page.url()).hash.slice(1);
     if (hash) assert.ok(await page.locator(`[id="${decodeURIComponent(hash)}"]`).count(), `a âncora #${hash} existe`);
 
