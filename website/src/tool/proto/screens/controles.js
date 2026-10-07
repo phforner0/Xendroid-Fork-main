@@ -3,37 +3,39 @@
 'use strict';
 
 Object.assign(NOTES, {
-  ctlhub: ['novo', 'Controles viram uma área do app. Hoje são quatro itens soltos no menu ⋮ da biblioteca: mapeamento, controles de toque, testar controles e usar este telefone como controle.'],
-  slots: ['existe', 'Quem joga como P1–P4, na ordem em que os controles conectaram (U05). Hoje só aparece no teste de controles.'],
-  touchone: ['novo', 'Um interruptor só para os controles de toque. Hoje há dois: “Mostrar controle na tela” (config do core, também por jogo) e “Ligado” nos Gerais do editor de layout.'],
-  touchglob: ['exposto', 'Ajustes gerais do toque fora do editor: opacidade, esconder sozinho, vibração, tela dividida, deslizar e câmera por toque. Hoje ficam no painel “Gerais” dentro do editor.'],
-  layouts: ['existe', 'Layouts salvos (lp_): aplicar com a prévia do que muda, exportar, importar um arquivo conferido e apagar.'],
-  ctlmotion: ['exposto', 'Vibração padrão, giroscópio e entrada sem buffer fora do jogo. Hoje só aparecem no menu em jogo.'],
-  padrumble: ['existe', 'Vibração de cada controle, guardada pelo descritor do Android (U08): padrão, desligada, baixa, média ou alta.'],
-  hidcore: ['existe', 'Ajustes do core para controles (zonas mortas, vibração, botão Guia), no escopo global.'],
-  kmdraw: ['existe', 'O controle desenhado: tocar num botão escolhe a tecla dele (15o).'],
-  kmstate: ['existe', 'Estados: tecla mudada, tecla em dois botões (um deles não faz nada) e botão sem tecla.'],
-  kmswap: ['existe', 'Trocar A/B e X/Y, para controles no padrão da Nintendo; tocar de novo desfaz.'],
-  kmscope: ['novo', 'Proposta: um mapa só para um controle, guardado pelo descritor, além do mapa de todos os controles.'],
-  kmcap: ['existe', 'Esperando a tecla: vale botão de controle ou de teclado. Se a tecla já era de outro botão, os dois trocam e o app avisa.'],
-  tegrid: ['existe', 'Grade quadrada (20 casas no lado menor da tela); com “Alinhar à grade”, o controle encaixa ao soltar.'],
-  tebar: ['existe', 'Barra do editor: orientação, grade, grupo, só este jogo, layouts, gerais, restaurar, salvar e sair. Recolhe num botão.'],
-  teinsp: ['existe', 'Tamanho do controle escolhido e a zona morta do direcional e dos analógicos (15f), agora num painel próprio com mostrar/esconder.'],
-  teundo: ['novo', 'Desfazer a última mudança sem sair do editor.'],
-  tec: ['novo', 'Editar com o controle: LB/RB escolhem o controle, o direcional move uma casa, A abre os ajustes dele.'],
-  ptcheck: ['existe', 'Os botões que um jogo usa, com marca quando já foram apertados (U05).'],
-  ptstick: ['existe', 'Analógicos com a zona morta e o que o jogo recebe.'],
-  ptdz: ['novo', 'Ajustar a zona morta do core vendo o analógico, sem sair do teste.'],
-  ptrumble: ['existe', 'Vibração de cada controle e o teste de 0,3 s, só quando pedido.'],
-  ptleave: ['existe', 'Segure B por um segundo para sair usando só o controle; nada do que é apertado aqui chega a um jogo.'],
-  pcform: ['existe', 'Endereço, código de 6 dígitos, nome e vibração deste telefone; ele joga como P2–P4 no outro.'],
-  pcfind: ['novo', 'Proposta: achar o jogo na rede local e ler o código por QR, sem digitar o endereço.'],
-  pcplay: ['existe', 'Conectado: o controle de toque ocupa a tela, com o jogador, a latência e Sair.'],
-  pcerr: ['existe', 'O motivo da recusa: código errado, vagas ocupadas, outra versão do app ou pareamento fechado.'],
+  ctlhub: ['app', 'Controles é uma área do app: toque, controles físicos, vibração e giroscópio e telefones, com as ferramentas de mapeamento, editor de toque, teste e celular como controle.'],
+  slots: ['app', 'Quem joga como P1 a P4, na ordem em que os controles conectaram. Sem controle, o P1 são os controles de toque.'],
+  touchone: ['app', 'Um interruptor só para os controles de toque; um jogo pode mudar isso na própria ficha.'],
+  touchglob: ['app', 'Os ajustes gerais do toque valem para o controle inteiro: visual, opacidade, esconder sozinho, vibração ao tocar, tela dividida, deslizar o dedo e câmera por toque.'],
+  layouts: ['app', 'Layouts salvos (até 30, nome com até 40 caracteres): aplicar com a prévia do que muda, exportar, importar um arquivo conferido (até 256 KB) e apagar.'],
+  ctlmotion: ['app', 'Vibração padrão, giroscópio e entrada sem buffer: os valores com que cada jogo começa; o menu em jogo muda na hora.'],
+  padrumble: ['app', 'Cada controle pode ter a própria intensidade de vibração, guardada pelo descritor do Android.'],
+  hidcore: ['app', 'Ajustes do núcleo para controles, para todos os jogos; cada jogo pode mudar na ficha.'],
+  kmdraw: ['app', 'O controle desenhado: tocar num botão escolhe a tecla dele. O mapa vale para todos os controles e o teclado.'],
+  kmstate: ['app', 'Tecla mudada, tecla em dois botões (um deles não faz nada) e botão sem tecla.'],
+  kmswap: ['app', 'Trocar A/B e X/Y, para controles no padrão da Nintendo; tocar de novo desfaz.'],
+  kmcap: ['app', 'Esperando a tecla: vale botão de controle ou de teclado. Se a tecla já era de outro botão, os dois trocam e o app avisa.'],
+  kmsim: ['sim', 'No navegador, as teclas do seu teclado e um controle conectado (Gamepad API) servem para escolher a tecla.'],
+  tegrid: ['app', 'Grade quadrada (20 casas no lado menor da tela); com “Alinhar à grade”, o controle encaixa ao soltar.'],
+  tebar: ['app', 'Barra do editor: orientação, grade, grupo, só este jogo (aberto pelo menu do jogo), layouts, gerais, restaurar, salvar e sair. Recolhe num botão.'],
+  teinsp: ['app', 'Tamanho do controle escolhido, zona morta do direcional e dos analógicos e mostrar ou esconder.'],
+  teundo: ['app', 'Desfazer a última mudança sem sair do editor.'],
+  tec: ['app', 'Editar com o controle: LB/RB escolhem o controle, o direcional move uma casa, A abre os ajustes dele.'],
+  ptcheck: ['app', 'Os botões, com marca quando já foram apertados.'],
+  ptstick: ['app', 'Analógicos com a zona morta e o que o jogo recebe.'],
+  ptdz: ['app', 'A zona morta do núcleo se ajusta aqui, vendo o analógico.'],
+  ptrumble: ['app', 'A vibração de cada controle e o teste de 0,3 s, só quando pedido.'],
+  ptleave: ['app', 'Segure B por um segundo para sair usando só o controle; nada do que é apertado aqui chega a um jogo.'],
+  ptsim: ['sim', 'Em “Controle real”, o simulador lê um controle conectado ao computador pela Gamepad API do navegador.'],
+  pcform: ['app', 'Endereço, código de 6 dígitos, nome e vibração deste telefone; ele joga como P2 a P4 no outro. Experimental.'],
+  pcplay: ['app', 'Conectado: o controle de toque ocupa a tela, com o jogador, a latência e Sair.'],
+  pcerr: ['app', 'O motivo da recusa: código errado, vagas ocupadas, outra versão do app ou pareamento fechado.'],
+  pchelp: ['dif', 'O texto de ajuda dentro do jogo manda procurar “Biblioteca → ⋮ → Usar este telefone como controle”, mas esse item não existe no menu da biblioteca; o caminho real é Controles → Celular como controle.'],
 });
 
 /* ---------- ajustes do app para toque e controles (guardados pelo app, nunca por jogo) ---------- */
 const CTLSET = [
+  { k: '@touch.style', ty: 'list', def: 'modern', o: [['modern', 'Moderno'], ['classic', 'Clássico']], t: 'Visual', d: 'Moderno: botões de vidro escuro com letras coloridas. Clássico: os botões coloridos de antes.' },
   { k: '@touch.opacity', ty: 'int', def: 65, min: 20, max: 100, step: 5, unit: '%', t: 'Opacidade', d: 'Vale para todos os controles de toque.' },
   { k: '@touch.autohide', ty: 'int', def: 8, min: 0, max: 20, step: 1, unit: ' s', zero: 'Desligado', t: 'Esconder sozinho', d: 'Depois de tantos segundos sem tocar na tela; um toque traz de volta.' },
   { k: '@touch.haptics', ty: 'bool', def: false, t: 'Vibração ao tocar', d: 'Uma vibração curta do telefone a cada botão apertado.' },
@@ -44,14 +46,14 @@ const CTLSET = [
   { k: '@touch.camera', ty: 'bool', def: false, t: 'Câmera por toque', d: 'No lado direito, longe dos botões, deslize o dedo para girar a câmera; ela para quando o dedo para.' },
   { k: '@touch.camspeed', ty: 'int', def: 100, min: 50, max: 200, step: 10, unit: '%', t: 'Velocidade da câmera por toque', d: 'Quanto a câmera gira para o mesmo movimento do dedo.' },
   { k: '@touch.camarea', ty: 'int', def: 55, min: 30, max: 70, step: 5, unit: '%', t: 'Área da câmera por toque', d: 'Quanto da tela, a partir da direita, gira a câmera.' },
-  { k: '@ctl.rumble', ty: 'list', def: 'medium', o: [['off', 'Desligada'], ['low', 'Baixa'], ['medium', 'Média'], ['high', 'Alta']], t: 'Vibração dos controles', d: 'A força da vibração nos controles sem intensidade própria; cada controle pode ter a sua. Se o jogo pede vibração é o ajuste do core “Vibração do controle”.' },
+  { k: '@ctl.rumble', ty: 'list', def: 'medium', o: [['off', 'Desligada'], ['low', 'Baixa'], ['medium', 'Média'], ['high', 'Alta']], t: 'Vibração dos controles', d: 'A força da vibração nos controles sem intensidade própria; cada controle pode ter a sua. Se os jogos vibram é o ajuste do core em Controles físicos.' },
   { k: '@ctl.gyrocam', ty: 'bool', def: false, t: 'Câmera pelo giroscópio', d: 'Girar o telefone gira a câmera.' },
   { k: '@ctl.gyroaim', ty: 'list', def: 'always', o: [['always', 'Sempre'], ['lt', 'Segurando LT'], ['lb', 'Segurando LB']], t: 'Mira pelo giroscópio', d: 'Quando o giroscópio move a mira: sempre, ou só enquanto o P1 segura LT ou LB.' },
   { k: '@ctl.gyrosens', ty: 'list', def: 'normal', o: [['low', 'Baixa'], ['normal', 'Normal'], ['high', 'Alta']], t: 'Sensibilidade do giroscópio', d: 'Quanto a câmera gira para o mesmo movimento do telefone.' },
   { k: '@ctl.unbuffered', ty: 'bool', def: true, t: 'Entrada sem buffer', d: 'Entrega toques e botões ao jogo assim que chegam, sem esperar o próximo quadro da tela: menos atraso. Android 11 ou mais novo.' },
 ];
 for (const d of CTLSET) DEF[d.k] = Object.assign({ g: 'ctl', lvl: 1, vt: 'app', ap: 'live' }, d);
-const TOUCH_GROUPS = [['Geral', ['HID.show_touch_overlay', '@touch.opacity', '@touch.autohide', '@touch.haptics', '@touch.hidepad']], ['Tela dividida', ['@touch.split']], ['Deslizar o dedo', ['@touch.slidebtn', '@touch.slidestick']], ['Câmera por toque', ['@touch.camera', '@touch.camspeed', '@touch.camarea']]];
+const TOUCH_GROUPS = [['Geral', ['HID.show_touch_overlay', '@touch.style', '@touch.opacity', '@touch.autohide', '@touch.haptics', '@touch.hidepad']], ['Tela dividida', ['@touch.split']], ['Deslizar o dedo', ['@touch.slidebtn', '@touch.slidestick']], ['Câmera por toque', ['@touch.camera', '@touch.camspeed', '@touch.camarea']]];
 const TOUCH_DEFAULT = JSON.parse(JSON.stringify(TOUCH_LAYOUT));
 const RUMBLE_T = { off: 'Desligada', low: 'Baixa', medium: 'Média', high: 'Alta' };
 const padRumble = p => p.rumble || globalOf('@ctl.rumble');
@@ -60,12 +62,12 @@ const padSlot = p => PADS.indexOf(p);
 function touchGlobalsHTML(v) { return `<div data-note="touchglob">${TOUCH_GROUPS.map(([t, keys], i) => `<h4 class="gh">${t}</h4><div${i ? '' : ' data-note="touchone"'}>${appRows(keys, v)}</div>`).join('')}</div>`; }
 function lpDiff(d) { if (!d) return ''; const [m, r, sh, hd] = d, parts = []; if (m) parts.push(`${m} ${m === 1 ? 'movido' : 'movidos'}`); if (r) parts.push(`${r} com outro tamanho`); if (sh) parts.push(`${sh} ${sh === 1 ? 'mostrado' : 'mostrados'}`); if (hd) parts.push(`${hd} ${hd === 1 ? 'escondido' : 'escondidos'}`); return parts.join(', ') || 'Nada muda'; }
 function layoutsHTML(pfx) {
-  return `<div class="list" data-note="layouts">${LAYOUTS.length ? LAYOUTS.map(l => drow({ icon: 'hand', t: esc(l.name), s: `${[l.land && 'paisagem', l.port && 'retrato'].filter(Boolean).join(' e ')} · salvo em ${l.when}`, acts: `<button class="btn sm" data-act="lp-ask" data-v="${l.id}" data-k="${pfx}-ap-${l.id}">Aplicar…</button><button class="btn sm ghost" data-act="toast" data-msg="“${esc(l.name)}” exportado." data-k="${pfx}-ex-${l.id}">Exportar</button><button class="ibtn" data-act="lp-del" data-v="${l.id}" data-k="${pfx}-rm-${l.id}" aria-label="Apagar ${esc(l.name)}">${ic('trash', 17)}</button>` })).join('') : '<p class="note">Nenhum layout salvo ainda.</p>'}</div>
-    <div class="row"><input class="txt plain" id="lp-name" type="text" placeholder="Nome" data-k="${pfx}-name" maxlength="40" autocomplete="off" aria-label="Nome do layout"><button class="btn sm" data-act="lp-save" data-k="${pfx}-save">${ic('save', 15)} Salvar o atual</button><button class="btn sm ghost" data-act="toast" data-msg="Escolha o arquivo do layout (seletor do Android). Até 256 KB; é conferido antes." data-k="${pfx}-imp" title="Importar um arquivo de layout">${ic('download', 15)} Importar…</button></div>`;
+  return `<div class="list" data-note="layouts">${LAYOUTS.length ? LAYOUTS.map(l => drow({ icon: 'hand', t: esc(l.name), s: `${[l.land && 'paisagem', l.port && 'retrato'].filter(Boolean).join(' e ')} · salvo em ${l.when}`, acts: `<button class="btn sm" data-act="lp-ask" data-v="${l.id}" data-k="${pfx}-ap-${l.id}">Aplicar…</button><button class="btn sm ghost" data-act="toast" data-msg="No app, o Android pergunta onde salvar “${esc(l.name)}”." data-k="${pfx}-ex-${l.id}">Exportar</button><button class="ibtn" data-act="lp-del" data-v="${l.id}" data-k="${pfx}-rm-${l.id}" aria-label="Apagar ${esc(l.name)}">${ic('trash', 17)}</button>` })).join('') : '<p class="note">Nenhum layout salvo ainda.</p>'}</div>
+    <div class="row"><input class="txt plain" id="lp-name" type="text" placeholder="Nome" data-k="${pfx}-name" maxlength="40" autocomplete="off" aria-label="Nome do layout"><button class="btn sm" data-act="lp-save" data-k="${pfx}-save">${ic('save', 15)} Salvar o atual</button><button class="btn sm ghost" data-act="toast" data-msg="No app, abre o seletor de arquivos do Android. O arquivo tem até 256 KB e é conferido antes." data-k="${pfx}-imp" title="Importar um arquivo de layout">${ic('download', 15)} Importar…</button></div>`;
 }
 action('lp-ask', el => { S.modal = 'lp-apply'; S.mp = { id: el.dataset.v }; render(); });
 action('lp-del', el => { const i = LAYOUTS.findIndex(l => l.id === el.dataset.v); if (i >= 0) { const l = LAYOUTS.splice(i, 1)[0]; toast(`“${l.name}” apagado.`); } });
-action('lp-save', () => { const inp = document.getElementById('lp-name'), name = (inp && inp.value || '').trim(); if (!name) { toast('Um layout precisa de um nome com 1 a 40 caracteres'); return; } const ex = LAYOUTS.find(l => l.name === name); if (ex) { ex.when = 'hoje'; toast(`“${name}” substituído.`); return; } if (LAYOUTS.length >= 20) { toast('No máximo 20 layouts; apague um antes'); return; } LAYOUTS.push({ id: 'u' + Date.now(), name, when: 'hoje', land: [0, 0, 0, 0], port: [0, 0, 0, 0] }); toast(`“${name}” salvo.`); });
+action('lp-save', () => { const inp = document.getElementById('lp-name'), name = (inp && inp.value || '').trim(); if (!name) { toast('Um layout precisa de um nome com 1 a 40 caracteres'); return; } const ex = LAYOUTS.find(l => l.name === name); if (ex) { ex.when = 'hoje'; toast(`“${name}” substituído.`); return; } if (LAYOUTS.length >= 30) { toast('No máximo 30 layouts; apague um antes'); return; } LAYOUTS.push({ id: 'u' + Date.now(), name, when: 'hoje', land: [0, 0, 0, 0], port: [0, 0, 0, 0] }); toast(`“${name}” salvo.`); });
 function applyLayout(id) {
   const tgt = S.route.name === 'touchedit' && TE.work ? TE.work : TOUCH_LAYOUT, l = LAYOUTS.find(x => x.id === id);
   if (S.route.name === 'touchedit') teSnap();
@@ -129,14 +131,14 @@ function ctlPadsHTML(v) {
 function ctlMotionHTML(v) {
   return `<div data-note="ctlmotion"><h4 class="gh">Vibração</h4>${appRows(['@ctl.rumble'], v)}
     <h4 class="gh">Giroscópio do telefone</h4>${appRows(['@ctl.gyrocam', '@ctl.gyroaim', '@ctl.gyrosens'], v)}
-    <div class="row" style="margin-top:8px"><button class="btn sm ghost" data-act="toast" data-msg="Deixe o telefone parado: calibrado (protótipo)." data-k="mo-cal">${ic('rotate', 15)} Calibrar o giroscópio</button></div>
+    <p class="note" style="margin-top:8px">Para calibrar, use o menu do jogo (Controles) com o telefone parado.</p>
     <h4 class="gh">Entrada</h4>${appRows(['@ctl.unbuffered'], v)}
     <p class="note" style="margin-top:10px">O menu em jogo continua mudando estes na hora; aqui ficam os valores com que cada jogo começa.</p></div>`;
 }
 function ctlPhonesHTML() {
   return `<div class="grid2">
-    <section class="card"><h3>${ic('phone', 15)} Este telefone como controle</h3><p style="font-size:13.5px">Para jogar num jogo aberto em outro telefone, na mesma rede Wi-Fi ou no mesmo ponto de acesso. Este telefone vira um controle de toque e entra como P2–P4.</p><div class="row"><button class="btn sm primary" data-act="go" data-v="phonepad" data-k="ph-open">Usar este telefone como controle</button></div></section>
-    <section class="card"><h3>${ic('wifi', 15)} Telefones jogando aqui</h3><p style="font-size:13.5px">Com um jogo aberto: menu do jogo → Controles → Telefones como controle. Aparecem o endereço e o código de 6 dígitos para digitar no outro telefone.</p><dl class="kv"><dt>Rede agora</dt><dd>Wi-Fi · 192.168.1.20</dd><dt>Último pareamento</dt><dd>Pixel 7a como P2, ontem</dd></dl></section>
+    <section class="card" data-note="pchelp"><h3>${ic('phone', 15)} Este telefone como controle</h3><p style="font-size:13.5px">Para jogar num jogo aberto em outro telefone, na mesma rede Wi-Fi ou no mesmo ponto de acesso. Este telefone vira um controle de toque e entra como P2–P4.</p><div class="row"><button class="btn sm primary" data-act="go" data-v="phonepad" data-k="ph-open">Usar este telefone como controle</button></div></section>
+    <section class="card"><h3>${ic('wifi', 15)} Telefones jogando aqui</h3><p style="font-size:13.5px">Com um jogo aberto: menu do jogo → Controles → Telefones como controle. Aparecem o endereço e o código de 6 dígitos para digitar no outro telefone.</p><dl class="kv"><dt>Rede agora</dt><dd>Wi-Fi · 192.168.0.12 (exemplo)</dd></dl></section>
     <section class="card span2"><p class="note">O jogo só escuta na rede local dele, nunca na internet, e cada vez que é ligado usa um endereço e um código novos. Dez códigos errados travam o pareamento até os telefones como controle serem desligados e ligados de novo.</p></section>
   </div>`;
 }
@@ -173,6 +175,7 @@ function padDraw(o) {
 }
 
 /* ---------- mapeamento de teclas ---------- */
+/* o app guarda um mapa só, para todos os controles e o teclado (KeymapStore.kt) */
 const KM = { maps: { all: Object.assign({}, KM_DEF, { BACK: 'BUTTON_MODE', RT: 'BUTTON_R1' }) }, scope: 'all', swapped: false, cap: null, capPrev: null };
 const kmMap = () => KM.maps[KM.scope] || KM.maps.all;
 function kmState(id, m = kmMap()) { const c = m[id]; if (!c) return 'unb'; if (Object.keys(m).some(o => o !== id && m[o] === c)) return 'shared'; return c !== KM_DEF[id] ? 'chg' : ''; }
@@ -194,19 +197,15 @@ function kmAssign(id, code) {
   else { m[id] = code; toast(`${kmName(id)}: ${keyText(code)}`); }
 }
 function kmBody(v) {
-  const m = kmMap(), own = KM.scope === 'all' || !!KM.maps[KM.scope];
+  const m = kmMap();
   const shared = KM_BTNS.filter(b => kmState(b[0]) === 'shared').map(b => b[0]);
-  const scope = `<div class="row" data-note="kmscope"><span class="note">Vale para</span><select class="sel" data-act-change="km-scope" data-k="km-scope" aria-label="Vale para">${[['all', 'Todos os controles'], ...PADS.map(p => [p.id, p.name])].map(([id, t]) => `<option value="${id}"${KM.scope === id ? ' selected' : ''}>${esc(t)}${id !== 'all' && KM.maps[id] ? ' · mapa próprio' : ''}</option>`).join('')}</select>${KM.scope !== 'all' && own ? `<button class="btn sm ghost" data-act="km-own-rm" data-k="km-own-rm">Voltar ao mapa de todos</button>` : ''}</div>`;
-  if (!own) {
-    const p = PADS.find(x => x.id === KM.scope);
-    return `<div class="stack" style="max-width:640px">${scope}<section class="card"><h3>${ic('gamepad', 15)} ${esc(p.name)}</h3><p style="font-size:13.5px">Este controle usa o mapa de todos os controles.</p><p class="note">Um mapa próprio fica guardado pelo descritor do Android: vale de novo quando ele reconectar, e os outros controles não mudam.</p><div class="row"><button class="btn primary" data-act="km-own" data-k="km-own" data-autofocus>Criar um mapa só para ele</button></div></section></div>`;
-  }
+  const scope = '';
   const draw = padDraw({ note: 'kmdraw', state: id => kmState(id), kb: id => (kmState(id) ? (m[id] || '—').replace('BUTTON_', '') : ''), attrs: id => `data-act="km-cap" data-v="${id}" data-k="kmd-${id}"${id === 'A' ? ' data-autofocus' : ''}` });
   const list = KM_BTNS.map(([id, name]) => { const s = kmState(id); return `<div class="km-row ${s}"><button class="km-pick" data-act="km-cap" data-v="${id}" data-k="kml-${id}"><b>${esc(name)}</b><small>${esc(keyText(m[id]))}${s === 'shared' ? ' · também em outro botão' : ''}</small></button><button class="btn sm ghost" data-act="km-clear" data-v="${id}" data-k="kmc-${id}"${m[id] ? '' : ' disabled'}>Limpar</button></div>`; }).join('');
   return `<div class="km">
     <div class="km-draw">${scope}${draw}
       <div class="legend2" data-note="kmstate"><span class="chg"><i></i>Mudada</span><span class="shared"><i></i>Em dois botões</span><span class="unb"><i></i>Sem tecla</span></div>
-      <p class="note">Toque num botão do controle para dar uma tecla a ele, ou escolha na lista.</p>
+      <p class="note" data-note="kmsim">Toque num botão do controle para dar uma tecla a ele, ou escolha na lista.</p>
       ${shared.length ? `<p class="errline">${ic('warn', 15)} Uma tecla aciona dois botões, então um deles não faz nada: ${shared.map(kmName).join(', ')}.</p>` : ''}
       <div class="row" data-note="kmswap"><button class="btn sm${KM.swapped ? ' primary' : ''}" data-act="km-swap" data-k="km-swap" aria-pressed="${KM.swapped}">${ic('refresh', 15)} Trocar A/B e X/Y</button><span class="note">Para controles no padrão da Nintendo, com o A à direita.</span></div>
     </div>
@@ -218,15 +217,12 @@ action('km-assign', el => kmAssign(KM.cap, el.dataset.v));
 action('km-clear', el => { kmMap()[el.dataset.v] = ''; toast(`${kmName(el.dataset.v)}: sem tecla`); });
 action('km-reset', () => { const m = kmMap(); Object.assign(m, KM_DEF); KM.swapped = false; toast('Teclas restauradas'); });
 action('km-swap', () => { const m = kmMap(); [[ 'A', 'B'], ['X', 'Y']].forEach(([a, b]) => { const t = m[a]; m[a] = m[b]; m[b] = t; }); KM.swapped = !KM.swapped; toast(KM.swapped ? 'A/B e X/Y trocados' : 'A/B e X/Y de volta'); });
-action('change:km-scope', el => { KM.scope = el.value; render(); });
-action('km-own', () => { KM.maps[KM.scope] = Object.assign({}, KM.maps.all); toast('Mapa próprio criado a partir do mapa de todos'); });
-action('km-own-rm', () => { delete KM.maps[KM.scope]; toast('Este controle volta ao mapa de todos'); });
 modal('km-cap', () => { const id = KM.cap, m = kmMap(); return { html: sheetHead(`Aperte uma tecla para ${esc(kmName(id))}`) + `<div class="cap" data-note="kmcap"><span class="pulse">${ic('gamepad', 30)}</span><b>Esperando um botão do controle ou do teclado…</b><small>Agora: ${esc(keyText(m[id]))}</small></div><div class="acts"><button class="btn ghost" data-act="km-assign" data-v="" data-k="kc-none">Deixar sem tecla</button><button class="btn" data-act="close" data-k="kc-x" data-autofocus>Cancelar</button></div>` }; });
 
 screen('keymap', {
   title: 'Mapeamento de teclas', globalScope: true,
   render() {
-    return single({ key: 'keymap', title: 'Mapeamento de teclas', sub: KM.scope === 'all' ? 'Todos os controles e o teclado' : esc((PADS.find(p => p.id === KM.scope) || {}).name || ''), icon: 'keyboard',
+    return single({ key: 'keymap', title: 'Mapeamento de teclas', sub: 'Todos os controles e o teclado', icon: 'keyboard',
       actions: `<button class="btn sm ghost" data-act="km-reset" data-k="km-reset">${ic('reset', 15)} Restaurar</button>`,
       body: kmBody, hints: [['A', 'Escolher a tecla', 'a'], ['Y', 'Limpar', 'y'], ['X', 'Trocar A/B e X/Y', 'x'], ['B', 'Voltar', 'back']] });
   },
@@ -445,7 +441,7 @@ screen('padtest', {
   render() {
     const devs = ptDevices();
     const body = () => `<div class="stack">
-      <div class="pt-intro" data-note="ptleave">${ic('info', 18)}<p class="note">Aperte todos os botões e mova todos os analógicos. O que você aperta aqui não chega a nenhum jogo. Segure B por um segundo, ou use Voltar, para sair.</p></div>
+      <div class="pt-intro" data-note="ptleave"><span data-note="ptsim"></span>${ic('info', 18)}<p class="note">Aperte todos os botões e mova todos os analógicos. O que você aperta aqui não chega a nenhum jogo. Segure B por um segundo, ou use Voltar, para sair.</p></div>
       ${devs.length ? devs.map(ptCardHTML).join('') : `<section class="card"><p style="font-size:14px">${PT.src === 'real' ? 'Nenhum controle visto pelo navegador. Conecte um e aperte um botão.' : 'Nenhum controle conectado. Pareie um por Bluetooth ou ligue pelo cabo.'}</p></section>`}
       ${PT.src === 'demo' ? `<section class="card"><h3>${ic('timeline', 15)} Conexões</h3><ul class="pt-ev">${PAD_EVENTS.map(([n, k]) => `<li>${esc(n)}: ${k}</li>`).join('')}</ul></section>` : ''}
     </div>`;
@@ -461,12 +457,11 @@ screen('padtest', {
 
 /* ---------- celular como controle ---------- */
 const PC = { state: 'form', addr: '', code: '', name: 'Pixel 7a', vib: 'medium', err: '', timer: 0 };
-const PC_FOUND = [{ game: 'Halo 3', host: 'POCO F7', addr: '192.168.1.20:41234', net: 'Wi-Fi' }];
-const PC_ERR = { code: 'Código errado', full: 'Todas as vagas de jogador estão ocupadas', version: 'O jogo roda outra versão do XenDroid', closed: 'O pareamento está fechado no jogo (desligue e ligue os telefones como controle lá para ter um código novo)', unreachable: 'Não deu para alcançar o jogo em 192.168.1.20:41234. Os dois telefones precisam estar no mesmo Wi-Fi ou ponto de acesso, com Telefones como controle ligado no menu do jogo (um endereço novo a cada vez que é ligado).' };
+const PC_ERR = { code: 'Código errado', full: 'Todas as vagas de jogador estão ocupadas', version: 'O jogo roda outra versão do Xendroid+', closed: 'O pareamento está fechado no jogo (desligue e ligue os telefones como controle lá para ter um código novo)', unreachable: 'Não deu para alcançar o jogo em 192.168.1.20:41234. Os dois telefones precisam estar no mesmo Wi-Fi ou ponto de acesso, com Telefones como controle ligado no menu do jogo (um endereço novo a cada vez que é ligado).' };
 function pcFormHTML(v) {
   const busy = PC.state === 'connecting', D = busy ? ' disabled' : '';
   return `<div class="pc">
-    <p class="note span2">No telefone que roda o jogo: abra o menu dele (Voltar), Controles → Telefones como controle. Digite o endereço e o código que ele mostra. Os dois telefones precisam estar no mesmo Wi-Fi ou ponto de acesso.</p>
+    <p class="note span2">No telefone que roda o jogo: abra o menu dele (Voltar), Controles → Telefones como controle. Digite o endereço e o código que ele mostra. Os dois telefones precisam estar no mesmo Wi-Fi ou ponto de acesso. Este telefone joga como P2, P3 ou P4 com o controle de toque. Experimental.</p>
     <section class="card" data-note="pcform">
       <label class="fld">Endereço do jogo (IP:porta)<input class="txt" id="pc-addr" type="text" inputmode="decimal" placeholder="192.168.1.20:41234" value="${esc(PC.addr)}" data-k="pc-addr" autocomplete="off" spellcheck="false"${D}></label>
       <label class="fld">Código (6 dígitos)<input class="txt pc-code" id="pc-code" type="text" inputmode="numeric" maxlength="6" placeholder="000000" value="${esc(PC.code)}" data-k="pc-code" autocomplete="one-time-code"${D}></label>
@@ -475,21 +470,16 @@ function pcFormHTML(v) {
       ${PC.err ? `<p class="errline" data-note="pcerr">${ic('warn', 15)} ${esc(PC.err)}</p>` : ''}
       ${busy ? `<div class="row"><span class="spin" style="display:inline-grid">${ic('refresh', 18)}</span><b>Conectando…</b><span class="sp"></span><button class="btn sm ghost" data-act="pc-cancel" data-k="pc-cancel">Cancelar</button></div>` : `<button class="btn primary wide" data-act="pc-connect" data-k="pc-go"${PC.addr && PC.code ? '' : ''}>Conectar</button>`}
     </section>
-    <section class="card" data-note="pcfind"><h3>${ic('wifi', 15)} Jogos nesta rede<span class="badge" style="margin-left:auto">proposta</span></h3>
-      <div class="list">${PC_FOUND.map(f => drow({ icon: 'gamepad', t: `${esc(f.game)} · ${esc(f.host)}`, s: `<span class="mono">${f.addr}</span> · ${f.net}`, acts: `<button class="btn sm" data-act="pc-use" data-v="${f.addr}" data-k="pc-use"${D}>Usar</button>` })).join('')}</div>
-      <p class="note">O jogo anuncia o endereço na rede local quando os telefones como controle estão ligados; o código continua sendo digitado ou lido.</p>
-      <div class="row"><button class="btn sm ghost" data-act="toast" data-msg="Aponte a câmera para o QR code no menu do jogo (protótipo)." data-k="pc-qr"${D}>${ic('eye', 15)} Ler o QR code do jogo</button></div></section>
     <p class="note span2">O jogo só escuta na rede local dele, nunca na internet. Dez códigos errados travam o pareamento até os telefones como controle serem desligados e ligados de novo lá (um código novo).</p>
   </div>`;
 }
 function pcPlayHTML() {
-  return `<div class="pc-play" data-note="pcplay">${touchOverlay(1.25)}<div class="pc-pill"><span>P2 · Halo 3 no POCO F7 · 18 ms</span><button class="btn sm" data-act="pc-leave" data-k="pc-leave">Sair</button></div></div>`;
+  return `<div class="pc-play" data-note="pcplay">${touchOverlay(1.25)}<div class="pc-pill"><b class="mono" style="color:var(--acc)">P2</b><span class="mono">18 ms</span><button class="btn sm" data-act="pc-leave" data-k="pc-leave">${ic('exit', 15)} Sair</button></div></div>`;
 }
 action('input:pc-addr', el => { PC.addr = el.value; });
 action('input:pc-code', el => { el.value = el.value.replace(/\D/g, '').slice(0, 6); PC.code = el.value; });
 action('input:pc-name', el => { PC.name = el.value; });
 action('pc-vib', el => { PC.vib = el.dataset.v; render(); });
-action('pc-use', el => { PC.addr = el.dataset.v; PC.err = ''; render(); focusKey('pc-code'); });
 action('pc-cancel', () => { clearTimeout(PC.timer); PC.state = 'form'; render(); });
 action('pc-leave', () => { PC.state = 'form'; PC.err = ''; toast('Desconectado do jogo'); });
 action('pc-connect', () => {

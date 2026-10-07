@@ -93,19 +93,20 @@ function loadChannel(id) {
   NEWOPT_COUNT = SET.filter(d => d.nOpt).length;
 }
 
-/* ============ drivers (catálogo de exemplo; a fonte padrão é a do app) ============ */
+/* ============ drivers (catálogo de exemplo; a fonte padrão é a do app) ============
+   checked: o pacote tem o arquivo de conferência (“arquivos conferidos”); sem ele, “importação antiga”. */
 const DRIVERS = {
   sources: [XDR.fonteDrivers],
-  gpu: 'Adreno 825', system: 'Qualcomm (exemplo)',
+  gpu: 'Adreno 825 (exemplo)', model: 825,
   installed: [
-    { id: 'turnip-a', name: 'Turnip A (exemplo)', state: 'verified', from: XDR.fonteDrivers, size: '14,2 MB', date: '02/09/2026' },
-    { id: 'turnip-b', name: 'Turnip B (exemplo)', state: 'unverified', from: 'ZIP importado', size: '15,0 MB', date: '20/09/2026' },
-    { id: 'turnip-c', name: 'Turnip C (exemplo)', state: 'damaged', from: XDR.fonteDrivers, size: '12,8 MB', date: '11/05/2026' },
+    { id: 'turnip-a', name: 'Turnip A (exemplo)', checked: true, size: '14,2 MB', date: '02/09/2026' },
+    { id: 'turnip-b', name: 'Turnip B (exemplo)', checked: true, size: '15,0 MB', date: '20/09/2026' },
+    { id: 'turnip-c', name: 'Turnip C (exemplo)', checked: false, size: '12,8 MB', date: '11/05/2026' },
   ],
   available: [
-    { id: 'turnip-d', name: 'Turnip D (exemplo)', from: XDR.fonteDrivers, size: '15,4 MB', date: '28/09/2026', sha: true, suggested: true },
-    { id: 'turnip-e', name: 'Turnip E (exemplo)', from: XDR.fonteDrivers, size: '14,4 MB', date: '15/09/2026', sha: true },
-    { id: 'turnip-f', name: 'Turnip F (exemplo)', from: XDR.fonteDrivers, size: '14,1 MB', date: '03/08/2026', sha: false },
+    { id: 'turnip-d', name: 'Turnip D (exemplo)', from: XDR.fonteDrivers, date: '2026-09-28', sha: true, suggested: true },
+    { id: 'turnip-e', name: 'Turnip E (exemplo)', from: XDR.fonteDrivers, date: '2026-09-15', sha: true },
+    { id: 'turnip-f', name: 'Turnip F (exemplo)', from: XDR.fonteDrivers, date: '2026-08-03', sha: false },
   ],
   previous: 'turnip-b', selectedAt: '28/09/2026 20:05',
   lastRun: { drv: 'Turnip A (exemplo)', game: GAMES[0].name, when: 'hoje, 13:10' },
@@ -123,9 +124,10 @@ const SAVES = {
   '4D5308AB': [{ xuid: 'E03000A1B2C3D4E5', files: 4, kb: 2240, when: 'há 5 h' }, { xuid: 'E03000F6A7B8C9D0', files: 2, kb: 512, when: '21/09/2026' }],
   '5454082B': [{ xuid: 'E03000A1B2C3D4E5', files: 12, kb: 8960, when: 'ontem' }],
 };
+/* backups na pasta de sincronização: nome imutável xendroid-saves-<TITLE ID>-<sha256>.zip (BackupReplication.kt) */
 const SAVE_BACKUPS = [
-  { name: '4D5309C9 · 2026-10-01 22:10.zip', when: '01/10/2026 22:10', size: '1,4 MB' },
-  { name: '4D5309C9 · 2026-09-24 19:30.zip', when: '24/09/2026 19:30', size: '1,3 MB' },
+  { name: 'xendroid-saves-4D5309C9-7f3a9c1e….zip', when: '01/10/2026 22:10', size: '1,4 MB' },
+  { name: 'xendroid-saves-4D5309C9-2b81d04a….zip', when: '24/09/2026 19:30', size: '1,3 MB' },
 ];
 
 /* ============ conteúdo instalado e lixeira (cota real do app: 4 GiB) ============ */

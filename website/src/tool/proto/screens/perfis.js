@@ -2,18 +2,19 @@
 'use strict';
 
 Object.assign(NOTES, {
-  pfcards: ['existe', 'Perfis com avatar, gamertag, idioma, região e quem é o ativo (P1). Hoje é uma lista com menu ⋮ em cada linha.'],
-  pfsaves: ['novo', 'Quanto cada perfil guarda e em quais jogos, com atalho para os saves de cada um.'],
-  pfslots: ['existe', 'Quem entra como P1–P4: o ativo é o P1; P2–P4 escolhidos aqui (um perfil por jogador). Vale na próxima abertura.'],
-  pfask: ['existe', 'Perguntar quem joga antes de cada jogo (a biblioteca abre “Jogar como”).'],
-  pftrash: ['existe', 'Lixeira de perfis: restaurar com os saves, ou remover de vez com confirmação.'],
-  pfform: ['existe', 'Criar e editar: avatar (imagem do aparelho, com limite de tamanho), gamertag de 1 a 15 caracteres começando com letra, idioma e região.'],
-  playas: ['existe', '“Jogar como”: escolher quem entra nesta abertura; quem já era P2–P4 passa para o P1 e deixa a vaga livre.'],
-  svnames: ['novo', 'Gamertag e avatar no lugar do XUID, e os saves de cada perfil pelos nomes guardados nos cabeçalhos.'],
-  svsel: ['existe', 'Escolher os perfis para exportar, com ou sem o perfil associado; importar um backup.'],
-  svsync: ['existe', 'Pasta de sincronização opcional (local ou na nuvem do Android): backup ao voltar para a biblioteca, sincronizar agora e restaurar da pasta.'],
-  svreview: ['existe', 'Antes de restaurar: arquivos, XUIDs originais e conflitos; os saves atuais recebem backup antes.'],
-  svgames: ['novo', 'Todos os jogos com saves deste perfil, a partir dos Perfis.'],
+  pfcards: ['app', 'Perfis com avatar, gamertag, idioma, região e quem é o ativo (P1). Um perfil chamado “XenDroid” é criado quando não existe nenhum.'],
+  pfsaves: ['app', 'Quanto cada perfil guarda e em quais jogos, com atalho para os saves de cada um.'],
+  pfslots: ['app', 'Quem entra como P1 a P4: o ativo é o P1; P2 a P4 são escolhidos aqui, um perfil por jogador. Vale na próxima abertura.'],
+  pfask: ['app', 'Com mais de um perfil, a biblioteca pode perguntar quem joga antes de cada jogo (“Jogar como”).'],
+  pftrash: ['app', 'Lixeira de perfis: restaurar com os saves, ou remover de vez com confirmação.'],
+  pfform: ['app', 'Gamertag de 1 a 15 caracteres, começando com letra; avatar escolhido do aparelho (até 16.384 px de lado e 32 MB); idioma e região do perfil.'],
+  playas: ['app', '“Jogar como”: escolher quem entra nesta abertura; quem já era P2 a P4 passa para o P1 e deixa a vaga livre.'],
+  svnames: ['app', 'Saves de cada perfil, com gamertag e avatar, e os arquivos pelos nomes que o jogo guardou.'],
+  svsel: ['app', 'Escolher os perfis para exportar num ZIP, com ou sem o perfil associado, e importar um backup com revisão antes.'],
+  svsync: ['app', 'Pasta de sincronização opcional (local ou de nuvem oferecida pelo Android): cada backup é um arquivo novo, conferido por SHA-256 depois de enviado e nunca sobrescrito. Nenhum login de nuvem.'],
+  svreview: ['app', 'Antes de restaurar: arquivos, XUIDs originais e conflitos. As pastas atuais ficam guardadas para recuperação.'],
+  svgames: ['app', 'Todos os jogos com saves deste perfil, a partir dos Perfis.'],
+  svex: ['sim', 'Perfis, saves, nomes de arquivos de save, pasta e backups são exemplos.'],
 });
 
 /* ---------- perfis ---------- */
@@ -85,7 +86,7 @@ modal('pf-slot', mp => {
 modal('pf-menu', mp => { const p = pfBy(mp.v); return { html: sheetHead(esc(p.tag), pfStatus(p) || esc(p.xuid)) + `<ul class="menu">${p.active ? '' : `<li><button data-act="pf-active" data-v="${p.xuid}" data-k="pm-act" data-autofocus>${ic('user', 19)}<span>Tornar ativo<small>Entra como P1 na próxima abertura</small></span></button></li>`}<li><button data-act="pf-edit" data-v="${p.xuid}" data-k="pm-edit"${p.active ? ' data-autofocus' : ''}>${ic('text', 19)}<span>Editar<small>Gamertag, avatar, idioma e região</small></span></button></li><li><button data-act="pf-saves" data-v="${p.xuid}" data-k="pm-saves">${ic('save', 19)}<span>Saves<small>${p.games} ${p.games === 1 ? 'jogo' : 'jogos'} · ${p.mb} MB</small></span></button></li><li><button data-act="pf-trash" data-v="${p.xuid}" data-k="pm-trash">${ic('trash', 19)}<span>Mandar para a lixeira</span></button></li></ul>` }; });
 modal('pf-edit', mp => {
   const p = mp.v ? pfBy(mp.v) : null, lang = p ? (LANGS.find(o => o[1] === p.lang) || LANGS[0])[0] : '9', reg = p ? (REGIONS.find(o => o[1] === p.region) || REGIONS[0])[0] : '13';
-  return { html: sheetHead(p ? 'Editar perfil' : 'Criar perfil') + `<div class="row" style="gap:14px;align-items:center" data-note="pfform">${p ? avatarImg(p, 'avatar-l') : `<span class="avatar-l" style="display:grid;place-items:center;background:var(--s3)">${ic('user', 28)}</span>`}<button class="btn sm ghost" data-act="toast" data-msg="Escolha uma imagem (seletor do Android); até 512 px por lado." data-k="pf-av">${ic('image', 15)} Escolher avatar</button></div>
+  return { html: sheetHead(p ? 'Editar perfil' : 'Criar perfil') + `<div class="row" style="gap:14px;align-items:center" data-note="pfform">${p ? avatarImg(p, 'avatar-l') : `<span class="avatar-l" style="display:grid;place-items:center;background:var(--s3)">${ic('user', 28)}</span>`}<button class="btn sm ghost" data-act="toast" data-msg="No app, abre o seletor de imagens do Android (até 16.384 px de lado e 32 MB)." data-k="pf-av">${ic('image', 15)} Escolher avatar</button></div>
     <label class="fld">Gamertag<input class="txt plain" id="pf-tag" type="text" maxlength="15" value="${p ? esc(p.tag) : ''}" placeholder="Ex.: XenPlayer" data-k="pf-tag" autocomplete="off" spellcheck="false" data-autofocus></label>
     <p class="errline" id="pf-err" hidden>${ic('warn', 15)} Digite uma gamertag válida (1 a 15 caracteres, começando com uma letra).</p>
     <div class="grid2"><label class="fld">Idioma<select class="sel" id="pf-lang" data-k="pf-lang" style="max-width:none">${LANGS.map(([v, t]) => `<option value="${v}"${v === lang ? ' selected' : ''}>${t}</option>`).join('')}</select></label><label class="fld">Região<select class="sel" id="pf-reg" data-k="pf-reg" style="max-width:none">${REGIONS.map(([v, t]) => `<option value="${v}"${v === reg ? ' selected' : ''}>${t}</option>`).join('')}</select></label></div>
@@ -120,17 +121,15 @@ screen('profiles', {
 });
 
 /* ---------- saves de um jogo ---------- */
-const SV = { sel: {}, incl: true, open: {}, folder: 'Google Drive › XenDroid › Backups', auto: true, last: 'hoje, 14:02', replace: false, busy: null, timer: 0 };
-const SAVE_NAMES = {
-  '4D5307E6': { E03000A1B2C3D4E5: [['Campanha · Lendário', 'hoje, 13:58', 1434], ['Perfil do jogador', 'hoje, 13:58', 486], ['Filmes salvos (3)', '28/09/2026', 320]], E03000F6A7B8C9D0: [['Campanha · Normal', '21/09/2026', 480], ['Perfil do jogador', '21/09/2026', 32]] },
-};
+const SV = { sel: {}, incl: true, open: {}, folder: 'Google Drive › XenDroid › Backups (exemplo)', auto: true, last: 'hoje, 14:02', replace: false, busy: null, timer: 0 };
+const SAVE_NAMES = {}; /* nomes de save vêm do cabeçalho de cada arquivo; aqui são genéricos */
 const fmtKB = kb => kb >= 1024 ? (kb / 1024).toFixed(1).replace('.', ',') + ' MB' : kb + ' KB';
 function svNames(gid, x, s) { const n = SAVE_NAMES[gid] && SAVE_NAMES[gid][x]; if (n) return n; return [['Progresso', s.when, Math.round(s.kb * .8)], ['Configurações', s.when, Math.round(s.kb * .2)]]; }
 function svHereHTML(v) {
   const g = GBY[S.route.p.gid] || curGame(), list = SAVES[g.id] || [], nsel = list.filter(s => SV.sel[s.xuid]).length;
   if (!list.length) return '<p class="note">Nenhum save encontrado para este jogo.</p>';
   return `<p class="note" style="margin-bottom:10px">Os backups guardam os cabeçalhos dos saves e os XUIDs originais dos perfis. Feche o jogo antes de fazer backup ou restaurar.</p>
-    <div class="card" data-note="svnames"><div class="list">${list.map(s => { const p = profileOf(s.xuid), names = svNames(g.id, s.xuid, s); return `<div class="sv-prof"><button class="chk" role="checkbox" aria-checked="${!!SV.sel[s.xuid]}" data-act="sv-sel" data-v="${s.xuid}" data-k="svs-${s.xuid}" aria-label="Escolher ${esc(p ? p.tag : s.xuid)}" data-note="svsel">${ic('check', 15)}</button>${p ? avatarImg(p, '') : `<span class="lead">${ic('user', 18)}</span>`}<div><b>${esc(p ? p.tag : 'Perfil que não está neste aparelho')}${p && p.removed ? ' <span class="badge">na lixeira</span>' : ''}</b><small><span class="mono">${s.xuid}</span> · ${s.files} ${s.files === 1 ? 'arquivo' : 'arquivos'} · ${fmtKB(s.kb)} · último save ${esc(s.when)}</small></div><button class="btn sm ghost" data-act="sv-open" data-v="${s.xuid}" data-k="svo-${s.xuid}" aria-expanded="${!!SV.open[s.xuid]}">${SV.open[s.xuid] ? 'Fechar' : 'Ver saves'}</button>${SV.open[s.xuid] ? `<div class="sv-files">${names.map(([n, w, kb]) => `<span>${esc(n)}<i>${esc(w)} · ${fmtKB(kb)}</i></span>`).join('')}</div>` : ''}</div>`; }).join('')}</div></div>
+    <div class="card" data-note="svnames"><span data-note="svex"></span><div class="list">${list.map(s => { const p = profileOf(s.xuid), names = svNames(g.id, s.xuid, s); return `<div class="sv-prof"><button class="chk" role="checkbox" aria-checked="${!!SV.sel[s.xuid]}" data-act="sv-sel" data-v="${s.xuid}" data-k="svs-${s.xuid}" aria-label="Escolher ${esc(p ? p.tag : s.xuid)}" data-note="svsel">${ic('check', 15)}</button>${p ? avatarImg(p, '') : `<span class="lead">${ic('user', 18)}</span>`}<div><b>${esc(p ? p.tag : 'Perfil que não está neste aparelho')}${p && p.removed ? ' <span class="badge">na lixeira</span>' : ''}</b><small><span class="mono">${s.xuid}</span> · ${s.files} ${s.files === 1 ? 'arquivo' : 'arquivos'} · ${fmtKB(s.kb)} · último save ${esc(s.when)}</small></div><button class="btn sm ghost" data-act="sv-open" data-v="${s.xuid}" data-k="svo-${s.xuid}" aria-expanded="${!!SV.open[s.xuid]}">${SV.open[s.xuid] ? 'Fechar' : 'Ver saves'}</button>${SV.open[s.xuid] ? `<div class="sv-files">${names.map(([n, w, kb]) => `<span>${esc(n)}<i>${esc(w)} · ${fmtKB(kb)}</i></span>`).join('')}</div>` : ''}</div>`; }).join('')}</div></div>
     <div class="row" style="margin-top:12px"><button class="btn sm${SV.incl ? ' primary' : ''}" data-act="sv-incl" data-k="sv-incl" aria-pressed="${SV.incl}">${ic(SV.incl ? 'check' : 'plus', 14)} Incluir o perfil associado</button><span class="sp"></span><button class="btn sm primary" data-act="sv-export" data-k="sv-export"${nsel ? '' : ' disabled'}>${ic('upload', 15)} Exportar ${nsel ? `(${nsel})` : 'os perfis escolhidos'}</button><button class="btn sm ghost" data-act="sv-import" data-k="sv-import">${ic('download', 15)} Importar backup</button></div>`;
 }
 function svSyncHTML(v) {
@@ -150,8 +149,8 @@ action('sv-import', () => { S.modal = 'sv-review'; S.mp = { v: 'file' }; render(
 action('sv-review', el => { S.modal = 'sv-review'; S.mp = { v: el.dataset.v }; render(); });
 action('sv-replace', () => { SV.replace = !SV.replace; render(); });
 action('sv-restore', () => svBusy('Restaurando os saves…', () => { S.modal = 'sv-done'; render(); }));
-action('sv-folder', () => { SV.folder = SV.folder ? 'Neste aparelho › Documentos › XenDroid' : 'Google Drive › XenDroid › Backups'; toast('Pasta escolhida (seletor do Android).'); });
-action('sv-sync', () => svBusy('Copiando o backup verificado para a pasta escolhida…', () => { SV.last = 'agora'; const g = GBY[S.route.p.gid] || curGame(); SAVE_BACKUPS.unshift({ name: `${g.id} · 2026-10-04 15:20.zip`, when: '04/10/2026 15:20', size: '2,8 MB' }); toast(`Backup verificado na pasta escolhida: ${g.id} · 2026-10-04 15:20.zip`); }));
+action('sv-folder', () => { SV.folder = /Drive/.test(SV.folder || '') ? 'Neste aparelho › Documentos › XenDroid (exemplo)' : 'Google Drive › XenDroid › Backups (exemplo)'; toast('Pasta escolhida.'); });
+action('sv-sync', () => svBusy('Copiando o backup verificado para a pasta escolhida…', () => { SV.last = 'agora'; const g = GBY[S.route.p.gid] || curGame(); const name = `xendroid-saves-${g.id}-${hash(g.id + Date.now()).toString(16).padStart(8, '0')}….zip`; SAVE_BACKUPS.unshift({ name, when: 'agora', size: '2,8 MB' }); toast(`Backup verificado na pasta escolhida: ${name}`); }));
 action('sv-auto', () => { SV.auto = !SV.auto; render(); });
 modal('sv-busy', () => ({ html: `<div class="busy"><b style="font-size:15px">${esc(SV.busy || '')}</b><div class="bar ind"><i></i></div></div>` }));
 modal('sv-review', mp => {

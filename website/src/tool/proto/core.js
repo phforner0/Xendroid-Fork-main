@@ -167,7 +167,7 @@ action('copy-text', el => { const pre = document.getElementById('toml-pre'); if 
 action('col-toggle', el => { const g = curGame(), v = el.dataset.v, i = g.cols.indexOf(v); if (i >= 0) g.cols.splice(i, 1); else g.cols.push(v); render(); });
 action('cache-clear', () => { const g = curGame(); S.modal = null; toast(`Cache de shaders limpo: ${g.cache[1]} MB`); g.cache = [0, 0]; render(); });
 action('rate-pick', el => { S.mp.rs = el.dataset.v; el.parentElement.querySelectorAll('.radio').forEach(b => b.setAttribute('aria-checked', String(b === el))); const sv = app.querySelector('[data-k="rt-save"]'); if (sv) sv.disabled = false; });
-action('rate', () => { const g = curGame(); if (!S.mp.rs) return; const note = (document.getElementById('rate-note') || {}).value || ''; g.compat = { s: S.mp.rs, note: note.trim().slice(0, 500), date: new Date().toLocaleDateString('pt-BR'), build: XDR.versoes.estavel ? XDR.versoes.estavel.commit : 'local', gpu: DRIVERS.gpu + ' (exemplo)', drv: label(DEF['Vulkan.vulkan_lib_path'], effOf(g, 'Vulkan.vulkan_lib_path')) }; S.modal = null; toast('Avaliação guardada neste aparelho'); render(); });
+action('rate', () => { const g = curGame(); if (!S.mp.rs) return; const note = (document.getElementById('rate-note') || {}).value || ''; g.compat = { s: S.mp.rs, note: note.trim().slice(0, 500), date: new Date().toLocaleDateString('pt-BR'), build: XDR.versoes.estavel ? XDR.versoes.estavel.commit : 'local', gpu: DRIVERS.gpu, drv: label(DEF['Vulkan.vulkan_lib_path'], effOf(g, 'Vulkan.vulkan_lib_path')) }; S.modal = null; toast('Avaliação guardada neste aparelho'); render(); });
 action('tg-local', el => { el.setAttribute('aria-checked', el.getAttribute('aria-checked') === 'true' ? 'false' : 'true'); });
 action('lf', el => { S.lf = el.dataset.v; render(); });
 action('sort', el => { S.sort = el.dataset.v; render(); });
@@ -280,6 +280,7 @@ app.addEventListener('input', e => {
   const el = e.target;
   if (el.id === 'set-q') { S.setQ = el.value; refreshList(); return; }
   if (ACT['input:' + el.id]) { ACT['input:' + el.id](el, e); return; }
+  if (el.dataset.actInput && el.dataset.actInput !== 'set' && ACT['input:' + el.dataset.actInput]) { ACT['input:' + el.dataset.actInput](el, e); return; }
   if (el.dataset.actInput === 'set') { const d = DEF[el.dataset.key]; const out = el.parentElement.querySelector('output'); if (out) out.textContent = label(d, coerce(d, el.value)); }
 });
 app.addEventListener('focusin', e => { const scr = SCREENS[S.route.name]; if (scr && scr.onFocus) scr.onFocus(e.target); else if (e.target.classList.contains('c-mi') && S.nav && e.target.dataset.act === 'sec') { const k = e.target.dataset.key, v = e.target.dataset.v; if (S.sec[k] !== v) { S.sec[k] = v; render(); } } });

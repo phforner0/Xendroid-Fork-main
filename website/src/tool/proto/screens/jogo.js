@@ -1,22 +1,33 @@
-/* Lote 2: jogo aberto. Carregamento, falha ao abrir, menu em jogo e HUD, sobre uma cena gerada. */
+/* Jogo aberto: carregamento, falha ao abrir, menu em jogo e HUD (GameLoadingScreen.kt,
+   LaunchFailureScreen.kt, InGameMenu.kt, InGameMenuState.kt, FpsOverlay.kt). No lugar da imagem
+   do jogo fica um quadro neutro: o simulador não roda jogos nem mostra imagens deles. */
 'use strict';
 
 Object.assign(NOTES, {
-  ighandle: ['existe', 'Alça de toque para abrir o menu; Voltar e Guia também abrem.'],
-  igstrip: ['novo', 'Linha de estado no topo do menu: FPS, p99, temperatura, bateria e o driver carregado, sem ligar o HUD.'],
-  igtabs: ['existe', 'Abas Gráficos, Desempenho (hoje “Sistema”), Controles e Sessão, com “Mais opções” no fim de cada uma (U01).'],
-  igscope: ['existe', 'Limite de FPS da sessão com salvar para o jogo, usar o global ou salvar como global (U01), agora numa linha só.'],
-  igall: ['novo', 'Todos os ajustes deste jogo sem sair do jogo, valendo na próxima abertura.'],
-  igphones: ['existe', 'Telefones como controle: código e endereço na própria linha (companion na rede local, P2–P4).'],
-  igfg: ['existe', 'Geração de quadros experimental e desligada por padrão; em builds de lançamento aparece bloqueada com o motivo (restrita a builds de desenvolvimento até a validação no aparelho).'],
-  ldsteps: ['existe', 'Etapas do boot (emulador, jogo, pipelines, primeiro quadro) e o aviso de primeira abertura lenta (15e).'],
-  ldopts: ['novo', 'Mostra com que ajustes o jogo está abrindo (driver, limite, escala) e se veio de “Iniciar com…”.'],
-  failacts: ['existe', 'Voltar, Tentar de novo num processo novo e Compartilhar logs (15e).'],
-  faildrv: ['novo', 'Quando a falha aponta para o driver, oferece tentar uma vez com o driver do sistema.'],
-  hudlv: ['existe', 'HUD em três níveis: compacto, completo e o painel de desempenho (15n), com aparência guardada por jogo (15g).'],
-  thermal: ['existe', 'Aviso térmico consultivo pelo headroom do Android (15j); nunca muda ajustes sozinho.'],
-  ighints: ['novo', 'No modo controle, dicas de botão no rodapé do menu: A seleciona, B fecha, LB/RB trocam de aba.'],
-  tcl: ['existe', 'Controles de toque; somem quando um controle físico joga como P1 e voltam quando ele desconecta.'],
+  igopen: ['app', 'No app não há botão desenhado sobre o jogo: o menu abre com Voltar (gesto da borda ou botão), deslizando a partir da borda esquerda ou com o botão Guia do controle.'],
+  igedge: ['sim', 'Aqui a faixa da borda esquerda fica visível para dar para clicar; Esc também abre e fecha o menu.'],
+  igrail: ['app', 'Cinco categorias: Imagem, Desempenho, HUD, Controles e Sessão. Deitado ficam num trilho à esquerda; em pé, em abas no alto. Com controle, LB e RB trocam de categoria.'],
+  igstrip: ['app', 'A linha de estado mostra FPS, p99 dos últimos segundos, temperatura e carga da bateria e o driver carregado, sem precisar ligar o HUD.'],
+  igrows: ['app', 'Cada linha muda o valor no lugar: escolhas lado a lado, ‹ valor › para listas longas, interruptor ou barra. Com controle, ◀ ▶ ajusta e A aciona.'],
+  igmore: ['app', 'Opções avançadas ficam atrás de “Mais opções”. Com “Ajustes mostrados” em Essencial somem também as de energia e a entrada sem buffer.'],
+  igsave: ['app', 'Com “Guardar as mudanças para este jogo” ligado (o padrão), o limite de FPS e as opções de Imagem, de controles e o volume vão para o arquivo do jogo: veja na ficha, em TOML.'],
+  iglive: ['app', 'Escala, antisserrilhamento, nitidez e pontilhamento mudam na hora; os outros ajustes de Imagem valem na próxima abertura.'],
+  igfg: ['app', 'Geração de quadros: experimental, desligada a cada abertura e disponível em todas as builds. O LSFG só funciona com o Lossless.dll do próprio jogador, importado e convertido no aparelho.'],
+  iggpu: ['dif', 'Pelo código desta versão, “MSAA 4× como 2×”, “Transparência recortada” e “Taxa de sombreamento” não estão no esquema de ajustes do app, então guardar essas três para o jogo pode falhar. A simulação não as grava no arquivo do jogo. Não conferido no aparelho.'],
+  igshade: ['dif', 'Pelo código, a taxa de sombreamento só tem efeito com vulkan_fragment_shading_rate ligado na inicialização (desligado por padrão e fora das Configurações) e com suporte do driver.'],
+  igphones: ['app', 'Telefones como controle: liga um servidor só na rede local e mostra o endereço e um código de 6 dígitos novos a cada vez. Os telefones entram como P2 a P4. Experimental.'],
+  ighud: ['app', 'O HUD liga e desliga só por aqui e vale para todos os jogos; posição, tamanho e estilo ficam por jogo.'],
+  hudlv: ['app', 'Formato vertical (uma caixa que se arrasta e muda de tamanho com pinça) ou horizontal (uma barra no topo ou na base); detalhe só FPS, métricas ou painel.'],
+  hudex: ['sim', 'Os números do HUD são de exemplo.'],
+  ighints: ['app', 'Dicas de botão no rodapé do menu: A seleciona, ◀ ▶ ajusta, LB/RB trocam de categoria, B fecha.'],
+  igshot: ['app', 'Capturar tela salva a imagem do jogo, sem o menu e o HUD, em Imagens/Xendroid+.'],
+  tcl: ['app', 'Controles de toque: somem enquanto um controle físico joga como P1 e voltam quando ele desconecta. Visual Moderno (padrão) ou Clássico.'],
+  ldsteps: ['app', 'Etapas da abertura com o tempo de cada uma; na primeira vez de um jogo, os shaders estão sendo montados e demora mais.'],
+  ldopts: ['app', 'Com que driver e limite o jogo abre, quantos ajustes próprios ele tem e se a abertura veio de “Iniciar com…”.'],
+  failacts: ['app', 'Tentar de novo abre num processo novo; Compartilhar logs leva ao diagnóstico.'],
+  faildrv: ['app', 'Quando a falha aconteceu com um driver personalizado, dá para tentar uma vez com o driver do sistema; o escolhido continua salvo.'],
+  failex: ['sim', 'As falhas usam um jogo fictício e um log de exemplo.'],
+  thermal: ['app', 'Avisos de calor do Android, no máximo um a cada 5 minutos. Eles só sugerem; nada muda sozinho.'],
 });
 
 /* ---------- controles de toque desenhados ---------- */
@@ -44,141 +55,332 @@ function touchEl(e, extra = '', cls = '') {
   if (e.k === 'abxy') return `<div class="tc tc-abxy ${cls}" style="${pos}" data-tc="${e.id}" ${extra}><span class="tc-btn y">Y</span><span class="tc-btn x">X</span><span class="tc-btn b">B</span><span class="tc-btn a">A</span></div>`;
   return `<div class="tc ${e.k === 'sh' ? 'tc-sh' : 'tc-sm'} ${cls}" style="${pos}" data-tc="${e.id}" ${extra}>${e.t}</div>`;
 }
-/* opacidade e liga/desliga vêm dos ajustes gerais do toque (lote 3); dim escurece com o menu aberto */
-const touchOp = () => DEF['@touch.opacity'] ? globalOf('@touch.opacity') / 100 : .6;
+/* opacidade e liga/desliga vêm dos ajustes gerais do toque; dim escurece com o menu aberto */
+const touchOp = () => DEF['@touch.opacity'] ? globalOf('@touch.opacity') / 100 : .65;
 function touchOverlay(dim) {
   if (!globalOf('HID.show_touch_overlay')) return '';
   const o = isPortrait() ? 'port' : 'land';
-  return `<div class="tcl" style="--op:${(touchOp() * (dim || 1)).toFixed(2)}" data-note="tcl">${TOUCH_LAYOUT[o].filter(e => e.vis !== false).map(e => touchEl(e)).join('')}</div>`;
+  return `<div class="tcl ${DEF['@touch.style'] && globalOf('@touch.style') === 'classic' ? 'classic' : ''}" style="--op:${(touchOp() * (dim || 1)).toFixed(2)}" data-note="tcl">${TOUCH_LAYOUT[o].filter(e => e.vis !== false).map(e => touchEl(e)).join('')}</div>`;
 }
 
 /* ---------- estado da sessão em jogo ---------- */
 const IG = {
-  menu: true, tab: 'gfx', more: {}, confirmQuit: false, logs: false,
-  fps: '30', display: 'fit', scaling: 'fsr', color: 'off', fg: 'off', fgPreset: 'bal', stretchNext: false,
-  hud: 'compact', hudLook: 'box', hz: 'auto', sustained: false, hints: true, metrics: new Set(['cpu', 'gpu', 'ram', 'bat', 'soc']),
-  touch: true, adaptive: false, touchCam: false, split: 'off', phones: false, rumble: 'medium', gyroCam: false, gyroAim: 'always', gyroSens: 'normal', unbuffered: true,
-  lsfgMul: '2', lsfgTarget: 'screen',
-  volume: 80, muted: false, scenes: 0, background: true, tv: false, tvMargin: 0,
+  menu: true, page: 'img', more: {}, tipShown: false,
+  /* Imagem: -1 = como nos ajustes */
+  display: 'fit', scaling: -1, aa: -1, sharp: -1, dither: -1, color: 0, stretch: false, tvMargin: 0,
+  winfg: false, fgPreset: 2, lsfg: false, lsfgReady: false, lsfgMul: 2, lsfgTarget: 0,
+  /* Desempenho */
+  fps: null, hz: 0, smooth: true, msaa2x: false, cutout: false, shading: 0, sustained: false, adpf: true, bg: 0,
+  /* HUD */
+  hud: false, hudLayout: 'vertical', hudDetail: 'metrics', metrics: new Set(['cpu', 'gpu', 'ram', 'gmem', 'bat', 'soc', 'pwr', 'chg', 'time', 'graph', 'vk']), hudPos: 'top', hudLook: 'box', hudSize: 100, hudBg: 58, hudColors: 100,
+  /* Controles */
+  touch: true, ctlStyle: 'modern', adaptive: false, touchCam: false, split: 0, rumble: 2, phones: false, unbuffered: true, gyroCam: false, gyroAim: 0, gyroSens: 1,
+  /* Sessão */
+  volume: 100, muted: false, autosave: true, pauseOnOpen: true, scenes: 0, changes: 0, kept: 0,
   t0: Date.now(), thermal: 'near',
 };
-const igSeg = (f, opts, note) => `<div class="seg" role="group"${note ? ` data-note="${note}"` : ''}>${opts.map(([v, t]) => `<button data-act="ig" data-f="${f}" data-v="${v}" aria-pressed="${String(IG[f]) === String(v)}" data-k="ig-${f}-${v}">${t}</button>`).join('')}</div>`;
-const igTg = f => `<button class="tg" role="switch" aria-checked="${!!IG[f]}" data-act="ig" data-f="${f}" data-v="${!IG[f]}" data-k="ig-${f}" aria-label="${f}"></button>`;
-const igRow = (t, s, ctl, opt = {}) => `<div class="igrow"${opt.note ? ` data-note="${opt.note}"` : ''}><div><b>${t}</b>${s ? `<small>${s}</small>` : ''}</div>${opt.below ? '' : `<div>${ctl || ''}</div>`}${opt.below ? `<div class="full">${ctl}</div>` : ''}</div>`;
-const moreRow = (tab, n) => `<button class="igrow more" data-act="ig-more" data-v="${tab}" data-k="igm-more-${tab}" style="width:100%">${ic(IG.more[tab] ? 'chevD' : 'chevR', 16)} ${IG.more[tab] ? 'Menos opções' : `Mais opções (${n})`}</button>`;
-const FPS_OPTS = [['30', '30'], ['45', '45'], ['60', '60'], ['90', '90'], ['120', '120'], ['0', '∞']];
-function igGfx(g) {
-  const sc = DEF['Display.postprocess_scaling_and_sharpening'];
-  return igRow('Tela', 'Vale na hora, só nesta sessão', igSeg('display', [['fit', 'Ajustar'], ['fill', 'Preencher'], ['stretch', 'Esticar'], ['int', 'Inteira']]), { below: true })
-    + igRow('Escala e nitidez', `Herdada do global: ${esc(label(sc, effOf(g, sc.k)))}`, `<select class="sel" data-act-change="igsel" data-f="scaling" data-k="ig-scaling" aria-label="Escala e nitidez">${sc.o.map(([v, t]) => `<option value="${v}"${IG.scaling === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`)
-    + igRow('TV / tela externa', IG.tv ? 'TV · Sala · 60 Hz' : 'Nenhuma tela de apresentação conectada', `<span class="stp"><button data-act="ig-step" data-f="tvMargin" data-d="-1" aria-label="Menos margem" data-k="ig-tvm-"${IG.tv ? '' : ' disabled'}>${ic('chevL', 16)}</button><b>Margem ${IG.tvMargin}%</b><button data-act="ig-step" data-f="tvMargin" data-d="1" aria-label="Mais margem" data-k="ig-tvm+"${IG.tv ? '' : ' disabled'}>${ic('chevR', 16)}</button></span>`)
-    + igRow('Geração de quadros <span class="badge warn">experimental</span>', IG.fg === 'off' ? 'Interpolação experimental no host; cadência e latência no aparelho ainda não validadas.' : IG.fg === 'lsfg' ? `LSFG nativo com o seu Lossless.dll · ${IG.lsfgMul}×${IG.lsfgTarget === 'off' ? '' : ' pelo alvo'}` : `Win-FG 2× · predefinição ${{ qual: 'Qualidade', bal: 'Equilíbrio', perf: 'Desempenho' }[IG.fgPreset]}`, igSeg('fg', [['off', 'Desligada'], ['winfg', 'Win-FG 2×'], ['lsfg', 'LSFG']], 'igfg'), { below: true })
-    + igRow('Driver', 'Escolha em Drivers ou nos ajustes deste jogo; vale quando um jogo abre', `<span class="badge ok">${esc(DRIVERS.lastRun.drv)}</span>`)
-    + igRow('Todos os ajustes deste jogo', 'Valem na próxima abertura', `<button class="btn sm" data-act="modal" data-v="ig-settings" data-k="ig-all">${ic('sliders', 15)} Abrir</button>`, { note: 'igall' })
-    + moreRow('gfx', 5)
-    + (IG.more.gfx ? igRow('Filtro de cor', 'Filtro SDR opcional', igSeg('color', [['off', 'Desligado'], ['gray', 'Cinza'], ['contrast', 'Contraste'], ['warm', 'Quente'], ['vivid', 'Vívido']]), { below: true })
-      + igRow('Esticar na próxima abertura', 'Fica salvo', igTg('stretchNext'))
-      + (IG.fg === 'winfg' ? igRow('Predefinição do Win-FG', '', igSeg('fgPreset', [['qual', 'Qualidade'], ['bal', 'Equilíbrio'], ['perf', 'Desempenho']]), { below: true }) : '')
-      + (IG.fg === 'lsfg' ? igRow('Alvo do LSFG <span class="badge warn">experimental</span>', IG.lsfgTarget === 'off' ? 'Desligado: multiplicador manual' : IG.lsfgTarget === 'screen' ? `A tela, 120 Hz → 4× com o jogo a ${IG.fps === '0' ? 34 : IG.fps} FPS` : `60 FPS → 2× com o jogo a ${IG.fps === '0' ? 34 : IG.fps} FPS`, igSeg('lsfgTarget', [['off', 'Manual'], ['screen', 'A tela'], ['60', '60 FPS']]), { below: true })
-        + igRow('Multiplicador LSFG <span class="badge warn">experimental</span>', IG.lsfgTarget === 'off' ? 'Escolhido à mão' : 'Calculado pelo alvo; escolha um para usar à mão', igSeg('lsfgMul', [['2', '2×'], ['3', '3×'], ['4', '4×']])) : '')
-      + igRow('Importar meu Lossless.dll', 'O app nunca traz a DLL nem shaders extraídos', `<button class="btn sm ghost" data-act="toast" data-msg="Escolha o Lossless.dll (seletor do Android)." data-k="ig-lsfgdll">Importar</button>`)
-      + igRow('Remover o cache de shaders LSFG importado', '', `<button class="btn sm ghost" data-act="toast" data-msg="Cache LSFG removido (protótipo)." data-k="ig-lsfgclr">Remover</button>`) : '');
+const IG_PAGES = [['img', 'Imagem', 'image'], ['perf', 'Desempenho', 'bolt'], ['hud', 'HUD', 'chart'], ['ctl', 'Controles', 'gamepad'], ['ses', 'Sessão', 'play']];
+const AS_SET = 'como nos ajustes';
+const EFFECTS = [['bilinear', 'Bilinear'], ['cas', 'CAS'], ['fsr', 'FSR'], ['sgsr', 'SGSR'], ['lanczos', 'Lanczos'], ['crt', 'CRT']];
+const AAS = [['none', 'Desligado'], ['fxaa', 'FXAA'], ['fxaa_extreme', 'FXAA extremo']];
+const SHARP = ['suave', 'baixa', 'média', 'alta', 'máxima'], CAS_V = ['0.0', '0.25', '0.5', '0.75', '1.0'], FSR_V = ['2.0', '1.0', '0.5', '0.2', '0.0'];
+const COLORS = ['Desligado', 'Tons de cinza', 'Contraste', 'Quente', 'Vívido (falso HDR)'];
+const TV_M = [0, 2.5, 5, 7.5, 10], FG_PRESETS = ['Qualidade', 'Equilíbrio', 'Desempenho'];
+const LSFG_T = [['off', 'desligado: multiplicador manual'], ['60', '60 FPS'], ['90', '90 FPS'], ['120', '120 FPS'], ['screen', 'a tela, 120 Hz']];
+const FPS_L = [['0', 'Sem limite'], ['30', '30'], ['45', '45'], ['60', '60'], ['90', '90'], ['120', '120']];
+const HZ = ['Automático', '60 Hz', '90 Hz', '120 Hz'], SHADING = ['Todo pixel', '2×1', '1×2', '2×2'], BG = ['AUTO', 'MANUAL', 'NEVER'];
+const SPLIT = ['Desligada', 'Em dobrável meio aberto', 'Sempre'], RUMBLE = ['Desligada', 'Baixa', 'Média', 'Alta'];
+const AIM = ['sempre', 'segurando LT', 'segurando LB'], SENS = ['Baixa', 'Normal', 'Alta'];
+const HUD_METRICS = [['cpu', 'CPU'], ['gpu', 'GPU'], ['ram', 'RAM'], ['gmem', 'Mem. GPU'], ['bat', 'Bateria'], ['soc', 'SoC'], ['pwr', 'Potência'], ['chg', 'Carga'], ['time', 'Autonomia'], ['graph', 'Gráfico de FPS'], ['vk', 'Vulkan', 'dev']];
+const player = () => String(globalOf('@app.level')) === '1';
+const DEV_ONLY = new Set(['sustained', 'adpf', 'bg', 'unbuffered']);
+const fpsNow = g => (IG.fps != null ? IG.fps : String(effOf(g, 'GPU.framerate_limit')));
+
+/* As linhas de cada categoria, nos grupos do app; adv = atrás de “Mais opções”. */
+function igRows(g) {
+  const drv = label(DEF['Vulkan.vulkan_lib_path'], effOf(g, 'Vulkan.vulkan_lib_path'));
+  const fx = IG.scaling >= 0 ? EFFECTS[IG.scaling][0] : String(effOf(g, 'Display.postprocess_scaling_and_sharpening'));
+  const sharpOk = fx === 'cas' || fx === 'fsr';
+  const fps = fpsNow(g), cap = fps === '0' ? 60 : Number(fps);
+  return {
+    img: [
+      ['Tela e efeitos', [
+        { id: 'display', kind: 'choice', t: 'Tela', opts: [['fit', 'Ajustar'], ['fill', 'Preencher'], ['stretch', 'Esticar'], ['int', 'Inteira']] },
+        { id: 'scaling', kind: 'cycle', t: 'Efeito de escala', vals: [AS_SET, ...EFFECTS.map(e => e[1])], from: -1, own: IG.scaling >= 0 },
+        { id: 'aa', kind: 'cycle', t: 'Antisserrilhamento', vals: [AS_SET, ...AAS.map(a => a[1])], from: -1, own: IG.aa >= 0 },
+        { id: 'sharp', kind: 'cycle', t: 'Nitidez', vals: [AS_SET, ...SHARP], from: -1, note: sharpOk ? '' : 'com CAS ou FSR', own: IG.sharp >= 0 },
+        { id: 'dither', kind: 'cycle', t: 'Pontilhado', vals: [AS_SET, 'Desligado', 'Ligado'], from: -1, adv: 1, own: IG.dither >= 0 },
+        { id: 'color', kind: 'cycle', t: 'Filtro de cor', vals: COLORS, adv: 1 },
+        { id: 'stretch', kind: 'toggle', t: 'Esticar na tela toda', sub: 'A partir da próxima abertura', adv: 1 },
+      ]],
+      ['TV e tela externa', [
+        { id: 'tv', kind: 'button', t: 'TV ou tela externa', sub: 'TV · tela do telefone', act: 'ig-toast', msg: 'No app, abre a escolha da tela de apresentação (TV ou monitor conectado).' },
+        { id: 'tvMargin', kind: 'cycle', t: 'Margem da TV', vals: TV_M.map(v => String(v).replace('.', ',') + '%') },
+      ]],
+      ['Geração de quadros', [
+        { id: 'winfg', kind: 'toggle', t: 'Win-FG 2×', badge: 'experimental', note: 'fg' },
+        { id: 'fgPreset', kind: 'cycle', t: 'Predefinição do Win-FG', vals: FG_PRESETS },
+        { id: 'lsfg', kind: 'toggle', t: 'LSFG nativo', disabled: !IG.lsfgReady, sub: IG.lsfgReady ? 'Com o seu Lossless.dll, convertido neste aparelho' : 'Importe o seu Lossless.dll em Mais opções' },
+        { id: 'lsfgMul', kind: 'cycle', t: 'Multiplicador LSFG', vals: ['2×', '3×', '4×'], from: 2, adv: 1, badge: 'experimental' },
+        { id: 'lsfgTarget', kind: 'cycle', t: 'Alvo do LSFG', vals: LSFG_T.map(x => x[1]), adv: 1, badge: 'experimental', note: IG.lsfgTarget ? lsfgPlan(cap) : '' },
+        { id: 'lsfgdll', kind: 'button', t: 'Importar meu Lossless.dll', adv: 1, act: 'ig-lsfg-import' },
+        { id: 'lsfgclr', kind: 'button', t: 'Remover o cache de shaders LSFG importado', adv: 1, act: 'ig-lsfg-clear', disabled: !IG.lsfgReady },
+      ]],
+      ['Driver', [{ id: 'drv', kind: 'info', t: `Driver: ${drv}` }]],
+    ],
+    perf: [
+      ['Quadros por segundo', [
+        { id: 'fps', kind: 'choice', t: 'Limite de FPS', opts: FPS_L, own: OV[g.id] && 'GPU.framerate_limit' in OV[g.id] },
+        { id: 'hz', kind: 'cycle', t: 'Taxa de atualização da tela', vals: HZ, note: `Hz da tela · pedido ${IG.hz ? HZ[IG.hz] : 'Automático'} · efetivo ${IG.hz ? HZ[IG.hz] : '120 Hz'}` },
+      ]],
+      ['Desempenho da GPU', [
+        { id: 'smooth', kind: 'toggle', t: 'Shaders sem travadas', sub: 'Nenhum quadro espera um shader novo: na primeira vez que algo aparece, um breve pop-in em vez de uma travada' },
+        { id: 'msaa2x', kind: 'toggle', t: 'MSAA 4× como 2×', sub: 'Mais rápido nos jogos com MSAA 4×; bordas um pouco menos suaves', dnote: 'iggpu' },
+        { id: 'cutout', kind: 'toggle', t: 'Transparência recortada', sub: 'Folhagens, grades e cabelos mais rápidos, com bordas duras' },
+        { id: 'shading', kind: 'cycle', t: 'Taxa de sombreamento', vals: SHADING, note: 'Acima de 1 pixel, texturas e luz ficam mais grossas dentro das formas; as bordas continuam nítidas', dnote: 'igshade' },
+      ]],
+      ['Energia', [
+        { id: 'sustained', kind: 'toggle', t: 'Desempenho sustentado', adv: 1 },
+        { id: 'adpf', kind: 'toggle', t: 'Dicas ADPF do apresentador', adv: 1 },
+        { id: 'bg', kind: 'cycle', t: 'Pausa em segundo plano', vals: BG, adv: 1, en: 1 },
+      ]],
+    ],
+    hud: [
+      [null, [
+        { id: 'hud', kind: 'toggle', t: 'Mostrar o HUD', dnote: 'ighud' },
+        { id: 'hudLayout', kind: 'choice', t: 'Formato', opts: [['vertical', 'Vertical'], ['horizontal', 'Horizontal']] },
+        { id: 'hudDetail', kind: 'choice', t: 'Detalhe', opts: [['fps', 'Só FPS'], ['metrics', 'Métricas'], ['panel', 'Painel']] },
+        { id: 'metrics', kind: 'multi', t: 'Métricas', opts: HUD_METRICS.filter(m => !(m[2] && player())) },
+      ]],
+      ['Aparência', [
+        { id: 'hudPos', kind: 'choice', t: 'Posição da barra', opts: [['top', 'Topo'], ['bottom', 'Base']], disabled: IG.hudLayout !== 'horizontal', sub: IG.hudLayout === 'horizontal' ? '' : 'No formato vertical, arraste o HUD na tela; a pinça muda o tamanho.' },
+        { id: 'hudLook', kind: 'choice', t: 'Estilo', opts: [['box', 'Caixa'], ['outline', 'Contorno'], ['plain', 'Texto']] },
+        { id: 'hudSize', kind: 'slider', t: 'Tamanho', min: 50, max: 250, step: 10, unit: '%' },
+        { id: 'hudBg', kind: 'slider', t: 'Fundo', min: 0, max: 100, step: 2, unit: '%', disabled: IG.hudLook !== 'box' },
+        { id: 'hudColors', kind: 'slider', t: 'Cores', min: 0, max: 100, step: 5, unit: '%' },
+      ]],
+    ],
+    ctl: [
+      ['Na tela', [
+        { id: 'touch', kind: 'toggle', t: 'Controles na tela' },
+        { id: 'ctlStyle', kind: 'choice', t: 'Visual', opts: [['modern', 'Moderno'], ['classic', 'Clássico']] },
+        { id: 'adaptive', kind: 'toggle', t: 'Analógicos adaptativos', own: IG.adaptive },
+        { id: 'touchCam', kind: 'toggle', t: 'Câmera por toque', sub: 'O lado direito livre gira a câmera' },
+        { id: 'edit', kind: 'button', t: 'Editar o layout', sub: 'Posição, tamanho, opacidade, ocultar', act: 'ig-edit' },
+        { id: 'split', kind: 'cycle', t: 'Tela dividida', vals: SPLIT },
+      ]],
+      ['Controles físicos', [
+        { id: 'rumble', kind: 'cycle', t: 'Vibração do controle', vals: RUMBLE, note: S.pad ? 'P1' : '' },
+        { id: 'phones', kind: 'button', t: 'Telefones como controle', sub: IG.phones ? 'Telefones como controle · Ligado (ative para desligar)' : 'Telefones como controle · Desligado', act: 'ig-phones', dnote: 'igphones' },
+        { id: 'unbuffered', kind: 'toggle', t: 'Entrada sem buffer', adv: 1 },
+      ]],
+      ['Giroscópio', [
+        { id: 'gyroCam', kind: 'toggle', t: 'Câmera pelo giroscópio' },
+        { id: 'gyroAim', kind: 'cycle', t: 'Mira pelo giroscópio', vals: AIM },
+        { id: 'gyroSens', kind: 'cycle', t: 'Sensibilidade do giroscópio', vals: SENS },
+        { id: 'gyroCal', kind: 'button', t: 'Calibrar o giroscópio', sub: 'Deixe o telefone parado ao fechar o menu', adv: 1, act: 'ig-toast', msg: 'O giroscópio é calibrado quando o menu fecha; deixe o telefone parado.' },
+      ]],
+    ],
+    ses: [
+      ['Som', [
+        { id: 'volume', kind: 'slider', t: 'Volume', min: 0, max: 100, step: 5, unit: '%', disabled: IG.muted },
+        { id: 'muted', kind: 'toggle', t: 'Sem som' },
+      ]],
+      ['Ajustes deste jogo', [
+        { id: 'autosave', kind: 'toggle', t: 'Guardar as mudanças para este jogo', sub: IG.autosave ? `O que mudar aqui fica para ${g.name}` : 'As mudanças valem só nesta sessão', dnote: 'igsave' },
+        { id: 'undo', kind: 'button', t: 'Desfazer as mudanças desta sessão', sub: IG.changes ? `${IG.changes} ${IG.changes === 1 ? 'mudança' : 'mudanças'} nesta sessão` : 'Nenhuma mudança nesta sessão', act: 'ig-undo', disabled: !IG.changes },
+        { id: 'global', kind: 'button', t: 'Usar estas mudanças em todos os jogos', sub: 'Viram os ajustes globais; este jogo deixa de ter cópia própria', act: 'ig-global', disabled: !ovCount(g) },
+      ]],
+      ['Este menu', [{ id: 'pauseOnOpen', kind: 'toggle', t: 'Pausar o jogo ao abrir o menu', sub: 'Vale para todos os jogos' }]],
+      ['Sessão', [
+        { id: 'shot', kind: 'button', t: 'Capturar tela', sub: 'A imagem do jogo, sem o menu e o HUD, salva em Imagens/Xendroid+', act: 'ig-shot', dnote: 'igshot' },
+        { id: 'mark', kind: 'button', t: 'Marcar cena', sub: `${IG.scenes} até agora, para comparar execuções`, adv: 1, act: 'ig-scene' },
+        { id: 'logs', kind: 'button', t: 'Compartilhar logs de diagnóstico', act: 'ig-logs' },
+        { id: 'resume', kind: 'button', t: 'Continuar', act: 'ig-close' },
+        { id: 'quit', kind: 'button', t: 'Sair do jogo', act: 'ig-quit', danger: 1 },
+      ]],
+    ],
+  };
 }
-function igPerf(g) {
-  const gl = globalOf('GPU.framerate_limit'), gm = OV[g.id] && OV[g.id]['GPU.framerate_limit'];
-  const lbl = v => v === '0' ? 'sem limite' : v + ' FPS';
-  return igRow('Limite de FPS', `Agora: ${lbl(IG.fps)} · só nesta sessão. Próxima abertura: ${gm ? 'jogo ' + lbl(gm) : 'global ' + lbl(gl)}.`, igSeg('fps', FPS_OPTS) + `<div class="scope3"><button class="btn sm" data-act="ig-fps" data-v="game" data-k="ig-fps-game">Salvar para este jogo</button><button class="btn sm ghost" data-act="ig-fps" data-v="inherit" data-k="ig-fps-inh"${gm ? '' : ' disabled'}>Usar o global (${lbl(gl)})</button></div>`, { below: true, note: 'igscope' })
-    + igRow('HUD de desempenho', '', igSeg('hud', [['off', 'Desligado'], ['compact', 'Compacto'], ['full', 'Completo'], ['panel', 'Painel']]), { below: true })
-    + igRow('Aparência do HUD', 'Guardada para este jogo', igSeg('hudLook', [['box', 'Caixa'], ['outline', 'Texto com contorno'], ['plain', 'Texto simples']]), { below: true })
-    + igRow('Taxa de atualização da tela', `Pedido ${IG.hz === 'auto' ? 'automático' : IG.hz + ' Hz'} · efetivo ${IG.hz === 'auto' ? 120 : IG.hz} Hz`, igSeg('hz', [['auto', 'Auto'], ['60', '60'], ['90', '90'], ['120', '120']]), { below: true })
-    + moreRow('perf', 4)
-    + (IG.more.perf ? igRow('Salvar o limite atual como global', '', `<button class="btn sm ghost" data-act="ig-fps" data-v="global" data-k="ig-fps-global">Salvar como global</button>`)
-      + igRow('Desempenho sustentado', 'Desligado por padrão: em muitos aparelhos limita os clocks', igTg('sustained'))
-      + igRow('Dicas ADPF do apresentador', '', igTg('hints'))
-      + igRow('Métricas do HUD completo', '', `<div class="row">${[['vk', 'Envios do Vulkan'], ['cpu', 'CPU'], ['gpu', 'GPU'], ['ram', 'RAM'], ['bat', 'Bateria °C'], ['soc', 'SoC °C'], ['pwr', 'Potência'], ['gmem', 'Memória da GPU']].map(([v, t]) => `<button class="chip" data-act="ig-metric" data-v="${v}" aria-pressed="${IG.metrics.has(v)}" data-k="ig-m-${v}">${t}</button>`).join('')}</div>`, { below: true }) : '');
+function lsfgPlan(cap) {
+  const t = LSFG_T[IG.lsfgTarget][0], target = t === 'screen' ? 120 : Number(t);
+  const mul = [2, 3, 4].find(m => target / m <= cap) || 4, game = Math.floor(target / mul);
+  return `${t === 'screen' ? 'a tela, 120 Hz' : target + ' FPS'} → ${mul}× com o jogo a ${game} FPS`;
 }
-function igCtl() {
-  return igRow('Controles de toque · esta sessão', 'Somem quando um controle físico joga como P1', igTg('touch'))
-    + igRow('Analógicos adaptativos · este jogo', 'Toque perto da posição salva e o analógico vai para baixo do dedo', igTg('adaptive'))
-    + igRow('Câmera por toque', 'No lado direito, longe dos botões, deslize para girar a câmera', igTg('touchCam'))
-    + igRow('Editar layout', 'Posição, tamanho, opacidade, esconder, vibração', `<button class="btn sm" data-act="go" data-v="touchedit" data-k="ig-edit">${ic('move', 15)} Editar</button>`)
-    + igRow('Tela dividida', 'Jogo em cima, controles embaixo', igSeg('split', [['off', 'Desligada'], ['fold', 'Dobrável'], ['always', 'Sempre']]))
-    + igRow('Telefones como controle', IG.phones ? 'Ligado · nenhum telefone conectado ainda (P2–P4)' : 'Outros telefones na mesma rede jogam como P2–P4', igTg('phones'), { note: 'igphones' })
-    + (IG.phones ? `<div class="igrow"><div class="full"><small>No outro telefone: Biblioteca → Controles → Celular como controle</small><div class="row" style="margin-top:6px;gap:16px"><span><small>Endereço</small><b class="mono">192.168.1.20:41234</b></span><span><small>Código</small><span class="code6">482 913</span></span><span class="badge">Wi-Fi</span></div></div></div>` : '')
-    + igRow('Vibração do controle', '8BitDo Ultimate 2C', igSeg('rumble', [['off', 'Desligada'], ['low', 'Baixa'], ['medium', 'Média'], ['high', 'Alta']]), { below: true })
-    + igRow('Câmera pelo giroscópio', '', igTg('gyroCam'))
-    + igRow('Mira pelo giroscópio', '', igSeg('gyroAim', [['always', 'Sempre'], ['lt', 'Segurando LT'], ['lb', 'Segurando LB']]))
-    + igRow('Sensibilidade do giroscópio', '', igSeg('gyroSens', [['low', 'Baixa'], ['normal', 'Normal'], ['high', 'Alta']]))
-    + moreRow('ctl', 2)
-    + (IG.more.ctl ? igRow('Calibrar giroscópio', 'Deixe o telefone parado ao fechar o menu', `<button class="btn sm ghost" data-act="toast" data-msg="Calibra ao fechar o menu (protótipo)." data-k="ig-cal">Calibrar</button>`) + igRow('Entrada sem buffer', 'Menos atraso; Android 11 ou mais novo', igTg('unbuffered')) : '');
+const IG_NOTES = {
+  img: ['Escala, antisserrilhamento, nitidez e pontilhamento mudam na hora; guarde para o jogo abrir assim da próxima vez. Os outros ajustes de Imagem valem na próxima abertura.', 'Interpolação experimental no host; cadência e latência no aparelho ainda não validadas.', 'Escolha o driver em Configurações → Driver Vulkan personalizado (ou nos ajustes deste jogo); ele vale quando um jogo abre.'],
+  perf: [], hud: [], ses: [],
+  ctl: [],
+};
+
+/* uma linha, como o MenuRow do app */
+function igRowHTML(r) {
+  const on = IG[r.id], dis = r.disabled ? ' disabled' : '', tag = r.own ? '<span class="tag">deste jogo</span>' : '', badge = r.badge ? ` <span class="badge warn">${r.badge}</span>` : '';
+  const head = `<div class="igx-t"><b>${esc(r.t)}${badge}</b>${tag}${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>`;
+  const note = r.note && r.note !== 'fg' ? `<small class="igx-n">${esc(r.note)}</small>` : '';
+  const dn = r.dnote ? ` data-note="${r.dnote}"` : '';
+  if (r.kind === 'toggle') return `<div class="igx-row${r.disabled ? ' dis' : ''}"${dn}>${head}<button class="tg" role="switch" aria-checked="${!!on}" aria-label="${esc(r.t)}" data-act="igv" data-f="${r.id}" data-k="igx-${r.id}"${dis}></button>${note}</div>`;
+  if (r.kind === 'choice') return `<div class="igx-row stack${r.disabled ? ' dis' : ''}"${dn}>${head}<div class="seg" role="group" aria-label="${esc(r.t)}">${r.opts.map(([v, t]) => `<button data-act="igv" data-f="${r.id}" data-v="${esc(v)}" aria-pressed="${String(r.id === 'fps' ? fpsNow(curGame()) : on) === String(v)}" data-k="igx-${r.id}-${esc(v)}"${dis}>${esc(t)}</button>`).join('')}</div>${note}</div>`;
+  if (r.kind === 'cycle') { const i = on - (r.from != null ? r.from : 0); return `<div class="igx-row${r.disabled ? ' dis' : ''}"${dn}>${head}<span class="stp igx-cyc" role="group" aria-label="${esc(r.t)}"><button data-act="igc" data-f="${r.id}" data-d="-1" aria-label="Anterior" data-k="igx-${r.id}-p"${dis}>${ic('chevL', 16)}</button><b${r.en ? ' lang="en"' : ''}>${esc(r.vals[clamp(i, 0, r.vals.length - 1)])}</b><button data-act="igc" data-f="${r.id}" data-d="1" aria-label="Próximo" data-k="igx-${r.id}-n"${dis}>${ic('chevR', 16)}</button></span>${note}</div>`; }
+  if (r.kind === 'slider') return `<div class="igx-row stack${r.disabled ? ' dis' : ''}"${dn}>${head}<span class="rng"><input type="range" min="${r.min}" max="${r.max}" step="${r.step}" value="${on}" aria-label="${esc(r.t)}" data-act-input="igr" data-f="${r.id}" data-k="igx-${r.id}"${dis}><output>${on}${r.unit}</output></span></div>`;
+  if (r.kind === 'multi') return `<div class="igx-row stack"${dn}>${head}<div class="igx-chips">${r.opts.map(([v, t]) => `<button class="chip" data-act="igm" data-v="${v}" aria-pressed="${IG.metrics.has(v)}" data-k="igx-m-${v}">${esc(t)}</button>`).join('')}</div></div>`;
+  if (r.kind === 'info') return `<div class="igx-row info"${dn}><div class="igx-t"><b>${esc(r.t)}</b></div></div>`;
+  return `<button class="igx-row btnrow${r.danger ? ' danger' : ''}" data-act="${r.act}" data-k="igx-${r.id}"${r.msg ? ` data-msg="${esc(r.msg)}"` : ''}${dis}${dn}>${head}${ic('chevR', 16)}</button>`;
 }
-function igSes() {
-  return (isC() ? igRow('Continuar', 'Fecha o menu e volta ao jogo', `<button class="btn sm primary" data-act="ig-close" data-k="ig-resume">${ic('play', 15)} Continuar</button>`) : '')
-    + igRow('Som', IG.muted ? 'Mudo · toque no alto-falante para voltar' : 'Toque no alto-falante para silenciar', `<div class="row"><span class="stp"><button data-act="ig-step" data-f="volume" data-d="-10" aria-label="Volume −10%" data-k="ig-vol-">${ic('minus', 16)}</button><b>${IG.volume}%</b><button data-act="ig-step" data-f="volume" data-d="10" aria-label="Volume +10%" data-k="ig-vol+">${ic('plus', 16)}</button></span><button class="ibtn ${IG.muted ? 'on' : ''}" data-act="ig" data-f="muted" data-v="${!IG.muted}" data-k="ig-mute" aria-label="Mudo">${ic(IG.muted ? 'mute' : 'speaker', 19)}</button></div>`)
-    + igRow('Marcar cena para comparar', `${IG.scenes} até agora · aparece na linha do tempo da sessão`, `<button class="btn sm ghost" data-act="ig-scene" data-k="ig-scene">${ic('flag', 15)} Marcar</button>`)
-    + igRow('Compartilhar logs de diagnóstico', 'Escolha uma sessão; dados pessoais saem antes', `<button class="btn sm ghost" data-act="modal" data-v="ig-logs" data-k="ig-logs">${ic('share', 15)} Escolher</button>`)
-    + moreRow('ses', 1)
-    + (IG.more.ses ? igRow('Pausar em segundo plano', '', igTg('background')) : '')
-    + igRow('Sair do jogo', 'O progresso não salvo pode ser perdido', `<button class="btn sm danger" data-act="modal" data-v="ig-quit" data-k="ig-quit">${ic('exit', 15)} Sair</button>`);
+function igPageHTML(g) {
+  const groups = igRows(g)[IG.page];
+  const show = r => !(player() && DEV_ONLY.has(r.id));
+  const common = [], adv = [];
+  for (const [gt, rows] of groups) for (const r of rows.filter(show)) (r.adv ? adv : common).push([gt, r]);
+  const render = list => { let last; return list.map(([gt, r]) => { const h = gt && gt !== last ? `<h6 class="igx-g">${esc(gt)}</h6>` : ''; last = gt; return h + igRowHTML(r); }).join(''); };
+  const more = adv.length ? `<button class="igx-more" data-act="ig-more" data-k="igx-more" data-note="igmore">${ic(IG.more[IG.page] ? 'chevD' : 'chevR', 16)} ${IG.more[IG.page] ? 'Menos opções' : `Mais opções (${adv.length})`}</button>` : '';
+  const notes = (IG_NOTES[IG.page] || []).concat(IG.page === 'ctl' && IG.phones ? ['No outro telefone: Controles → Celular como controle → 192.168.0.12:41234 (exemplo), código 482913, Wi-Fi.', 'Nenhum telefone conectado ainda. Os telefones jogam como P2–P4.', 'Telefones como controle: outros telefones no mesmo Wi-Fi ou ponto de acesso jogam como P2–P4 com o código mostrado aqui; experimental.'] : []);
+  return (IG.page === 'hud' ? `<div class="igx-hudprev" data-note="hudex">${hudHTML(true)}</div>` : '') + render(common) + more + (IG.more[IG.page] ? render(adv) : '') + notes.map(n => `<p class="igx-note"${/^Interpola/.test(n) ? ' data-note="igfg"' : /^Escala/.test(n) ? ' data-note="iglive"' : ''}>${esc(n)}</p>`).join('');
 }
-function hudHTML(kind, look) {
-  if (kind === 'off') return '';
-  const t = (Date.now() - IG.t0) / 1000, fps = IG.fps === '0' ? 34 : Math.max(0, Number(IG.fps) - (Math.sin(t) > .8 ? 1 : 0)), ms = fps ? (1000 / fps).toFixed(1).replace('.', ',') : '—';
-  if (kind === 'compact') return `<div class="hud ${look}" data-note="hudlv"><b>${fps} FPS</b> <span class="k">·</span> ${ms} ms</div>`;
-  const rows = [['FPS', `<span class="g">${fps}</span> · ${ms} ms`], ['CPU', '38% · 2,4 GHz'], ['GPU', '91% · 1,1 GHz'], ['RAM', '5,1 / 11,2 GB'], ['Bateria', '<span class="w">41 °C</span>'], ['SoC', '58 °C'], ['Potência', '7,2 W · 2 h 10 min']];
-  if (kind === 'full') return `<div class="hud full ${look}" data-note="hudlv">${rows.map(([k, v]) => `<div><span class="k">${k}</span><span>${v}</span></div>`).join('')}</div>`;
-  return `<div class="hud panel ${look}" data-note="hudlv">
-    <section><h6>Agora</h6>${rows.slice(0, 4).map(([k, v]) => `<div style="display:flex;justify-content:space-between"><span class="k">${k}</span><span>${v}</span></div>`).join('')}</section>
-    <section><h6>Ritmo</h6><div>Últimos 10 s: p50 33,4 ms · p99 41 ms</div><div>Sessão: FPS mediano 30, baixo 25</div></section>
-    <section><h6>Trabalho</h6><div>Pipelines criados: 1.830 (6,4 s)</div><div>Áudio: sem falhas</div><div class="w">Calor: perto do limite do aparelho</div></section>
-    <section><h6>Ajustes em vigor</h6><div>Driver: ${esc(DRIVERS.lastRun.drv)}</div><div>Imagem: FSR 1, resolução 1x</div><div>Limite de FPS: ${IG.fps === '0' ? 'sem limite' : IG.fps} · tela 120 Hz</div><div>Alterados do padrão (3): limite de FPS, anisotrópica, escala</div></section>
-  </div>`;
+function igStatus(g) {
+  const st = perfOf(g), fps = fpsNow(g), f = st ? Math.min(st.p50, fps === '0' ? 60 : Number(fps)) : (fps === '0' ? 60 : Number(fps));
+  return `<div class="igx-status" data-note="igstrip"><span><b>${f}</b> FPS</span><span>p99 <b>${st ? st.ft99 : 34}</b> ms</span><span><b>38</b> °C</span><span>bateria <b>72%</b></span><span>${esc(DRIVERS.lastRun.drv)}</span></div>`;
 }
 function igMenu(g) {
   if (!IG.menu) return '';
-  const tabs = [['gfx', 'Gráficos'], ['perf', 'Desempenho'], ['ctl', 'Controles'], ['ses', 'Sessão']];
-  const body = { gfx: igGfx, perf: igPerf, ctl: igCtl, ses: igSes }[IG.tab](g);
-  const st = perfOf(g);
-  return `<aside class="igm" role="dialog" aria-label="Menu do jogo">
-    <div class="igm-head">${coverHTML(g)}<div class="tt"><h2>${esc(g.name)}</h2><small>Pausado · Voltar para fechar</small></div><button class="ibtn" data-act="ig-close" data-k="ig-x" aria-label="Fechar">${ic('x')}</button></div>
-    <div class="igm-strip" data-note="igstrip"><span><b>${IG.fps === '0' ? 34 : IG.fps}</b> FPS</span><span>p99 <b>${st ? st.ft99 : '—'}</b> ms</span><span><b>41</b> °C</span><span>bateria <b>72%</b></span><span>${esc(DRIVERS.lastRun.drv)}</span></div>
-    <nav class="tabs" role="tablist" data-note="igtabs">${isC() ? '<span class="gb LB">LB</span>' : ''}${tabs.map(([v, t]) => `<button role="tab" aria-selected="${IG.tab === v}" data-act="ig-tab" data-v="${v}" data-k="igt-${v}"${IG.tab === v ? ' data-autofocus' : ''}>${t}</button>`).join('')}${isC() ? '<span class="gb RB">RB</span>' : ''}</nav>
-    <div class="igm-body" data-sk="igm-${IG.tab}">${body}</div>
-    ${isC() ? hints([['A', 'Selecionar', 'a'], ['B', 'Fechar', 'back'], ['LB/RB', 'Abas', 'tabs']], 'ighints') : `<div class="igm-foot"><button class="btn primary" data-act="ig-close" data-k="ig-cont">${ic('play', 17)} Continuar</button><button class="btn ghost" data-act="modal" data-v="ig-quit" data-k="ig-quit2">${ic('exit', 16)} Sair do jogo</button></div>`}
+  const port = isPortrait(), c = isC();
+  const pages = `${c ? '<span class="gb LB">LB</span>' : ''}${IG_PAGES.map(([v, t, i]) => `<button role="tab" aria-selected="${IG.page === v}" data-act="ig-page" data-v="${v}" data-k="igp-${v}"${IG.page === v ? ' data-autofocus' : ''}>${ic(i, port ? 16 : 20)}<span>${t}</span></button>`).join('')}${c ? '<span class="gb RB">RB</span>' : ''}`;
+  const kept = IG.kept ? `<button class="igx-kept" data-act="ig-page" data-v="ses" data-k="igx-kept">${ic('save', 14)} ${IG.kept} ${IG.kept === 1 ? 'guardada' : 'guardadas'}</button>` : '';
+  return `<aside class="igx ${port ? 'port' : 'land'}" role="dialog" aria-label="Menu do jogo">
+    <div class="igx-head">${coverHTML(g)}<div class="tt"><h2>${esc(g.name)}</h2><small>${IG.pauseOnOpen ? 'Pausado · Voltar para fechar' : 'Rodando · Voltar para fechar'}</small></div>${!port ? kept : ''}${!port && !c ? `<button class="btn ghost sm" data-act="ig-quit" data-k="igx-quit">${ic('exit', 15)} Sair do jogo</button>` : ''}${c ? '' : `<button class="ibtn" data-act="ig-close" data-k="ig-x" aria-label="Continuar">${ic('x')}</button>`}</div>
+    ${port && !isRoomy() ? '' : igStatus(g)}
+    <div class="igx-body"><nav class="igx-pages" role="tablist" aria-label="Categorias" data-note="igrail">${pages}</nav>
+      <div class="igx-rows" data-sk="igx-${IG.page}" data-note="igrows">${igPageHTML(g)}</div></div>
+    ${port && IG.kept ? `<button class="igx-saved" data-act="ig-page" data-v="ses" data-k="igx-saved">${ic('save', 14)} Guardado para ${esc(g.name)}: ${IG.kept} ${IG.kept === 1 ? 'mudança' : 'mudanças'}</button>` : ''}
+    ${c ? hints([['A', 'Selecionar', 'a'], ['◀/▶', 'Ajustar', 'a'], ['LB/RB', 'Categorias', 'tabs'], ['B', 'Fechar', 'back']], 'ighints') : port ? `<div class="igx-foot"><button class="btn primary" data-act="ig-close" data-k="ig-cont">${ic('play', 17)} Continuar</button><button class="btn ghost" data-act="ig-quit" data-k="ig-quit2">${ic('exit', 16)} Sair do jogo</button></div>` : ''}
   </aside>`;
 }
-action('ig', el => { const f = el.dataset.f; let v = el.dataset.v; if (v === 'true' || v === 'false') v = v === 'true'; IG[f] = v; if (f === 'touch' && !v) toast('Controles de toque escondidos nesta sessão'); render(); });
-action('change:igsel', el => { IG[el.dataset.f] = el.value; render(); });
-action('ig-step', el => { const f = el.dataset.f, d = Number(el.dataset.d); IG[f] = f === 'volume' ? clamp(IG[f] + d, 0, 100) : clamp(IG[f] + d, 0, 10); render(); });
-action('ig-tab', el => { IG.tab = el.dataset.v; render(); });
-action('ig-more', el => { IG.more[el.dataset.v] = !IG.more[el.dataset.v]; render(); });
-action('ig-metric', el => { const v = el.dataset.v; if (IG.metrics.has(v)) IG.metrics.delete(v); else IG.metrics.add(v); render(); });
-action('ig-scene', () => { IG.scenes++; toast(`Cena ${IG.scenes} marcada`); });
-action('ig-close', () => { IG.menu = false; S.modal = null; render(); });
+const isRoomy = () => { const s = document.getElementById('screen'); return !s || s.clientHeight >= 460; };
+
+/* o que o app guarda por jogo (InGameChanges.kt): chave do TOML e valor */
+function igKeep(k, v) {
+  const g = curGame();
+  IG.changes++;
+  if (!IG.autosave) return;
+  const d = DEF[k]; if (!d) return;
+  const o = OV[g.id] = OV[g.id] || {};
+  if (v == null || String(coerce(d, v)) === String(globalOf(k))) delete o[k]; else o[k] = coerce(d, v);
+  IG.kept = keptCount(g);
+}
+/* quantas chaves do arquivo do jogo esta sessão mudou ("N guardadas") */
+function keptCount(g) {
+  const a = IG.ovStart || {}, b = OV[g.id] || {};
+  return [...new Set(Object.keys(a).concat(Object.keys(b)))].filter(k => JSON.stringify(a[k]) !== JSON.stringify(b[k])).length;
+}
+/* começo de uma sessão de jogo: o arquivo do jogo como estava, para “Desfazer” */
+function igStart(g) {
+  IG.gid = g.id; IG.ovStart = OV[g.id] ? JSON.parse(JSON.stringify(OV[g.id])) : null;
+  IG.changes = 0; IG.kept = 0; IG.fps = null; IG.scaling = IG.aa = IG.sharp = IG.dither = -1; IG.winfg = IG.lsfg = false; IG.t0 = Date.now();
+  IG.ctlStyle = DEF['@touch.style'] ? globalOf('@touch.style') : 'modern'; IG.touch = !!effOf(g, 'HID.show_touch_overlay'); IG.volume = Number(effOf(g, 'APU.volume'));
+}
+function igApply(f) {
+  const g = curGame();
+  switch (f) {
+    case 'scaling': igKeep('Display.postprocess_scaling_and_sharpening', IG.scaling >= 0 ? EFFECTS[IG.scaling][0] : null); break;
+    case 'aa': igKeep('Display.postprocess_antialiasing', IG.aa >= 0 ? AAS[IG.aa][0] : null); break;
+    case 'sharp': igKeep('Display.postprocess_ffx_cas_additional_sharpness', IG.sharp >= 0 ? CAS_V[IG.sharp] : null); igKeep('Display.postprocess_ffx_fsr_sharpness_reduction', IG.sharp >= 0 ? FSR_V[IG.sharp] : null); IG.changes--; break;
+    case 'dither': igKeep('Display.postprocess_dither', IG.dither >= 0 ? IG.dither === 1 : null); break;
+    case 'stretch': GLOBAL['Display.present_letterbox'] = !IG.stretch; if (GLOBAL['Display.present_letterbox'] === DEF['Display.present_letterbox'].def) delete GLOBAL['Display.present_letterbox']; IG.changes++; break;
+    case 'fps': igKeep('GPU.framerate_limit', IG.fps); break;
+    case 'smooth': igKeep('Vulkan.vulkan_async_skip_draws', IG.smooth); break;
+    case 'touch': igKeep('HID.show_touch_overlay', IG.touch); break;
+    case 'volume': igKeep('APU.volume', IG.volume); break;
+    case 'msaa2x': case 'cutout': case 'shading': IG.changes++; break;
+    case 'ctlStyle': if (IG.ctlStyle === 'modern') delete GLOBAL['@touch.style']; else GLOBAL['@touch.style'] = IG.ctlStyle; IG.changes++; break;
+    default: if (!['hud', 'hudLayout', 'hudDetail', 'hudPos', 'hudLook', 'hudSize', 'hudBg', 'hudColors', 'pauseOnOpen', 'autosave', 'phones'].includes(f)) IG.changes++;
+  }
+  if (OV[g.id] && !Object.keys(OV[g.id]).length) delete OV[g.id];
+}
+action('igv', el => {
+  const f = el.dataset.f; let v = el.dataset.v;
+  if (v === undefined) v = !IG[f]; else if (f !== 'fps' && /^-?\d+$/.test(v) && typeof IG[f] === 'number') v = Number(v);
+  if (f === 'winfg' && v) IG.lsfg = false;
+  if (f === 'lsfg' && v) IG.winfg = false;
+  IG[f] = v; igApply(f); render();
+  if (f === 'winfg' || f === 'lsfg') toast(v ? 'Geração de quadros ligada nesta sessão; ela começa desligada a cada abertura' : 'Geração de quadros desligada');
+});
+action('igc', el => {
+  const g = curGame(), f = el.dataset.f, d = Number(el.dataset.d);
+  const row = Object.values(igRows(g)).flat().flatMap(x => x[1]).find(r => r.id === f); if (!row) return;
+  const lo = row.from != null ? row.from : 0, n = row.vals.length;
+  IG[f] = ((IG[f] - lo + d) % n + n) % n + lo;
+  igApply(f); render();
+});
+action('igm', el => { const v = el.dataset.v; if (IG.metrics.has(v)) IG.metrics.delete(v); else IG.metrics.add(v); render(); });
+action('input:igr', el => { IG[el.dataset.f] = Number(el.value); const o = el.parentElement.querySelector('output'); if (o) o.textContent = el.value + '%'; });
+action('change:igr', el => { IG[el.dataset.f] = Number(el.value); igApply(el.dataset.f); render(); });
+action('ig-page', el => { IG.page = el.dataset.v; render(); const b = app.querySelector('.igx-rows'); if (b) b.scrollTop = 0; });
+action('ig-more', () => { IG.more[IG.page] = !IG.more[IG.page]; render(); });
+action('ig-toast', el => toast(el.dataset.msg || ''));
+action('ig-edit', () => go('touchedit'));
+action('ig-phones', () => { IG.phones = !IG.phones; toast(IG.phones ? 'Telefones como controle · Ligado' : 'Telefones como controle · Desligado'); render(); });
+action('ig-lsfg-import', () => { IG.lsfgReady = true; toast('No app, você escolhe o Lossless.dll; ele é convertido aqui num cache de shaders e apagado em seguida.'); render(); });
+action('ig-lsfg-clear', () => { IG.lsfgReady = false; IG.lsfg = false; toast('Cache de shaders LSFG removido'); render(); });
+action('ig-scene', () => { IG.scenes++; toast(`Cena ${IG.scenes} marcada`); render(); });
+action('ig-shot', () => toast('Captura salva em Imagens/Xendroid+'));
+action('ig-undo', () => { const g = curGame(); if (IG.ovStart) OV[g.id] = JSON.parse(JSON.stringify(IG.ovStart)); else delete OV[g.id]; const keep = IG.ovStart; igStart(g); IG.ovStart = keep; toast('As mudanças desta sessão foram desfeitas'); render(); });
+action('ig-global', () => { const g = curGame(), o = OV[g.id] || {}; for (const [k, v] of Object.entries(o)) { if (String(v) === String(DEF[k] && DEF[k].def)) delete GLOBAL[k]; else GLOBAL[k] = v; } delete OV[g.id]; IG.kept = keptCount(g); toast('Viraram os ajustes globais; este jogo deixou de ter cópia própria'); render(); });
+action('ig-close', () => { IG.menu = false; S.modal = null; render(); if (!IG.tipShown) { IG.tipShown = true; toast('Para abrir o menu: Voltar (gesto da borda ou botão), deslizar a partir da borda esquerda ou o botão Guia do controle.'); } });
 action('ig-open', () => { IG.menu = true; render(); });
-action('ig-fps', el => { const g = curGame(), v = el.dataset.v; if (v === 'game') { (OV[g.id] = OV[g.id] || {})['GPU.framerate_limit'] = IG.fps; toast(`Limite ${IG.fps === '0' ? 'sem limite' : IG.fps + ' FPS'} salvo para ${g.name}`); } else if (v === 'inherit') { if (OV[g.id]) delete OV[g.id]['GPU.framerate_limit']; toast('Este jogo volta a usar o limite global'); } else { if (IG.fps === DEF['GPU.framerate_limit'].def) delete GLOBAL['GPU.framerate_limit']; else GLOBAL['GPU.framerate_limit'] = IG.fps; toast('Limite salvo como global'); } });
+action('ig-quit', () => { S.modal = 'ig-quit'; render(); });
+action('ig-logs', () => { S.modal = 'ig-logs'; render(); });
 action('ig-quit-go', () => { S.modal = null; IG.menu = true; goTop('library'); toast('Jogo encerrado'); });
 modal('ig-quit', () => ({ html: sheetHead('Sair do jogo?') + `<p style="margin:0;font-size:13.5px;color:var(--fg2)">O progresso não salvo pode ser perdido.</p><div class="acts"><button class="btn ghost" data-act="close" data-k="q-cancel" data-autofocus>Cancelar</button><button class="btn danger" data-act="ig-quit-go" data-k="q-go">Sair do jogo</button></div>` }));
-modal('ig-logs', () => ({ html: sheetHead('Compartilhar diagnóstico', 'Escolha uma sessão. Caminhos, contas e endereços são removidos antes.') + `<ul class="menu"><li><button data-act="toast" data-msg="Todas as sessões compartilhadas (protótipo)." data-k="lg-all" data-autofocus>${ic('layers', 19)}<span>Todas as sessões guardadas<small>${RUNS.length} sessões</small></span></button></li>${RUNS.slice(0, 4).map((r, i) => `<li><button data-act="toast" data-msg="Sessão compartilhada (protótipo)." data-k="lg-${i}">${ic('timeline', 19)}<span>${esc(GBY[r.gid].name)} · ${esc(r.when)}<small>${r.kb} KB · ${esc(r.dur)}</small></span></button></li>`).join('')}</ul>` }));
-modal('ig-settings', () => { const g = curGame(); return { wide: true, html: sheetHead('Ajustes de ' + esc(g.name), 'Valem na próxima abertura deste jogo. Os itens “ao vivo” também estão no menu.') + settingsPanel(g, isC() ? 'c' : 'b') + `<div class="acts"><button class="btn primary" data-act="close" data-k="is-ok" data-autofocus>Pronto</button></div>` }; });
+modal('ig-logs', () => ({ html: sheetHead('Compartilhar diagnóstico · escolha uma sessão', 'Escolha uma sessão; dados pessoais saem antes.') + `<ul class="menu"><li><button data-act="toast" data-msg="No app, gera a cópia limpa de todas as sessões e abre o compartilhamento do Android." data-k="lg-all" data-autofocus>${ic('layers', 19)}<span>Todas as sessões guardadas</span></button></li>${RUNS.slice(0, 4).map((r, i) => `<li><button data-act="toast" data-msg="No app, gera a cópia limpa desta sessão e abre o compartilhamento do Android." data-k="lg-${i}">${ic('timeline', 19)}<span>${esc(GBY[r.gid].name)} · ${esc(r.when)} · ${r.kb} KB</span></button></li>`).join('')}<li><button data-act="close" data-k="lg-back">${ic('back', 19)}<span>Voltar</span></button></li></ul>` }));
 
+/* ---------- HUD (FpsOverlay.kt): números de exemplo ---------- */
+function hudHTML(preview) {
+  if (!preview && !IG.hud) return '';
+  const g = curGame(), st = perfOf(g), fps = fpsNow(g), capF = fps === '0' ? 60 : Number(fps);
+  const t = (Date.now() - IG.t0) / 1000, f = Math.max(1, Math.min(st ? st.p50 : capF, capF) - (Math.sin(t) > .85 ? 1 : 0));
+  const ms = (1000 / f).toFixed(1).replace('.', ','), fg = IG.winfg ? 2 : IG.lsfg ? IG.lsfgMul : 1;
+  const fpsLine = fg > 1 ? `<b>${f} → ${Math.min(120, f * fg)}</b> FPS` : `<b>${f}</b> FPS`;
+  const M = { vk: ['Envios Vulkan', `${f}/s`], cpu: ['CPU', '42%'], gpu: ['GPU', '76%'], gmem: ['Mem. GPU (total)', '1,3 GB'], ram: ['RAM', '6,1 / 10,7 GB'], bat: ['Bateria', '38,5 °C'], soc: ['SoC', '64 °C'], pwr: ['Potência', '5,8 W'], chg: ['Carga', '81%'], time: ['Autonomia', '~2 h 22 min'] };
+  const order = ['vk', 'cpu', 'gpu', 'gmem', 'ram', 'bat', 'soc', 'pwr', 'chg', 'time'].filter(k => IG.metrics.has(k) && !(k === 'vk' && player()));
+  const style = `--hs:${IG.hudSize / 100};--hbg:${IG.hudBg / 100};--hc:${IG.hudColors / 100}`;
+  const cls = `hud2 ${IG.hudLook} ${IG.hudLayout} ${IG.hudLayout === 'horizontal' ? IG.hudPos : ''}`;
+  const graph = IG.metrics.has('graph') && IG.hudDetail !== 'fps' ? `<svg class="hud2-graph" viewBox="0 0 60 20" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.4" points="${Array.from({ length: 60 }, (_, i) => `${i},${(4 + 3 * Math.sin(i / 3) + (i > 40 && i < 43 ? 8 : 0)).toFixed(1)}`).join(' ')}"/></svg>` : '';
+  const note = preview ? '' : ' data-note="hudlv"';
+  if (IG.hudDetail === 'fps') return `<div class="${cls}" style="${style}"${note}><div class="hud2-l f">${fpsLine} <span class="k">·</span> ${ms} ms</div></div>`;
+  const lines = order.map(k => `<div class="hud2-l"><span class="k">${M[k][0]}</span><span${k === 'bat' ? ' class="w"' : ''}>${M[k][1]}</span></div>`).join('');
+  if (IG.hudDetail === 'metrics') return `<div class="${cls}" style="${style}"${note}><div class="hud2-l f">${fpsLine} <span class="k">·</span> ${ms} ms</div>${lines}${graph}</div>`;
+  return `<div class="${cls} panel" style="${style}"${note}>
+    <section><h6>Agora</h6><div class="hud2-l f">${fpsLine} <span class="k">·</span> ${ms} ms</div>${lines}${graph}</section>
+    <section><h6>Ritmo</h6><div>Últimos 10 s: p50 ${ms} · p99 ${st ? st.ft99 : 34}</div><div>Sessão: FPS mediano ${st ? st.p50 : f}, baixo ${st ? st.p5 : f - 2}</div></section>
+    <section><h6>Trabalho</h6><div>Pipelines criados: ${nf(g.perf ? g.perf.pipes[0] : 1200)} (${g.perf ? String(g.perf.pipes[1]).replace('.', ',') : '4,0'} s)</div><div>Áudio: sem falhas</div><div class="w">Calor: perto do limite do aparelho</div></section>
+    <section><h6>Ajustes em vigor</h6><div>Driver: ${esc(DRIVERS.lastRun.drv)}</div><div>Limite de FPS: ${fps === '0' ? 'Sem limite' : fps + ' FPS'} · tela 120 Hz</div><div>${inEffectLines(g).length ? `Alterados do padrão (${inEffectLines(g).length}):` : 'Alterados do padrão: nenhum'}</div></section>
+  </div>`;
+}
 let hudTimer = 0;
-function hudTick() { clearInterval(hudTimer); hudTimer = setInterval(() => { if (!['ingame', 'hud'].includes(S.route.name)) { clearInterval(hudTimer); return; } const h = app.querySelector('.hud'); if (h && S.route.name === 'ingame') { const kind = IG.hud; const tmp = document.createElement('div'); tmp.innerHTML = hudHTML(kind, IG.hudLook); if (tmp.firstElementChild) h.innerHTML = tmp.firstElementChild.innerHTML; } }, 1000); }
+function hudTick() {
+  clearInterval(hudTimer);
+  hudTimer = setInterval(() => {
+    if (!['ingame', 'hud'].includes(S.route.name)) { clearInterval(hudTimer); return; }
+    const h = app.querySelector('.ig > .hud2'); if (!h) return;
+    const tmp = document.createElement('div'); tmp.innerHTML = hudHTML(false); if (tmp.firstElementChild) h.innerHTML = tmp.firstElementChild.innerHTML;
+  }, 1000);
+}
 
 screen('ingame', {
   title: 'Menu em jogo',
   render() {
     const g = curGame();
+    if (IG.gid !== g.id) igStart(g);
     return `<div class="ig ${IG.menu ? 'dim' : ''}" style="${dynVars(g)}"><img class="ig-scene" src="${g.scene || ''}" alt="">
       ${!isC() && IG.touch ? touchOverlay(IG.menu ? .45 : 1) : ''}
-      ${hudHTML(IG.hud, IG.hudLook)}
-      ${IG.menu ? '' : `<button class="ig-handle" data-act="ig-open" data-k="ig-handle" data-note="ighandle">${isC() ? glyph('≡') : ic('menu', 15)} Menu</button>`}
+      ${IG.menu ? '' : hudHTML(false)}
+      ${IG.menu ? '' : `<button class="ig-edge" data-act="ig-open" data-k="ig-edge" aria-label="Abrir o menu (borda esquerda)" data-note="igedge"></button><span class="ig-edge-tip" data-note="igopen">Borda esquerda, Voltar ou Guia: menu</span>`}
       ${igMenu(g)}
     </div>`;
   },
   after() { hudTick(); },
   onBack() { IG.menu = !IG.menu; render(); return true; },
-  tabStep(d) { if (!IG.menu) return; const t = ['gfx', 'perf', 'ctl', 'ses']; IG.tab = t[(t.indexOf(IG.tab) + d + 4) % 4]; render(); focusKey('igt-' + IG.tab); },
+  tabStep(d) { if (!IG.menu) return; const t = IG_PAGES.map(p => p[0]); IG.page = t[(t.indexOf(IG.page) + d + t.length) % t.length]; render(); focusKey('igp-' + IG.page); },
   onKey(k) { if (k === 'start' || k === 'view') { IG.menu = !IG.menu; render(); return true; } return false; },
 });
 
@@ -186,12 +388,12 @@ screen('ingame', {
 const LD = { t0: 0, gid: null, timer: 0, done: false, route: null, demo: 'go', kind: 'first' };
 const LD_T = { first: [800, 2200, 6000, 7000, 7600], cached: [800, 2200, 2900, 3300, 3700] };
 function ldSteps(el) {
-  const [a, b, c, d] = LD_T[LD.kind], s = x => (x / 1000).toFixed(1).replace('.', ',') + ' s';
+  const [a, b, c, d] = LD_T[LD.kind], s = x => Math.round(x / 1000) + ' s';
   const pipes = LD.kind === 'first' ? Math.min(412, Math.max(0, Math.round((el - b) * .11))) : Math.min(12, Math.max(0, Math.round((el - b) / 50)));
   return [
     ['Iniciando o emulador', el >= a, el < a, s(a)],
     ['Iniciando o jogo', el >= b, el >= a && el < b, s(b - a)],
-    [`Preparando os gráficos: ${pipes} ${pipes === 1 ? 'pipeline criado' : 'pipelines criados'}`, el >= c, el >= b && el < c, el >= c ? s(c - b) : ''],
+    [el >= b ? `Preparando os gráficos: ${pipes} ${pipes === 1 ? 'pipeline criado' : 'pipelines criados'}` : 'Preparando os gráficos', el >= c, el >= b && el < c, el >= c ? s(c - b) : ''],
     ['Esperando o primeiro quadro', el >= d, el >= c && el < d, el >= d ? s(d - c) : ''],
   ];
 }
@@ -199,19 +401,19 @@ function ldElapsed() { const el = Date.now() - LD.t0; return LD.demo === 'hold' 
 function ldStepsHTML(el) { return ldSteps(el).map(([t, done, now, tm]) => `<li class="${done ? 'done' : now ? 'now' : ''}">${done ? ic('checkC', 20) : now ? `<span class="spin" style="display:inline-grid">${ic('refresh', 20)}</span>` : ic('clock', 20)}<span>${t}</span><time>${tm}</time></li>`).join(''); }
 function ldBody() {
   const g = GBY[LD.gid] || curGame(), el = ldElapsed();
-  const drv = label(DEF['Vulkan.vulkan_lib_path'], effOf(g, 'Vulkan.vulkan_lib_path'));
+  const drv = label(DEF['Vulkan.vulkan_lib_path'], effOf(g, 'Vulkan.vulkan_lib_path')), lim = String(effOf(g, 'GPU.framerate_limit')), own = ovCount(g);
   return `${coverHTML(g)}<div>
     <span class="eyebrow" id="ld-eb">Abrindo · ${Math.floor(el / 1000)} s</span><h1>${esc(g.name)}</h1><div class="who">Entra como ${esc(activeProfile().tag)} · Title ID ${g.id}</div>
     <ol class="steps" id="ld-steps" data-note="ldsteps">${ldStepsHTML(el)}</ol>
     <div class="bar ind" style="max-width:520px;margin-top:14px"><i></i></div>
-    <p class="note" id="ld-note" style="margin-top:12px;max-width:520px"${LD.kind === 'first' && el > 4000 ? '' : ' hidden'}>Ainda iniciando. A primeira vez de um jogo demora mais: os shaders que ele usa estão sendo montados, e as próximas vezes os reaproveitam.</p>
-    <div class="opts" data-note="ldopts"><span class="badge">${ic('chip', 13)} ${esc(drv)}</span><span class="badge">Limite ${esc(label(DEF['GPU.framerate_limit'], effOf(g, 'GPU.framerate_limit')))}</span><span class="badge">Escala ${esc(label(RES, effOf(g, '@res')))}</span><span class="badge">${PON[g.id].size} patches</span>${ovCount(g) ? `<span class="badge acc">${ovCount(g)} ajustes deste jogo</span>` : ''}</div>
+    <p class="note" id="ld-note" style="margin-top:12px;max-width:520px"${el >= 4000 ? '' : ' hidden'}>Ainda iniciando. A primeira vez de um jogo demora mais: os shaders que ele usa estão sendo montados, e as próximas vezes os reaproveitam.</p>
+    <div class="opts" data-note="ldopts"><span class="badge">${ic('chip', 13)} ${esc(drv)}</span><span class="badge">${lim === '0' ? 'Sem limite' : `Limite ${lim} FPS`}</span>${own ? `<span class="badge acc">${own} ${own === 1 ? 'ajuste deste jogo' : 'ajustes deste jogo'}</span>` : ''}</div>
   </div>`;
 }
 function ldLive() {
   const el = ldElapsed(), q = id => document.getElementById(id);
   if (!q('ld-steps')) return;
-  q('ld-eb').textContent = `Abrindo · ${Math.floor(el / 1000)} s`; q('ld-steps').innerHTML = ldStepsHTML(el); q('ld-note').hidden = !(LD.kind === 'first' && el > 4000);
+  q('ld-eb').textContent = `Abrindo · ${Math.floor(el / 1000)} s`; q('ld-steps').innerHTML = ldStepsHTML(el); q('ld-note').hidden = el < 4000;
 }
 screen('loading', {
   title: 'Carregamento',
@@ -231,42 +433,48 @@ screen('loading', {
       if (S.route.name !== 'loading') { clearInterval(LD.timer); return; }
       if (window.LD_FREEZE) return;
       ldLive();
-      if (LD.demo === 'go' && Date.now() - LD.t0 > LD_T[LD.kind][4] && !LD.done) { LD.done = true; clearInterval(LD.timer); IG.menu = false; IG.t0 = Date.now(); S.gameId = LD.gid; go('ingame', {}, { replace: true }); }
+      if (LD.demo === 'go' && Date.now() - LD.t0 > LD_T[LD.kind][4] && !LD.done) {
+        LD.done = true; clearInterval(LD.timer);
+        const g = GBY[LD.gid];
+        if (g && g.fictional) { S.gameId = LD.gid; go('launchfail', { lf: 'driver' }, { replace: true }); return; }
+        IG.menu = false; S.gameId = LD.gid; igStart(g); go('ingame', {}, { replace: true });
+      }
     }, 250);
   },
   onBack() { clearInterval(LD.timer); LD.done = true; return false; },
 });
 action('ld-cancel', () => { clearInterval(LD.timer); LD.done = true; back(); });
 
-/* ---------- falha ao abrir ---------- */
+/* ---------- falha ao abrir (sempre com o jogo fictício) ---------- */
 const LF = [
-  { id: 'core', n: 'Driver não iniciou', t: 'O jogo não pôde iniciar', why: 'O núcleo do emulador não iniciou: vkCreateDevice falhou (VK_ERROR_INITIALIZATION_FAILED) com o driver Turnip 26.0 dev.', log: 'E xe: vkCreateDevice: VK_ERROR_INITIALIZATION_FAILED\nE xe: GPU: Adreno 825 · driver Turnip 26.0 dev (sem checksum publicado)\nI xe: Abortando o boot: o dispositivo Vulkan não foi criado', drv: true },
-  { id: 'busy', n: 'Dados ocupados', t: 'Os dados do jogo estão ocupados', why: 'Outra operação de save, perfil ou conteúdo ainda está usando os dados do jogo. Espere ela terminar e abra o jogo de novo.', log: 'I storage: lease ocupado por SaveBackupStore (backup em andamento)' },
-  { id: 'recovery', n: 'Restauração interrompida', t: 'Uma restauração de save foi interrompida', why: 'Uma restauração de save interrompida não pôde ser desfeita (pasta de staging ilegível). Os dados de antes dessa restauração ficam em content/.save-transactions; nenhum jogo ou operação de save pode rodar até que sejam recuperados.', log: 'E saves: journal 2026-10-02T22:10 sem rollback possível', saves: true },
-  { id: 'running', n: 'Outro jogo rodando', t: 'Um jogo já está rodando', why: 'Saia dele (Voltar → Sair do jogo) antes de abrir outro.', log: 'I host: processo :emu ocupado por 4D5309C9' },
+  { id: 'driver', n: 'Com driver personalizado', t: 'O jogo não pôde iniciar', why: 'O núcleo do emulador não iniciou: vkCreateDevice failed (VK_ERROR_INITIALIZATION_FAILED)', log: 'E xe: vkCreateDevice: VK_ERROR_INITIALIZATION_FAILED\nI xe: driver: Turnip B (exemplo)\nI xe: The emulator core did not start (exemplo fictício)', drv: true },
+  { id: 'core', n: 'Com o driver do sistema', t: 'O jogo não pôde iniciar', why: 'O núcleo do emulador não iniciou: vkCreateDevice failed (VK_ERROR_INITIALIZATION_FAILED)', log: 'E xe: vkCreateDevice: VK_ERROR_INITIALIZATION_FAILED\nI xe: The emulator core did not start (exemplo fictício)' },
+  { id: 'busy', n: 'Dados ocupados', t: 'Os dados do jogo estão ocupados', why: 'Outra operação de save, perfil ou conteúdo ainda está usando os dados do jogo. Espere ela terminar e abra o jogo de novo.', log: '' },
+  { id: 'recovery', n: 'Restauração interrompida', t: 'Uma restauração de save foi interrompida', why: 'Uma restauração de save interrompida não pôde ser desfeita (exemplo). Os dados de antes dessa restauração ficam em content/.save-transactions; nenhum jogo ou operação de save pode rodar até que sejam recuperados.', log: '' },
+  { id: 'running', n: 'Outro jogo rodando', t: 'O jogo não pôde iniciar', why: 'Um jogo já está rodando. Saia dele (Voltar → Sair do jogo) antes de abrir outro.', log: '' },
 ];
 screen('launchfail', {
   title: 'Falha ao abrir',
-  variants: [{ label: 'Motivo', list: LF.map(x => [x.id, x.n]), get: () => S.route.p.lf || 'core', set: v => { S.route.p.lf = v; } }],
+  variants: [{ label: 'Motivo', list: LF.map(x => [x.id, x.n]), get: () => S.route.p.lf || 'driver', set: v => { S.route.p.lf = v; } }],
   render() {
-    const g = curGame(), f = LF.find(x => x.id === (S.route.p.lf || 'core')) || LF[0];
+    const g = GBY[FICTIONAL], f = LF.find(x => x.id === (S.route.p.lf || 'driver')) || LF[0];
     return `<div class="stagebox"><div class="c-bg" style="${dynVars(g)}"><div class="bgimg" style="background-image:url('${art(g)}')"></div></div>
-    <div class="fail"><section class="card">
+    <div class="fail"><section class="card" data-note="failex">
       <h1>${ic('alert', 26)} ${esc(f.t)}</h1>
       <p style="margin:0;font-size:14px;color:var(--fg2)">${esc(f.why)}</p>
-      <pre>${esc(f.log)}</pre>
+      ${f.log ? `<pre lang="en">${esc(f.log)}</pre>` : ''}
       <div class="row" data-note="failacts">
         ${f.drv ? `<button class="btn primary" data-act="lf-sysdrv" data-k="lf-sys" data-autofocus data-note="faildrv">${ic('chip', 16)} Tentar com o driver do sistema</button>` : ''}
-        ${f.saves ? `<button class="btn primary" data-act="go" data-v="saves" data-k="lf-saves" data-autofocus>${ic('save', 16)} Abrir os saves</button>` : ''}
-        <button class="btn${f.drv || f.saves ? '' : ' primary'}" data-act="play" data-gid="${g.id}" data-k="lf-retry"${f.drv || f.saves ? '' : ' data-autofocus'}>${ic('refresh', 16)} Tentar de novo</button>
-        <button class="btn ghost" data-act="toast" data-msg="Logs prontos para compartilhar (protótipo)." data-k="lf-logs">${ic('share', 16)} Compartilhar logs</button>
+        <button class="btn${f.drv ? '' : ' primary'}" data-act="lf-retry" data-k="lf-retry"${f.drv ? '' : ' data-autofocus'}>${ic('refresh', 16)} Tentar de novo</button>
+        <button class="btn ghost" data-act="go" data-v="diagnostics" data-p="${g.id}" data-k="lf-logs">${ic('share', 16)} Compartilhar logs de diagnóstico</button>
         <button class="btn ghost" data-act="back" data-k="lf-back">Voltar</button>
       </div>
       <p class="note">Tentar de novo abre num processo novo.${f.drv ? ' O driver do sistema vale só para esta abertura; o escolhido continua salvo.' : ''}</p>
     </section></div>${isC() ? `<div style="position:absolute;left:0;right:0;bottom:0">${hints([['A', 'Selecionar', 'a'], ['B', 'Voltar', 'back']])}</div>` : ''}</div>`;
   },
 });
-action('lf-sysdrv', () => { toast('Abrindo com o driver do sistema, só desta vez'); ACT.play({ dataset: { gid: S.gameId } }); });
+action('lf-sysdrv', () => toast('No app, o jogo abre de novo com o driver do sistema, só desta vez. O jogo deste exemplo é fictício e não abre.'));
+action('lf-retry', () => toast('No app, o jogo abre de novo num processo novo. O jogo deste exemplo é fictício e não abre.'));
 
 /* ---------- HUD ---------- */
 const THERMAL = {
@@ -276,17 +484,20 @@ const THERMAL = {
 screen('hud', {
   title: 'HUD de desempenho',
   variants: [
-    { label: 'Nível', list: [['compact', 'Compacto'], ['full', 'Completo'], ['panel', 'Painel']], get: () => IG.hud === 'off' ? 'compact' : IG.hud, set: v => { IG.hud = v; } },
-    { label: 'Aparência', list: [['box', 'Caixa'], ['outline', 'Texto com contorno'], ['plain', 'Texto simples']], get: () => IG.hudLook, set: v => { IG.hudLook = v; } },
-    { label: 'Aviso térmico', list: [['near', 'Perto do limite'], ['throttling', 'Reduzindo'], ['off', 'Nenhum']], get: () => IG.thermal, set: v => { IG.thermal = v; } },
+    { label: 'Formato', list: [['vertical', 'Vertical'], ['horizontal', 'Horizontal']], get: () => IG.hudLayout, set: v => { IG.hudLayout = v; } },
+    { label: 'Detalhe', list: [['fps', 'Só FPS'], ['metrics', 'Métricas'], ['panel', 'Painel']], get: () => IG.hudDetail, set: v => { IG.hudDetail = v; } },
+    { label: 'Estilo', list: [['box', 'Caixa'], ['outline', 'Contorno'], ['plain', 'Texto']], get: () => IG.hudLook, set: v => { IG.hudLook = v; } },
+    { label: 'Aviso de calor', list: [['near', 'Perto do limite'], ['throttling', 'Reduzindo'], ['off', 'Nenhum']], get: () => IG.thermal, set: v => { IG.thermal = v; } },
   ],
   render() {
-    const g = curGame();
+    const g = curGame(), was = IG.hud; IG.hud = true;
+    const h = hudHTML(false); IG.hud = was;
     return `<div class="ig"><img class="ig-scene" src="${g.scene || ''}" alt="">
       ${!isC() ? touchOverlay(.8) : ''}
-      ${hudHTML(IG.hud === 'off' ? 'compact' : IG.hud, IG.hudLook)}
-      ${IG.thermal !== 'off' ? `<div class="ig-banner" data-note="thermal">${ic('thermo', 18)}<span>${THERMAL[IG.thermal]}</span><button class="ibtn" style="width:28px;height:28px;color:#ffe2a3;flex:none" data-act="ig" data-f="thermal" data-v="off" data-k="hd-ban" aria-label="Fechar aviso">${ic('x', 16)}</button></div>` : ''}
+      ${h.replace('class="hud2', 'data-hudex="1" class="hud2')}
+      ${IG.thermal !== 'off' ? `<div class="ig-banner" data-note="thermal">${ic('thermo', 18)}<span>${THERMAL[IG.thermal]}</span><button class="ibtn" style="width:28px;height:28px;color:#ffe2a3;flex:none" data-act="hud-ban" data-k="hd-ban" aria-label="Fechar aviso">${ic('x', 16)}</button></div>` : ''}
     </div>`;
   },
   after() { hudTick(); },
 });
+action('hud-ban', () => { IG.thermal = 'off'; render(); });

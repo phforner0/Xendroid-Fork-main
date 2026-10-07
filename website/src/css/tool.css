@@ -112,3 +112,85 @@ html.sim-full .site-header, html.sim-full .site-footer { visibility: hidden; }
 .sim .app .radio i { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 2px solid var(--fg3); }
 .sim .app .radio[aria-checked="true"] i { border-color: var(--acc); box-shadow: inset 0 0 0 3px var(--s1), inset 0 0 0 9px var(--acc); }
 .sim .app textarea.txt { height: auto; min-height: 56px; padding: 8px 11px; resize: vertical; line-height: 1.4; }
+
+/* menu em jogo como o do app (InGameMenu.kt): painel à esquerda deitado, folha embaixo em pé */
+.sim .app .igx { position: absolute; z-index: 20; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; background: var(--sheet); box-shadow: 0 0 60px rgba(0, 0, 0, .55); color: var(--fg); }
+.sim .app .igx.land { left: 0; top: 0; bottom: 0; width: min(74%, 620px); border-radius: 0 22px 22px 0; animation: igx-in .18s ease-out; }
+.sim .app.mode-c .igx.land { width: min(74%, 660px); }
+.sim .app .igx.port { left: 0; right: 0; bottom: 0; height: 86%; border-radius: 22px 22px 0 0; animation: up .2s ease-out; }
+@keyframes igx-in { from { translate: -24px 0; opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { .sim .app .igx { animation: none; } }
+.sim .app .igx-head { display: flex; align-items: center; gap: 10px; }
+.sim .app .igx-head .cover { width: 36px; flex: none; border-radius: 7px; }
+.sim .app .igx-head .tt { flex: 1; min-width: 0; }
+.sim .app .igx-head h2 { margin: 0; font: 700 19px/1.1 var(--f-disp); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sim .app .igx-head small { display: block; margin-top: 2px; font-size: 11.5px; color: var(--fg3); }
+.sim .app .igx-kept, .sim .app .igx-saved { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 999px; background: color-mix(in srgb, var(--acc) 12%, transparent); color: var(--fg2); font: 600 12px/1 var(--f-body); white-space: nowrap; }
+.sim .app .igx-kept .ic, .sim .app .igx-saved .ic { color: var(--acc); }
+.sim .app .igx-saved { align-self: flex-start; border-radius: 10px; }
+.sim .app .igx-status { display: flex; gap: 16px; overflow-x: auto; scrollbar-width: none; padding: 7px 12px; border-radius: 12px; background: rgba(255, 255, 255, .05); font-size: 12px; color: var(--fg2); white-space: nowrap; }
+.sim .app .igx-status b { color: var(--fg); }
+.sim .app .igx-body { flex: 1; min-height: 0; display: flex; gap: 12px; }
+.sim .app .igx.port .igx-body { flex-direction: column; gap: 8px; }
+.sim .app .igx-pages { display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 84px; flex: none; overflow-y: auto; scrollbar-width: none; }
+.sim .app .igx-pages button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; border-radius: 12px; color: var(--fg2); font: 600 11.5px/1.1 var(--f-body); }
+.sim .app .igx-pages button .ic { color: var(--fg3); }
+.sim .app .igx-pages button[aria-selected="true"] { background: color-mix(in srgb, var(--acc) 16%, transparent); color: var(--acc); }
+.sim .app .igx-pages button[aria-selected="true"] .ic { color: var(--acc); }
+.sim .app .igx-pages .gb { align-self: center; }
+.sim .app .igx.port .igx-pages { flex-direction: row; width: auto; overflow-x: auto; }
+.sim .app .igx.port .igx-pages button { flex-direction: row; gap: 6px; height: 36px; padding: 0 12px; border-radius: 999px; flex: none; font-size: 12.5px; }
+.sim .app .igx-rows { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px; scrollbar-width: thin; }
+.sim .app .igx-g { margin: 8px 0 0; font: 700 10.5px/1.2 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--fg3); }
+.sim .app .igx-g:first-child { margin-top: 0; }
+.sim .app .igx-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; padding: 9px 12px; border-radius: 12px; background: var(--s1); color: var(--fg); text-align: left; width: 100%; }
+.sim .app .igx-row.stack { grid-template-columns: minmax(0, 1fr); }
+.sim .app .igx-row.dis > .igx-t { opacity: .55; }
+.sim .app .igx-row.info { background: transparent; padding: 4px 12px; }
+.sim .app .igx-row.btnrow .ic { color: var(--fg3); }
+.sim .app .igx-row.btnrow:hover { background: var(--s2); }
+.sim .app .igx-row.danger b { color: #ff8b84; }
+.sim .app .igx-t { min-width: 0; }
+.sim .app .igx-t b { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 650; }
+.sim .app .igx-t small, .sim .app .igx-n { display: block; margin-top: 2px; font-size: 11.5px; color: var(--fg3); }
+.sim .app .igx-n { grid-column: 1 / -1; margin-top: 0; }
+.sim .app .igx-t .tag { margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--acc) 14%, transparent); color: var(--acc); font-size: 10.5px; font-weight: 700; vertical-align: 1px; }
+.sim .app .igx-row .seg { flex-wrap: wrap; }
+.sim .app .igx-row .seg button { height: 30px; padding: 0 10px; font-size: 12.5px; }
+.sim .app .igx-cyc b { min-width: 112px; text-align: center; font-size: 12.5px; }
+.sim .app .igx-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sim .app .igx-chips .chip { height: 30px; font-size: 12px; }
+.sim .app .igx-more { display: flex; align-items: center; gap: 6px; padding: 9px 12px; margin-top: 4px; border-radius: 12px; color: var(--acc); font: 650 13px/1.2 var(--f-body); }
+.sim .app .igx-more:hover { background: var(--s1); }
+.sim .app .igx-note { margin: 4px 2px 0; font-size: 11.5px; color: var(--fg3); }
+.sim .app .igx-foot { display: flex; gap: 8px; }
+.sim .app .igx-foot .btn.primary { flex: 1; }
+.sim .app .igx .c-hints { position: static; border-radius: 12px; }
+.sim .app .igx-hudprev { position: relative; min-height: 76px; padding: 6px; border-radius: 12px; background: linear-gradient(120deg, #1c2a33, #3b3022); overflow: hidden; }
+.sim .app .igx-hudprev .hud2 { position: static; }
+/* a borda que abre o menu (no app, invisível) */
+.sim .app .ig-edge { position: absolute; left: 0; top: 0; bottom: 0; width: 22px; z-index: 6; background: linear-gradient(90deg, rgba(255, 255, 255, .14), transparent); border-right: 1px dashed rgba(255, 255, 255, .22); }
+.sim .app .ig-edge:hover, .sim .app .ig-edge:focus-visible { background: linear-gradient(90deg, rgba(255, 255, 255, .28), transparent); }
+.sim .app .ig-edge-tip { position: absolute; left: 30px; top: 10px; z-index: 6; padding: 4px 9px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: rgba(255, 255, 255, .8); font: 600 11px/1.3 var(--f-body); pointer-events: none; }
+/* HUD (FpsOverlay.kt): vertical (caixa) ou horizontal (barra), estilo caixa, contorno ou texto */
+.sim .app .hud2 { position: absolute; left: 30px; top: 40px; z-index: 5; font: 600 calc(12px * var(--hs, 1))/1.45 var(--f-mono); color: #fff; font-variant-numeric: tabular-nums; --hcol: color-mix(in srgb, #9be37f calc(var(--hc, 1) * 100%), #fff); }
+.sim .app .hud2 .hud2-l { display: flex; justify-content: space-between; gap: 14px; white-space: nowrap; }
+.sim .app .hud2 b { color: var(--hcol); }
+.sim .app .hud2 .k { color: rgba(255, 255, 255, .62); }
+.sim .app .hud2 .w { color: color-mix(in srgb, #f3cf55 calc(var(--hc, 1) * 100%), #fff); }
+.sim .app .hud2.box { background: rgba(0, 0, 0, var(--hbg, .58)); padding: 6px 9px; border-radius: 9px; }
+.sim .app .hud2.outline { text-shadow: 0 0 2px #000, 0 0 2px #000, 0 0 3px #000, 0 0 3px #000; }
+.sim .app .hud2.horizontal { left: 0; right: 0; top: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 16px; padding: 4px 12px; border-radius: 0; }
+.sim .app .hud2.horizontal.bottom { top: auto; bottom: 0; }
+.sim .app .hud2.horizontal .hud2-l { gap: 6px; }
+.sim .app .hud2.horizontal .hud2-graph { width: 80px; }
+.sim .app .hud2-graph { display: block; width: 100%; height: 20px; color: var(--hcol); margin-top: 3px; }
+.sim .app .hud2.panel { width: 290px; padding: 10px 12px; font-size: calc(11.5px * var(--hs, 1)); }
+.sim .app .hud2.panel h6 { margin: 0 0 4px; font: 700 10px/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: rgba(255, 255, 255, .6); }
+.sim .app .hud2.panel section { padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, .12); }
+.sim .app .hud2.panel section:first-child { border-top: 0; padding-top: 0; }
+/* visual Clássico dos controles de toque: botões coloridos */
+.sim .app .tcl.classic .tc-abxy .tc-btn { color: #fff; box-shadow: none; }
+.sim .app .tcl.classic .tc-abxy .a { background: #3f9a3a; } .sim .app .tcl.classic .tc-abxy .b { background: #c23b33; }
+.sim .app .tcl.classic .tc-abxy .x { background: #2f6fd1; } .sim .app .tcl.classic .tc-abxy .y { background: #d0a417; }
+.sim .app .hud2 .hud2-l.f { justify-content: flex-start; gap: 6px; }

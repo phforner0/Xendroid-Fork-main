@@ -1,17 +1,18 @@
-/* Lote 7: painéis que o próprio jogo pede (mensagem, teclado, troca de disco), sobre a cena do jogo. */
+/* Painéis que o próprio jogo pede (mensagem, teclado, troca de disco): GuestMessageBoxPanel.kt,
+   GuestKeyboardPanel.kt e DiscSwapPanel.kt. Os textos de jogo aqui são de um jogo fictício. */
 'use strict';
 
 Object.assign(NOTES, {
-  gpfrom: ['novo', 'Qual jogo está perguntando e que ele espera a resposta: o jogo fica parado até você escolher.'],
-  gpopts: ['existe', 'Opções do jogo em linhas inteiras (frases longas não quebram mal); sem cancelar, porque o jogo espera uma resposta.'],
-  gplong: ['existe', 'Texto longo rola dentro do painel e os botões continuam à vista.'],
-  kbfield: ['existe', 'Campo com o limite do jogo contado como o jogo conta (UTF-16) e o teclado do telefone no toque.'],
-  kbgrid: ['existe', 'Teclado em grade para o controle (U10): letras e símbolos, Shift, espaço, apagar, cursor, Pronto e Cancelar.'],
-  kbpt: ['novo', 'Teclas de comando em português (hoje Shift, Space, Done e Cancel ficam em inglês).'],
-  kbhints: ['existe', 'Atalhos do Xbox 360: X apaga, Y espaço, LB/RB movem o cursor, L3 Shift, R3 símbolos, Start conclui.'],
-  dsopts: ['existe', 'Os discos do título encontrados na pasta de jogos, com Cancelar por último.'],
-  dswarn: ['novo', 'Avisa que cancelar deixa o jogo sem disco (o jogo ejeta antes de perguntar).'],
-  dsfind: ['novo', 'Sem disco achado: procurar o arquivo do disco em vez de só cancelar.'],
+  gpfrom: ['app', 'Qual jogo está perguntando: o jogo fica parado até você escolher.'],
+  gpopts: ['app', 'As opções do jogo em linhas inteiras, para frases longas; sem cancelar, porque o jogo espera uma resposta.'],
+  gplong: ['app', 'Texto longo rola dentro do painel e os botões continuam à vista.'],
+  gpex: ['sim', 'O jogo e os textos destes painéis são exemplos; cada jogo escreve as próprias mensagens.'],
+  kbfield: ['app', 'O campo respeita o limite de caracteres que o jogo pede; no toque, abre o teclado do telefone.'],
+  kbgrid: ['app', 'Teclado em grade para o controle: letras e símbolos, Shift, espaço, apagar, cursor, Pronto e Cancelar.'],
+  kbpt: ['app', 'As teclas de comando seguem o idioma do app.'],
+  kbhints: ['app', 'Atalhos no controle: X apaga, Y põe espaço, LB/RB movem o cursor, L3 é Shift, R3 troca para símbolos e Start conclui.'],
+  dsopts: ['app', 'Os discos do título encontrados nas pastas de jogos, com o arquivo de cada um e o disco de antes marcado.'],
+  dswarn: ['app', 'O jogo já ejetou o disco antes de perguntar: cancelar o deixa sem disco.'],
 });
 
 function gpFrom(g, what) { return `<div class="gp-from" data-note="gpfrom">${coverHTML(g)}<span><b>${esc(g.name)}</b> ${what}</span></div>`; }
@@ -23,16 +24,16 @@ function gpAnswer(msg) { IG.menu = false; S.modal = null; go('ingame', {}, { rep
 /* ---------- mensagem do jogo ---------- */
 const MB = { v: 'save' };
 const MB_EX = {
-  save: { gid: '4D5307E6', title: 'Dispositivo de armazenamento', text: 'Nenhum dispositivo de armazenamento selecionado. Sem um, o seu progresso não será salvo. Deseja continuar?', btn: ['Selecionar dispositivo', 'Continuar sem salvar'] },
-  live: { gid: '4D5309C9', title: 'Xbox LIVE', text: 'Este recurso precisa de uma conta Xbox LIVE com acesso online. Entre com um perfil habilitado para online e tente de novo.', btn: [] },
-  long: { gid: '5454082B', title: 'Contrato de licença', text: 'Ao jogar você concorda com os termos de uso do jogo. '.repeat(14).trim() + ' Os dados de progresso ficam no perfil ativo.', btn: ['Aceitar', 'Recusar'] },
+  save: { gid: FICTIONAL, title: 'Salvar o progresso', text: 'Nenhum dispositivo de armazenamento escolhido. Sem um, o progresso não será salvo. Continuar? (mensagem de exemplo)', btn: ['Escolher um dispositivo', 'Continuar sem salvar'] },
+  live: { gid: FICTIONAL, title: 'Recurso indisponível', text: 'Este recurso não está disponível agora. (mensagem de exemplo)', btn: [] },
+  long: { gid: FICTIONAL, title: 'Texto longo', text: 'Um jogo pode mostrar um texto longo, como termos de uso ou instruções. '.repeat(10).trim() + ' (mensagem de exemplo)', btn: ['Aceitar', 'Recusar'] },
 };
 screen('msgbox', {
   title: 'Mensagem do jogo',
   variants: [{ label: 'Exemplo', list: [['save', 'Salvar sem dispositivo'], ['live', 'Só OK'], ['long', 'Texto longo']], get: () => MB.v, set: v => { MB.v = v; } }],
   render() {
     const m = MB_EX[MB.v], g = GBY[m.gid], btn = m.btn.length ? m.btn : ['OK'];
-    return gpScene(g, `<section class="gp" role="dialog" aria-label="${esc(m.title)}">${gpFrom(g, 'está esperando a sua resposta')}<h2>${esc(m.title)}</h2><p class="gp-text"${MB.v === 'long' ? ' data-note="gplong"' : ''}>${esc(m.text)}</p>
+    return gpScene(g, `<section class="gp" role="dialog" aria-label="${esc(m.title)}" data-note="gpex">${gpFrom(g, 'está esperando a sua resposta')}<h2>${esc(m.title)}</h2><p class="gp-text"${MB.v === 'long' ? ' data-note="gplong"' : ''}>${esc(m.text)}</p>
       <div class="gp-opts" data-note="gpopts">${btn.map((b, i) => `<button class="gp-opt" data-act="mb-pick" data-v="${i}" data-k="mb-${i}"${i === 0 ? ' data-autofocus' : ''}>${esc(b)}${isC() && i === 0 ? '' : ''}</button>`).join('')}</div>
       <p class="gp-note">O jogo fica parado até você escolher.</p>
       ${isC() ? hints([['A', 'Escolher', 'a']]) : ''}</section>`);
@@ -44,8 +45,8 @@ action('mb-pick', el => { const m = MB_EX[MB.v], btn = m.btn.length ? m.btn : ['
 
 /* ---------- teclado do jogo ---------- */
 const KB_LET = ['1234567890', 'qwertyuiop', 'asdfghjkl@', 'zxcvbnm,.-'], KB_SYM = ['1234567890', '!#$%&*()_+', '=/\\|[]{};:', '\'"<>?~`^.,'];
-const KB = { v: 'name', text: 'Shepard', caret: 7, shift: 'off', sym: false };
-const KB_EX = { name: { gid: '4D5307E6', desc: 'Digite o nome do seu personagem', max: 15, init: 'Shepard' }, msg: { gid: '4D5309C9', desc: 'Mensagem para o seu clube de carros', max: 60, init: '' } };
+const KB = { v: 'name', text: 'Ana', caret: 3, shift: 'off', sym: false };
+const KB_EX = { name: { gid: FICTIONAL, desc: 'Nome do personagem (exemplo)', max: 15, init: 'Ana' }, msg: { gid: FICTIONAL, desc: 'Uma mensagem (exemplo)', max: 60, init: '' } };
 const kbMax = () => KB_EX[KB.v].max;
 function kbType(ch) {
   if (KB.text.length + ch.length > kbMax()) { toast(`O jogo aceita até ${kbMax()} caracteres`); return; }
@@ -101,11 +102,11 @@ screen('discswap', {
   title: 'Troca de disco',
   variants: [{ label: 'Exemplo', list: [['found', 'Discos achados'], ['none', 'Nenhum disco achado']], get: () => DS.v, set: v => { DS.v = v; } }],
   render() {
-    const g = GBY['4D5307DF'] || curGame(), n = g.discs || 3, want = 2;
+    const g = GBY[FICTIONAL], n = 3, want = 2;
     const discs = DS.v === 'found' ? Array.from({ length: n }, (_, i) => i + 1) : [];
-    return gpScene(g, `<section class="gp" role="dialog" aria-label="Insira o disco ${want}">${gpFrom(g, 'ejetou o disco 1')}<h2>Insira o disco ${want}</h2>
-      ${discs.length ? `<div class="gp-opts" data-note="dsopts">${discs.map(d => `<button class="gp-opt${d === 1 ? ' quiet' : ''}" data-act="ds-pick" data-v="${d}" data-k="ds-${d}"${d === want ? ' data-autofocus' : ''}>${ic('disc', 20)}<span>Disco ${d}${d === want ? ' <span class="badge acc">pedido</span>' : ''}${d === 1 ? ' <span class="badge">o de antes</span>' : ''}<small>${esc(g.name)} (Disco ${d}).iso</small></span></button>`).join('')}<button class="gp-opt quiet" data-act="ds-cancel" data-k="ds-x">${ic('x', 20)}<span>Cancelar<small data-note="dswarn">O jogo já ejetou o disco 1: cancelar o deixa sem disco.</small></span></button></div>`
-        : `<p class="gp-text">Nenhum disco deste título foi encontrado na pasta de jogos.</p><div class="gp-opts"><button class="gp-opt" data-act="ds-find" data-k="ds-find" data-autofocus data-note="dsfind">${ic('folder', 20)}<span>Procurar o arquivo do disco ${want}<small>No navegador de pastas</small></span></button><button class="gp-opt quiet" data-act="ds-cancel" data-k="ds-x">${ic('x', 20)}<span>Cancelar<small data-note="dswarn">O jogo fica sem disco até você abrir o menu e trocar.</small></span></button></div>`}
+    return gpScene(g, `<section class="gp" role="dialog" aria-label="Insira o disco ${want}">${gpFrom(g, 'pede outro disco')}<h2>Insira o disco ${want}</h2>
+      ${discs.length ? `<div class="gp-opts" data-note="dsopts">${discs.map(d => `<button class="gp-opt${d === 1 ? ' quiet' : ''}" data-act="ds-pick" data-v="${d}" data-k="ds-${d}"${d === want ? ' data-autofocus' : ''}>${ic('disc', 20)}<span>Disco ${d}<small>${d === 1 ? `${esc(g.name)} (Disco ${d}).iso · o de antes` : `${esc(g.name)} (Disco ${d}).iso`}</small></span></button>`).join('')}<button class="gp-opt quiet" data-act="ds-cancel" data-k="ds-x">${ic('x', 20)}<span>Cancelar<small data-note="dswarn">O jogo já ejetou o disco: cancelar o deixa sem disco.</small></span></button></div>`
+        : `<p class="gp-text">Nenhum disco deste título foi encontrado na pasta de jogos.</p><div class="gp-opts"><button class="gp-opt quiet" data-act="ds-cancel" data-k="ds-x" data-autofocus>${ic('x', 20)}<span>Cancelar<small data-note="dswarn">O jogo já ejetou o disco: cancelar o deixa sem disco.</small></span></button></div>`}
       ${isC() ? hints([['A', 'Escolher', 'a'], ['B', 'Cancelar', 'back']]) : ''}</section>`);
   },
   after() { if (isC()) { setNav(true); focusStart(); } },
@@ -113,4 +114,3 @@ screen('discswap', {
 });
 action('ds-pick', el => gpAnswer(`Disco ${el.dataset.v} inserido`));
 action('ds-cancel', () => gpAnswer('Troca cancelada: o jogo está sem disco'));
-action('ds-find', () => { BR.mode = 'file'; BR.path = ['Cartão SD', 'Jogos']; go('browse'); });
