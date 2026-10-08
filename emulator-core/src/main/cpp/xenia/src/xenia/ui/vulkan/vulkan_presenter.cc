@@ -50,11 +50,26 @@ DEFINE_bool(
     "offering the lowest latency with the possibility of tearing in certain "
     "cases, and, depending on the configuration, variable refresh rate.",
     "Vulkan");
+// On Android (HyperOS on a POCO F7), after minutes of play SurfaceFlinger took
+// the frames of a mailbox swapchain at ever longer intervals (216 -> 400 ms),
+// then none for 112 s while the emulator kept presenting ~31 a second - the
+// image froze until the swapchain was recreated. With FIFO: no such stall in
+// ~33 minutes of Crysis 3 and the same frame times (2026-10-07).
+#if XE_PLATFORM_xendroid
+static constexpr bool kVulkanAllowPresentModeMailboxDefault = false;
+#else
+static constexpr bool kVulkanAllowPresentModeMailboxDefault = true;
+#endif
 DEFINE_bool(
-    vulkan_allow_present_mode_mailbox, true,
+    vulkan_allow_present_mode_mailbox, kVulkanAllowPresentModeMailboxDefault,
     "When available, allow the mailbox presentation mode (2nd priority), "
-    "offering low latency without the possibility of tearing.",
+    "offering low latency without the possibility of tearing. Off by default "
+    "on Android since 2026-10-07: there the image froze after minutes of play "
+    "with it (Crysis 3 had it off as a quirk).",
     "Vulkan");
+#if XE_PLATFORM_xendroid
+UPDATE_from_bool(vulkan_allow_present_mode_mailbox, 2026, 10, 7, 12, true);
+#endif
 DEFINE_bool(
     vulkan_allow_present_mode_fifo_relaxed, true,
     "When available, allow the relaxed first-in-first-out presentation mode "
