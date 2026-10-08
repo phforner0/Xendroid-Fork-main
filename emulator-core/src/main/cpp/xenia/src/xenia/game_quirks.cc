@@ -236,6 +236,34 @@ static const Quirk kQuirks[] = {
      "4x depth-only draws into the 1x surface of their samples"},
     {0x4541098E, "vulkan_samples_as_pixels_simple_ps", true,
      "4x draws with simple pixel shaders into the 1x surface"},
+    // Its lighting and HDR copies go through integers: the light buffers (7e3
+    // in the EDRAM) are resolved as k_2_10_10_10 with exponent bias +10, the
+    // scene and the bloom 7e3 to k_10_11_11 (+6) and k_16_16_16_16 (+11), all
+    // to unsigned integer destinations, and sampled with the integer
+    // num_format and the opposite exponent adjustment (-7, -6, -11) - a
+    // lossless HDR round trip. Packed as unsigned fractions, the copies
+    // saturated (the light buffers 100% white, the scene ~98%, the exposure
+    // chain 0) and the lit surfaces went black; with only the fetch side
+    // honoured, the screen went white. Both sides: the lighting of the
+    // original, with the direct resolves and the resolves into textures still
+    // used for them (frame dump and runtime A/B, 2026-10-06).
+    {0x4541098E, "accurate_resolve_number_formats", true,
+     "resolve shaders that pack integer destinations"},
+    {0x4541098E, "resolve_copy_dest_number_packing", true,
+     "resolves honour their integer destinations"},
+    {0x4541098E, "texture_integer_num_format", true,
+     "integer texture fetches return integers"},
+    // Half of the textures it draws on the deck (114-128 of ~260 in frame
+    // dumps) were placed by the GPU, in pages its loading screen had resolved
+    // to: valid only in the GPU's copy, the guest memory still holding the
+    // loading screen (its hint text included). Its streaming writes into the
+    // same pool - guest stores and file reads straight into it - invalidated
+    // whole pages, and their reupload from guest memory put that in place of
+    // the neighbouring textures: in one of four launches Psycho was drawn
+    // blue. The GPU's data in those pages is kept now; the image and GPU time
+    // as before (24.8 ms a frame, 2026-10-07).
+    {0x4541098E, "shared_memory_preserve_gpu_writes", true,
+     "CPU writes keep the GPU's data in their pages"},
     // Its worker threads spin on NtYieldExecution whenever they have no job:
     // the 6 guest CPU threads took 460-490% of a core standing still at the
     // 30 fps cap, the phone ~10.7 W, and the SoC throttles within minutes (big
@@ -245,6 +273,60 @@ static const Quirk kQuirks[] = {
     // 9.8 W against 10.7 W unplugged, 2026-10-06).
     {0x4541098E, "guest_yield_sleep_us", int64_t(50),
      "spinning workers give the host core back"},
+    // Exact: it copies the scene into one k_10_11_11 texture 7.5-9.5 times a
+    // frame and samples it after each copy, reloading the whole 1152x720 every
+    // time; with the resolves storing into it (and into its other resolve
+    // destinations), reloads 1.8-2.4 -> 0.02-0.08 ms, GPU time 28.5 -> 26.9
+    // ms a frame, the same image (runtime switch interleaved in one session,
+    // 2026-10-06).
+    {0x4541098E, "vulkan_direct_host_resolve_to_texture", true,
+     "resolves store straight into their textures"},
+    // 2D fetches with the LOD the host computes instead of 4 coarse
+    // derivatives and an explicit-gradient sample: main pass 12.8 -> 11.0 ms,
+    // the 640x4096 passes 2.0 -> 1.5 ms, GPU time ~26.4 -> 24.4 ms a frame,
+    // the same image standing on the deck (one restart A/B pair at the same
+    // temperature, 2026-10-06).
+    {0x4541098E, "spirv_texture_implicit_lod", true,
+     "2D texture fetches with the host's LOD"},
+    // Without the Shader Model 3 "0 * x = 0" emulation and the 21-bit
+    // rounding in pixel shaders, and the former in vertex shaders, as for
+    // Forza Horizon: main pass 11.4 -> 9.9 ms, the 640x4096 passes 1.57 ->
+    // 1.32 ms, GPU time 24.8 -> 23.5 ms a frame with the phone hotter. The
+    // same image standing on the deck at night in the rain with the lighting
+    // right - no black or white pixels; the colored specks flickering on the
+    // pistol's emblem are there with either (restart A/B pair, 2026-10-07).
+    {0x4541098E, "spirv_ps_relaxed_math", int64_t(3),
+     "no SM3 zero-multiply or 21-bit rounding emulation in pixel shaders"},
+    {0x4541098E, "spirv_vs_relaxed_math", int64_t(1),
+     "no SM3 zero-multiply emulation in vertex shaders"},
+    // It copies memory with the GPU while loading - one vertex shader
+    // (D6A6A2ABFA7AF8A1) fetching 32 bytes a vertex and exporting them, about
+    // 2000-2500 draws - and its CPU builds index buffers from the copies.
+    // Without the export output in guest memory it read what was there
+    // before, and the indices of a breakable object's mesh came out off by
+    // 435-3036 vertices: read from the tangent data after its positions, its
+    // triangles drew blades across the screen when shots hit inside the ship
+    // (5 of 6 sessions). Read back right after each exporting draw, no blades
+    // in 2 of 2 sessions, but 4.1-5.6% of the frames over 50 ms (1.7-2.1%
+    // without); read back as their submissions complete, no blades and 1.4%
+    // (frame dumps: the mesh's indices 0-776, positions within 2.03,
+    // 2026-10-07).
+    {0x4541098E, "memexport_enable", true,
+     "its CPU reads what the GPU copies with memory export"},
+    {0x4541098E, "memexport_await_fences", true,
+     "the copies are in guest memory when the GPU signals"},
+    {0x4541098E, "memexport_readback_deferred", true,
+     "the copies read back as submissions complete, not per draw"},
+    {0x4541098E, "readback_resolve", "uma",
+     "host-mapped buffer the copies are read back from"},
+    // Presented with the mailbox mode, after minutes of play SurfaceFlinger
+    // took its frames at ever longer intervals (216 -> 400 ms), then none for
+    // 112 s while it kept presenting ~31 a second: the image froze until the
+    // swapchain was recreated (turning frame generation on, which presents
+    // with FIFO). With FIFO, no such stall in ~33 minutes and the same frame
+    // times (POCO F7, HyperOS, 2026-10-07).
+    {0x4541098E, "vulkan_allow_present_mode_mailbox", false,
+     "presentation stalls with the mailbox mode after minutes"},
 };
 
 // Same path/priority as a per-game config file.

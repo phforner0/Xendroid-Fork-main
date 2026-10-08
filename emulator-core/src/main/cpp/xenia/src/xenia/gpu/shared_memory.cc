@@ -9,10 +9,32 @@
 
 #include "xenia/gpu/shared_memory.h"
 
+#include <algorithm>
+#include <atomic>
+
 #include "xenia/base/assert.h"
 #include "xenia/base/bit_range.h"
+#include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/profiling.h"
+
+DEFINE_bool(
+    shared_memory_preserve_gpu_writes, false,
+    "When the CPU writes to a page the GPU wrote last, copy the page's GPU "
+    "data to guest memory before invalidating it, so the reupload keeps it "
+    "(the data the guest memory never got: textures a game copies with the "
+    "GPU, resolves not read back yet). Without it, the whole page is "
+    "reuploaded from guest memory and the GPU's data is lost - Crysis 3 drew "
+    "a character with another texture's leftovers that way. Needs a "
+    "host-mapped GPU memory copy.",
+    "GPU");
+DEFINE_bool(
+    shared_memory_page_history, false,
+    "Diagnostics: remember, per page of the GPU's memory copy, the frame of its "
+    "last upload, CPU invalidation, GPU write and copy of the GPU's data to "
+    "guest memory, for the frame dump (debug.xendroid.frame_dump) to report "
+    "where broken data came from. 2.5 MB.",
+    "GPU");
 
 namespace xe {
 namespace gpu {
@@ -46,6 +68,10 @@ bool SharedMemory::InitializeCommon() {
       system_page_flags_base + 2 * num_system_page_flags_;
 
   memset(system_page_flags_base, 0, 3 * 8 * num_system_page_flags_entries);
+
+  if (cvars::shared_memory_page_history) {
+    page_history_.resize(kBufferSize >> page_size_log2_);
+  }
 
   memory_invalidation_callback_handle_ =
       memory_.RegisterPhysicalMemoryInvalidationCallback(
@@ -397,6 +423,27 @@ bool SharedMemory::AllocateSparseHostGpuMemoryRange(
   return false;
 }
 
+SharedMemory::PageHistory SharedMemory::GetPageHistory(
+    uint32_t address) const {
+  if (page_history_.empty() || address >= kBufferSize) {
+    return PageHistory();
+  }
+  return page_history_[address >> page_size_log2_];
+}
+
+void SharedMemory::NoteGuestCopy(uint32_t start, uint32_t length,
+                                 GuestCopySource source) {
+  if (page_history_.empty() || !length || start >= kBufferSize) {
+    return;
+  }
+  const uint32_t last =
+      std::min(start + (length - 1), kBufferSize - 1) >> page_size_log2_;
+  for (uint32_t page = start >> page_size_log2_; page <= last; ++page) {
+    page_history_[page].guest_copy = history_frame_;
+    page_history_[page].guest_copy_source = source;
+  }
+}
+
 void SharedMemory::MakeRangeValid(uint32_t start, uint32_t length,
                                   bool written_by_gpu) {
   if (length == 0 || start >= kBufferSize) {
@@ -430,6 +477,18 @@ void SharedMemory::MakeRangeValid(uint32_t start, uint32_t length,
       } else {
         system_page_flags_valid_and_gpu_written_[i] &= ~valid_bits;
       }
+    }
+    if (written_by_gpu) {
+      NotePages<&PageHistory::gpu_write>(start, length);
+      if (!page_history_.empty()) {
+        for (uint32_t page = valid_page_first; page <= valid_page_last;
+             ++page) {
+          page_history_[page].gpu_write_start = start;
+          page_history_[page].gpu_write_length = length;
+        }
+      }
+    } else {
+      NotePages<&PageHistory::upload>(start, length);
     }
   }
 
@@ -732,6 +791,72 @@ std::pair<uint32_t, uint32_t> SharedMemory::MemoryInvalidationCallback(
     }
   }
 
+  if (cvars::shared_memory_preserve_gpu_writes) {
+    // The GPU-written pages among the invalidated ones (the wider range above
+    // stops at them, so only the written ones) go to guest memory. A guest
+    // write faulting in (not exact) lands on them afterwards, so all of them.
+    // An exact range was written by the host already (a file read straight
+    // into physical memory notifies after reading) or isn't kept (released
+    // memory) - only the parts of its pages outside it, around it.
+    const uint32_t written_end = physical_address_last + 1;
+    for (uint32_t i = block_first; i <= block_last; ++i) {
+      uint64_t gpu_written_bits = system_page_flags_valid_and_gpu_written_[i];
+      if (i == block_first) {
+        gpu_written_bits &= ~((uint64_t(1) << (page_first & 63)) - 1);
+      }
+      if (i == block_last && (page_last & 63) != 63) {
+        gpu_written_bits &= (uint64_t(1) << ((page_last & 63) + 1)) - 1;
+      }
+      uint32_t run_first;
+      while (xe::bit_scan_forward(gpu_written_bits, &run_first)) {
+        uint32_t run_length = xe::tzcnt(~(gpu_written_bits >> run_first));
+        uint32_t run_page_first = (i << 6) + run_first;
+        const uint32_t run_start = run_page_first << page_size_log2_;
+        const uint32_t run_end = (run_page_first + run_length)
+                                 << page_size_log2_;
+        uint32_t copied = 0;
+        if (!exact_range) {
+          if (CopyToGuestMemory(run_start, run_end - run_start)) {
+            copied = run_end - run_start;
+            NoteGuestCopy(run_start, run_end - run_start,
+                          GuestCopySource::kPreserveGuestWrite);
+          }
+        } else {
+          if (run_start < physical_address_start) {
+            const uint32_t head_end = std::min(run_end, physical_address_start);
+            if (CopyToGuestMemory(run_start, head_end - run_start)) {
+              copied += head_end - run_start;
+              NoteGuestCopy(run_start, head_end - run_start,
+                            GuestCopySource::kPreserveAroundHostWrite);
+            }
+          }
+          if (run_end > written_end) {
+            const uint32_t tail_start = std::max(run_start, written_end);
+            if (CopyToGuestMemory(tail_start, run_end - tail_start)) {
+              copied += run_end - tail_start;
+              NoteGuestCopy(tail_start, run_end - tail_start,
+                            GuestCopySource::kPreserveAroundHostWrite);
+            }
+          }
+        }
+        if (copied) {
+          static std::atomic<uint32_t> logged{0};
+          if (logged.fetch_add(1, std::memory_order_relaxed) < 16) {
+            XELOGI(
+                "Shared memory: {} write to {} GPU-written page(s) at {:08X} - "
+                "{} bytes of them copied to guest memory before the reupload",
+                exact_range ? "a host" : "a guest", run_length, run_start,
+                copied);
+          }
+        }
+        gpu_written_bits &=
+            ~((run_length >= 64 ? UINT64_MAX
+                                : (uint64_t(1) << run_length) - 1)
+              << run_first);
+      }
+    }
+  }
+
   uint32_t dirty_blocks_mask = 0;
   for (uint32_t i = block_first; i <= block_last; ++i) {
     uint64_t invalidate_bits = UINT64_MAX;
@@ -751,6 +876,9 @@ std::pair<uint32_t, uint32_t> SharedMemory::MemoryInvalidationCallback(
   // GPU-written flags changed due to CPU invalidation.
   gpu_written_data_dirty_ = true;
   dirty_blocks_ |= dirty_blocks_mask;
+  NotePages<&PageHistory::invalidation>(
+      page_first << page_size_log2_,
+      (page_last - page_first + 1) << page_size_log2_);
 
   FireWatches(page_first, page_last, false);
 

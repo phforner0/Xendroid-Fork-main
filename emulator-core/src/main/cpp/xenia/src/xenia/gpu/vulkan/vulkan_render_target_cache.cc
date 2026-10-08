@@ -660,6 +660,15 @@ const VulkanRenderTargetCache::DirectHostResolveShaderCode
               XE_DHR_SHADER(resolve_host_depth_32bpp_2xmsaa_4px_tex_cs)},
              {XE_DHR_SHADER(resolve_host_depth_32bpp_4xmsaa_4px_tex_cs),
               XE_DHR_SHADER(resolve_host_depth_32bpp_4xmsaa_4px_tex_cs)}},
+            // Full color into k_10_11_11, expanded to 16 bits per component
+            // (no uint variant - never picked for uint sources).
+            {{XE_DHR_SHADER(resolve_host_color_full_32bpp_1xmsaa_tex_r11g11b10_cs),
+              XE_DHR_SHADER(resolve_host_color_full_32bpp_1xmsaa_tex_r11g11b10_cs)},
+             {XE_DHR_SHADER(resolve_host_color_full_32bpp_2xmsaa_tex_r11g11b10_cs),
+              XE_DHR_SHADER(resolve_host_color_full_32bpp_2xmsaa_tex_r11g11b10_cs)},
+             {XE_DHR_SHADER(resolve_host_color_full_32bpp_4xmsaa_tex_r11g11b10_cs),
+              XE_DHR_SHADER(
+                  resolve_host_color_full_32bpp_4xmsaa_tex_r11g11b10_cs)}},
 };
 
 const VulkanRenderTargetCache::DirectHostResolveShaderCode
@@ -2785,10 +2794,14 @@ bool VulkanRenderTargetCache::TryInPassResolveCopy(
     const bool pitch_bad =
         resolve_dest_texture_info.pitch !=
         resolve_info.copy_dest_coordinate_info.pitch_aligned_div_32;
+    // A k_10_11_11 texture holds its upload's 16-bit-per-component expansion,
+    // which only the compute store variant making it may write.
     const bool format_bad =
         resolve_dest_texture_info.format !=
-        uint32_t(GetBaseFormat(xenos::TextureFormat(
-            resolve_info.copy_dest_info.copy_dest_format)));
+            uint32_t(GetBaseFormat(xenos::TextureFormat(
+                resolve_info.copy_dest_info.copy_dest_format))) ||
+        resolve_dest_texture_info.format ==
+            uint32_t(xenos::TextureFormat::k_10_11_11);
     // imageStore discards out-of-range writes, so overhang is harmless.
     // Only an origin outside the texture means the match was wrong.
     const bool bounds_bad =
@@ -3338,7 +3351,18 @@ bool VulkanRenderTargetCache::TryDirectHostResolveCopy(
     source.is_depth = resolve_is_depth;
     source.source_is_uint = source_is_uint;
     if (texture_view != VK_NULL_HANDLE && !is_64bpp) {
-      if (use_7e3_variant) {
+      if (xenos::TextureFormat(texture_info.format) ==
+          xenos::TextureFormat::k_10_11_11) {
+        // The texture holds the 16-bit-per-component expansion of the packed
+        // pixels: only the full color variant expanding them may store into
+        // it (none otherwise, so the texture is uploaded).
+        if (!resolve_is_depth && copy_shader_is_full_color &&
+            !source_is_uint) {
+          source.texture_pipeline = GetDirectHostResolveTexturePipeline(
+              DirectHostResolveTextureKind::kFullColor32bppR11G11B10,
+              key.msaa_samples, false);
+        }
+      } else if (use_7e3_variant) {
         source.texture_pipeline =
             GetDirectHostColorFull7e3ResolvePipeline(key.msaa_samples, true);
       } else {
@@ -3805,6 +3829,7 @@ bool VulkanRenderTargetCache::Resolve(
     XELOGE("Resolve: GetResolveInfo failed");
     return false;
   }
+  last_resolve_info_ = resolve_info;
 
   // Nothing to copy/clear.
   if (!resolve_info.coordinate_info.width_div_8 || !resolve_info.height_div_8) {

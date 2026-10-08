@@ -175,6 +175,11 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   // source xenos::MsaaSamples of the copy, bits 11:21 - width / 8, bits 0:10 -
   // height / 8. 0 if there was nothing to do.
   uint32_t last_resolve_key() const { return last_resolve_key_; }
+  // What the last Resolve worked out from the registers, for dumping its
+  // destination (debug.xendroid.frame_dump).
+  const draw_util::ResolveInfo& last_resolve_info() const {
+    return last_resolve_info_;
+  }
   // Opens the VkMiscTime region of the current resolve's copy dispatches
   // (MiscTimestampKind::kResolveCopyDispatch) - after the barriers before
   // them, outside a render pass.
@@ -506,8 +511,11 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
     kFastColor4px,
     kFullColor32bpp,
     kDepth4px,
+    // Full color into a k_10_11_11 texture, storing the expansion to 16 bits
+    // per component its upload makes (float sources only).
+    kFullColor32bppR11G11B10,
   };
-  static constexpr size_t kDirectHostResolveTextureKindCount = 3;
+  static constexpr size_t kDirectHostResolveTextureKindCount = 4;
   static const DirectHostResolveShaderCode kDirectHostResolveTextureShaders
       [kDirectHostResolveTextureKindCount][kDirectHostResolveMsaaCount]
       [kDirectHostResolveSourceUintCount];
@@ -1268,6 +1276,8 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
   bool color_7e3_as_r11g11b10_ = false;
   // See last_resolve_key().
   uint32_t last_resolve_key_ = 0;
+  // See last_resolve_info().
+  draw_util::ResolveInfo last_resolve_info_;
   // Direct host resolve source layouts already logged (VkDirectResolve).
   std::unordered_set<uint64_t> direct_resolves_logged_;
 

@@ -42,8 +42,9 @@ def direct_host_resolve_variants():
     (id, entry_source_basename, [define, ...]) where id ends in "_cs" and the
     defines select one bpp/MSAA/source-uint/scaled permutation from a shared
     .xesli body. 24 fast-color + 60 full-color + 8 in-pass + 6 depth + 18
-    4-pixel (fast 32bpp color and depth) + 15 into-texture + 6 7e3 full-color
-    + 2 7e3 in-pass + 26 format-specialized = 165 variants.
+    4-pixel (fast 32bpp color and depth) + 18 into-texture (3 of them storing
+    the 16-bit expansion of k_10_11_11) + 6 7e3 full-color + 2 7e3 in-pass +
+    26 format-specialized = 168 variants.
     """
     variants = []
     for source_uint in (0, 1):
@@ -160,6 +161,15 @@ def direct_host_resolve_variants():
                          "resolve_host_depth_entry.xesli",
                          [f"XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES={msaa}",
                           "XE_RESOLVE_HOST_4PX=1", "XE_RESOLVE_HOST_TEXTURE=1"]))
+        # Full color to k_10_11_11, storing the texture the expansion to 16
+        # bits per component its upload makes (float sources only).
+        variants.append((f"resolve_host_color_full_32bpp_{msaa}xmsaa_tex_r11g11b10_cs",
+                         "resolve_host_color_full_entry.xesli",
+                         ["XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP=32",
+                          f"XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES={msaa}",
+                          "XE_RESOLVE_HOST_COLOR_SOURCE_UINT=0",
+                          "XE_RESOLVE_HOST_TEXTURE=1",
+                          "XE_RESOLVE_HOST_TEXTURE_R11G11B10=1"]))
     # Full color of 7e3 in the EDRAM to 2_10_10_10, unscaled, also storing into
     # the texture (vulkan_direct_host_resolve_7e3_variant; 1x with
     # vulkan_direct_host_resolve_format_variants).
