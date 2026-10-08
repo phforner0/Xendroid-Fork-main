@@ -40,14 +40,18 @@ void MarkMemexportPagesWritten(uint32_t base_bytes, uint32_t size_bytes) {
 // Ring buffer read-pointer writeback is deliberately not covered: it reports
 // parse progress rather than execution, but fires per batch, so stalling there
 // would serialize the command processor against the GPU.
-void AwaitMemexportForFence() {
-  if (!memexport_await_pending_) {
+void AwaitMemexportForFence(const char* reason) {
+  // Output still read back late is awaited even after an await that failed
+  // to bring it.
+  if (!memexport_await_pending_ && !memexport_readbacks_pending_) {
     return;
   }
   memexport_await_pending_ = false;
   // Flushes the open submission before waiting, so a draw that is still only
   // recorded gets submitted rather than skipped.
+  memexport_await_reason_ = reason;
   AwaitAllQueueOperationsCompletion();
+  memexport_await_reason_ = nullptr;
 }
 
 // Same, for the guest asking the GPU to flush a range it is about to read
@@ -55,28 +59,38 @@ void AwaitMemexportForFence() {
 // output (or on output the backend reads back being pending, wherever it went),
 // unlike the fence path which cannot know what the fence refers to.
 void AwaitMemexportForCoherency(uint32_t base_bytes, uint32_t size_bytes) {
-  if (!memexport_await_pending_ ||
-      (!memexport_readbacks_pending_ &&
+  if (!memexport_readbacks_pending_ &&
+      (!memexport_await_pending_ ||
        !IsMemexportRange(base_bytes, size_bytes))) {
     return;
   }
   memexport_await_pending_ = false;
+  memexport_await_reason_ = "coherency";
   AwaitAllQueueOperationsCompletion();
+  memexport_await_reason_ = nullptr;
 }
 
-// Export output the backend reads back as its submission completes
+// Export output the backend reads back once its submission completes
 // (memexport_readbacks_pending_), for the guest's command stream waiting on
-// memory (WAIT_REG_MEM) and the command processor running out of commands:
-// nothing else would submit and check that submission then, while the guest
-// may be waiting for the output to go on. Returns whether the output is there
-// now (not with the device lost, which leaves it pending).
-bool AwaitMemexportReadbacks() {
+// a register or memory (WAIT_REG_MEM) and the command processor running out
+// of commands: nothing else would submit and check that submission then,
+// while the guest may be waiting for the output to go on. Returns whether the
+// output is there now - not with the device lost, where the queue counts as
+// done but the output stays pending.
+bool AwaitMemexportReadbacks(const char* reason) {
   if (!memexport_readbacks_pending_) {
     return false;
   }
   memexport_await_pending_ = false;
-  return AwaitAllQueueOperationsCompletion();
+  memexport_await_reason_ = reason;
+  const bool awaited = AwaitAllQueueOperationsCompletion();
+  memexport_await_reason_ = nullptr;
+  return awaited && !memexport_readbacks_pending_;
 }
+
+// Whether the guest's fences, interrupts and coherency requests must await the
+// GPU for the output above whatever memexport_await_fences says.
+bool MemexportReadbacksPending() const { return memexport_readbacks_pending_; }
 
 // Clears memexport marks for a range a resolve just wrote, so its device-buffer
 // output is no longer treated as memexport (host buffer) data. Clearing rounds
@@ -156,9 +170,13 @@ std::array<uint64_t, kMemexportPageCount / 64> memexport_written_pages_{};
 bool any_memexport_pages_written_ = false;
 // Export output has been recorded but not yet awaited for the guest to read.
 bool memexport_await_pending_ = false;
-// Export output the backend copies to guest memory as its submission completes
-// (Vulkan's memexport_readback_deferred) is still pending, wherever it went.
+// Export output the backend copies to guest memory once the submissions of all
+// of it complete (Vulkan's memexport_readback_deferred) is still pending,
+// wherever it went.
 bool memexport_readbacks_pending_ = false;
+// What the GPU is being awaited for above, while it is (for the backend's
+// debug.xendroid.memexport_log).
+const char* memexport_await_reason_ = nullptr;
 // Inclusive min/max written page, so IsMemexportRange rejects a range outside
 // the memexport region in O(1). Empty (min > max) until the first memexport.
 uint32_t memexport_written_page_min_ = kMemexportPageCount;
