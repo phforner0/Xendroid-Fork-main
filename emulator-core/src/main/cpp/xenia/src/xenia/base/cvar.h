@@ -104,6 +104,7 @@ class ConfigVar : public CommandVar<T>, virtual public IConfigVar {
   std::string default_value() const override;
   std::string commandline_value() const override;
   const T& GetTypedConfigValue() const;
+  const T& GetTypedDefaultValue() const { return this->default_value_; }
   const std::string& category() const override;
   const std::string& display_name() const override;
   bool is_advanced() const override;
@@ -676,6 +677,31 @@ class IConfigVarUpdate {
 
   virtual void Apply() const = 0;
 
+  // What an update changes, for a frontend that keeps the config file itself
+  // (Android, where SaveConfig is the app's job): the values as the config
+  // file holds them, typed "bool", "int", "double" or "string" - "true" and
+  // "false", decimal numbers, strings unquoted.
+  struct Description {
+    std::string type;
+    std::string old_default;
+    std::string new_default;
+  };
+  // False for an update that can't say (a reset whatever the value).
+  virtual bool Describe(Description& description) const { return false; }
+
+  const IConfigVar& updated_config_var() const { return config_var(); }
+
+  // The updates in date order: f(date, update).
+  template <typename F>
+  static void ForEachUpdate(F&& f) {
+    if (!updates_) {
+      return;
+    }
+    for (const auto& [date, update] : *updates_) {
+      f(date, *update);
+    }
+  }
+
   static void ApplyUpdates(uint32_t config_date) {
     if (!updates_) {
       return;
@@ -743,6 +769,48 @@ class ConfigVarUpdate : public IConfigVarUpdate {
     if (!config_var_typed ||
         config_var_typed->GetTypedConfigValue() == old_default_value_) {
       config_var_untyped.ResetConfigValueToDefault();
+    }
+  }
+  bool Describe(Description& description) const override {
+    const ConfigVar<T>* config_var_typed =
+        dynamic_cast<const ConfigVar<T>*>(&updated_config_var());
+    if (!config_var_typed) {
+      return false;
+    }
+    description.type = DescribeValue(old_default_value_,
+                                     description.old_default);
+    DescribeValue(config_var_typed->GetTypedDefaultValue(),
+                  description.new_default);
+    return !description.type.empty();
+  }
+
+ private:
+  // The type name, and the value in out as the config file holds it.
+  static const char* DescribeValue(bool value, std::string& out) {
+    out = value ? "true" : "false";
+    return "bool";
+  }
+  static const char* DescribeValue(const std::string& value,
+                                   std::string& out) {
+    out = value;
+    return "string";
+  }
+  static const char* DescribeValue(const std::filesystem::path& value,
+                                   std::string& out) {
+    out = xe::path_to_utf8(value);
+    return "string";
+  }
+  static const char* DescribeValue(double value, std::string& out) {
+    out = fmt::format("{}", value);
+    return "double";
+  }
+  template <typename V>
+  static const char* DescribeValue(const V& value, std::string& out) {
+    if constexpr (std::is_integral_v<V>) {
+      out = fmt::format("{}", value);
+      return "int";
+    } else {
+      return "";
     }
   }
 

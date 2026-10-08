@@ -31,6 +31,10 @@ public class Emulator {
         private native void native_save_config_entry_ty_arr(long n_handle,String tag,String[] val);
         private native void native_close_config_file(long n_handle,String config_path);
         private native void native_free_config(long n_handle);
+
+        /** The core's own changes of default values, one per row: date, category, name,
+         *  type, old default, new default, tab-separated (emulator.cpp j_config_updates). */
+        public static native String[] native_config_updates();
         public static Emulator.Config open_config_file(String config_path) throws Emulator.ConfigFileException
         {
             Emulator.Config config=new Emulator.Config();

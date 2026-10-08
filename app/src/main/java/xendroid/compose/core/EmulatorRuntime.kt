@@ -3,6 +3,8 @@ package xendroid.compose.core
 import android.util.Log
 import xendroid.compose.Application
 import xendroid.compose.Emulator
+import xendroid.compose.settings.ConfigMigrations
+import xendroid.compose.settings.ConfigStore
 
 /**
  * Thin Kotlin facade over the once-per-process native load + GPU probe.
@@ -24,14 +26,29 @@ object EmulatorRuntime {
      *  RuntimeException (the eager Application path may have loaded it first). */
     @Synchronized
     fun ensureLoaded() {
-        if (Emulator.get != null) return
-        try {
-            Emulator.load_library()
-        } catch (e: RuntimeException) {
-            // "Emulator already loaded" lost a race; get is now non-null -> fine.
-            if (Emulator.get == null) throw e
-            Log.w(TAG, "load_library raced; using existing singleton", e)
+        if (Emulator.get == null) {
+            try {
+                Emulator.load_library()
+            } catch (e: RuntimeException) {
+                // "Emulator already loaded" lost a race; get is now non-null -> fine.
+                if (Emulator.get == null) throw e
+                Log.w(TAG, "load_library raced; using existing singleton", e)
+            }
         }
+        applyCoreDefaultUpdatesOnce()
+    }
+
+    @Volatile private var coreDefaultUpdatesApplied = false
+
+    /** Once per process, before the core boots or the settings read the live config: the core's
+     *  own default changes written to it ([ConfigMigrations]). */
+    private fun applyCoreDefaultUpdatesOnce() {
+        if (coreDefaultUpdatesApplied) return
+        coreDefaultUpdatesApplied = true
+        runCatching {
+            ConfigStore(Application.ctx).applyCoreDefaultUpdates(
+                ConfigMigrations.parse(xendroid.emulator.Emulator.Config.native_config_updates()))
+        }.onFailure { Log.w(TAG, "Applying the core's default updates to the config failed", it) }
     }
 
     /** The native singleton once loaded; null before ensureLoaded() on delay devices. */

@@ -36,6 +36,16 @@ class ConfigStore(private val appContext: Context, private val fileOverride: Fil
         editFile(globalConfigFile(), defaultTemplateText(), removeEmpty = false, edit = edit)
     }
 
+    /** The core's own default changes applied to the live config and dated ([ConfigMigrations]).
+     *  A missing file is left alone: it is seeded from the template, dated, later. */
+    fun applyCoreDefaultUpdates(updates: List<ConfigMigrations.Update>) {
+        val file = globalConfigFile()
+        if (updates.isEmpty() || !file.exists()) return
+        ConfigFileTransaction.update(file) { original ->
+            original?.let { ConfigMigrations.migrate(it, updates) ?: it }
+        }
+    }
+
     private fun editFile(file: File, missing: String, removeEmpty: Boolean, edit: (ConfigHandle) -> Unit) {
         ConfigFileTransaction.update(file) { original ->
             val handle = ConfigHandle.openString(original ?: missing)
