@@ -65,6 +65,7 @@ DECLARE_bool(vulkan_resolve_clear_in_guest_pass);
 DECLARE_bool(spirv_specialize_no_alpha);
 DECLARE_bool(vulkan_texture_load_coalesced);
 DECLARE_bool(vulkan_texture_load_to_image);
+DECLARE_bool(vulkan_texture_load_levels_to_image);
 DECLARE_bool(texture_integer_num_format);
 DECLARE_bool(vulkan_direct_host_resolve);
 DECLARE_bool(vulkan_async_skip_draws);
@@ -208,6 +209,20 @@ DEFINE_int32(
     "per-frame draw count.",
     "GPU");
 UPDATE_from_int32(vulkan_mid_frame_submission_draws, 2026, 7, 24, 12, 0);
+
+DEFINE_int32(
+    vulkan_drained_submission_draws, 100,
+    "If greater than 0, for the first 16 submissions after the command "
+    "processor awaited the GPU until it had nothing left to do (memory export "
+    "output the guest reads, the command processor idle), end and submit the "
+    "current command buffer every this many draws rather than every "
+    "vulkan_mid_frame_submission_draws, so the GPU doesn't idle while the rest "
+    "of the command stream is built. Games that never drain the GPU get no "
+    "extra submissions. Need for Speed: Most Wanted awaits the GPU 3-4 times "
+    "a frame: at the start line of its first race, 11.8-12.1 -> 19.6-19.7 fps "
+    "with 100 (50: 18.4-19.2, 200: 15.3, POCO F7, Adreno 825). Read per draw "
+    "(debug.xendroid.drained_submit_draws on Android).",
+    "GPU");
 
 DEFINE_int32(
     resolve_log_frames, 0,
@@ -432,6 +447,9 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
   PollDebugPropertyOverride("debug.xendroid.texload_to_image",
                             "vulkan_texture_load_to_image",
                             cvars::vulkan_texture_load_to_image);
+  PollDebugPropertyOverride("debug.xendroid.texload_levels",
+                            "vulkan_texture_load_levels_to_image",
+                            cvars::vulkan_texture_load_levels_to_image);
   // Read per resolve (0: dump the render targets to the EDRAM buffer and copy
   // from there).
   PollDebugPropertyOverride("debug.xendroid.direct_host_resolve",
@@ -552,6 +570,21 @@ void PollDebugPropertyOverrides(CommandProcessor& command_processor) {
       cvars::vulkan_mid_frame_submission_draws = draws;
       XELOGI(
           "debug.xendroid.submit_draws: vulkan_mid_frame_submission_draws = {}",
+          draws);
+    }
+  }
+  // Draws per submission right after the GPU was drained (0 = off), read per
+  // draw.
+  char drained_submit_value[PROP_VALUE_MAX] = {};
+  if (__system_property_get("debug.xendroid.drained_submit_draws",
+                            drained_submit_value) > 0 &&
+      drained_submit_value[0] >= '0' && drained_submit_value[0] <= '9') {
+    const int32_t draws = std::atoi(drained_submit_value);
+    if (cvars::vulkan_drained_submission_draws != draws) {
+      cvars::vulkan_drained_submission_draws = draws;
+      XELOGI(
+          "debug.xendroid.drained_submit_draws: vulkan_drained_submission_draws "
+          "= {}",
           draws);
     }
   }
@@ -7214,9 +7247,18 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
                  uint32_t(std::max(0.0f, dynamic_viewport_.y +
                                              std::abs(dynamic_viewport_.height))));
   }
-  if (cvars::vulkan_mid_frame_submission_draws > 0 &&
-      draws_since_submission_ >=
-          uint32_t(cvars::vulkan_mid_frame_submission_draws) &&
+  uint32_t submission_draws =
+      uint32_t(std::max(cvars::vulkan_mid_frame_submission_draws, 0));
+  if (cvars::vulkan_drained_submission_draws > 0 &&
+      GetCurrentSubmission() < drained_submission_ + 16) {
+    // Right after the GPU was drained: it waits for this submission.
+    const uint32_t drained_draws =
+        uint32_t(cvars::vulkan_drained_submission_draws);
+    submission_draws = submission_draws
+                           ? std::min(submission_draws, drained_draws)
+                           : drained_draws;
+  }
+  if (submission_draws && draws_since_submission_ >= submission_draws &&
       submission_open_ && !scratch_buffer_used_ &&
       CanEndSubmissionImmediately()) {
     EndSubmission(false);

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: WTFPL
 
 #include "emulator.h"
+#include "xenia/base/cvar.h"
 #include <android/log.h>
+#include <algorithm>
 #include <fstream>
 #include <jni.h>
 #include <thread>
@@ -440,6 +442,41 @@ static void j_free_config(JNIEnv* env, jobject self, toml::table* config_table) 
 #error "CFG_TYPE_XXX not defined"
 #endif
 
+// The core's own changes of default values (UPDATE_from_* in the cvars), for
+// the app to apply to the config file it keeps, one per row:
+// date, category, name, type, old default, new default, tab-separated, the
+// values as the config file holds them (cvar::IConfigVarUpdate::Describe).
+// Updates that can't describe themselves are left out.
+static jobjectArray j_config_updates(JNIEnv* env, jclass clazz) {
+    std::vector<std::string> rows;
+    cvar::IConfigVarUpdate::ForEachUpdate(
+        [&rows](uint32_t date, const cvar::IConfigVarUpdate& update) {
+            cvar::IConfigVarUpdate::Description description;
+            if (!update.Describe(description)) {
+                return;
+            }
+            const cvar::IConfigVar& config_var = update.updated_config_var();
+            std::string row = std::to_string(date) + '\t' + config_var.category() +
+                              '\t' + config_var.name() + '\t' + description.type +
+                              '\t' + description.old_default + '\t' +
+                              description.new_default;
+            // A value with a separator in it can't be told apart.
+            if (std::count(row.begin(), row.end(), '\t') != 5 ||
+                row.find('\n') != std::string::npos) {
+                return;
+            }
+            rows.push_back(std::move(row));
+        });
+    jobjectArray array = env->NewObjectArray(jsize(rows.size()),
+                                             env->FindClass("java/lang/String"), nullptr);
+    for (size_t i = 0; i < rows.size(); ++i) {
+        jstring row = env->NewStringUTF(rows[i].c_str());
+        env->SetObjectArrayElement(array, jsize(i), row);
+        env->DeleteLocalRef(row);
+    }
+    return array;
+}
+
 int register_Emulator$Config(JNIEnv* env){
 
     static const JNINativeMethod methods[] = {
@@ -455,6 +492,7 @@ int register_Emulator$Config(JNIEnv* env){
             { "native_config_empty", "(J)Z", (void *) j_config_empty },
             { "native_close_config_file", "(JLjava/lang/String;)V", (void *) j_close_config_file },
             { "native_free_config", "(J)V", (void *) j_free_config },
+            { "native_config_updates", "()[Ljava/lang/String;", (void *) j_config_updates },
     };
     jclass clazz = env->FindClass("xendroid/emulator/Emulator$Config");
     return env->RegisterNatives(clazz,methods, sizeof(methods)/sizeof(methods[0]));
