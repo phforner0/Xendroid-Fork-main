@@ -53,14 +53,17 @@ DEFINE_bool(a64_enable_host_guest_stack_synchronization, true,
             "impact, but fixes crashes in games that use setjmp/longjmp.",
             "a64");
 
-DEFINE_bool(a64_fpu_nan_fixup, true,
+DEFINE_bool(a64_fpu_nan_fixup, false,
             "Emulate PPC NaN propagation on scalar FPU arithmetic (add, sub, "
             "mul, div, fused multiply-add): the first NaN operand by "
             "position is returned, quieted; generated NaNs become the PPC "
             "default NaN. Costs a NaN check before and after each operation. "
             "When disabled, the host's NaN rules are used, like "
-            "a64_vmx_nan_fixup for vectors and like the x64 backend.",
+            "a64_vmx_nan_fixup for vectors and like the x64 backend. Off for "
+            "every title since 2026-10-07 (Forza Horizon and Forza Horizon 2 "
+            "had it off as a quirk).",
             "a64");
+UPDATE_from_bool(a64_fpu_nan_fixup, 2026, 10, 7, 12, true);
 
 DEFINE_bool(a64_fpu_nan_fixup_result_check, true,
             "With a64_fpu_nan_fixup: check only the result of a scalar FPU "
@@ -82,14 +85,17 @@ DEFINE_bool(a64_near_branches, true,
             "the POCO F7 (S65, S67, 2026-10-02).",
             "a64");
 
-DEFINE_bool(a64_vmx_nan_fixup, true,
+DEFINE_bool(a64_vmx_nan_fixup, false,
             "Emulate PPC NaN propagation on VMX float ops: the first NaN "
             "operand (by position) is returned, quieted; generated NaNs "
             "become the PPC default NaN (0xFFC00000). When disabled, the "
             "IEEE/NEON default NaN behavior is used instead, which matches "
             "the x64 backend and is faster; rare titles that hash or compare "
-            "raw float bits may behave differently.",
+            "raw float bits may behave differently. Off for every title since "
+            "2026-10-07 (Forza Horizon and Forza Horizon 2 had it off as a "
+            "quirk).",
             "a64");
+UPDATE_from_bool(a64_vmx_nan_fixup, 2026, 10, 7, 11, true);
 
 namespace xe {
 namespace cpu {
