@@ -218,17 +218,19 @@ DEFINE_int32(
     "GPU");
 
 DEFINE_bool(
-    memexport_readback_deferred, false,
+    memexport_readback_deferred, true,
     "With memexport_enable on a host-mapped buffer (readback_resolve=uma), "
-    "read memory export output back into guest memory when the exporting "
-    "draw's submission completes, instead of awaiting the GPU after every "
-    "exporting draw. While any is pending, a fence, interrupt or coherency "
-    "request the guest observes, a wait on memory in its command stream and "
-    "the command processor running out of commands await the GPU first, so "
-    "the output is there by then. Only while memexport_await_fences is on. "
+    "read memory export output back into guest memory once the submissions "
+    "of all of it complete, instead of awaiting the GPU after every exporting "
+    "draw. While any is pending, a fence, interrupt or coherency request the "
+    "guest observes, a wait on a register or memory in its command stream and "
+    "the command processor running out of commands await the GPU first (with "
+    "memexport_await_fences on or off), so the output is there by then. "
     "Crysis 3 copies memory with exports thousands of times while loading and "
-    "stalled on each.",
+    "stalled on each; Need for Speed: Most Wanted the same either way. On for "
+    "every title since 2026-10-07.",
     "GPU");
+UPDATE_from_bool(memexport_readback_deferred, 2026, 10, 7, 11, false);
 
 DEFINE_bool(
     vulkan_cache_texture_descriptors, true,
@@ -794,9 +796,9 @@ void VulkanCommandProcessor::RestoreEdramSnapshot(const void* snapshot) {}
 
 void VulkanCommandProcessor::PrepareForWait() {
   // Out of commands, or the guest's command stream waiting: export output read
-  // back as its submission completes would otherwise wait for a submission
+  // back once its submission completes would otherwise wait for a submission
   // nothing makes, while the guest may be waiting for it to go on.
-  AwaitMemexportReadbacks();
+  AwaitMemexportReadbacks("idle or register wait");
   CommandProcessor::PrepareForWait();
 }
 
@@ -3207,6 +3209,14 @@ void VulkanCommandProcessor::PollFrameDump() {
     }
     XELOGI("debug.xendroid.skip_draws: {}", skip_draws_value_);
   }
+  char memexport_log_value[PROP_VALUE_MAX] = {};
+  __system_property_get("debug.xendroid.memexport_log", memexport_log_value);
+  if (memexport_log_value_ != memexport_log_value) {
+    memexport_log_value_ = memexport_log_value;
+    memexport_log_left_ = uint32_t(std::max(std::atoi(memexport_log_value), 0));
+    XELOGI("debug.xendroid.memexport_log: the next {} exports and awaits",
+           memexport_log_left_);
+  }
   char value[PROP_VALUE_MAX] = {};
   __system_property_get("debug.xendroid.frame_dump", value);
   if (frame_dump_value_ == value) {
@@ -5610,8 +5620,13 @@ bool VulkanCommandProcessor::StoreMemexportChanges(uint32_t address,
 
 void VulkanCommandProcessor::ApplyCompletedMemexportReadbacks(
     uint64_t completed_submission) {
+  // All of them or none: storing into guest memory invalidates the pages, so
+  // their next use uploads them from there, over the output of any export
+  // still on its way that only its own readback would have stored. With every
+  // export done, the GPU's copy read below holds no partial later output
+  // either.
   if (pending_memexport_readbacks_.empty() ||
-      pending_memexport_readbacks_.front().submission > completed_submission) {
+      pending_memexport_readbacks_.back().submission > completed_submission) {
     return;
   }
   // Their submissions ended with a barrier making the writes visible to the
@@ -5629,19 +5644,13 @@ void VulkanCommandProcessor::ApplyCompletedMemexportReadbacks(
   }
   // In draw order: with the contents of the GPU's copy now, a byte several
   // exports changed ends up with the last value either way.
-  while (!pending_memexport_readbacks_.empty() &&
-         pending_memexport_readbacks_.front().submission <=
-             completed_submission) {
-    const PendingMemexportReadback& pending =
-        pending_memexport_readbacks_.front();
+  for (const PendingMemexportReadback& pending : pending_memexport_readbacks_) {
     StoreMemexportChanges(pending.address, pending.size,
                           memexport_snapshot_mapping_ + pending.snapshot_offset);
-    pending_memexport_readbacks_.pop_front();
   }
-  if (pending_memexport_readbacks_.empty()) {
-    pending_memexport_snapshot_used_ = 0;
-    memexport_readbacks_pending_ = false;
-  }
+  pending_memexport_readbacks_.clear();
+  pending_memexport_snapshot_used_ = 0;
+  memexport_readbacks_pending_ = false;
 }
 
 bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
@@ -5765,18 +5774,16 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
 
   // Memory export read back from the host-mapped buffer (no guest memory
   // import to export into), for which the GPU snapshots the export ranges
-  // before the draw. With memexport_readback_deferred - only while the guest's
-  // fences await the output, which is what gets it there in time - this
-  // export's snapshot goes after those of the exports still pending; read
-  // back right after the draw, it reuses the buffer from its start. Without
-  // room, the pending ones are read back first, here, before the draw records
-  // anything (awaiting the GPU is safe only between draws).
+  // before the draw. With memexport_readback_deferred, this export's snapshot
+  // goes after those of the exports still pending; read back right after the
+  // draw, it reuses the buffer from its start. Without room, the pending ones
+  // are read back first, here, before the draw records anything (awaiting the
+  // GPU is safe only between draws).
   bool memexport_deferred = false;
   if (cvars::memexport_enable && !memexport_ranges_.empty() &&
       !shared_memory_->is_zero_copy() && shared_memory_->IsHostMapped() &&
       shared_memory_host_and_edram_descriptor_set_ == VK_NULL_HANDLE) {
-    memexport_deferred =
-        cvars::memexport_readback_deferred && cvars::memexport_await_fences;
+    memexport_deferred = cvars::memexport_readback_deferred;
     uint32_t snapshot_size = 0;
     for (const draw_util::MemExportRange& range : memexport_ranges_) {
       snapshot_size += range.size_bytes;
@@ -6852,6 +6859,15 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
             uint32_t(memexport_snapshot_regions_[i].dstOffset)});
       }
       pending_memexport_snapshot_used_ = uint32_t(snapshot_offset);
+      if (memexport_log_left_) {
+        --memexport_log_left_;
+        XELOGI(
+            "MemexportLog: export at draw {} of frame {}, submission {}, {} "
+            "bytes, {} pending",
+            frame_draw_index_ - 1, frame_current_, GetCurrentSubmission(),
+            uint32_t(snapshot_offset - snapshot_start),
+            pending_memexport_readbacks_.size());
+      }
       // A fence or coherency request the guest observes awaits the GPU first
       // (command_processor_memexport.inc), which reads these back.
       memexport_await_pending_ = true;
@@ -7125,8 +7141,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
                                  memexport_range.size_bytes);
     }
   } else if (memexport_readback && !memexport_deferred) {
-    // (memexport_readback_deferred: read back when the submission completes -
-    // ApplyCompletedMemexportReadbacks.)
+    // (memexport_readback_deferred: read back once the submissions of all
+    // pending exports complete - ApplyCompletedMemexportReadbacks.)
     // Android's KGSL drivers may not expose VK_EXT_external_memory_host.
     // In that case the shader wrote the device buffer, not guest RAM. A guest
     // CPU or PM4_WAIT_REG_MEM reader must see the completed export even if no
@@ -8519,6 +8535,15 @@ void VulkanCommandProcessor::CheckSubmissionCompletionAndDeviceLoss(
     const uint64_t t0 = FrameStatsNow();
     completion_timeline_.AwaitSubmissionAndUpdateCompleted(await_submission);
     const uint64_t t1 = FrameStatsNow();
+    if (memexport_await_reason_ && memexport_log_left_) {
+      --memexport_log_left_;
+      XELOGI(
+          "MemexportLog: await for {} at draw {} of frame {}: submission {} "
+          "(completed {} before), {} readbacks pending, {:.2f} ms",
+          memexport_await_reason_, frame_draw_index_, frame_current_,
+          await_submission, completed_before,
+          pending_memexport_readbacks_.size(), double(t1 - t0) * 1e-6);
+    }
     if (await_submission) {
       vk_frame_sync_stats_.awaits++;
       vk_frame_sync_stats_.await_ns += t1 - t0;
