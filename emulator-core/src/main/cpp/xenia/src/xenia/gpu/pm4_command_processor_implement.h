@@ -820,7 +820,8 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_INTERRUPT(
 
   // The handler runs as if everything before this point in the command stream
   // is done, so export output it may read has to be in guest RAM first.
-  if (cvars::memexport_await_fences) {
+  if (cvars::memexport_await_fences ||
+      COMMAND_PROCESSOR::MemexportReadbacksPending()) {
     COMMAND_PROCESSOR::AwaitMemexportForFence("interrupt");
   }
 
@@ -972,7 +973,8 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_WAIT_REG_MEM(
         // A pending request (non-zero status, cleared by MakeCoherent) is the
         // guest asking for a range to be made visible to it, so any export
         // output landing there has to have reached guest RAM first.
-        if (cvars::memexport_await_fences &&
+        if ((cvars::memexport_await_fences ||
+             COMMAND_PROCESSOR::MemexportReadbacksPending()) &&
             register_file_->values[XE_GPU_REG_COHER_STATUS_HOST]) {
           COMMAND_PROCESSOR::AwaitMemexportForCoherency(
               register_file_->values[XE_GPU_REG_COHER_BASE_HOST],
@@ -1274,7 +1276,8 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_SHD(
 
   // The guest treats this fence as "the GPU is done", so any export output it
   // is about to read has to be in guest RAM first.
-  if (cvars::memexport_await_fences) {
+  if (cvars::memexport_await_fences ||
+      COMMAND_PROCESSOR::MemexportReadbacksPending()) {
     COMMAND_PROCESSOR::AwaitMemexportForFence("fence");
   }
 
