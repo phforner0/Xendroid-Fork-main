@@ -375,6 +375,21 @@ struct AwaitSite {
   uint64_t ns;
 };
 AwaitSite await_sites[8];
+// The same for SubmitBarriers calls that recorded barriers (VkBarrierSites):
+// the callers' return addresses, the pipeline barriers recorded, and the
+// stage masks of those barriers.
+struct BarrierSite {
+  uintptr_t address;
+  uint64_t calls;
+  uint64_t barriers;
+};
+BarrierSite barrier_sites[16];
+struct BarrierStages {
+  uint32_t src;
+  uint32_t dst;
+  uint64_t count;
+};
+BarrierStages barrier_stages[12];
 }  // namespace
 
 namespace xe {
@@ -4081,6 +4096,34 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
         }
         XELOGI("VkAwaitSites:{}", sites);
       }
+      if (barrier_sites[0].address) {
+        Dl_info barrier_module;
+        const uintptr_t module_base =
+            dladdr(&barrier_sites, &barrier_module)
+                ? reinterpret_cast<uintptr_t>(barrier_module.dli_fbase)
+                : 0;
+        std::string sites;
+        for (BarrierSite& site : barrier_sites) {
+          if (!site.address) {
+            break;
+          }
+          sites += fmt::format(" +{:X} {:.1f}/fr {:.1f}b;",
+                               site.address - module_base, site.calls / f,
+                               site.barriers / f);
+          site = BarrierSite();
+        }
+        XELOGI("VkBarrierSites:{}", sites);
+        std::string stages;
+        for (BarrierStages& stage : barrier_stages) {
+          if (!stage.count) {
+            break;
+          }
+          stages += fmt::format(" {:X}->{:X} {:.1f}/fr;", stage.src, stage.dst,
+                                stage.count / f);
+          stage = BarrierStages();
+        }
+        XELOGI("VkBarrierStages:{}", stages);
+      }
       resolve_bucket_stats_.clear();
       s = VkFrameSyncStats();
       s.last_report_ns = now;
@@ -4825,6 +4868,7 @@ bool VulkanCommandProcessor::PushImageMemoryBarrier(
 }
 
 bool VulkanCommandProcessor::SubmitBarriers(bool force_end_render_pass) {
+  void* const barrier_caller = __builtin_return_address(0);
   assert_true(submission_open_);
   SplitPendingBarrier();
   if (pending_barriers_.empty()) {
@@ -4832,6 +4876,28 @@ bool VulkanCommandProcessor::SubmitBarriers(bool force_end_render_pass) {
       EndRenderPass();
     }
     return false;
+  }
+  if (cvars::log_gpu_frame_time_breakdown) {
+    const uintptr_t address = reinterpret_cast<uintptr_t>(barrier_caller);
+    for (BarrierSite& site : barrier_sites) {
+      if (!site.address || site.address == address) {
+        site.address = address;
+        ++site.calls;
+        site.barriers += pending_barriers_.size();
+        break;
+      }
+    }
+    for (const auto& pending : pending_barriers_) {
+      for (BarrierStages& stages : barrier_stages) {
+        if (!stages.count || (stages.src == pending.src_stage_mask &&
+                              stages.dst == pending.dst_stage_mask)) {
+          stages.src = pending.src_stage_mask;
+          stages.dst = pending.dst_stage_mask;
+          ++stages.count;
+          break;
+        }
+      }
+    }
   }
   if (in_render_pass_ && cvars::log_gpu_frame_time_breakdown) {
     // Who pushed the barriers that end the pass (the PassEndReason scope open
